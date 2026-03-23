@@ -68,6 +68,7 @@ jobs:
       WRITE_DATABASE_URL: postgresql+asyncpg://kt:localdev@localhost:5435/knowledge_tree_write
       REDIS_URL: redis://localhost:6379
       SKIP_AUTH: "true"
+      HATCHET_CLIENT_TOKEN: "dummy-token-for-ci"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
