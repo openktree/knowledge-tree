@@ -25,6 +25,7 @@ spec:
         - name: wait-for-graph-db
           image: busybox:1.36
           command: ['sh', '-c', 'until nc -z {{ include "knowledge-tree.graphDbHost" . }} 5432; do echo "waiting for graph-db..."; sleep 2; done']
+        {{- include "knowledge-tree.initWaitForToken" . | nindent 8 }}
       containers:
         - name: mcp
           image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.mcp.image "defaultName" "openktree-mcp") }}

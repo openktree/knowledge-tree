@@ -22,6 +22,7 @@ spec:
       {{- end }}
       initContainers:
         {{- include "knowledge-tree.initWaitContainers" . | nindent 8 }}
+        {{- include "knowledge-tree.initWaitForToken" . | nindent 8 }}
       containers:
         - name: worker
           image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.workers.nodes.image "defaultName" "openktree-worker-nodes") }}

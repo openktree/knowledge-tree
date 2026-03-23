@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "knowledge-tree.labels" . | nindent 4 }}
   annotations:
-    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook: post-install
     helm.sh/hook-weight: "4"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded,hook-failed
 ---
@@ -17,7 +17,7 @@ metadata:
   labels:
     {{- include "knowledge-tree.labels" . | nindent 4 }}
   annotations:
-    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook: post-install
     helm.sh/hook-weight: "4"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded,hook-failed
 rules:
@@ -36,7 +36,7 @@ metadata:
   labels:
     {{- include "knowledge-tree.labels" . | nindent 4 }}
   annotations:
-    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook: post-install
     helm.sh/hook-weight: "4"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded,hook-failed
 subjects:
