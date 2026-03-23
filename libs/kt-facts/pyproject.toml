@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "kt-db",
     "kt-models",
+    "kt-providers",
     "metaphone>=0.6",
     "numpy>=2.4.2",
     "scipy>=1.17.1",
@@ -18,6 +19,7 @@ build-backend = "hatchling.build"
 [tool.uv.sources]
 kt-db = { workspace = true }
 kt-models = { workspace = true }
+kt-providers = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

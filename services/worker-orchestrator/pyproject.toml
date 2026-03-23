@@ -13,6 +13,10 @@ dependencies = [
     "kt-facts",
     "kt-ontology",
     "kt-config",
+    "kt-worker-nodes",
+    "kt-worker-query",
+    "langchain-core>=0.3.0",
+    "langgraph>=1.0.8",
 ]
 
 [build-system]
@@ -29,6 +33,8 @@ kt-graph = { workspace = true }
 kt-facts = { workspace = true }
 kt-ontology = { workspace = true }
 kt-config = { workspace = true }
+kt-worker-nodes = { workspace = true }
+kt-worker-query = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
