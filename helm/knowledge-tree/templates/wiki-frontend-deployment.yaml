@@ -21,7 +21,7 @@ spec:
       {{- end }}
       containers:
         - name: wiki-frontend
-          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.wikiFrontend.image "defaultName" "kt-wiki-frontend") }}
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.wikiFrontend.image "defaultName" "openktree-wiki-frontend") }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: {{ .Values.wikiFrontend.port }}

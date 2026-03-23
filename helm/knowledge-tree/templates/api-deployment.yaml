@@ -24,7 +24,7 @@ spec:
         {{- include "knowledge-tree.initWaitContainers" . | nindent 8 }}
       containers:
         - name: api
-          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.api.image "defaultName" "kt-api") }}
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.api.image "defaultName" "openktree-api") }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: {{ .Values.api.port }}

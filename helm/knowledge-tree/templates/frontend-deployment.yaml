@@ -20,7 +20,7 @@ spec:
       {{- end }}
       containers:
         - name: frontend
-          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.frontend.image "defaultName" "kt-frontend") }}
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.frontend.image "defaultName" "openktree-frontend") }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: {{ .Values.frontend.port }}

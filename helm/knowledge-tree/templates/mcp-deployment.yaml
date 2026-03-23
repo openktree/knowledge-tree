@@ -27,7 +27,7 @@ spec:
           command: ['sh', '-c', 'until nc -z {{ include "knowledge-tree.graphDbHost" . }} 5432; do echo "waiting for graph-db..."; sleep 2; done']
       containers:
         - name: mcp
-          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.mcp.image "defaultName" "kt-mcp") }}
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.mcp.image "defaultName" "openktree-mcp") }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: {{ .Values.mcp.port }}
