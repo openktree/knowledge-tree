@@ -12,8 +12,8 @@ FROM base AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ ./
-# NEXT_PUBLIC_* vars must be set at build time
-ARG NEXT_PUBLIC_API_URL=""
+# Build with placeholder — replaced at runtime via entrypoint
+ARG NEXT_PUBLIC_API_URL="__NEXT_PUBLIC_API_URL_PLACEHOLDER__"
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN pnpm build
 
@@ -27,8 +27,21 @@ COPY --from=build /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Entrypoint script to replace API URL placeholder at runtime
+RUN cat <<'SCRIPT' > /app/entrypoint.sh
+#!/bin/sh
+set -e
+if [ -n "$NEXT_PUBLIC_API_URL" ] && [ "$NEXT_PUBLIC_API_URL" != "__NEXT_PUBLIC_API_URL_PLACEHOLDER__" ]; then
+  echo "Replacing API URL placeholder with: $NEXT_PUBLIC_API_URL"
+  find /app/.next -name '*.js' -exec sed -i "s|__NEXT_PUBLIC_API_URL_PLACEHOLDER__|$NEXT_PUBLIC_API_URL|g" {} +
+  find /app -maxdepth 1 -name '*.js' -exec sed -i "s|__NEXT_PUBLIC_API_URL_PLACEHOLDER__|$NEXT_PUBLIC_API_URL|g" {} +
+fi
+exec node server.js
+SCRIPT
+RUN chmod +x /app/entrypoint.sh
+
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["node", "server.js"]
+CMD ["/app/entrypoint.sh"]
