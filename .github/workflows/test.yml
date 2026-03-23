@@ -1,0 +1,117 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-lint:
+    name: Backend Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-packages --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: knowledge_tree
+          POSTGRES_USER: kt
+          POSTGRES_PASSWORD: localdev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kt -d knowledge_tree"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      postgres-write:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: knowledge_tree_write
+          POSTGRES_USER: kt
+          POSTGRES_PASSWORD: localdev
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd "pg_isready -U kt -d knowledge_tree_write"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://kt:localdev@localhost:5432/knowledge_tree
+      WRITE_DATABASE_URL: postgresql+asyncpg://kt:localdev@localhost:5435/knowledge_tree_write
+      REDIS_URL: redis://localhost:6379
+      SKIP_AUTH: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-packages --frozen
+      - name: Run lib tests
+        run: |
+          uv run pytest libs/kt-config/tests/ -x
+          uv run pytest libs/kt-db/tests/ -x
+          uv run pytest libs/kt-models/tests/ -x
+          uv run pytest libs/kt-providers/tests/ -x
+          uv run pytest libs/kt-graph/tests/ -x
+          uv run pytest libs/kt-facts/tests/ -x
+          uv run pytest libs/kt-ontology/tests/ -x
+      - name: Run service tests
+        run: |
+          uv run pytest services/api/tests/ -x
+          uv run pytest services/mcp/tests/ -x
+          uv run pytest services/worker-orchestrator/tests/ -x
+          uv run pytest services/worker-search/tests/ -x
+          uv run pytest services/worker-nodes/tests/ -x
+          uv run pytest services/worker-query/tests/ -x
+          uv run pytest services/worker-ingest/tests/ -x
+          uv run pytest services/worker-conversations/tests/ -x
+
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: cd frontend && pnpm install --frozen-lockfile
+      - run: cd frontend && pnpm lint
+      - run: cd frontend && pnpm type-check
+      - run: cd frontend && pnpm test
