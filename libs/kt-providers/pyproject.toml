@@ -5,9 +5,11 @@ description = "Knowledge Tree search providers and content fetcher"
 requires-python = ">=3.12"
 dependencies = [
     "kt-config",
+    "kt-agents-core",
     "httpx>=0.28.1",
     "trafilatura>=2.0.0",
     "pydantic>=2.12.5",
+    "structlog>=25.5.0",
 ]
 
 [build-system]
@@ -16,6 +18,7 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 kt-config = { workspace = true }
+kt-agents-core = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
