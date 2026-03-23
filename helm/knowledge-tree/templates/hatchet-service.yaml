@@ -15,5 +15,9 @@ spec:
       targetPort: 7070
       name: grpc
       protocol: TCP
+    - port: 8888
+      targetPort: 8888
+      name: ui
+      protocol: TCP
   selector:
     {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "hatchet") | nindent 4 }}
