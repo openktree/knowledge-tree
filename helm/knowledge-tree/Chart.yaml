@@ -8,7 +8,7 @@ keywords:
   - knowledge-graph
   - ai
   - research
-home: https://github.com/love/knowledge-tree
+home: https://github.com/openktree/knowledge-tree
 
 dependencies:
   - name: cloudnative-pg

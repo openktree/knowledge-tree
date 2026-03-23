@@ -68,7 +68,7 @@ Secret name — use existing or chart-managed
 
 {{/*
 Image helper — resolves <registry>/<repo>:<tag> with per-component override
-Args: dict with .root (context), .image (component image block), .defaultName (e.g. "kt-api")
+Args: dict with .root (context), .image (component image block), .defaultName (e.g. "openktree-api")
 */}}
 {{- define "knowledge-tree.image" -}}
 {{- $registry := .root.Values.global.imageRegistry -}}

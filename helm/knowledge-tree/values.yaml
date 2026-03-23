@@ -4,7 +4,7 @@ cnpg-operator:
 
 # -- Global settings
 global:
-  imageRegistry: ""
+  imageRegistry: "ghcr.io/openktree/knowledge-tree"
   imageTag: "latest"
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
