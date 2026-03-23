@@ -17,6 +17,10 @@ spec:
         {{- include "knowledge-tree.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: migrations
     spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       restartPolicy: OnFailure
       initContainers:
         - name: wait-for-graph-db
@@ -67,13 +71,13 @@ spec:
             - name: GRAPH_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "knowledge-tree.secretName" . }}
-                  key: graph-db-password
+                  name: {{ default (printf "%s-credentials" (include "knowledge-tree.graphDbName" .)) .Values.graphDb.credentialsSecret }}
+                  key: password
             - name: WRITE_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "knowledge-tree.secretName" . }}
-                  key: write-db-password
+                  name: {{ default (printf "%s-credentials" (include "knowledge-tree.writeDbName" .)) .Values.writeDb.credentialsSecret }}
+                  key: password
             # Migrations connect directly to CNPG (not PgBouncer) for DDL
             - name: DATABASE_URL
               value: "postgresql+asyncpg://kt:$(GRAPH_DB_PASSWORD)@{{ include "knowledge-tree.graphDbHost" . }}:5432/knowledge_tree"
