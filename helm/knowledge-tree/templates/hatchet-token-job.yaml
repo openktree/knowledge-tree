@@ -5,10 +5,7 @@ metadata:
   name: {{ include "knowledge-tree.fullname" . }}-hatchet-token
   labels:
     {{- include "knowledge-tree.labels" . | nindent 4 }}
-  annotations:
-    helm.sh/hook: post-install
-    helm.sh/hook-weight: "5"
-    helm.sh/hook-delete-policy: hook-succeeded,before-hook-creation
+  annotations: {}
 spec:
   backoffLimit: {{ .Values.hatchet.tokenJob.backoffLimit }}
   activeDeadlineSeconds: 300
