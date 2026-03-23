@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 
 from kt_config.settings import get_settings
 from kt_facts.processing.seed_heuristics import (
-    STOPWORDS,
     edit_distance,
     is_acronym_match,
     is_containment_mismatch,
@@ -124,38 +123,10 @@ async def deduplicate_seed(
             # Acronym heuristic: "FBI" <-> "Federal Bureau of Investigation"
             is_acronym = _is_acronym_match(name, candidate.name)
 
-            # Stopword-only difference: names differ only by articles/prepositions
-            # e.g. "The Miami Herald" vs "Miami Herald"
-            words_incoming = set(name_lower.split())
-            words_candidate = set(candidate_name_lower.split())
-            diff_words = words_incoming.symmetric_difference(words_candidate)
-            is_stopword_only = (
-                diff_words and words_incoming != words_candidate and all(w in STOPWORDS for w in diff_words)
-            )
-
-            # Punctuation-only difference: names match after stripping punctuation
-            # e.g. "McDonald's Corporation" vs "McDonalds Corporation"
-            import re as _re
-
-            name_nopunct = _re.sub(r"[^\w\s]", "", name_lower)
-            candidate_nopunct = _re.sub(r"[^\w\s]", "", candidate_name_lower)
-            is_punctuation_only = name_lower != candidate_name_lower and name_nopunct == candidate_nopunct
-
-            if (
-                name_lower == candidate_name_lower
-                or name_lower in aliases_lower
-                or is_acronym
-                or is_stopword_only
-                or is_punctuation_only
-            ):
+            if name_lower == candidate_name_lower or name_lower in aliases_lower or is_acronym:
                 # Containment guard — skip for acronym matches since acronyms
                 # are inherently much shorter than their expansions
-                if (
-                    not is_acronym
-                    and not is_stopword_only
-                    and not is_punctuation_only
-                    and _is_containment_mismatch(name_lower, candidate_name_lower)
-                ):
+                if not is_acronym and _is_containment_mismatch(name_lower, candidate_name_lower):
                     logger.debug(
                         "Skipping alias match '%s' <-> '%s' — containment mismatch",
                         name,
@@ -165,10 +136,6 @@ async def deduplicate_seed(
                 reason = (
                     "acronym match"
                     if is_acronym and name_lower != candidate_name_lower and name_lower not in aliases_lower
-                    else "stopword variant"
-                    if is_stopword_only
-                    else "punctuation variant"
-                    if is_punctuation_only
                     else "alias match"
                 )
                 alias_candidates.append(_MergeCandidate(candidate.key, candidate.name, reason))

@@ -188,45 +188,6 @@ class TestFindSimilarSeedsIntegration:
 class TestDeduplicateSeedIntegration:
     """Full deduplicate_seed() with real DB — tests containment guard + threshold together."""
 
-    async def test_article_prefix_merges(self, write_db_session):
-        """'The Miami Herald' should merge with 'Miami Herald'."""
-        from kt_facts.processing.seed_dedup import deduplicate_seed
-
-        repo = WriteSeedRepository(write_db_session)
-        existing_key = await _insert_seed(repo, "Miami Herald Newspaper", "entity")
-        incoming_key = await _insert_seed(repo, "The Miami Herald Newspaper", "entity")
-        await write_db_session.flush()
-
-        result = await deduplicate_seed(
-            incoming_key,
-            "The Miami Herald Newspaper",
-            "entity",
-            repo,
-            embedding_service=_mock_embedding_service(),
-            qdrant_seed_repo=_mock_qdrant_repo(),
-        )
-        # Should merge (existing wins on tie as more canonical)
-        assert result == existing_key
-
-    async def test_punctuation_merges(self, write_db_session):
-        """McDonald's should merge with McDonalds."""
-        from kt_facts.processing.seed_dedup import deduplicate_seed
-
-        repo = WriteSeedRepository(write_db_session)
-        existing_key = await _insert_seed(repo, "McDonald's Corporation", "entity")
-        incoming_key = await _insert_seed(repo, "McDonalds Corporation", "entity")
-        await write_db_session.flush()
-
-        result = await deduplicate_seed(
-            incoming_key,
-            "McDonalds Corporation",
-            "entity",
-            repo,
-            embedding_service=_mock_embedding_service(),
-            qdrant_seed_repo=_mock_qdrant_repo(),
-        )
-        assert result == existing_key
-
     async def test_different_jurisdiction_no_merge(self, write_db_session):
         """US Attorney offices in different states should NOT merge."""
         from kt_facts.processing.seed_dedup import deduplicate_seed
