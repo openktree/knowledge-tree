@@ -218,3 +218,28 @@ Init container waiting for graph-db and Hatchet
   image: busybox:1.36
   command: ['sh', '-c', 'until nc -z {{ include "knowledge-tree.fullname" . }}-hatchet 7070; do echo "waiting for hatchet..."; sleep 2; done']
 {{- end }}
+
+{{/*
+Init container that blocks until the Hatchet client token is a valid JWT.
+On first install the token job may not have run yet; the init container will
+CrashLoopBackOff until the secret is patched, which is the k8s-native way
+to wait for a dependency.
+*/}}
+{{- define "knowledge-tree.initWaitForToken" -}}
+- name: wait-for-hatchet-token
+  image: busybox:1.36
+  env:
+    - name: HATCHET_CLIENT_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "knowledge-tree.secretName" . }}
+          key: hatchet-client-token
+  command:
+    - sh
+    - -c
+    - |
+      case "$HATCHET_CLIENT_TOKEN" in
+        eyJ*) echo "Valid Hatchet client token found"; exit 0 ;;
+        *) echo "Waiting for Hatchet token job to generate a valid token..."; exit 1 ;;
+      esac
+{{- end }}
