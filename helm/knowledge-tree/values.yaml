@@ -34,6 +34,7 @@ secrets:
 # CloudNativePG Databases
 # =============================================================================
 graphDb:
+  credentialsSecret: ""  # if empty, uses CNPG-generated secret
   instances: 1
   image: ghcr.io/cloudnative-pg/postgresql:16.8
   storage:
@@ -51,6 +52,7 @@ graphDb:
       memory: 2Gi
 
 writeDb:
+  credentialsSecret: ""  # if empty, uses CNPG-generated secret
   instances: 1
   image: ghcr.io/cloudnative-pg/postgresql:16
   storage:
@@ -66,6 +68,7 @@ writeDb:
       memory: 2Gi
 
 hatchetDb:
+  credentialsSecret: ""  # if empty, uses CNPG-generated secret
   instances: 1
   image: ghcr.io/cloudnative-pg/postgresql:16
   storage:

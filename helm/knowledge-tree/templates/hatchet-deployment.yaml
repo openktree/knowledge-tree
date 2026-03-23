@@ -32,8 +32,8 @@ spec:
             - name: HATCHET_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "knowledge-tree.secretName" . }}
-                  key: hatchet-db-password
+                  name: {{ default (printf "%s-credentials" (include "knowledge-tree.hatchetDbName" .)) .Values.hatchetDb.credentialsSecret }}
+                  key: password
             - name: DATABASE_URL
               value: "postgresql://hatchet:$(HATCHET_DB_PASSWORD)@{{ include "knowledge-tree.hatchetDbHost" . }}:5432/hatchet?sslmode=disable"
             - name: SERVER_AUTH_COOKIE_DOMAIN
