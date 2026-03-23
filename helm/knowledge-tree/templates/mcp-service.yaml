@@ -1,0 +1,16 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-mcp
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "mcp") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.mcp.port }}
+      targetPort: {{ .Values.mcp.port }}
+      protocol: TCP
+  selector:
+    {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "mcp") | nindent 4 }}
+{{- end }}

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-api
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.api.port }}
+      targetPort: {{ .Values.api.port }}
+      protocol: TCP
+  selector:
+    {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "api") | nindent 4 }}

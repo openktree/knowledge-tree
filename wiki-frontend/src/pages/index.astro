@@ -1,0 +1,65 @@
+---
+import WikiLayout from "../layouts/WikiLayout.astro";
+import { listNodes, searchNodes, nodeHref } from "../lib/api.js";
+import type { NodeResponse } from "../types/index.js";
+
+const q = Astro.url.searchParams.get("q")?.trim() ?? "";
+
+let nodes: NodeResponse[] = [];
+let error: string | null = null;
+
+try {
+  if (q) {
+    nodes = await searchNodes(q);
+  } else {
+    nodes = await listNodes(50, "edge_count");
+  }
+} catch (e) {
+  error = e instanceof Error ? e.message : String(e);
+}
+---
+
+<WikiLayout title="All Knowledge" query={q}>
+  <div class="index-header">
+    <h1>{q ? `Search: "${q}"` : "All Knowledge"}</h1>
+    <form method="get" action="/" class="index-search-form">
+      <input
+        type="search"
+        name="q"
+        placeholder="Search nodes…"
+        value={q}
+        autocomplete="off"
+      />
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  {error && <div class="error-banner">{error}</div>}
+
+  {!error && nodes.length === 0 && (
+    <p class="empty-state">
+      {q ? `No nodes found matching "${q}".` : "No nodes in the graph yet."}
+    </p>
+  )}
+
+  {!error && nodes.length > 0 && (
+    <>
+      {q && (
+        <p class="search-results-label">
+          {nodes.length} result{nodes.length !== 1 ? "s" : ""} for "{q}"
+        </p>
+      )}
+      <ul class="node-flat-list">
+        {nodes.map((node) => (
+          <li>
+            <a href={nodeHref(node)} class="node-flat-link" title={node.concept}>
+              {node.concept}
+            </a>
+            <span class={`type-badge ${node.node_type}`}>{node.node_type}</span>
+            <span class="node-edge-count" title="number of relations">{node.edge_count + node.child_count} rel</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+</WikiLayout>

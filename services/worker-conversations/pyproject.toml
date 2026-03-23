@@ -1,0 +1,34 @@
+[project]
+name = "kt-worker-conversations"
+version = "0.1.0"
+description = "Knowledge Tree conversations worker (follow-up + resynthesize)"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-hatchet",
+    "kt-agents-core",
+    "kt-db",
+    "kt-models",
+    "kt-providers",
+    "kt-graph",
+    "kt-config",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-hatchet = { workspace = true }
+kt-agents-core = { workspace = true }
+kt-db = { workspace = true }
+kt-models = { workspace = true }
+kt-providers = { workspace = true }
+kt-graph = { workspace = true }
+kt-config = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_worker_conv"]

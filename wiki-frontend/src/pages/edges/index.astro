@@ -1,0 +1,116 @@
+---
+import WikiLayout from "../../layouts/WikiLayout.astro";
+import FactsSection from "../../components/FactsSection.astro";
+import { getEdgesBetween, getNode, nodeHref } from "../../lib/api.js";
+import { parseJustification } from "../../lib/justification.js";
+import type { EdgeDetailResponse, FactResponse, NodeResponse } from "../../types/index.js";
+
+const sourceId = Astro.url.searchParams.get("source");
+const targetId = Astro.url.searchParams.get("target");
+
+let edges: EdgeDetailResponse[] = [];
+let sourceNode: NodeResponse | null = null;
+let targetNode: NodeResponse | null = null;
+let error: string | null = null;
+
+if (!sourceId || !targetId) {
+  error = "Missing source and target query parameters. Use /edges?source=ID&target=ID";
+} else {
+  try {
+    [edges, sourceNode, targetNode] = await Promise.all([
+      getEdgesBetween(sourceId, targetId),
+      getNode(sourceId),
+      getNode(targetId),
+    ]);
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+const sourceConcept = sourceNode?.concept ?? edges[0]?.source_node_concept ?? edges[0]?.target_node_concept ?? "?";
+const targetConcept = targetNode?.concept ?? edges[0]?.target_node_concept ?? edges[0]?.source_node_concept ?? "?";
+
+function weightLabel(w: number): { text: string; cls: string } {
+  if (w >= 0.5) return { text: "strongly supporting", cls: "weight-positive" };
+  if (w >= 0.1) return { text: "supporting", cls: "weight-positive" };
+  if (w > -0.1) return { text: "neutral", cls: "weight-neutral" };
+  if (w > -0.5) return { text: "opposing", cls: "weight-negative" };
+  return { text: "strongly opposing", cls: "weight-negative" };
+}
+
+// Combine all facts from all edges, deduplicated by ID
+const allFactsMap = new Map<string, FactResponse>();
+for (const edge of edges) {
+  for (const fact of edge.supporting_facts) {
+    allFactsMap.set(fact.id, fact);
+  }
+}
+const allFacts = Array.from(allFactsMap.values());
+---
+
+<WikiLayout title={edges.length > 0 ? `${sourceConcept} \u2194 ${targetConcept}` : "Edges"}>
+  {error && <div class="error-banner">{error}</div>}
+
+  {edges.length > 0 && (
+    <div class="edge-page">
+      <div class="edge-connection">
+        <a href={sourceNode ? nodeHref(sourceNode) : `/nodes/${sourceId}`} class="edge-node-link">
+          {sourceConcept}
+        </a>
+        <span class="edge-arrow">&harr;</span>
+        <a href={targetNode ? nodeHref(targetNode) : `/nodes/${targetId}`} class="edge-node-link">
+          {targetConcept}
+        </a>
+      </div>
+
+      <section class="edge-page-section">
+        <h2 class="section-heading">Relations ({edges.length})</h2>
+        <div class="edge-relations-list">
+          {edges.map((edge) => {
+            const wl = weightLabel(edge.weight);
+            const factCount = edge.supporting_facts.length;
+            return (
+              <div class="edge-relation-card">
+                <div class="edge-relation-card-header">
+                  <span class="type-badge">{edge.relationship_type}</span>
+                  <span class={`edge-weight ${wl.cls}`}>{edge.weight.toFixed(2)} &mdash; {wl.text}</span>
+                  {factCount > 0 && (
+                    <span class="relation-fact-count">{factCount} fact{factCount !== 1 ? "s" : ""}</span>
+                  )}
+                </div>
+                {edge.justification ? (
+                  <p class="edge-justification">
+                    {parseJustification(edge.justification).map((s) =>
+                      s.kind === "text" ? s.text : <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a>
+                    )}
+                  </p>
+                ) : edge.supporting_facts.length > 0 && (
+                  <>
+                    <p class="relation-dialog-pending">Justification not yet generated — showing supporting facts</p>
+                    <ul class="relation-dialog-facts edge-facts-fallback">
+                      {edge.supporting_facts.map((f) => (
+                        <li class="relation-dialog-fact-item">
+                          <a href={`/facts/${f.id}`}>{f.content}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {allFacts.length > 0 && (
+        <section class="edge-page-section">
+          <FactsSection facts={allFacts} />
+        </section>
+      )}
+    </div>
+  )}
+
+  {!error && edges.length === 0 && sourceId && targetId && (
+    <p class="empty-state">No edges found between these nodes.</p>
+  )}
+</WikiLayout>

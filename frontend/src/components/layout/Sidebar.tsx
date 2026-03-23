@@ -1,0 +1,155 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Search, CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { useAuth } from "@/contexts/auth";
+import { cn } from "@/lib/utils";
+
+const NAV_ITEMS = [
+  { href: "/", label: "Query", icon: Search },
+  { href: "/research", label: "Research", icon: Upload },
+  { href: "/nodes", label: "Nodes", icon: CircleDot },
+  { href: "/edges", label: "Edges", icon: ArrowLeftRight },
+  { href: "/facts", label: "Facts", icon: FileText },
+  { href: "/sources", label: "Sources", icon: Globe },
+  { href: "/seeds", label: "Seeds", icon: Sprout },
+  { href: "/edge-candidates", label: "Candidates", icon: GitPullRequestArrow },
+] as const;
+
+const ADMIN_NAV_ITEMS = [
+  { href: "/usage", label: "Usage", icon: BarChart3 },
+  { href: "/members", label: "Members", icon: Users },
+  { href: "/settings", label: "Settings", icon: Settings },
+] as const;
+
+export function SidebarLayout({ children }: { children: React.ReactNode }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
+  const { user } = useAuth();
+  const isAdmin = user?.is_superuser ?? false;
+
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/" || pathname.startsWith("/query");
+    return pathname.startsWith(href);
+  };
+
+  return (
+    <div className="flex h-screen">
+      {/* Sidebar */}
+      <aside
+        className={cn(
+          "flex flex-col border-r bg-card transition-[width] duration-200 shrink-0",
+          collapsed ? "w-[52px]" : "w-[208px]",
+        )}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-2 px-3 py-4 border-b">
+          <TreePine className="size-5 text-primary shrink-0" />
+          {!collapsed && (
+            <span className="text-sm font-semibold truncate">Knowledge Tree</span>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 flex flex-col gap-1 p-2">
+          {NAV_ITEMS.map((item) => {
+            const active = isActive(item.href);
+            const linkContent = (
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  active
+                    ? "bg-accent text-accent-foreground font-medium"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                  collapsed && "justify-center px-0",
+                )}
+              >
+                <item.icon className="size-4 shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            );
+
+            if (collapsed) {
+              return (
+                <Tooltip key={item.href}>
+                  <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                  <TooltipContent side="right">{item.label}</TooltipContent>
+                </Tooltip>
+              );
+            }
+
+            return <div key={item.href}>{linkContent}</div>;
+          })}
+
+          {isAdmin && (
+            <>
+              <div className={cn("border-t border-border my-1", collapsed && "mx-1")} />
+              {ADMIN_NAV_ITEMS.map((item) => {
+                const active = isActive(item.href);
+                const linkContent = (
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                      active
+                        ? "bg-accent text-accent-foreground font-medium"
+                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                      collapsed && "justify-center px-0",
+                    )}
+                  >
+                    <item.icon className="size-4 shrink-0" />
+                    {!collapsed && <span>{item.label}</span>}
+                  </Link>
+                );
+
+                if (collapsed) {
+                  return (
+                    <Tooltip key={item.href}>
+                      <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                      <TooltipContent side="right">{item.label}</TooltipContent>
+                    </Tooltip>
+                  );
+                }
+
+                return <div key={item.href}>{linkContent}</div>;
+              })}
+            </>
+          )}
+        </nav>
+
+        {/* User menu + collapse toggle */}
+        <div className="border-t p-2 flex flex-col gap-1">
+          <UserMenu collapsed={collapsed} />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCollapsed(!collapsed)}
+            className={cn("w-full", collapsed && "px-0")}
+          >
+            {collapsed ? (
+              <PanelLeft className="size-4" />
+            ) : (
+              <>
+                <PanelLeftClose className="size-4 mr-2" />
+                <span className="text-xs">Collapse</span>
+              </>
+            )}
+          </Button>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="flex-1 min-w-0 overflow-auto">{children}</main>
+    </div>
+  );
+}

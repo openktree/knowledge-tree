@@ -1,0 +1,258 @@
+---
+/**
+ * Reusable facts section with source grouping, search, and domain filtering.
+ * Used on both the node detail page and the edge detail page.
+ */
+import FactCard from "./FactCard.astro";
+import type { FactResponse } from "../types/index.js";
+
+interface Props {
+  facts: FactResponse[];
+}
+
+const { facts } = Astro.props;
+
+function extractDomainClean(uri: string): string {
+  try { return new URL(uri).hostname.replace(/^www\./, ""); } catch { return uri; }
+}
+
+// Domains sorted by number of facts that reference them (descending)
+const domainFactCount = new Map<string, number>();
+for (const fact of facts) {
+  const seen = new Set<string>();
+  for (const source of fact.sources) {
+    const d = extractDomainClean(source.uri);
+    if (!seen.has(d)) { seen.add(d); domainFactCount.set(d, (domainFactCount.get(d) ?? 0) + 1); }
+  }
+}
+const uniqueDomains = Array.from(domainFactCount.entries())
+  .sort((a, b) => b[1] - a[1])
+  .map(([domain]) => domain);
+const DOMAIN_LIMIT = 50;
+
+// Group facts by their first source
+interface SourceGroup {
+  sourceId: string | null;
+  title: string;
+  uri: string | null;
+  publishedDate: string | null;
+  authorPerson: string | null;
+  authorOrg: string | null;
+  facts: FactResponse[];
+}
+
+function groupFactsBySource(factList: FactResponse[]): SourceGroup[] {
+  const order: string[] = [];
+  const map = new Map<string, SourceGroup>();
+
+  for (const fact of factList) {
+    const src = fact.sources[0] ?? null;
+    const key = src?.source_id ?? "__none__";
+    if (!map.has(key)) {
+      order.push(key);
+      map.set(key, {
+        sourceId: src?.source_id ?? null,
+        title: src?.title ?? src?.uri ?? "Unknown source",
+        uri: src?.uri ?? null,
+        publishedDate: src?.published_date ?? null,
+        authorPerson: src?.author_person ?? null,
+        authorOrg: src?.author_org ?? null,
+        facts: [],
+      });
+    }
+    map.get(key)!.facts.push(fact);
+  }
+
+  return order.map((k) => map.get(k)!).sort((a, b) => b.facts.length - a.facts.length);
+}
+---
+
+<div class="facts-section" data-facts-section>
+  <h2 class="section-heading">Facts (<span data-facts-visible-count>{facts.length}</span>)</h2>
+
+  <div class="facts-controls">
+    <div class="facts-search-wrapper">
+      <input
+        type="search"
+        class="facts-search"
+        data-facts-search
+        placeholder="Search facts..."
+        autocomplete="off"
+      />
+    </div>
+    <div class="facts-active-filter" data-facts-active-filter style="display:none">
+      <span class="facts-filter-label">Filtering by:</span>
+      <span class="facts-filter-value" data-facts-filter-value></span>
+      <button class="facts-filter-clear" data-facts-filter-clear title="Clear filter">&times;</button>
+    </div>
+  </div>
+
+  {uniqueDomains.length > 0 && (
+    <div class="facts-domains" data-facts-domains>
+      <span class="facts-domains-label">Sources</span>
+      {uniqueDomains.slice(0, DOMAIN_LIMIT).map((domain) => (
+        <button class="source-domain source-domain--clickable" data-domain={domain}>
+          {domain}
+          <span class="domain-count">{domainFactCount.get(domain)}</span>
+        </button>
+      ))}
+      {uniqueDomains.length > DOMAIN_LIMIT && (
+        <>
+          <span class="facts-domains-hidden">
+            {uniqueDomains.slice(DOMAIN_LIMIT).map((domain) => (
+              <button class="source-domain source-domain--clickable" data-domain={domain}>
+                {domain}
+                <span class="domain-count">{domainFactCount.get(domain)}</span>
+              </button>
+            ))}
+          </span>
+          <button class="facts-domains-more" data-facts-domains-more>
+            +{uniqueDomains.length - DOMAIN_LIMIT} more
+          </button>
+        </>
+      )}
+    </div>
+  )}
+
+  <div class="facts-groups" data-facts-groups>
+    <p class="facts-no-results" data-facts-no-results style="display:none">No facts match your search.</p>
+    {groupFactsBySource(facts).map((group) => {
+      const groupDomain = group.uri ? extractDomainClean(group.uri) : null;
+      return (
+        <details class="fact-group" data-source-domain={groupDomain ?? ""}>
+          <summary class="fact-group-summary">
+            {group.uri ? (
+              <a
+                class="fact-group-title"
+                href={group.uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                onclick="event.stopPropagation(); return true;"
+              >
+                {group.title}
+              </a>
+            ) : (
+              <span class="fact-group-title">{group.title}</span>
+            )}
+            {groupDomain && (
+              <span class="source-domain">{groupDomain}</span>
+            )}
+            {(group.authorPerson || group.authorOrg) && (
+              <span class="fact-source-author">
+                {[group.authorPerson, group.authorOrg].filter(Boolean).join(" · ")}
+              </span>
+            )}
+            {group.publishedDate && (
+              <span class="fact-source-date">{group.publishedDate}</span>
+            )}
+            <span class="fact-group-count">{group.facts.length} fact{group.facts.length !== 1 ? "s" : ""}</span>
+          </summary>
+          <div class="fact-card-list">
+            {group.facts.map((fact) => (
+              <div data-fact-text={fact.content.toLowerCase()} data-fact-type={fact.fact_type}>
+                <FactCard fact={fact} showSources={false} />
+              </div>
+            ))}
+          </div>
+        </details>
+      );
+    })}
+  </div>
+</div>
+
+<script>
+  // Initialize all FactsSection instances on the page
+  document.querySelectorAll<HTMLElement>("[data-facts-section]").forEach((section) => {
+    const factsSearch = section.querySelector<HTMLInputElement>("[data-facts-search]");
+    const factsGroups = section.querySelector<HTMLElement>("[data-facts-groups]");
+    const factsVisibleCount = section.querySelector<HTMLElement>("[data-facts-visible-count]");
+    const factsActiveFilter = section.querySelector<HTMLElement>("[data-facts-active-filter]");
+    const factsFilterValue = section.querySelector<HTMLElement>("[data-facts-filter-value]");
+    const factsFilterClear = section.querySelector<HTMLElement>("[data-facts-filter-clear]");
+    const factsNoResults = section.querySelector<HTMLElement>("[data-facts-no-results]");
+
+    let activeDomain: string | null = null;
+
+    function applyFactsFilter() {
+      if (!factsGroups) return;
+      const query = (factsSearch?.value ?? "").toLowerCase().trim();
+      const groups = factsGroups.querySelectorAll<HTMLDetailsElement>(".fact-group");
+      let totalVisible = 0;
+
+      for (const group of groups) {
+        const groupDomain = group.dataset.sourceDomain ?? "";
+        if (activeDomain && groupDomain !== activeDomain) {
+          group.style.display = "none";
+          continue;
+        }
+
+        const items = group.querySelectorAll<HTMLElement>("[data-fact-text]");
+        let groupVisible = 0;
+
+        for (const item of items) {
+          const text = item.dataset.factText ?? "";
+          const type = item.dataset.factType ?? "";
+          const matches = !query || text.includes(query) || type.includes(query);
+          item.style.display = matches ? "" : "none";
+          if (matches) groupVisible++;
+        }
+
+        group.style.display = groupVisible > 0 ? "" : "none";
+        if (groupVisible > 0 && (query || activeDomain)) {
+          group.open = true;
+        }
+        totalVisible += groupVisible;
+      }
+
+      if (factsVisibleCount) factsVisibleCount.textContent = String(totalVisible);
+      if (factsNoResults) factsNoResults.style.display = totalVisible === 0 ? "" : "none";
+    }
+
+    factsSearch?.addEventListener("input", () => applyFactsFilter());
+
+    // Domain badge clicks
+    section.querySelectorAll<HTMLButtonElement>(".source-domain--clickable").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const domain = btn.dataset.domain ?? "";
+        if (activeDomain === domain) {
+          activeDomain = null;
+          btn.classList.remove("source-domain--active");
+        } else {
+          section.querySelectorAll(".source-domain--active").forEach((el) =>
+            el.classList.remove("source-domain--active")
+          );
+          activeDomain = domain;
+          btn.classList.add("source-domain--active");
+        }
+        if (factsActiveFilter && factsFilterValue) {
+          if (activeDomain) {
+            factsFilterValue.textContent = activeDomain;
+            factsActiveFilter.style.display = "";
+          } else {
+            factsActiveFilter.style.display = "none";
+          }
+        }
+        applyFactsFilter();
+      });
+    });
+
+    factsFilterClear?.addEventListener("click", () => {
+      activeDomain = null;
+      section.querySelectorAll(".source-domain--active").forEach((el) =>
+        el.classList.remove("source-domain--active")
+      );
+      if (factsActiveFilter) factsActiveFilter.style.display = "none";
+      applyFactsFilter();
+    });
+
+    // "Show more domains" button
+    const moreBtn = section.querySelector<HTMLButtonElement>("[data-facts-domains-more]");
+    if (moreBtn) {
+      const hidden = moreBtn.previousElementSibling as HTMLElement | null;
+      moreBtn.addEventListener("click", () => {
+        if (hidden) hidden.style.display = "contents";
+        moreBtn.remove();
+      });
+    }
+  });
+</script>

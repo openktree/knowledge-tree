@@ -1,0 +1,72 @@
+{
+  "models": {
+    "openrouter/x-ai/grok-4.1-fast": {
+      "inputPerMillion": 2.00,
+      "outputPerMillion": 10.00
+    },
+    "openrouter/x-ai/grok-3-mini-beta": {
+      "inputPerMillion": 0.30,
+      "outputPerMillion": 0.50
+    },
+    "openrouter/anthropic/claude-3.5-sonnet": {
+      "inputPerMillion": 3.00,
+      "outputPerMillion": 15.00
+    },
+    "openrouter/anthropic/claude-sonnet-4": {
+      "inputPerMillion": 3.00,
+      "outputPerMillion": 15.00
+    },
+    "openrouter/openai/gpt-4o-mini": {
+      "inputPerMillion": 0.15,
+      "outputPerMillion": 0.60
+    },
+    "openrouter/openai/gpt-4.1-mini": {
+      "inputPerMillion": 0.40,
+      "outputPerMillion": 1.60
+    },
+    "openrouter/openai/gpt-4.1-nano": {
+      "inputPerMillion": 0.10,
+      "outputPerMillion": 0.40
+    },
+    "openrouter/google/gemini-2.0-flash-001": {
+      "inputPerMillion": 0.10,
+      "outputPerMillion": 0.40
+    },
+    "openrouter/google/gemini-2.5-flash-preview": {
+      "inputPerMillion": 0.15,
+      "outputPerMillion": 0.60
+    },
+    "openrouter/google/gemini-3-flash-preview": {
+      "inputPerMillion": 0.5,
+      "outputPerMillion": 3
+    },
+    "openrouter/google/gemini-3-flash-preview:nitro": {
+      "inputPerMillion": 0.5,
+      "outputPerMillion": 3
+    },
+    "openrouter/google/gemini-3.1-flash-lite-preview": {
+      "inputPerMillion": 0.25,
+      "outputPerMillion": 1.5
+    },
+    "openrouter/meta-llama/llama-4-maverick": {
+      "inputPerMillion": 0.20,
+      "outputPerMillion": 0.60
+    },
+    "openrouter/meta-llama/llama-4-scout": {
+      "inputPerMillion": 0.15,
+      "outputPerMillion": 0.40
+    },
+    "openrouter/qwen/qwen3-235b-a22b": {
+      "inputPerMillion": 0.20,
+      "outputPerMillion": 0.60
+    },
+    "openrouter/z-ai/glm-5": {
+      "inputPerMillion": 0.10,
+      "outputPerMillion": 0.40
+    }
+  },
+  "default": {
+    "inputPerMillion": 0.50,
+    "outputPerMillion": 2.00
+  }
+}

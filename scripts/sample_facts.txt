@@ -1,0 +1,27 @@
+J.C. Maxwell of Scotland published the mathematical theory of electromagnetic fields in the 1860s, unifying magnetism, electricity, and light, and establishing Maxwell's four laws of electrodynamics which enabled the development of electric power, radios, and television.
+Michael Faraday (1791-1867) was a British scientist and physicist who graduated from the Royal Institution of Great Britain in 1821.
+James Clerk Maxwell first introduced the concept of displacement current.
+James Clerk Maxwell developed a general theory for electromagnetism and optics.
+John D. Jackson's 'Classical Electrodynamics' (1975) is a graduate-level textbook providing a rigorous mathematical treatment of electric and magnetic phenomena, including topics from atomic and nuclear physics.
+James Clerk Maxwell's 'A Treatise on Electricity and Magnetism' (1954) is the first book on electromagnetic wave theory and introduces several concepts through experimental research.
+The physicist Richard Feynman stated that Maxwell's equations would be recognized, 'looking from afar at the history of humanity', as 'the most significant event of the 19th century'.
+Michael Faraday developed the concept of the electromagnetic field.
+Wind energy generates electricity by harnessing the power of the wind using wind turbines, which can be located onshore or offshore.
+Repsol has exceeded 5,000 MW of total installed capacity in renewable energies, including hydroelectric, wind, and solar power generation projects in Spain and Chile.
+Repsol is developing new renewable energy projects in Spain, including the Delta 2 and PI wind farms, and three photovoltaic projects named Valdesolar, Kappa, and Sigma.
+The Sigma project, located in Jerez de la Frontera (Cadiz), is Repsol's first major renewable energy venture in Andalusia and consists of five photovoltaic plants.
+A 2024 report found that the United States is behind countries like Belgium and the Netherlands in the adoption of reconductoring techniques to accommodate electrification and renewable energy.
+ITC Holdings developed a plan to connect PJM demand with Ontario's renewable energy sources.
+Global carbon emissions from energy will peak in 2025 as the electrical grid shifts from fossil fuels to renewable energy sources.
+Arizona Public Service (APS) is taking steps to meet electricity demand by sourcing renewable energy, signing contracts for new gas pipelines, and building new power plants.
+The U.S. Energy Information Administration (EIA) reports net electricity generation from storage systems as negative in the Electric Power Monthly and Electric Power Annual publications to prevent double-counting the electricity used for charging.
+John D. Kinsman authored an overview of U.S. federal electricity policy, detailing the deregulatory agenda of the Trump Administration across the Environmental Protection Agency (EPA), Council on Environmental Quality (CEQ), Department of Energy (DOE), Department of the Interior (DOI), and the Federal Energy Regulatory Commission (FERC).
+Wind turbines accounted for approximately 10% of U.S. electricity generation in 2022.
+The International Energy Agency (IEA) published the Global Energy Trends 2023 report.
+The World Bank published the Energy Progress Report 2023.
+Charles Fritts developed a method for storing electricity, enabling users to store energy for later use.
+Pumped-storage hydropower plants utilize the same types of hydro turbines as conventional hydropower plants but function as energy storage systems.
+Energy storage systems for electricity generation include hydro-pumped storage, compressed-air storage, electrochemical batteries, and flywheels.
+Smart grids, renewable energy integration, energy storage systems, wireless power transmission, and electric vehicle infrastructure are current revolutionary developments in electrical innovation.
+Innovations in battery storage and hydrogen-based systems are being used to address the intermittency issues associated with renewable energy.
+In 2023, North America had 100% electricity access and a consumption rate of 13,500 kWh per capita, with fossil fuels as the dominant source at 50%.

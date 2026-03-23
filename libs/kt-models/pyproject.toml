@@ -1,0 +1,25 @@
+[project]
+name = "kt-models"
+version = "0.1.0"
+description = "Knowledge Tree AI model gateway, embeddings, and LangChain adapter"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-config",
+    "litellm>=1.81.11",
+    "tiktoken>=0.12.0",
+    "langchain-openai>=1.1.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-config = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_models"]

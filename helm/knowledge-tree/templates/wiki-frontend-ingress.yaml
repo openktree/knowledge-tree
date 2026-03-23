@@ -1,0 +1,31 @@
+{{- if and .Values.wikiFrontend.enabled .Values.wikiFrontend.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-wiki-frontend
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "wiki-frontend") | nindent 4 }}
+  {{- with .Values.wikiFrontend.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.wikiFrontend.ingress.className }}
+  ingressClassName: {{ .Values.wikiFrontend.ingress.className }}
+  {{- end }}
+  {{- if .Values.wikiFrontend.ingress.tls }}
+  tls:
+    {{- toYaml .Values.wikiFrontend.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.wikiFrontend.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "knowledge-tree.fullname" . }}-wiki-frontend
+                port:
+                  number: {{ .Values.wikiFrontend.port }}
+{{- end }}

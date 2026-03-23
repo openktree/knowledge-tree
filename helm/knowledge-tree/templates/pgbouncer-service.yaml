@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "knowledge-tree.pgbouncerName" . }}
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "pgbouncer") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "pgbouncer") | nindent 4 }}

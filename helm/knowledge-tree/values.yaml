@@ -1,0 +1,358 @@
+# -- CloudNativePG operator (installed as subchart dependency)
+cnpg-operator:
+  enabled: true
+
+# -- Global settings
+global:
+  imageRegistry: ""
+  imageTag: "latest"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+# -- Secrets (set via --set or external secret)
+secrets:
+  # If set, use this existing Secret instead of creating one
+  existingSecret: ""
+
+  graphDbPassword: "changeme"
+  writeDbPassword: "changeme"
+  hatchetDbPassword: "changeme"
+
+  openrouterApiKey: ""
+  openaiApiKey: ""
+  braveKey: ""
+  serperKey: ""
+
+  jwtSecretKey: "change-me-in-production"
+  googleOauthClientId: ""
+  googleOauthClientSecret: ""
+
+  # Leave empty to auto-generate via Helm hook job
+  hatchetClientToken: ""
+
+# =============================================================================
+# CloudNativePG Databases
+# =============================================================================
+graphDb:
+  instances: 1
+  image: ghcr.io/cloudnative-pg/postgresql:16.8
+  storage:
+    size: 20Gi
+    storageClass: ""
+  postgresql:
+    shared_preload_libraries:
+      - "vector.so"
+    max_connections: "100"
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 2Gi
+
+writeDb:
+  instances: 1
+  image: ghcr.io/cloudnative-pg/postgresql:16
+  storage:
+    size: 20Gi
+    storageClass: ""
+  postgresql:
+    max_connections: "400"
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 2Gi
+
+hatchetDb:
+  instances: 1
+  image: ghcr.io/cloudnative-pg/postgresql:16
+  storage:
+    size: 5Gi
+    storageClass: ""
+  postgresql:
+    max_connections: "100"
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+
+# =============================================================================
+# PgBouncer (write-db connection pooler)
+# =============================================================================
+pgbouncer:
+  image: edoburu/pgbouncer:latest
+  poolMode: transaction
+  maxClientConn: 2000
+  defaultPoolSize: 100
+  minPoolSize: 10
+  reservePoolSize: 10
+  reservePoolTimeout: 3
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+
+# =============================================================================
+# Redis
+# =============================================================================
+redis:
+  image: redis:7-alpine
+  storage:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+
+# =============================================================================
+# Qdrant (official subchart — qdrant/qdrant)
+# =============================================================================
+qdrant:
+  replicaCount: 1
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 2Gi
+
+# =============================================================================
+# Hatchet
+# =============================================================================
+hatchet:
+  image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.79.22
+  cookieDomain: "localhost"  # required by Hatchet — set to your domain
+  serverUrl: ""  # auto-derived if empty
+  grpcBroadcastAddress: ""  # auto-derived if empty
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 2Gi
+  tokenJob:
+    enabled: true
+    backoffLimit: 6
+
+# =============================================================================
+# Migrations
+# =============================================================================
+migrations:
+  enabled: true
+  backoffLimit: 3
+
+# =============================================================================
+# API
+# =============================================================================
+api:
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  port: 8000
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: api.knowledge-tree.local
+    tls: []
+
+# =============================================================================
+# MCP
+# =============================================================================
+mcp:
+  enabled: true
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  port: 8001
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 50m
+    limits:
+      memory: 512Mi
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: mcp.knowledge-tree.local
+    tls: []
+
+# =============================================================================
+# Frontend (Next.js)
+# =============================================================================
+frontend:
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  port: 3000
+  env:
+    NEXT_PUBLIC_API_URL: ""  # e.g. https://api.knowledge-tree.example.com
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 50m
+    limits:
+      memory: 512Mi
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: knowledge-tree.local
+    tls: []
+
+# =============================================================================
+# Wiki Frontend (Astro)
+# =============================================================================
+wikiFrontend:
+  enabled: true
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  port: 4321
+  env:
+    PUBLIC_API_URL: ""
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: wiki.knowledge-tree.local
+    tls: []
+
+# =============================================================================
+# Workers
+# =============================================================================
+workers:
+  orchestrator:
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 100m
+      limits:
+        memory: 2Gi
+
+  search:
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+
+  nodes:
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 100m
+      limits:
+        memory: 2Gi
+
+  query:
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+
+  ingest:
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 100m
+      limits:
+        memory: 2Gi
+
+  conversations:
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 100m
+      limits:
+        memory: 2Gi
+
+  sync:
+    replicas: 1  # MUST be 1 — watermark-based, single-threaded
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+
+# =============================================================================
+# config.yaml — mounted into all Python services
+# =============================================================================
+configYaml:
+  models:
+    default: "openrouter/x-ai/grok-4.1-fast"
+
+  orchestrator:
+    model: "openrouter/minimax/minimax-m2.5:nitro"
+
+  decomposition:
+    model: "openrouter/x-ai/grok-4.1-fast"
+    thinking_level: "low"
+    entity_extraction_model: "openrouter/xiaomi/mimo-v2-flash"
+    entity_extraction_thinking_level: medium
+    entity_extraction_batch_size: 40
+
+  synthesis:
+    model: "openrouter/minimax/minimax-m2.5:nitro"
+
+  edges:
+    resolution_model: "openrouter/x-ai/grok-4.1-fast"

@@ -1,0 +1,43 @@
+---
+/**
+ * Reusable fact card component.
+ *
+ * Props:
+ *  - fact: FactResponse object
+ *  - showSources: whether to render source links (default true).
+ *                 Set to false when facts are already grouped by source.
+ */
+import type { FactResponse } from "../types/index.js";
+
+interface Props {
+  fact: FactResponse;
+  showSources?: boolean;
+}
+
+const { fact, showSources = true } = Astro.props;
+
+function extractDomain(uri: string): string | null {
+  try { return new URL(uri).hostname.replace(/^www\./, ""); } catch { return null; }
+}
+---
+
+<div class="fact-card">
+  <span class="fact-card-header"><a class="fact-type-badge" href={`/facts/${fact.id}`}>{fact.fact_type}</a>{fact.stance && <span class="fact-stance">{fact.stance}</span>}</span><span class="fact-card-content">{fact.content}</span>
+  {showSources && fact.sources.length > 0 && (
+    <div class="fact-card-sources">
+      {fact.sources.map((src) => (
+        <a
+          class="fact-card-source-link"
+          href={src.uri}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {src.title ?? extractDomain(src.uri) ?? src.uri}
+          {extractDomain(src.uri) && (
+            <span class="source-domain">{extractDomain(src.uri)}</span>
+          )}
+        </a>
+      ))}
+    </div>
+  )}
+</div>

@@ -1,0 +1,45 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "knowledge-tree.graphDbName" . }}
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "graph-db") | nindent 4 }}
+spec:
+  instances: {{ .Values.graphDb.instances }}
+  imageName: {{ .Values.graphDb.image }}
+  enableSuperuserAccess: true
+
+  postgresql:
+    shared_preload_libraries:
+      {{- toYaml .Values.graphDb.postgresql.shared_preload_libraries | nindent 6 }}
+    parameters:
+      max_connections: {{ .Values.graphDb.postgresql.max_connections | quote }}
+
+  bootstrap:
+    initdb:
+      database: knowledge_tree
+      owner: kt
+      secret:
+        name: {{ include "knowledge-tree.graphDbName" . }}-credentials
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector
+
+  storage:
+    size: {{ .Values.graphDb.storage.size }}
+    {{- if .Values.graphDb.storage.storageClass }}
+    storageClass: {{ .Values.graphDb.storage.storageClass }}
+    {{- end }}
+
+  resources:
+    {{- toYaml .Values.graphDb.resources | nindent 4 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "knowledge-tree.graphDbName" . }}-credentials
+  labels:
+    {{- include "knowledge-tree.labels" . | nindent 4 }}
+type: kubernetes.io/basic-auth
+stringData:
+  username: kt
+  password: {{ .Values.secrets.graphDbPassword | quote }}

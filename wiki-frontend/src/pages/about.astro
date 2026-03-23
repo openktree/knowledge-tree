@@ -1,0 +1,195 @@
+---
+import WikiLayout from "../layouts/WikiLayout.astro";
+---
+
+<WikiLayout title="About">
+  <div class="about-page">
+    <h1 class="about-title">About Knowledge Tree</h1>
+
+    <section class="about-section">
+      <h2>The problem we are trying to solve</h2>
+      <p>
+        We live in an era of overwhelming information. The internet surfaces more ideas, claims,
+        and arguments than any person can read, evaluate, or hold in mind — and the rise of AI is
+        accelerating that flood. In this environment, the difficulty is no longer finding information.
+        It is making sense of it: understanding what people actually believe, why they believe it,
+        what evidence supports them, and how their view relates to the views of those who disagree.
+      </p>
+      <p>
+        Most tools flatten this complexity. They return a result, summarise a position, or rank
+        sources by popularity. They pick a side, even when the question has many valid sides.
+        Knowledge Tree does the opposite.
+      </p>
+    </section>
+
+    <section class="about-section">
+      <h2>Surface everything, suppress nothing</h2>
+      <p>
+        The goal of this system is to surface all perspectives available on the internet —
+        not to adjudicate between them. Every view that exists in the public record deserves
+        to be documented: what it claims, which facts support it, who holds it, and what it
+        stands in relation to.
+      </p>
+      <p>
+        When you read a node here, you are not reading a conclusion. You are reading a map
+        of the conversation — the full landscape of what is said and what grounds it.
+        The judgement is yours to make.
+      </p>
+      <p>
+        This is what fact provenance is for. When a perspective links to its supporting facts,
+        and those facts link to their original sources, you can see not just <em>what</em> someone
+        believes but <em>why</em> — what they have read, what they take as evidence, and how
+        robust that evidence is. Understanding why someone holds a view is the first step toward
+        genuine dialogue with it.
+      </p>
+    </section>
+
+    <section class="about-section">
+      <h2>The Hegelian foundation</h2>
+      <p>
+        Knowledge Tree is built on a philosophical tradition that predates the internet by two
+        centuries: Hegelian dialectics. Hegel argued that ideas do not exist in isolation — every
+        concept carries within itself the seeds of its opposite. A thesis generates an antithesis.
+        The tension between them, worked through honestly, produces a synthesis: a higher concept
+        that holds both without erasing either.
+      </p>
+      <p>
+        This is not compromise. Synthesis is not splitting the difference. It is the discovery
+        of a vantage point from which the conflict becomes intelligible — a shared ground that
+        neither side could see while standing only on their own.
+      </p>
+      <p>
+        The structure of this graph reflects that process directly. Perspectives are thesis and
+        antithesis — opposing claims about a concept, each grounded in its own facts. Their parent
+        concept is the synthesis space: the higher idea that contains both, where the contradiction
+        can be examined rather than avoided. As the graph grows, these parent concepts are themselves
+        integrated into broader concepts, moving progressively toward more encompassing common ground.
+      </p>
+    </section>
+
+    <section class="about-section">
+      <h2>Synthesis as destination</h2>
+      <p>
+        The ultimate ambition of Knowledge Tree is not to archive disagreement but to find the
+        concepts where disagreement resolves. In a world where opposing perspectives are equally
+        valid starting points for inquiry, the question is not which side is right. The question
+        is: what is the idea large enough to hold both?
+      </p>
+      <p>
+        That idea — the synthesis — is what we are navigating toward. It is the shared viewpoint
+        that people on opposite sides of a debate can recognise as true, even if it requires each
+        to expand beyond their current position. Discovering those syntheses, mapping the path from
+        conflict to common ground, is the work this system is designed to support.
+      </p>
+    </section>
+
+    <section class="about-section">
+      <h2>How it works</h2>
+      <p>
+        The graph is built entirely from external sources — web searches, documents, public records.
+        Raw data is decomposed into typed, attributed facts: claims, accounts, measurements, quotes,
+        references. Every fact retains a direct link to its origin.
+      </p>
+      <p>
+        Those facts are assembled into nodes. Each node in the graph represents a concept, an entity,
+        a perspective, or an event. Nodes connect to each other through typed edges that reflect
+        real relationships discovered during exploration — not inferred from similarity alone.
+      </p>
+      <p>
+        Nodes have four types:
+      </p>
+      <ul class="about-list">
+        <li><strong>Concept</strong> — an abstract topic, idea, or domain of inquiry</li>
+        <li><strong>Entity</strong> — a named person, organisation, or institution with a point of view</li>
+        <li><strong>Perspective</strong> — a debatable claim, linked to a parent concept, with a stance grounded in facts</li>
+        <li><strong>Event</strong> — a temporal occurrence that shapes or is shaped by the concepts around it</li>
+      </ul>
+      <p>
+        The graph grows with every query. Topics that are explored frequently accumulate deeper
+        factual bases, more perspectives, and richer connections. Nothing is discarded; everything
+        integrates into the broader structure over time.
+      </p>
+    </section>
+
+    <section class="about-section">
+      <h2>Your role</h2>
+      <p>
+        This system does not tell you what to think. It shows you what exists and makes the
+        structure of the conversation visible. You can follow the facts that support a view
+        you disagree with, understand the evidence behind a position you find difficult, or
+        trace the path from a local disagreement to the broader concept it lives inside.
+      </p>
+      <p>
+        In a world where information is abundant and clarity is scarce, the most valuable
+        thing is not a better answer — it is a better map. This is an attempt to build that map.
+      </p>
+    </section>
+  </div>
+</WikiLayout>
+
+<style>
+  .about-page {
+    max-width: 680px;
+  }
+
+  .about-title {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 2rem;
+    line-height: 1.2;
+  }
+
+  .about-section {
+    margin-bottom: 2.5rem;
+  }
+
+  .about-section h2 {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--color-border-light);
+  }
+
+  .about-section p {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    line-height: 1.75;
+    color: var(--color-text);
+    margin: 0 0 1rem;
+  }
+
+  .about-section p:last-child {
+    margin-bottom: 0;
+  }
+
+  .about-section strong {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .about-section em {
+    font-style: italic;
+  }
+
+  .about-list {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    line-height: 1.75;
+    color: var(--color-text);
+    margin: 0.75rem 0 1rem 1.25rem;
+    padding: 0;
+  }
+
+  .about-list li {
+    margin-bottom: 0.35rem;
+  }
+
+  .about-list li:last-child {
+    margin-bottom: 0;
+  }
+</style>
