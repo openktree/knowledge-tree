@@ -14,7 +14,7 @@ COPY libs/ libs/
 COPY services/mcp/ services/mcp/
 
 # Install dependencies
-RUN cd services/mcp && uv sync --frozen --no-dev
+RUN cd services/mcp && uv sync --frozen --no-dev --package kt-mcp
 
 EXPOSE 8001
 
