@@ -125,6 +125,16 @@ Shared environment variables for all Python services.
 Outputs a list of env var definitions.
 */}}
 {{- define "knowledge-tree.sharedEnv" -}}
+- name: GRAPH_DB_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ default (printf "%s-credentials" (include "knowledge-tree.graphDbName" .)) .Values.graphDb.credentialsSecret }}
+      key: password
+- name: WRITE_DB_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ default (printf "%s-credentials" (include "knowledge-tree.writeDbName" .)) .Values.writeDb.credentialsSecret }}
+      key: password
 - name: DATABASE_URL
   value: "postgresql+asyncpg://kt:$(GRAPH_DB_PASSWORD)@{{ include "knowledge-tree.graphDbHost" . }}:5432/knowledge_tree"
 - name: WRITE_DATABASE_URL
@@ -137,16 +147,6 @@ Outputs a list of env var definitions.
   value: "{{ include "knowledge-tree.fullname" . }}-hatchet:7070"
 - name: HATCHET_CLIENT_TLS_STRATEGY
   value: "none"
-- name: GRAPH_DB_PASSWORD
-  valueFrom:
-    secretKeyRef:
-      name: {{ default (printf "%s-credentials" (include "knowledge-tree.graphDbName" .)) .Values.graphDb.credentialsSecret }}
-      key: password
-- name: WRITE_DB_PASSWORD
-  valueFrom:
-    secretKeyRef:
-      name: {{ default (printf "%s-credentials" (include "knowledge-tree.writeDbName" .)) .Values.writeDb.credentialsSecret }}
-      key: password
 - name: HATCHET_CLIENT_TOKEN
   valueFrom:
     secretKeyRef:
