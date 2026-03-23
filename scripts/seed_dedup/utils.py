@@ -48,9 +48,7 @@ def format_results_table(
     lines = [header, "-" * len(header)]
 
     for pair_str, score, would_merge, expected, status in rows:
-        lines.append(
-            f"{pair_str:<65} {score:>6.4f}  {would_merge:>8}  {expected:>8}  {status}"
-        )
+        lines.append(f"{pair_str:<65} {score:>6.4f}  {would_merge:>8}  {expected:>8}  {status}")
 
     return "\n".join(lines)
 

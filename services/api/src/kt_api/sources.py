@@ -27,7 +27,8 @@ router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
 
 
 async def _build_source_detail(
-    source_id: uuid.UUID, session: AsyncSession,
+    source_id: uuid.UUID,
+    session: AsyncSession,
 ) -> SourceDetailResponse:
     """Build a SourceDetailResponse for a given source ID."""
     repo = SourceRepository(session)
@@ -79,9 +80,7 @@ async def _build_source_detail(
             )
             for f in facts
         ],
-        linked_nodes=[
-            SourceLinkedNode(**n) for n in linked_nodes
-        ],
+        linked_nodes=[SourceLinkedNode(**n) for n in linked_nodes],
         prohibited_chunks=[
             ProhibitedChunkResponse(
                 id=str(pc.id),
@@ -110,11 +109,18 @@ async def list_sources(
     """List raw sources with pagination and optional filters."""
     repo = SourceRepository(session)
     sources = await repo.list_sources(
-        offset=offset, limit=limit, search=search, provider_id=provider_id,
-        sort_by=sort_by, has_prohibited=has_prohibited, is_super_source=is_super_source,
+        offset=offset,
+        limit=limit,
+        search=search,
+        provider_id=provider_id,
+        sort_by=sort_by,
+        has_prohibited=has_prohibited,
+        is_super_source=is_super_source,
     )
     total = await repo.count_sources(
-        search=search, provider_id=provider_id, has_prohibited=has_prohibited,
+        search=search,
+        provider_id=provider_id,
+        has_prohibited=has_prohibited,
         is_super_source=is_super_source,
     )
     return PaginatedSourcesResponse(

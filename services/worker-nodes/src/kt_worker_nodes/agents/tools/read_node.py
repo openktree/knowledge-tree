@@ -13,9 +13,9 @@ import logging
 import uuid
 from typing import Any
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_agents_core.state import AgentContext
 from kt_worker_nodes.pipelines.enrichment import PoolEnricher
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +74,14 @@ async def read_node_impl(
     await ctx.graph_engine.increment_access_count(nid)
 
     await ctx.emit("activity_log", action=f"Reading node: '{node.concept}'", tool="read_node")
-    await ctx.emit("node_visited", data={
-        "id": node_id,
-        "concept": node.concept,
-        "node_type": node.node_type,
-    })
+    await ctx.emit(
+        "node_visited",
+        data={
+            "id": node_id,
+            "concept": node.concept,
+            "node_type": node.node_type,
+        },
+    )
     budget_data: dict[str, object] = {
         "nav_remaining": nav_remaining,
         "nav_total": state.nav_budget,
@@ -114,29 +117,37 @@ async def read_node_impl(
 
         # Emit connected node so the frontend graph can render it
         if target_node is not None:
-            await ctx.emit("node_visited", data={
-                "id": str(target_id),
-                "concept": target_concept,
-                "node_type": getattr(target_node, "node_type", "concept"),
-            })
+            await ctx.emit(
+                "node_visited",
+                data={
+                    "id": str(target_id),
+                    "concept": target_concept,
+                    "node_type": getattr(target_node, "node_type", "concept"),
+                },
+            )
 
         # Emit existing edge so the frontend graph can draw the connection
-        await ctx.emit("edge_created", data={
-            "id": str(edge.id),
-            "source_node_id": str(edge.source_node_id),
-            "target_node_id": str(edge.target_node_id),
-            "relationship_type": edge.relationship_type,
-            "weight": edge.weight,
-            "justification": edge.justification,
-        })
+        await ctx.emit(
+            "edge_created",
+            data={
+                "id": str(edge.id),
+                "source_node_id": str(edge.source_node_id),
+                "target_node_id": str(edge.target_node_id),
+                "relationship_type": edge.relationship_type,
+                "weight": edge.weight,
+                "justification": edge.justification,
+            },
+        )
 
-        edge_list.append({
-            "target_node_id": str(target_id),
-            "target_concept": target_concept,
-            "relationship_type": edge.relationship_type,
-            "weight": edge.weight,
-            "direction": direction,
-        })
+        edge_list.append(
+            {
+                "target_node_id": str(target_id),
+                "target_concept": target_concept,
+                "relationship_type": edge.relationship_type,
+                "weight": edge.weight,
+                "direction": direction,
+            }
+        )
 
     # Get fact count (count only, no content)
     facts = await ctx.graph_engine.get_node_facts(nid)
@@ -152,15 +163,17 @@ async def read_node_impl(
         content = dim.content
         if len(content) > MAX_DIMENSION_CONTENT_LEN:
             content = content[:MAX_DIMENSION_CONTENT_LEN] + "..."
-        dim_list.append({
-            "model_id": dim.model_id,
-            "content": content,
-            "confidence": dim.confidence,
-            "suggested_concepts": dim.suggested_concepts or [],
-            "batch_index": dim.batch_index,
-            "fact_count": dim.fact_count,
-            "is_definitive": dim.is_definitive,
-        })
+        dim_list.append(
+            {
+                "model_id": dim.model_id,
+                "content": content,
+                "confidence": dim.confidence,
+                "suggested_concepts": dim.suggested_concepts or [],
+                "batch_index": dim.batch_index,
+                "fact_count": dim.fact_count,
+                "is_definitive": dim.is_definitive,
+            }
+        )
 
     result: dict[str, Any] = {
         "node_id": node_id,

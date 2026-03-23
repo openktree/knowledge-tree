@@ -32,4 +32,6 @@ def downgrade() -> None:
     )
     op.create_index("ix_write_fee_updated_at", "write_fact_edge_evaluations", ["updated_at"])
     op.create_index("ix_write_fee_source_target", "write_fact_edge_evaluations", ["source_node_id", "target_node_id"])
-    op.create_index("uq_write_fee", "write_fact_edge_evaluations", ["source_node_id", "target_node_id", "fact_id"], unique=True)
+    op.create_index(
+        "uq_write_fee", "write_fact_edge_evaluations", ["source_node_id", "target_node_id", "fact_id"], unique=True
+    )

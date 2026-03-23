@@ -48,11 +48,7 @@ def _callee_name(call: ast.Call) -> str | None:
 
 def _is_test_file(path: pathlib.Path) -> bool:
     parts = path.parts
-    return (
-        "tests" in parts
-        or "test_" in path.name
-        or path.name == "conftest.py"
-    )
+    return "tests" in parts or "test_" in path.name or path.name == "conftest.py"
 
 
 class _Violation:
@@ -89,10 +85,7 @@ def test_all_agent_context_calls_pass_qdrant_client() -> None:
             if name == "AgentContext" and not _has_keyword(node, "qdrant_client"):
                 violations.append(_Violation(path, node.lineno, "AgentContext"))
 
-    assert not violations, (
-        "AgentContext() calls missing qdrant_client:\n"
-        + "\n".join(f"  {v}" for v in violations)
-    )
+    assert not violations, "AgentContext() calls missing qdrant_client:\n" + "\n".join(f"  {v}" for v in violations)
 
 
 def test_all_graph_engine_calls_pass_qdrant_client() -> None:
@@ -118,7 +111,4 @@ def test_all_graph_engine_calls_pass_qdrant_client() -> None:
             if name == "GraphEngine" and not _has_keyword(node, "qdrant_client"):
                 violations.append(_Violation(path, node.lineno, "GraphEngine"))
 
-    assert not violations, (
-        "GraphEngine() calls missing qdrant_client:\n"
-        + "\n".join(f"  {v}" for v in violations)
-    )
+    assert not violations, "GraphEngine() calls missing qdrant_client:\n" + "\n".join(f"  {v}" for v in violations)

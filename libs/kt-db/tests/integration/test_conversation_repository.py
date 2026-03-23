@@ -142,17 +142,29 @@ async def test_get_all_visited_nodes(db_session):
     repo = ConversationRepository(db_session)
     conv = await repo.create(title="visited_test")
     await repo.add_message(
-        conv.id, 1, "assistant", "A1",
-        status="completed", visited_nodes=["n1", "n2"],
+        conv.id,
+        1,
+        "assistant",
+        "A1",
+        status="completed",
+        visited_nodes=["n1", "n2"],
     )
     await repo.add_message(
-        conv.id, 3, "assistant", "A2",
-        status="completed", visited_nodes=["n2", "n3"],
+        conv.id,
+        3,
+        "assistant",
+        "A2",
+        status="completed",
+        visited_nodes=["n2", "n3"],
     )
     # Pending message should not be included
     await repo.add_message(
-        conv.id, 5, "assistant", "",
-        status="pending", visited_nodes=["n4"],
+        conv.id,
+        5,
+        "assistant",
+        "",
+        status="pending",
+        visited_nodes=["n4"],
     )
 
     visited = await repo.get_all_visited_nodes(conv.id)
@@ -163,11 +175,17 @@ async def test_get_latest_answer(db_session):
     repo = ConversationRepository(db_session)
     conv = await repo.create(title="latest_ans_test")
     await repo.add_message(
-        conv.id, 1, "assistant", "First answer",
+        conv.id,
+        1,
+        "assistant",
+        "First answer",
         status="completed",
     )
     await repo.add_message(
-        conv.id, 3, "assistant", "Second answer",
+        conv.id,
+        3,
+        "assistant",
+        "Second answer",
         status="completed",
     )
     latest = await repo.get_latest_answer(conv.id)

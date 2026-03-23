@@ -77,23 +77,23 @@ ENTITY_LABELS = [
 # Map every label → (kt_node_type, entity_subtype | None)
 KT_TYPE_MAP: dict[str, tuple[str, str | None]] = {
     # entity
-    "person":                ("entity",   "person"),
-    "organization":          ("entity",   "organization"),
+    "person": ("entity", "person"),
+    "organization": ("entity", "organization"),
     # concept
-    "concept":               ("concept",  None),
-    "technology":            ("concept",  None),
-    "scientific theory":     ("concept",  None),
-    "energy source":         ("concept",  None),
-    "publication":           ("concept",  None),
+    "concept": ("concept", None),
+    "technology": ("concept", None),
+    "scientific theory": ("concept", None),
+    "energy source": ("concept", None),
+    "publication": ("concept", None),
     # event
-    "report publication":    ("event",    None),
-    "scientific discovery":  ("event",    None),
+    "report publication": ("event", None),
+    "scientific discovery": ("event", None),
     # location
-    "location":              ("location", None),
-    "country":               ("location", None),
-    "city":                  ("location", None),
-    "region":                ("location", None),
-    "geographic feature":    ("location", None),
+    "location": ("location", None),
+    "country": ("location", None),
+    "city": ("location", None),
+    "region": ("location", None),
+    "geographic feature": ("location", None),
 }
 
 # ── Expected KT entities for the default sample_facts.txt ─────────
@@ -311,7 +311,9 @@ def main() -> None:
     parser.add_argument("--model", default="fastino/gliner2-base-v1", help="GLiNER2 model ID")
     parser.add_argument("--threshold", type=float, default=0.25, help="Confidence threshold (default: 0.25)")
     parser.add_argument("--json", action="store_true", help="Output raw JSON instead of formatted table")
-    parser.add_argument("--compare", action="store_true", help="Compare against expected KT entities for sample_facts.txt")
+    parser.add_argument(
+        "--compare", action="store_true", help="Compare against expected KT entities for sample_facts.txt"
+    )
     args = parser.parse_args()
 
     if args.input:

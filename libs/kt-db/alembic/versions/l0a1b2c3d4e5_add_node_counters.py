@@ -9,8 +9,8 @@ Revises: k9f0a1b2c3d4
 Create Date: 2026-02-27
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "l0a1b2c3d4e5"

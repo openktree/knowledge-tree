@@ -50,16 +50,20 @@ async def process_uploaded_file(
         image_pages: list[PdfImagePage] = []
         for page in pages:
             if page.is_image and page.image_bytes:
-                image_pages.append(PdfImagePage(
-                    page_number=page.page_number,
-                    image_bytes=page.image_bytes,
-                ))
+                image_pages.append(
+                    PdfImagePage(
+                        page_number=page.page_number,
+                        image_bytes=page.image_bytes,
+                    )
+                )
             elif page.text:
                 text_parts.append(page.text)
         text = "\n\n".join(text_parts) if text_parts else None
         logger.info(
             "PDF processed: %d text pages, %d image pages, text length=%d",
-            len(text_parts), len(image_pages), len(text) if text else 0,
+            len(text_parts),
+            len(image_pages),
+            len(text) if text else 0,
         )
         return ProcessedFile(
             text=text,

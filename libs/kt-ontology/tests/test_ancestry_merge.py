@@ -5,11 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from kt_config.types import ALL_CONCEPTS_ID
 from kt_ontology.ancestry import AncestryPipeline, AncestryResult
 from kt_ontology.base import AncestorEntry, AncestryChain
 from kt_ontology.registry import OntologyProviderRegistry
-from kt_config.types import ALL_CONCEPTS_ID
-
 
 # ── Fixtures ─────────────────────────────────────────────────────
 
@@ -65,17 +64,23 @@ class TestMergeChains:
     def test_ai_and_base_agree(self) -> None:
         """When both chains share a common ancestor, merge should include it."""
         pipeline = _make_pipeline()
-        ai = _chain([
-            _entry("sorting algorithms"),
-            _entry("algorithms"),
-            _entry("computer science"),
-            _entry("all concepts"),
-        ], source="ai")
-        base = _chain([
-            _entry("algorithm"),
-            _entry("computer science"),
-            _entry("formal science"),
-        ], source="wikidata")
+        ai = _chain(
+            [
+                _entry("sorting algorithms"),
+                _entry("algorithms"),
+                _entry("computer science"),
+                _entry("all concepts"),
+            ],
+            source="ai",
+        )
+        base = _chain(
+            [
+                _entry("algorithm"),
+                _entry("computer science"),
+                _entry("formal science"),
+            ],
+            source="wikidata",
+        )
 
         result = pipeline._merge_chains(ai, base, "quicksort")
         names = [r.name.lower() for r in result]
@@ -85,14 +90,20 @@ class TestMergeChains:
     def test_ai_and_base_diverge_no_common(self) -> None:
         """When chains share no ancestors, AI chain is preferred with base appended."""
         pipeline = _make_pipeline()
-        ai = _chain([
-            _entry("sorting algorithms"),
-            _entry("algorithms"),
-        ], source="ai")
-        base = _chain([
-            _entry("mathematical object"),
-            _entry("abstract entity"),
-        ], source="wikidata")
+        ai = _chain(
+            [
+                _entry("sorting algorithms"),
+                _entry("algorithms"),
+            ],
+            source="ai",
+        )
+        base = _chain(
+            [
+                _entry("mathematical object"),
+                _entry("abstract entity"),
+            ],
+            source="wikidata",
+        )
 
         result = pipeline._merge_chains(ai, base, "quicksort")
         names = [r.name.lower() for r in result]
@@ -274,7 +285,11 @@ class TestEnsureSeedForNode:
         mock_repo.upsert_seeds_batch = AsyncMock()
 
         await pipeline._ensure_seed_for_node(
-            "Quantum Computing", "concept", None, mock_repo, None,
+            "Quantum Computing",
+            "concept",
+            None,
+            mock_repo,
+            None,
         )
 
         mock_repo.upsert_seeds_batch.assert_called_once()
@@ -291,7 +306,11 @@ class TestEnsureSeedForNode:
         pipeline = _make_pipeline()
         # Should not raise
         await pipeline._ensure_seed_for_node(
-            "Test", "concept", None, None, None,
+            "Test",
+            "concept",
+            None,
+            None,
+            None,
         )
 
     @pytest.mark.asyncio
@@ -303,7 +322,11 @@ class TestEnsureSeedForNode:
         embedding = [0.1] * 10
 
         await pipeline._ensure_seed_for_node(
-            "Physics", "concept", embedding, mock_repo, mock_qdrant,
+            "Physics",
+            "concept",
+            embedding,
+            mock_repo,
+            mock_qdrant,
         )
 
         mock_qdrant.upsert.assert_called_once_with(
@@ -322,5 +345,9 @@ class TestEnsureSeedForNode:
 
         # Should not raise
         await pipeline._ensure_seed_for_node(
-            "Test", "concept", None, mock_repo, None,
+            "Test",
+            "concept",
+            None,
+            mock_repo,
+            None,
         )

@@ -40,9 +40,7 @@ async def verify_bearer_token(token: str, session: AsyncSession) -> bool:
     if settings.skip_auth:
         return True
 
-    result = await session.execute(
-        select(ApiToken).where(ApiToken.revoked.is_(False))
-    )
+    result = await session.execute(select(ApiToken).where(ApiToken.revoked.is_(False)))
     for api_token in result.scalars().all():
         if api_token.expires_at and api_token.expires_at < datetime.now(UTC).replace(tzinfo=None):
             continue

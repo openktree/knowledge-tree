@@ -5,7 +5,6 @@ Runs multiple label configurations and compares recall per category.
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
@@ -28,16 +27,64 @@ STRATEGIES: dict[str, dict[str, list[str]]] = {
     # Strategy 2: Specific only (role/domain labels, no generic)
     "specific": {
         "person": ["scientist", "researcher", "author", "engineer", "politician"],
-        "organization": ["company", "government agency", "research institution", "university", "international organization", "energy company"],
-        "concept": ["technology", "scientific theory", "technique", "field of study", "energy source", "energy technology", "physical phenomenon", "scientific principle", "publication", "textbook", "report", "regulation", "policy", "infrastructure", "system"],
+        "organization": [
+            "company",
+            "government agency",
+            "research institution",
+            "university",
+            "international organization",
+            "energy company",
+        ],
+        "concept": [
+            "technology",
+            "scientific theory",
+            "technique",
+            "field of study",
+            "energy source",
+            "energy technology",
+            "physical phenomenon",
+            "scientific principle",
+            "publication",
+            "textbook",
+            "report",
+            "regulation",
+            "policy",
+            "infrastructure",
+            "system",
+        ],
         "event": ["historical event", "scientific discovery", "award", "milestone"],
         "location": ["country", "city", "region", "geographic feature"],
     },
     # Strategy 3: Both generic + specific
     "both": {
         "person": ["person", "scientist", "researcher", "author", "engineer", "politician"],
-        "organization": ["organization", "company", "government agency", "research institution", "university", "international organization", "energy company"],
-        "concept": ["concept", "technology", "scientific theory", "technique", "field of study", "energy source", "energy technology", "physical phenomenon", "scientific principle", "publication", "textbook", "report", "regulation", "policy", "infrastructure", "system"],
+        "organization": [
+            "organization",
+            "company",
+            "government agency",
+            "research institution",
+            "university",
+            "international organization",
+            "energy company",
+        ],
+        "concept": [
+            "concept",
+            "technology",
+            "scientific theory",
+            "technique",
+            "field of study",
+            "energy source",
+            "energy technology",
+            "physical phenomenon",
+            "scientific principle",
+            "publication",
+            "textbook",
+            "report",
+            "regulation",
+            "policy",
+            "infrastructure",
+            "system",
+        ],
         "event": ["event", "historical event", "scientific discovery", "award", "milestone"],
         "location": ["location", "country", "city", "region", "geographic feature"],
     },
@@ -50,6 +97,7 @@ STRATEGIES: dict[str, dict[str, list[str]]] = {
         "location": ["location", "country", "city", "region"],
     },
 }
+
 
 # Build KT_TYPE_MAP per category for each strategy
 def _build_type_map(strategy: dict[str, list[str]]) -> dict[str, tuple[str, str | None]]:
@@ -103,12 +151,20 @@ def run_extraction(text: str, labels: list[str], type_map: dict, extractor, thre
 
 def score_category(extracted: list[dict], expected: list[dict], category: str) -> dict:
     """Score recall for a specific KT node_type category."""
-    exp_in_cat = [e for e in expected if e["node_type"] == category
-                  or (category == "entity" and e["node_type"] == "entity")]
+    exp_in_cat = [
+        e for e in expected if e["node_type"] == category or (category == "entity" and e["node_type"] == "entity")
+    ]
     ext_in_cat = [e for e in extracted if e["node_type"] == category]
 
     if not exp_in_cat:
-        return {"expected": 0, "found": 0, "recall": 0.0, "extracted_total": len(ext_in_cat), "missed": [], "false_positives": len(ext_in_cat)}
+        return {
+            "expected": 0,
+            "found": 0,
+            "recall": 0.0,
+            "extracted_total": len(ext_in_cat),
+            "missed": [],
+            "false_positives": len(ext_in_cat),
+        }
 
     ext_names = {n["name"].strip().lower() for n in ext_in_cat}
     found = 0
@@ -194,7 +250,9 @@ def main() -> None:
         ev_str = f"{ev['found']}/{ev['expected']} {ev['recall']:4.0f}%"
         loc_str = f"{loc['found']}/{loc['expected']} {loc['recall']:4.0f}%"
 
-        print(f"{strat_name:<16} {res['labels_count']:>6} {res['time']:>5.2f}s | {e_str:>12} {c_str:>12} {ev_str:>12} {loc_str:>12} | {res['overall_recall']:>6.1f}%")
+        print(
+            f"{strat_name:<16} {res['labels_count']:>6} {res['time']:>5.2f}s | {e_str:>12} {c_str:>12} {ev_str:>12} {loc_str:>12} | {res['overall_recall']:>6.1f}%"
+        )
 
     # ── Detailed missed entities per strategy per category ──────────
     print()
@@ -224,14 +282,17 @@ def main() -> None:
             r = res["categories"][cat]["recall"]
             fp = res["categories"][cat]["false_positives"]
             # Prefer higher recall, break ties by fewer false positives
-            if r > best_recall or (r == best_recall and best_strat and fp < all_results[best_strat]["categories"][cat]["false_positives"]):
+            if r > best_recall or (
+                r == best_recall and best_strat and fp < all_results[best_strat]["categories"][cat]["false_positives"]
+            ):
                 best_recall = r
                 best_strat = strat_name
         sc = all_results[best_strat]["categories"][cat]
-        print(f"  {cat:<10}: {best_strat:<16} — {sc['found']}/{sc['expected']} ({best_recall:.0f}%) recall, {sc['false_positives']} false positives")
+        print(
+            f"  {cat:<10}: {best_strat:<16} — {sc['found']}/{sc['expected']} ({best_recall:.0f}%) recall, {sc['false_positives']} false positives"
+        )
         labels_used = STRATEGIES[best_strat].get(
-            "person" if cat == "entity" else cat,
-            STRATEGIES[best_strat].get(cat, [])
+            "person" if cat == "entity" else cat, STRATEGIES[best_strat].get(cat, [])
         )
         if cat == "entity":
             org_labels = STRATEGIES[best_strat].get("organization", [])

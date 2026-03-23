@@ -35,12 +35,18 @@ async def list_facts(
     """List facts with pagination and optional filters."""
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
     facts = await engine.list_facts(
-        offset=offset, limit=limit, search=search, fact_type=fact_type,
-        author_org=author_org, source_domain=source_domain,
+        offset=offset,
+        limit=limit,
+        search=search,
+        fact_type=fact_type,
+        author_org=author_org,
+        source_domain=source_domain,
     )
     total = await engine.count_facts(
-        search=search, fact_type=fact_type,
-        author_org=author_org, source_domain=source_domain,
+        search=search,
+        fact_type=fact_type,
+        author_org=author_org,
+        source_domain=source_domain,
     )
     return PaginatedFactsResponse(
         items=[

@@ -56,10 +56,10 @@ from kt_db.write_models import (
     WriteFactSource,
     WriteLlmUsage,
     WriteNode,
-    WriteProhibitedChunk,
     WriteNodeCounter,
     WriteNodeFactRejection,
     WriteNodeVersion,
+    WriteProhibitedChunk,
     WriteRawSource,
 )
 
@@ -136,7 +136,9 @@ class SyncEngine:
             except Exception:
                 logger.error(
                     "Sync FAILED for table %s after %.2fs",
-                    table_name, time.monotonic() - table_t0, exc_info=True,
+                    table_name,
+                    time.monotonic() - table_t0,
+                    exc_info=True,
                 )
                 counts[table_name] = 0
                 continue
@@ -144,7 +146,9 @@ class SyncEngine:
             if counts[table_name] > 0:
                 logger.info(
                     "Synced %d %s records in %.2fs",
-                    counts[table_name], table_name, table_elapsed,
+                    counts[table_name],
+                    table_name,
+                    table_elapsed,
                 )
 
         # Retry previously-failed records
@@ -187,19 +191,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_raw_sources")
             rows = (
-                await ws.execute(
-                    select(WriteRawSource)
-                    .where(WriteRawSource.updated_at > watermark)
-                    .order_by(WriteRawSource.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteRawSource)
+                        .where(WriteRawSource.updated_at > watermark)
+                        .order_by(WriteRawSource.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d raw_sources (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d raw_sources (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -247,7 +257,9 @@ class SyncEngine:
                         max_ts = wrs.updated_at
                 except Exception as exc:
                     logger.warning(
-                        "Failed to sync raw_source %s", wrs.id, exc_info=True,
+                        "Failed to sync raw_source %s",
+                        wrs.id,
+                        exc_info=True,
                     )
                     if first_failure_ts is None:
                         first_failure_ts = wrs.updated_at
@@ -271,19 +283,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_prohibited_chunks")
             rows = (
-                await ws.execute(
-                    select(WriteProhibitedChunk)
-                    .where(WriteProhibitedChunk.updated_at > watermark)
-                    .order_by(WriteProhibitedChunk.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteProhibitedChunk)
+                        .where(WriteProhibitedChunk.updated_at > watermark)
+                        .order_by(WriteProhibitedChunk.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d prohibited_chunks (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d prohibited_chunks (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -299,7 +317,8 @@ class SyncEngine:
                     if raw_source_id is None:
                         logger.warning(
                             "No RawSource for content_hash %s, skipping prohibited chunk %s",
-                            wpc.source_content_hash, wpc.id,
+                            wpc.source_content_hash,
+                            wpc.id,
                         )
                         if wpc.updated_at > max_ts:
                             max_ts = wpc.updated_at
@@ -326,7 +345,9 @@ class SyncEngine:
                         max_ts = wpc.updated_at
                 except Exception as exc:
                     logger.warning(
-                        "Failed to sync prohibited_chunk %s", wpc.id, exc_info=True,
+                        "Failed to sync prohibited_chunk %s",
+                        wpc.id,
+                        exc_info=True,
                     )
                     if first_failure_ts is None:
                         first_failure_ts = wpc.updated_at
@@ -356,19 +377,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_facts")
             rows = (
-                await ws.execute(
-                    select(WriteFact)
-                    .where(WriteFact.updated_at > watermark)
-                    .order_by(WriteFact.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteFact)
+                        .where(WriteFact.updated_at > watermark)
+                        .order_by(WriteFact.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d facts (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d facts (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -399,11 +426,10 @@ class SyncEngine:
 
                         # Sync fact sources
                         fact_sources = (
-                            await ws.execute(
-                                select(WriteFactSource)
-                                .where(WriteFactSource.fact_id == wf.id)
-                            )
-                        ).scalars().all()
+                            (await ws.execute(select(WriteFactSource).where(WriteFactSource.fact_id == wf.id)))
+                            .scalars()
+                            .all()
+                        )
 
                         for wfs in fact_sources:
                             await self._sync_one_fact_source(gs, wf.id, wfs)
@@ -424,7 +450,10 @@ class SyncEngine:
                 failed = len(rows) - count
                 logger.warning(
                     "Facts: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
-                    count, len(rows), failed, safe_ts.isoformat(),
+                    count,
+                    len(rows),
+                    failed,
+                    safe_ts.isoformat(),
                 )
             await gs.commit()
             await self._set_watermark(ws, "write_facts", safe_ts)
@@ -432,7 +461,10 @@ class SyncEngine:
             return count
 
     async def _sync_one_fact_source(
-        self, gs: AsyncSession, fact_id: uuid.UUID, wfs: WriteFactSource,
+        self,
+        gs: AsyncSession,
+        fact_id: uuid.UUID,
+        wfs: WriteFactSource,
     ) -> None:
         """Sync a single WriteFactSource to graph-db.
 
@@ -443,9 +475,7 @@ class SyncEngine:
         raw_source_id: uuid.UUID | None = None
         if wfs.raw_source_content_hash:
             result = await gs.execute(
-                select(RawSource.id)
-                .where(RawSource.content_hash == wfs.raw_source_content_hash)
-                .limit(1)
+                select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
             )
             row = result.scalar_one_or_none()
             if row is not None:
@@ -471,9 +501,7 @@ class SyncEngine:
             if returned is None:
                 # Row already existed — re-query for its ID
                 result2 = await gs.execute(
-                    select(RawSource.id)
-                    .where(RawSource.content_hash == wfs.raw_source_content_hash)
-                    .limit(1)
+                    select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
                 )
                 raw_source_id = result2.scalar_one_or_none()
                 if raw_source_id is None:
@@ -514,7 +542,9 @@ class SyncEngine:
         except Exception:
             logger.debug(
                 "Failed to create FactSource for fact %s -> source %s",
-                fact_id, raw_source_id, exc_info=True,
+                fact_id,
+                raw_source_id,
+                exc_info=True,
             )
 
     # ── Nodes ──────────────────────────────────────────────────────────
@@ -523,19 +553,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_nodes")
             rows = (
-                await ws.execute(
-                    select(WriteNode)
-                    .where(WriteNode.updated_at > watermark)
-                    .order_by(WriteNode.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteNode)
+                        .where(WriteNode.updated_at > watermark)
+                        .order_by(WriteNode.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d nodes (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d nodes (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -567,7 +603,10 @@ class SyncEngine:
                 try:
                     async with gs.begin_nested():
                         await self._upsert_graph_node(
-                            gs, wn, skip_parent=True, rejected_fact_ids=rejected_fids,
+                            gs,
+                            wn,
+                            skip_parent=True,
+                            rejected_fact_ids=rejected_fids,
                         )
                 except Exception as exc:
                     logger.error("Failed to sync node %s, skipping", wn.key, exc_info=True)
@@ -588,26 +627,28 @@ class SyncEngine:
             for col, node_id, ref_id in deferred_refs:
                 try:
                     async with gs.begin_nested():
-                        ref_exists = (
-                            await gs.execute(select(Node.id).where(Node.id == ref_id))
-                        ).scalar_one_or_none()
+                        ref_exists = (await gs.execute(select(Node.id).where(Node.id == ref_id))).scalar_one_or_none()
                         if ref_exists is not None:
-                            await gs.execute(
-                                update(Node).where(Node.id == node_id).values(**{col: ref_id})
-                            )
+                            await gs.execute(update(Node).where(Node.id == node_id).values(**{col: ref_id}))
                         else:
                             logger.debug(
                                 "Skipping %s for node %s: target %s not yet in graph-db",
-                                col, node_id, ref_id,
+                                col,
+                                node_id,
+                                ref_id,
                             )
                 except Exception:
                     logger.error(
-                        "Failed to set %s for node %s, skipping", col, node_id, exc_info=True,
+                        "Failed to set %s for node %s, skipping",
+                        col,
+                        node_id,
+                        exc_info=True,
                     )
 
             if deferred_refs:
                 logger.debug(
-                    "Nodes pass 2: resolving %d deferred FK refs", len(deferred_refs),
+                    "Nodes pass 2: resolving %d deferred FK refs",
+                    len(deferred_refs),
                 )
 
             # Pass 3: repair orphaned parent/source_concept refs from previous cycles.
@@ -621,7 +662,10 @@ class SyncEngine:
                 failed = len(rows) - count
                 logger.warning(
                     "Nodes: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
-                    count, len(rows), failed, safe_ts.isoformat(),
+                    count,
+                    len(rows),
+                    failed,
+                    safe_ts.isoformat(),
                 )
             await gs.commit()
             await self._set_watermark(ws, "write_nodes", safe_ts)
@@ -629,7 +673,9 @@ class SyncEngine:
             return count
 
     async def _repair_orphaned_node_refs(
-        self, ws: AsyncSession, gs: AsyncSession,
+        self,
+        ws: AsyncSession,
+        gs: AsyncSession,
     ) -> None:
         """Resolve parent_id / source_concept_id that were skipped in earlier cycles.
 
@@ -663,9 +709,7 @@ class SyncEngine:
                         # Check if graph-db node exists with this FK still NULL
                         needs_repair = (
                             await gs.execute(
-                                select(Node.id)
-                                .where(Node.id == node_id)
-                                .where(getattr(Node, col).is_(None))
+                                select(Node.id).where(Node.id == node_id).where(getattr(Node, col).is_(None))
                             )
                         ).scalar_one_or_none()
 
@@ -674,19 +718,18 @@ class SyncEngine:
                             continue
 
                         # Check if the referenced parent/source exists
-                        ref_exists = (
-                            await gs.execute(select(Node.id).where(Node.id == ref_id))
-                        ).scalar_one_or_none()
+                        ref_exists = (await gs.execute(select(Node.id).where(Node.id == ref_id))).scalar_one_or_none()
                         if ref_exists is None:
                             continue
 
-                        await gs.execute(
-                            update(Node).where(Node.id == node_id).values(**{col: ref_id})
-                        )
+                        await gs.execute(update(Node).where(Node.id == node_id).values(**{col: ref_id}))
                         repaired += 1
                 except Exception:
                     logger.error(
-                        "Repair: failed to set %s for node %s", col, node_id, exc_info=True,
+                        "Repair: failed to set %s for node %s",
+                        col,
+                        node_id,
+                        exc_info=True,
                     )
 
         if repaired > 0:
@@ -732,9 +775,7 @@ class SyncEngine:
         }
         if not skip_parent:
             values["parent_id"] = key_to_uuid(wn.parent_key) if wn.parent_key else None
-            values["source_concept_id"] = (
-                key_to_uuid(wn.source_concept_key) if wn.source_concept_key else None
-            )
+            values["source_concept_id"] = key_to_uuid(wn.source_concept_key) if wn.source_concept_key else None
 
         update_values = {k: v for k, v in values.items() if k != "id"}
 
@@ -775,19 +816,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_edges")
             rows = (
-                await ws.execute(
-                    select(WriteEdge)
-                    .where(WriteEdge.updated_at > watermark)
-                    .order_by(WriteEdge.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteEdge)
+                        .where(WriteEdge.updated_at > watermark)
+                        .order_by(WriteEdge.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d edges (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d edges (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -812,7 +859,10 @@ class SyncEngine:
                 failed = len(rows) - count
                 logger.warning(
                     "Edges: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
-                    count, len(rows), failed, safe_ts.isoformat(),
+                    count,
+                    len(rows),
+                    failed,
+                    safe_ts.isoformat(),
                 )
             await gs.commit()
             await self._set_watermark(ws, "write_edges", safe_ts)
@@ -839,6 +889,7 @@ class SyncEngine:
         # Canonical ordering for undirected edges in graph-db.
         # Directed edges (e.g. draws_from) preserve their original order.
         from kt_config.types import UNDIRECTED_EDGE_TYPES
+
         if we.relationship_type in UNDIRECTED_EDGE_TYPES and target_id < source_id:
             source_id, target_id = target_id, source_id
 
@@ -895,19 +946,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_dimensions")
             rows = (
-                await ws.execute(
-                    select(WriteDimension)
-                    .where(WriteDimension.updated_at > watermark)
-                    .order_by(WriteDimension.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteDimension)
+                        .where(WriteDimension.updated_at > watermark)
+                        .order_by(WriteDimension.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d dimensions (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d dimensions (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -919,7 +976,9 @@ class SyncEngine:
                 # Verify node exists in graph-db
                 node_exists = (await gs.execute(select(Node.id).where(Node.id == node_id))).scalar_one_or_none()
                 if node_exists is None:
-                    logger.warning("Skipping dimension %s (node_key=%s): node not yet synced to graph-db", wd.key, wd.node_key)
+                    logger.warning(
+                        "Skipping dimension %s (node_key=%s): node not yet synced to graph-db", wd.key, wd.node_key
+                    )
                     continue
 
                 dim_id = key_to_uuid(wd.key)
@@ -984,7 +1043,10 @@ class SyncEngine:
                 failed = len(rows) - count
                 logger.warning(
                     "Dimensions: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
-                    count, len(rows), failed, safe_ts.isoformat(),
+                    count,
+                    len(rows),
+                    failed,
+                    safe_ts.isoformat(),
                 )
             await gs.commit()
             await self._set_watermark(ws, "write_dimensions", safe_ts)
@@ -997,19 +1059,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_convergence_reports")
             rows = (
-                await ws.execute(
-                    select(WriteConvergenceReport)
-                    .where(WriteConvergenceReport.updated_at > watermark)
-                    .order_by(WriteConvergenceReport.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteConvergenceReport)
+                        .where(WriteConvergenceReport.updated_at > watermark)
+                        .order_by(WriteConvergenceReport.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d convergence reports (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d convergence reports (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -1051,7 +1119,8 @@ class SyncEngine:
                 except Exception as exc:
                     logger.error(
                         "Failed to sync convergence for node %s, skipping",
-                        wcr.node_key, exc_info=True,
+                        wcr.node_key,
+                        exc_info=True,
                     )
                     if first_failure_ts is None:
                         first_failure_ts = wcr.updated_at
@@ -1067,7 +1136,10 @@ class SyncEngine:
                 failed = len(rows) - count
                 logger.warning(
                     "Convergence: %d/%d synced, %d failed — watermark frozen at %s",
-                    count, len(rows), failed, safe_ts.isoformat(),
+                    count,
+                    len(rows),
+                    failed,
+                    safe_ts.isoformat(),
                 )
             await gs.commit()
             await self._set_watermark(ws, "write_convergence_reports", safe_ts)
@@ -1080,19 +1152,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_node_counters")
             rows = (
-                await ws.execute(
-                    select(WriteNodeCounter)
-                    .where(WriteNodeCounter.updated_at > watermark)
-                    .order_by(WriteNodeCounter.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteNodeCounter)
+                        .where(WriteNodeCounter.updated_at > watermark)
+                        .order_by(WriteNodeCounter.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d node counters (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d node counters (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -1130,7 +1208,8 @@ class SyncEngine:
                 except Exception as exc:
                     logger.error(
                         "Failed to sync counter for node %s, skipping",
-                        wnc.node_key, exc_info=True,
+                        wnc.node_key,
+                        exc_info=True,
                     )
                     if first_failure_ts is None:
                         first_failure_ts = wnc.updated_at
@@ -1146,7 +1225,10 @@ class SyncEngine:
                 failed = len(rows) - count
                 logger.warning(
                     "Counters: %d/%d synced, %d failed — watermark frozen at %s",
-                    count, len(rows), failed, safe_ts.isoformat(),
+                    count,
+                    len(rows),
+                    failed,
+                    safe_ts.isoformat(),
                 )
             await gs.commit()
             await self._set_watermark(ws, "write_node_counters", safe_ts)
@@ -1159,19 +1241,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_node_versions")
             rows = (
-                await ws.execute(
-                    select(WriteNodeVersion)
-                    .where(WriteNodeVersion.updated_at > watermark)
-                    .order_by(WriteNodeVersion.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteNodeVersion)
+                        .where(WriteNodeVersion.updated_at > watermark)
+                        .order_by(WriteNodeVersion.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d node versions (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d node versions (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -1211,7 +1299,9 @@ class SyncEngine:
                 except Exception as exc:
                     logger.error(
                         "Failed to sync node version %s v%d, skipping",
-                        wnv.node_key, wnv.version_number, exc_info=True,
+                        wnv.node_key,
+                        wnv.version_number,
+                        exc_info=True,
                     )
                     if first_failure_ts is None:
                         first_failure_ts = wnv.updated_at
@@ -1227,7 +1317,10 @@ class SyncEngine:
                 failed = len(rows) - count
                 logger.warning(
                     "Node versions: %d/%d synced, %d failed — watermark frozen at %s",
-                    count, len(rows), failed, safe_ts.isoformat(),
+                    count,
+                    len(rows),
+                    failed,
+                    safe_ts.isoformat(),
                 )
             await gs.commit()
             await self._set_watermark(ws, "write_node_versions", safe_ts)
@@ -1240,19 +1333,25 @@ class SyncEngine:
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_llm_usage")
             rows = (
-                await ws.execute(
-                    select(WriteLlmUsage)
-                    .where(WriteLlmUsage.updated_at > watermark)
-                    .order_by(WriteLlmUsage.updated_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(WriteLlmUsage)
+                        .where(WriteLlmUsage.updated_at > watermark)
+                        .order_by(WriteLlmUsage.updated_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Syncing %d llm_usage records (watermark=%s)", len(rows), watermark.isoformat(),
+                "Syncing %d llm_usage records (watermark=%s)",
+                len(rows),
+                watermark.isoformat(),
             )
 
             max_ts = watermark
@@ -1288,7 +1387,9 @@ class SyncEngine:
                         max_ts = wu.updated_at
                 except Exception as exc:
                     logger.warning(
-                        "Failed to sync llm_usage %s", wu.id, exc_info=True,
+                        "Failed to sync llm_usage %s",
+                        wu.id,
+                        exc_info=True,
                     )
                     if first_failure_ts is None:
                         first_failure_ts = wu.updated_at
@@ -1337,11 +1438,13 @@ class SyncEngine:
                 next_retry = now  # won't be retried
                 logger.warning(
                     "Abandoning sync for %s/%s after %d retries",
-                    table_name, record_key, new_count,
+                    table_name,
+                    record_key,
+                    new_count,
                 )
             else:
                 status = "pending"
-                backoff = settings.sync_retry_base_seconds * (2 ** new_count)
+                backoff = settings.sync_retry_base_seconds * (2**new_count)
                 next_retry = now + timedelta(seconds=backoff)
 
             await ws.execute(
@@ -1370,9 +1473,7 @@ class SyncEngine:
     async def _clear_failure(self, ws: AsyncSession, table_name: str, record_key: str) -> None:
         """Remove a failure record after successful retry."""
         await ws.execute(
-            delete(SyncFailure)
-            .where(SyncFailure.table_name == table_name)
-            .where(SyncFailure.record_key == record_key)
+            delete(SyncFailure).where(SyncFailure.table_name == table_name).where(SyncFailure.record_key == record_key)
         )
 
     async def _retry_failed_syncs(self) -> int:
@@ -1381,20 +1482,25 @@ class SyncEngine:
 
         async with self._write_sf() as ws:
             rows = (
-                await ws.execute(
-                    select(SyncFailure)
-                    .where(SyncFailure.status == "pending")
-                    .where(SyncFailure.next_retry_at <= now)
-                    .order_by(SyncFailure.next_retry_at.asc())
-                    .limit(self._batch_size)
+                (
+                    await ws.execute(
+                        select(SyncFailure)
+                        .where(SyncFailure.status == "pending")
+                        .where(SyncFailure.next_retry_at <= now)
+                        .order_by(SyncFailure.next_retry_at.asc())
+                        .limit(self._batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if not rows:
                 return 0
 
             logger.info(
-                "Retrying %d failed sync records from dead-letter queue", len(rows),
+                "Retrying %d failed sync records from dead-letter queue",
+                len(rows),
             )
 
             retried = 0
@@ -1405,7 +1511,8 @@ class SyncEngine:
                     retried += 1
                     logger.info(
                         "Successfully retried sync for %s/%s",
-                        failure.table_name, failure.record_key,
+                        failure.table_name,
+                        failure.record_key,
                     )
             await ws.commit()
             return retried
@@ -1419,9 +1526,7 @@ class SyncEngine:
             async with self._write_sf() as ws, self._graph_sf() as gs:
                 if table == "write_facts":
                     fact_id = uuid.UUID(key)
-                    wf = (await ws.execute(
-                        select(WriteFact).where(WriteFact.id == fact_id)
-                    )).scalar_one_or_none()
+                    wf = (await ws.execute(select(WriteFact).where(WriteFact.id == fact_id))).scalar_one_or_none()
                     if wf is None:
                         return True  # source record gone, clear failure
                     async with gs.begin_nested():
@@ -1434,30 +1539,40 @@ class SyncEngine:
                             )
                         )
                         await gs.execute(stmt)
-                        fact_sources = (await ws.execute(
-                            select(WriteFactSource).where(WriteFactSource.fact_id == wf.id)
-                        )).scalars().all()
+                        fact_sources = (
+                            (await ws.execute(select(WriteFactSource).where(WriteFactSource.fact_id == wf.id)))
+                            .scalars()
+                            .all()
+                        )
                         for wfs in fact_sources:
                             await self._sync_one_fact_source(gs, wf.id, wfs)
                     await gs.commit()
                     return True
 
                 elif table == "write_nodes":
-                    wn = (await ws.execute(
-                        select(WriteNode).where(WriteNode.key == key)
-                    )).scalar_one_or_none()
+                    wn = (await ws.execute(select(WriteNode).where(WriteNode.key == key))).scalar_one_or_none()
                     if wn is None:
                         return True
                     # Load rejected facts for this node
-                    _rej_rows = (await ws.execute(
-                        select(WriteNodeFactRejection.fact_id)
-                        .where(WriteNodeFactRejection.node_id == wn.node_uuid)
-                    )).scalars().all()
+                    _rej_rows = (
+                        (
+                            await ws.execute(
+                                select(WriteNodeFactRejection.fact_id).where(
+                                    WriteNodeFactRejection.node_id == wn.node_uuid
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
                     _rej_fids = {str(fid) for fid in _rej_rows}
                     try:
                         async with gs.begin_nested():
                             await self._upsert_graph_node(
-                                gs, wn, skip_parent=False, rejected_fact_ids=_rej_fids,
+                                gs,
+                                wn,
+                                skip_parent=False,
+                                rejected_fact_ids=_rej_fids,
                             )
                     except IntegrityError:
                         # Parent node not yet in graph-db — sync without parent FK;
@@ -1468,15 +1583,16 @@ class SyncEngine:
                         )
                         async with gs.begin_nested():
                             await self._upsert_graph_node(
-                                gs, wn, skip_parent=True, rejected_fact_ids=_rej_fids,
+                                gs,
+                                wn,
+                                skip_parent=True,
+                                rejected_fact_ids=_rej_fids,
                             )
                     await gs.commit()
                     return True
 
                 elif table == "write_edges":
-                    we = (await ws.execute(
-                        select(WriteEdge).where(WriteEdge.key == key)
-                    )).scalar_one_or_none()
+                    we = (await ws.execute(select(WriteEdge).where(WriteEdge.key == key))).scalar_one_or_none()
                     if we is None:
                         return True
                     async with gs.begin_nested():
@@ -1485,29 +1601,36 @@ class SyncEngine:
                     return True
 
                 elif table == "write_dimensions":
-                    wd = (await ws.execute(
-                        select(WriteDimension).where(WriteDimension.key == key)
-                    )).scalar_one_or_none()
+                    wd = (
+                        await ws.execute(select(WriteDimension).where(WriteDimension.key == key))
+                    ).scalar_one_or_none()
                     if wd is None:
                         return True
                     node_id = key_to_uuid(wd.node_key)
                     dim_id = key_to_uuid(wd.key)
                     async with gs.begin_nested():
                         values: dict = {
-                            "id": dim_id, "node_id": node_id, "model_id": wd.model_id,
-                            "content": wd.content, "confidence": wd.confidence,
+                            "id": dim_id,
+                            "node_id": node_id,
+                            "model_id": wd.model_id,
+                            "content": wd.content,
+                            "confidence": wd.confidence,
                             "suggested_concepts": wd.suggested_concepts,
-                            "batch_index": wd.batch_index, "fact_count": wd.fact_count,
+                            "batch_index": wd.batch_index,
+                            "fact_count": wd.fact_count,
                             "is_definitive": wd.is_definitive,
                         }
                         stmt = (
-                            pg_insert(Dimension.__table__).values(**values)
+                            pg_insert(Dimension.__table__)
+                            .values(**values)
                             .on_conflict_do_update(
                                 index_elements=[Dimension.__table__.c.id],
                                 set_={
-                                    "content": wd.content, "confidence": wd.confidence,
+                                    "content": wd.content,
+                                    "confidence": wd.confidence,
                                     "suggested_concepts": wd.suggested_concepts,
-                                    "fact_count": wd.fact_count, "is_definitive": wd.is_definitive,
+                                    "fact_count": wd.fact_count,
+                                    "is_definitive": wd.is_definitive,
                                 },
                             )
                         )
@@ -1528,9 +1651,9 @@ class SyncEngine:
                     return True
 
                 elif table == "write_convergence_reports":
-                    wcr = (await ws.execute(
-                        select(WriteConvergenceReport).where(WriteConvergenceReport.node_key == key)
-                    )).scalar_one_or_none()
+                    wcr = (
+                        await ws.execute(select(WriteConvergenceReport).where(WriteConvergenceReport.node_key == key))
+                    ).scalar_one_or_none()
                     if wcr is None:
                         return True
                     node_id = key_to_uuid(wcr.node_key)
@@ -1538,7 +1661,8 @@ class SyncEngine:
                         stmt = (
                             pg_insert(ConvergenceReport.__table__)
                             .values(
-                                id=uuid.uuid4(), node_id=node_id,
+                                id=uuid.uuid4(),
+                                node_id=node_id,
                                 convergence_score=wcr.convergence_score,
                                 converged_claims=wcr.converged_claims,
                                 recommended_content=wcr.recommended_content,
@@ -1557,9 +1681,9 @@ class SyncEngine:
                     return True
 
                 elif table == "write_node_counters":
-                    wnc = (await ws.execute(
-                        select(WriteNodeCounter).where(WriteNodeCounter.node_key == key)
-                    )).scalar_one_or_none()
+                    wnc = (
+                        await ws.execute(select(WriteNodeCounter).where(WriteNodeCounter.node_key == key))
+                    ).scalar_one_or_none()
                     if wnc is None:
                         return True
                     node_id = key_to_uuid(wnc.node_key)
@@ -1577,9 +1701,9 @@ class SyncEngine:
                     return True
 
                 elif table == "write_node_versions":
-                    wnv = (await ws.execute(
-                        select(WriteNodeVersion).where(WriteNodeVersion.node_key == key)
-                    )).scalar_one_or_none()
+                    wnv = (
+                        await ws.execute(select(WriteNodeVersion).where(WriteNodeVersion.node_key == key))
+                    ).scalar_one_or_none()
                     if wnv is None:
                         return True
                     node_id = key_to_uuid(wnv.node_key)
@@ -1587,9 +1711,13 @@ class SyncEngine:
                         stmt = (
                             pg_insert(NodeVersion.__table__)
                             .values(
-                                id=wnv.id, node_id=node_id, version_number=wnv.version_number,
-                                snapshot=wnv.snapshot, source_node_count=wnv.source_node_count,
-                                is_default=wnv.is_default, created_at=wnv.created_at,
+                                id=wnv.id,
+                                node_id=node_id,
+                                version_number=wnv.version_number,
+                                snapshot=wnv.snapshot,
+                                source_node_count=wnv.source_node_count,
+                                is_default=wnv.is_default,
+                                created_at=wnv.created_at,
                             )
                             .on_conflict_do_update(
                                 index_elements=[NodeVersion.__table__.c.id],
@@ -1606,9 +1734,9 @@ class SyncEngine:
 
                 elif table == "write_llm_usage":
                     usage_id = uuid.UUID(key)
-                    wu = (await ws.execute(
-                        select(WriteLlmUsage).where(WriteLlmUsage.id == usage_id)
-                    )).scalar_one_or_none()
+                    wu = (
+                        await ws.execute(select(WriteLlmUsage).where(WriteLlmUsage.id == usage_id))
+                    ).scalar_one_or_none()
                     if wu is None:
                         return True
                     conv_uuid = _safe_uuid(wu.conversation_id)
@@ -1617,10 +1745,15 @@ class SyncEngine:
                         stmt = (
                             pg_insert(LlmUsage.__table__)
                             .values(
-                                id=wu.id, conversation_id=conv_uuid, message_id=msg_uuid,
-                                task_type=wu.task_type, workflow_run_id=wu.workflow_run_id,
-                                model_id=wu.model_id, prompt_tokens=wu.prompt_tokens,
-                                completion_tokens=wu.completion_tokens, cost_usd=wu.cost_usd,
+                                id=wu.id,
+                                conversation_id=conv_uuid,
+                                message_id=msg_uuid,
+                                task_type=wu.task_type,
+                                workflow_run_id=wu.workflow_run_id,
+                                model_id=wu.model_id,
+                                prompt_tokens=wu.prompt_tokens,
+                                completion_tokens=wu.completion_tokens,
+                                cost_usd=wu.cost_usd,
                                 created_at=wu.created_at,
                             )
                             .on_conflict_do_nothing(index_elements=["id"])
@@ -1631,19 +1764,24 @@ class SyncEngine:
 
                 elif table == "write_raw_sources":
                     src_id = uuid.UUID(key)
-                    wrs = (await ws.execute(
-                        select(WriteRawSource).where(WriteRawSource.id == src_id)
-                    )).scalar_one_or_none()
+                    wrs = (
+                        await ws.execute(select(WriteRawSource).where(WriteRawSource.id == src_id))
+                    ).scalar_one_or_none()
                     if wrs is None:
                         return True
                     async with gs.begin_nested():
                         stmt = (
                             pg_insert(RawSource.__table__)
                             .values(
-                                id=wrs.id, uri=wrs.uri, title=wrs.title,
-                                raw_content=wrs.raw_content, content_hash=wrs.content_hash,
-                                is_full_text=wrs.is_full_text, content_type=wrs.content_type,
-                                provider_id=wrs.provider_id, provider_metadata=wrs.provider_metadata,
+                                id=wrs.id,
+                                uri=wrs.uri,
+                                title=wrs.title,
+                                raw_content=wrs.raw_content,
+                                content_hash=wrs.content_hash,
+                                is_full_text=wrs.is_full_text,
+                                content_type=wrs.content_type,
+                                provider_id=wrs.provider_id,
+                                provider_metadata=wrs.provider_metadata,
                                 fact_count=wrs.fact_count,
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
@@ -1673,6 +1811,9 @@ class SyncEngine:
                     return False
         except Exception:
             logger.error(
-                "Retry failed for %s/%s", table, key, exc_info=True,
+                "Retry failed for %s/%s",
+                table,
+                key,
+                exc_info=True,
             )
             return False

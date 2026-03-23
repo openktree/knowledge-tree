@@ -190,8 +190,7 @@ def parse_scope_plans(raw: str, wave_explore: int, wave_nav: int) -> list[ScopeP
         plans_raw = json.loads(text)
     except json.JSONDecodeError as exc:
         raise WavePlanParseError(
-            f"Invalid JSON in wave planner response: {exc}. "
-            f"Raw text (first 300 chars): {raw.strip()[:300]}"
+            f"Invalid JSON in wave planner response: {exc}. Raw text (first 300 chars): {raw.strip()[:300]}"
         ) from exc
 
     if not isinstance(plans_raw, list):
@@ -213,12 +212,14 @@ def parse_scope_plans(raw: str, wave_explore: int, wave_nav: int) -> list[ScopeP
         if exp <= 0 and nav <= 0:
             break
 
-        plans.append(ScopePlan(
-            scope=p["scope"],
-            explore_budget=exp,
-            nav_budget=nav,
-            search_hints=p.get("search_hints", []),
-        ))
+        plans.append(
+            ScopePlan(
+                scope=p["scope"],
+                explore_budget=exp,
+                nav_budget=nav,
+                search_hints=p.get("search_hints", []),
+            )
+        )
         remaining_explore -= exp
         remaining_nav -= nav
 
@@ -237,8 +238,8 @@ def generate_scout_queries(query: str) -> list[str]:
     queries = [query]
     words = query.split()
     if len(words) > 3:
-        queries.append(" ".join(words[:len(words) // 2]) + " overview")
-        queries.append(" ".join(words[len(words) // 2:]) + " research")
+        queries.append(" ".join(words[: len(words) // 2]) + " overview")
+        queries.append(" ".join(words[len(words) // 2 :]) + " research")
     else:
         queries.append(f"{query} overview")
         queries.append(f"{query} research perspectives")

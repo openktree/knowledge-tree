@@ -26,6 +26,7 @@ from hatchet_sdk import (
     TriggerWorkflowOptions,
 )
 
+from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import (
@@ -40,7 +41,6 @@ from kt_hatchet.models import (
     BuildNodeInput,
 )
 from kt_worker_orchestrator.shared import _build_agent_context, _open_sessions
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +68,12 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
 
     Returns a BottomUpScopeOutput dict with created node/edge IDs and budget usage.
     """
+    from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
     from kt_worker_orchestrator.bottom_up.scope import (
         plan_and_store_perspective_seeds,
         run_bottom_up_scope_pipeline,
     )
-
-    from kt_models.usage import start_usage_tracking
-    from kt_hatchet.usage_helpers import flush_usage_to_db
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -87,21 +86,27 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
 
     ctx.log(f"Bottom-up scope starting: '{input.scope_description}'")
 
-    await emit("pipeline_scope_start", {
-        "scope_id": input.scope_id,
-        "scope_name": input.scope_description,
-        "wave_number": input.wave_number,
-        "task_run_id": ctx.step_run_id,
-        "mode": "bottom_up",
-    })
+    await emit(
+        "pipeline_scope_start",
+        {
+            "scope_id": input.scope_id,
+            "scope_name": input.scope_description,
+            "wave_number": input.wave_number,
+            "task_run_id": ctx.step_run_id,
+            "mode": "bottom_up",
+        },
+    )
 
     # ── Phase 1: Gather facts + extract + filter ─────────────────────────
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "gathering",
-        "event": "start",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "gathering",
+            "event": "start",
+        },
+    )
 
     async with _open_sessions(state) as (session, write_session):
         agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
@@ -116,11 +121,14 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
             await write_session.commit()
         await session.commit()
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "gathering",
-        "event": "end",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "gathering",
+            "event": "end",
+        },
+    )
 
     ctx.refresh_timeout("30m")
 
@@ -128,7 +136,10 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         ctx.log(f"Bottom-up scope {input.scope_id}: no nodes after filtering")
         await emit("pipeline_scope_end", {"scope_id": input.scope_id, "node_count": 0})
         await flush_usage_to_db(
-            state.write_session_factory, input.conversation_id, input.message_id, "scope_exploration",
+            state.write_session_factory,
+            input.conversation_id,
+            input.message_id,
+            "scope_exploration",
         )
         return BottomUpScopeOutput(
             briefing=f"Scope '{input.scope_description}': no nodes after filtering.",
@@ -141,9 +152,14 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
             f"0 facts stored (possible model errors). Budget refunded."
         )
         ctx.log(msg)
-        await emit("pipeline_scope_end", {
-            "scope_id": input.scope_id, "node_count": 0, "error": msg,
-        })
+        await emit(
+            "pipeline_scope_end",
+            {
+                "scope_id": input.scope_id,
+                "node_count": 0,
+                "error": msg,
+            },
+        )
         raise RuntimeError(msg)
 
     ctx.log(
@@ -157,10 +173,12 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
 
     from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
 
-    node_meta = TriggerWorkflowOptions(additional_metadata={
-        "message_id": input.message_id,
-        "conversation_id": input.conversation_id,
-    })
+    node_meta = TriggerWorkflowOptions(
+        additional_metadata={
+            "message_id": input.message_id,
+            "conversation_id": input.conversation_id,
+        }
+    )
     from kt_db.keys import make_seed_key
 
     bulk_items = []
@@ -197,11 +215,13 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         node_id = create_data.get("node_id")
         if node_id:
             created_node_ids.append(node_id)
-            built_nodes.append({
-                "node_id": node_id,
-                "concept": create_data.get("concept", ""),
-                "node_type": create_data.get("node_type", "concept"),
-            })
+            built_nodes.append(
+                {
+                    "node_id": node_id,
+                    "concept": create_data.get("concept", ""),
+                    "node_type": create_data.get("node_type", "concept"),
+                }
+            )
         created_edge_ids.extend(dim_data.get("edge_ids", []))
 
     explore_used = plan.explore_used
@@ -217,7 +237,10 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
     if built_nodes:
         async with _open_sessions(state) as (session, write_session):
             persp_ctx = await _build_agent_context(
-                state, session, write_session=write_session, api_key=input.api_key,
+                state,
+                session,
+                write_session=write_session,
+                api_key=input.api_key,
             )
             thesis_keys = await plan_and_store_perspective_seeds(
                 persp_ctx,
@@ -231,15 +254,15 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
                 await write_session.commit()
 
     if perspective_seed_count:
-        await emit("perspective_seeds_created", {
-            "scope_id": input.scope_id,
-            "count": perspective_seed_count,
-        })
-
-        ctx.log(
-            f"Bottom-up scope {input.scope_id}: "
-            f"saved {perspective_seed_count} perspective seed pairs"
+        await emit(
+            "perspective_seeds_created",
+            {
+                "scope_id": input.scope_id,
+                "count": perspective_seed_count,
+            },
         )
+
+        ctx.log(f"Bottom-up scope {input.scope_id}: saved {perspective_seed_count} perspective seed pairs")
 
     nav_used = len(created_node_ids)
 
@@ -259,17 +282,23 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
     )
 
     if created_node_ids:
-        await emit("graph_update", {
-            "node_ids": created_node_ids,
-            "edge_ids": created_edge_ids,
-            "wave": input.wave_number,
-        })
+        await emit(
+            "graph_update",
+            {
+                "node_ids": created_node_ids,
+                "edge_ids": created_edge_ids,
+                "wave": input.wave_number,
+            },
+        )
 
-    await emit("pipeline_scope_end", {
-        "scope_id": input.scope_id,
-        "node_count": len(created_node_ids),
-        "mode": "bottom_up",
-    })
+    await emit(
+        "pipeline_scope_end",
+        {
+            "scope_id": input.scope_id,
+            "node_count": len(created_node_ids),
+            "mode": "bottom_up",
+        },
+    )
 
     ctx.log(
         f"Bottom-up scope {input.scope_id} complete: "
@@ -279,7 +308,10 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
     )
 
     await flush_usage_to_db(
-        state.write_session_factory, input.conversation_id, input.message_id, "scope_exploration",
+        state.write_session_factory,
+        input.conversation_id,
+        input.message_id,
+        "scope_exploration",
     )
     return BottomUpScopeOutput(
         created_node_ids=created_node_ids,
@@ -318,8 +350,8 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
     Uses the same wave planning infrastructure as the standard exploration_wf,
     but dispatches bottom_up_scope_wf instead of sub_explore_wf.
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -331,28 +363,31 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
     from kt_worker_orchestrator.agents.orchestrator_state import (
-        ScopeBriefing,
         WaveAccumulator,
-        wave_budget_ratios,
     )
     from kt_worker_orchestrator.agents.tools.scout import scout_impl
-    from kt_worker_orchestrator.shared import _plan_wave
 
     ctx.log("Starting bottom-up exploration workflow")
 
-    await emit("pipeline_scope_start", {
-        "scope_id": "orchestrator",
-        "scope_name": f"Bottom-up: {input.query}",
-        "task_run_id": ctx.step_run_id,
-    })
+    await emit(
+        "pipeline_scope_start",
+        {
+            "scope_id": "orchestrator",
+            "scope_name": f"Bottom-up: {input.query}",
+            "task_run_id": ctx.step_run_id,
+        },
+    )
 
     # ── Scout phase ───────────────────────────────────────────────────
 
-    await emit("pipeline_phase", {
-        "scope_id": "orchestrator",
-        "phase": "scout",
-        "event": "start",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "orchestrator",
+            "phase": "scout",
+            "event": "start",
+        },
+    )
 
     scout_queries = [input.query, f"overview of {input.query}"]
     scout_results: dict[str, Any] = {}
@@ -363,16 +398,16 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
         except Exception:
             logger.exception("Scout phase failed")
 
-    await emit("pipeline_phase", {
-        "scope_id": "orchestrator",
-        "phase": "scout",
-        "event": "end",
-    })
-
-    ctx.log(
-        f"Scout complete: {sum(len(v.get('graph_matches', [])) for v in scout_results.values())} "
-        f"graph matches"
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "orchestrator",
+            "phase": "scout",
+            "event": "end",
+        },
     )
+
+    ctx.log(f"Scout complete: {sum(len(v.get('graph_matches', [])) for v in scout_results.values())} graph matches")
 
     # ── Decide: waves or single scope ─────────────────────────────────
 
@@ -385,18 +420,31 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
     if input.explore_budget > _WAVE_THRESHOLD:
         # Wave-based exploration
         waves_completed = await _run_waves(
-            input, ctx, state, accumulator, scout_results, emit,
+            input,
+            ctx,
+            state,
+            accumulator,
+            scout_results,
+            emit,
         )
     else:
         # Single scope
         waves_completed = await _run_single_scope(
-            input, ctx, state, accumulator, scout_results, emit,
+            input,
+            ctx,
+            state,
+            accumulator,
+            scout_results,
+            emit,
         )
 
-    await emit("pipeline_scope_end", {
-        "scope_id": "orchestrator",
-        "node_count": len(accumulator.created_nodes),
-    })
+    await emit(
+        "pipeline_scope_end",
+        {
+            "scope_id": "orchestrator",
+            "node_count": len(accumulator.created_nodes),
+        },
+    )
 
     # ── Persist research report ───────────────────────────────────────
 
@@ -430,7 +478,8 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
     except Exception:
         logger.warning(
             "Failed to persist research report for message %s",
-            input.message_id, exc_info=True,
+            input.message_id,
+            exc_info=True,
         )
 
     # ── Fire-and-forget: promote seeds to stub nodes ─────────────────
@@ -443,12 +492,15 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
     except Exception:
         logger.debug("Failed to dispatch auto_build_graph", exc_info=True)
 
-    await emit("done", {
-        "created_node_ids": accumulator.created_nodes,
-        "created_edge_ids": accumulator.created_edges,
-        "explore_used": accumulator.explore_used,
-        "nav_used": accumulator.nav_used,
-    })
+    await emit(
+        "done",
+        {
+            "created_node_ids": accumulator.created_nodes,
+            "created_edge_ids": accumulator.created_edges,
+            "explore_used": accumulator.explore_used,
+            "nav_used": accumulator.nav_used,
+        },
+    )
 
     ctx.log(
         f"Bottom-up exploration complete: "
@@ -497,27 +549,38 @@ async def _run_waves(
         ctx.log(f"Wave {wave_num}/{wave_count}: explore={wave_explore}, nav={wave_nav}")
 
         # Plan wave scopes via LLM
-        await emit("pipeline_phase", {
-            "scope_id": "orchestrator",
-            "phase": "planning",
-            "event": "start",
-            "wave": wave_num,
-        })
+        await emit(
+            "pipeline_phase",
+            {
+                "scope_id": "orchestrator",
+                "phase": "planning",
+                "event": "start",
+                "wave": wave_num,
+            },
+        )
 
         async with _open_sessions(state) as (session, write_session):
             agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
             scopes = await _plan_wave(
-                input.query, wave_num, wave_count,
-                accumulator.briefings, wave_explore, wave_nav,
-                scout_results, agent_ctx,
+                input.query,
+                wave_num,
+                wave_count,
+                accumulator.briefings,
+                wave_explore,
+                wave_nav,
+                scout_results,
+                agent_ctx,
             )
 
-        await emit("pipeline_phase", {
-            "scope_id": "orchestrator",
-            "phase": "planning",
-            "event": "end",
-            "wave": wave_num,
-        })
+        await emit(
+            "pipeline_phase",
+            {
+                "scope_id": "orchestrator",
+                "phase": "planning",
+                "event": "end",
+                "wave": wave_num,
+            },
+        )
 
         if not scopes:
             ctx.log(f"Wave {wave_num}: planner returned no scopes, skipping")
@@ -526,10 +589,12 @@ async def _run_waves(
         ctx.log(f"Wave {wave_num}: planned {len(scopes)} scopes: {[s.scope for s in scopes]}")
 
         # Fan out bottom_up_scope_wf children
-        child_meta = TriggerWorkflowOptions(additional_metadata={
-            "message_id": input.message_id,
-            "conversation_id": input.conversation_id,
-        })
+        child_meta = TriggerWorkflowOptions(
+            additional_metadata={
+                "message_id": input.message_id,
+                "conversation_id": input.conversation_id,
+            }
+        )
         bulk_items = []
         for scope in scopes:
             scope_id = str(uuid.uuid4())
@@ -559,10 +624,7 @@ async def _run_waves(
             results = []
 
         for result in results:
-            task_data = (
-                result.get("bottom_up_scope", result)
-                if isinstance(result, dict) else result
-            )
+            task_data = result.get("bottom_up_scope", result) if isinstance(result, dict) else result
             sub_out = BottomUpScopeOutput.model_validate(task_data)
 
             briefing = ScopeBriefing(
@@ -578,18 +640,24 @@ async def _run_waves(
             )
             accumulator.merge(briefing)
 
-        await emit("graph_update", {
-            "node_ids": accumulator.created_nodes,
-            "edge_ids": accumulator.created_edges,
-            "wave": wave_num,
-        })
+        await emit(
+            "graph_update",
+            {
+                "node_ids": accumulator.created_nodes,
+                "edge_ids": accumulator.created_edges,
+                "wave": wave_num,
+            },
+        )
 
-        await emit("budget_update", {
-            "explore_used": accumulator.explore_used,
-            "explore_budget": input.explore_budget,
-            "nav_used": accumulator.nav_used,
-            "nav_budget": input.nav_budget,
-        })
+        await emit(
+            "budget_update",
+            {
+                "explore_used": accumulator.explore_used,
+                "explore_budget": input.explore_budget,
+                "nav_used": accumulator.nav_used,
+                "nav_budget": input.nav_budget,
+            },
+        )
 
         waves_completed += 1
         ctx.log(
@@ -636,10 +704,7 @@ async def _run_single_scope(
 
     ctx.refresh_timeout("30m")
 
-    scope_output = (
-        scope_result.get("bottom_up_scope", {})
-        if isinstance(scope_result, dict) else {}
-    )
+    scope_output = scope_result.get("bottom_up_scope", {}) if isinstance(scope_result, dict) else {}
     sub_out = BottomUpScopeOutput.model_validate(scope_output)
 
     briefing = ScopeBriefing(
@@ -669,10 +734,12 @@ bottom_up_prepare_scope_wf = hatchet.workflow(
 
 
 @bottom_up_prepare_scope_wf.durable_task(
-    execution_timeout=timedelta(hours=2), schedule_timeout=_schedule_timeout,
+    execution_timeout=timedelta(hours=2),
+    schedule_timeout=_schedule_timeout,
 )
 async def bottom_up_prepare_scope(
-    input: BottomUpPrepareScopeInput, ctx: DurableContext,
+    input: BottomUpPrepareScopeInput,
+    ctx: DurableContext,
 ) -> dict:
     """Gather facts for a single scope — NO node building, NO query context.
 
@@ -681,8 +748,8 @@ async def bottom_up_prepare_scope(
     is neutral and unbiased by the user's original query. Each scope
     runs its own scout to discover relevant terms.
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
     from kt_worker_orchestrator.bottom_up.scope import run_bottom_up_scope_pipeline
 
     state = cast(WorkerState, ctx.lifespan)
@@ -696,18 +763,24 @@ async def bottom_up_prepare_scope(
 
     ctx.log(f"Prepare-scope starting: '{input.scope_description}'")
 
-    await emit("pipeline_scope_start", {
-        "scope_id": input.scope_id,
-        "scope_name": input.scope_description,
-        "task_run_id": ctx.step_run_id,
-        "mode": "bottom_up_ingest",
-    })
+    await emit(
+        "pipeline_scope_start",
+        {
+            "scope_id": input.scope_id,
+            "scope_name": input.scope_description,
+            "task_run_id": ctx.step_run_id,
+            "mode": "bottom_up_ingest",
+        },
+    )
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "gathering",
-        "event": "start",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "gathering",
+            "event": "start",
+        },
+    )
 
     async with _open_sessions(state) as (session, write_session):
         agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
@@ -722,17 +795,23 @@ async def bottom_up_prepare_scope(
             await write_session.commit()
         await session.commit()
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "gathering",
-        "event": "end",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "gathering",
+            "event": "end",
+        },
+    )
 
-    await emit("pipeline_scope_end", {
-        "scope_id": input.scope_id,
-        "node_count": 0,
-        "fact_count": plan.gathered_fact_count,
-    })
+    await emit(
+        "pipeline_scope_end",
+        {
+            "scope_id": input.scope_id,
+            "node_count": 0,
+            "fact_count": plan.gathered_fact_count,
+        },
+    )
 
     ctx.log(
         f"Prepare-scope '{input.scope_description}': "
@@ -778,8 +857,8 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
     Creates 0 new nodes. Returns proposed nodes with priorities for user selection.
     The output is stored on the ConversationMessage.metadata_json field.
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
     from kt_worker_orchestrator.agents.tools.scout import scout_impl
 
     state = cast(WorkerState, ctx.lifespan)
@@ -793,19 +872,25 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
 
     ctx.log("Starting bottom-up prepare (Phase 1)")
 
-    await emit("pipeline_scope_start", {
-        "scope_id": "prepare",
-        "scope_name": f"Gathering: {input.query}",
-        "task_run_id": ctx.step_run_id,
-        "mode": "bottom_up_ingest",
-    })
+    await emit(
+        "pipeline_scope_start",
+        {
+            "scope_id": "prepare",
+            "scope_name": f"Gathering: {input.query}",
+            "task_run_id": ctx.step_run_id,
+            "mode": "bottom_up_ingest",
+        },
+    )
 
     # ── Scout phase ──────────────────────────────────────────────────
-    await emit("pipeline_phase", {
-        "scope_id": "prepare",
-        "phase": "scout",
-        "event": "start",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "prepare",
+            "phase": "scout",
+            "event": "start",
+        },
+    )
 
     scout_queries = [input.query, f"overview of {input.query}"]
     scout_results: dict[str, Any] = {}
@@ -816,58 +901,75 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         except Exception:
             logger.exception("Scout phase failed")
 
-    await emit("pipeline_phase", {
-        "scope_id": "prepare",
-        "phase": "scout",
-        "event": "end",
-    })
-
-    ctx.log(
-        f"Scout complete: {sum(len(v.get('graph_matches', [])) for v in scout_results.values())} "
-        f"graph matches"
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "prepare",
+            "phase": "scout",
+            "event": "end",
+        },
     )
+
+    ctx.log(f"Scout complete: {sum(len(v.get('graph_matches', [])) for v in scout_results.values())} graph matches")
 
     # ── Plan scopes (single wave, thorough scouting) ─────────────────
     from kt_worker_orchestrator.shared import _plan_wave
 
-    await emit("pipeline_phase", {
-        "scope_id": "prepare",
-        "phase": "planning",
-        "event": "start",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "prepare",
+            "phase": "planning",
+            "event": "start",
+        },
+    )
 
     async with _open_sessions(state) as (session, write_session):
         agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
         scopes = await _plan_wave(
-            input.query, 1, 1,  # wave 1 of 1
-            [], input.explore_budget, 0,
-            scout_results, agent_ctx,
+            input.query,
+            1,
+            1,  # wave 1 of 1
+            [],
+            input.explore_budget,
+            0,
+            scout_results,
+            agent_ctx,
         )
 
-    await emit("pipeline_phase", {
-        "scope_id": "prepare",
-        "phase": "planning",
-        "event": "end",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "prepare",
+            "phase": "planning",
+            "event": "end",
+        },
+    )
 
     if not scopes:
         # Fallback: use the query itself as a single scope
         from kt_worker_orchestrator.agents.orchestrator_state import ScopePlan
+
         scopes = [ScopePlan(scope=input.query, explore_budget=input.explore_budget, nav_budget=0)]
 
     ctx.log(f"Planned {len(scopes)} scopes: {[s.scope for s in scopes]}")
 
     # ── Fan out scope gathering (isolated — scopes don't see query) ──
-    await emit("pipeline_phase", {
-        "scope_id": "prepare",
-        "phase": "gathering",
-        "event": "start",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "prepare",
+            "phase": "gathering",
+            "event": "start",
+        },
+    )
 
-    scope_meta = TriggerWorkflowOptions(additional_metadata={
-        "message_id": input.message_id,
-        "conversation_id": input.conversation_id,
-    })
+    scope_meta = TriggerWorkflowOptions(
+        additional_metadata={
+            "message_id": input.message_id,
+            "conversation_id": input.conversation_id,
+        }
+    )
 
     bulk_items = []
     for scope in scopes:
@@ -901,10 +1003,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         results = []
 
     for result in results:
-        task_data = (
-            result.get("bottom_up_prepare_scope", result)
-            if isinstance(result, dict) else result
-        )
+        task_data = result.get("bottom_up_prepare_scope", result) if isinstance(result, dict) else result
         scope_out = BottomUpPrepareScopeOutput.model_validate(task_data)
         all_extracted.extend(scope_out.node_plans)
         total_fact_count += scope_out.gathered_fact_count
@@ -918,11 +1017,14 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 seen_urls.add(url)
                 all_source_urls.append(src)
 
-    await emit("pipeline_phase", {
-        "scope_id": "prepare",
-        "phase": "gathering",
-        "event": "end",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": "prepare",
+            "phase": "gathering",
+            "event": "end",
+        },
+    )
 
     ctx.log(
         f"Scope gathering complete: {total_fact_count} facts, "
@@ -949,20 +1051,25 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 )
                 for seed in all_seeds:
                     aliases = list((seed.metadata_ or {}).get("aliases", []))
-                    seed_summaries.append(SeedSummary(
-                        key=seed.key,
-                        name=seed.name,
-                        node_type=seed.node_type,
-                        fact_count=seed.fact_count,
-                        aliases=aliases,
-                        status=seed.status,
-                        entity_subtype=seed.entity_subtype,
-                    ))
+                    seed_summaries.append(
+                        SeedSummary(
+                            key=seed.key,
+                            name=seed.name,
+                            node_type=seed.node_type,
+                            fact_count=seed.fact_count,
+                            aliases=aliases,
+                            status=seed.status,
+                            entity_subtype=seed.entity_subtype,
+                        )
+                    )
     except Exception:
         logger.debug("Seed summary lookup failed during prepare", exc_info=True)
 
     await flush_usage_to_db(
-        state.write_session_factory, input.conversation_id, input.message_id, "orchestrator_prepare",
+        state.write_session_factory,
+        input.conversation_id,
+        input.message_id,
+        "orchestrator_prepare",
     )
 
     output = ResearchSummaryOutput(
@@ -1008,19 +1115,21 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 uuid.UUID(input.message_id),
                 metadata_json=output.model_dump(),
                 status="completed",
-                content=f"Research complete: {total_fact_count} facts gathered, "
-                        f"{len(seed_summaries)} seeds created.",
+                content=f"Research complete: {total_fact_count} facts gathered, {len(seed_summaries)} seeds created.",
             )
             await session.commit()
     except Exception:
         logger.exception("Failed to store prepare output on message")
 
-    await emit("pipeline_scope_end", {
-        "scope_id": "prepare",
-        "node_count": 0,
-        "fact_count": total_fact_count,
-        "seed_count": len(seed_summaries),
-    })
+    await emit(
+        "pipeline_scope_end",
+        {
+            "scope_id": "prepare",
+            "node_count": 0,
+            "fact_count": total_fact_count,
+            "seed_count": len(seed_summaries),
+        },
+    )
 
     # ── Fire-and-forget: promote seeds to stub nodes ─────────────────
     try:
@@ -1032,16 +1141,16 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
     except Exception:
         logger.debug("Failed to dispatch auto_build_graph", exc_info=True)
 
-    await emit("done", {
-        "phase": "prepare",
-        "fact_count": total_fact_count,
-        "seed_count": len(seed_summaries),
-    })
-
-    ctx.log(
-        f"Bottom-up prepare complete: {total_fact_count} facts, "
-        f"{len(seed_summaries)} seeds"
+    await emit(
+        "done",
+        {
+            "phase": "prepare",
+            "fact_count": total_fact_count,
+            "seed_count": len(seed_summaries),
+        },
     )
+
+    ctx.log(f"Bottom-up prepare complete: {total_fact_count} facts, {len(seed_summaries)} seeds")
 
     return output.model_dump()
 
@@ -1095,12 +1204,11 @@ async def agent_select(input: AgentSelectInput, ctx: DurableContext) -> dict:
             msg = await conv_repo.get_message(uuid.UUID(input.message_id))
             if msg is not None:
                 existing_meta = dict(msg.metadata_json or {})
-                existing_meta["proposed_nodes"] = [
-                    n.model_dump() for n in updated_nodes
-                ]
+                existing_meta["proposed_nodes"] = [n.model_dump() for n in updated_nodes]
                 existing_meta["agent_select_status"] = "completed"
                 await conv_repo.update_message(
-                    msg.id, metadata_json=existing_meta,
+                    msg.id,
+                    metadata_json=existing_meta,
                 )
                 await db_session.commit()
     except Exception:

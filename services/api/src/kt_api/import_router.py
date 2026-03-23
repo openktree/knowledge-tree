@@ -51,7 +51,8 @@ def _strip_stale_embeddings(
         return  # Model matches — keep embeddings
     logger.info(
         "Embedding model mismatch (export=%s, current=%s) — stripping pre-computed embeddings",
-        embedding_model, current_model,
+        embedding_model,
+        current_model,
     )
     for item in [*facts, *nodes]:
         if hasattr(item, "embedding"):
@@ -93,7 +94,9 @@ async def import_facts_endpoint(
     write_session = get_write_session_factory_cached()()
     try:
         fact_results, _, rejected = await import_facts(
-            request.facts, session, embedding_service,
+            request.facts,
+            session,
+            embedding_service,
             do_cleanup=request.cleanup,
             cleanup_min_words=request.cleanup_min_words,
             cleanup_gateway=cleanup_gateway,
@@ -128,7 +131,9 @@ async def import_nodes_endpoint(
     write_session = get_write_session_factory_cached()()
     try:
         fact_results, fact_id_map, rejected = await import_facts(
-            request.facts, session, embedding_service,
+            request.facts,
+            session,
+            embedding_service,
             do_cleanup=request.cleanup,
             cleanup_min_words=request.cleanup_min_words,
             cleanup_gateway=cleanup_gateway,
@@ -137,18 +142,29 @@ async def import_nodes_endpoint(
             write_session=write_session,
         )
         node_results, node_id_map = await import_nodes(
-            request.nodes, session, embedding_service,
+            request.nodes,
+            session,
+            embedding_service,
             qdrant_client=qdrant,
         )
         await link_facts_to_nodes(
-            request.node_fact_links, node_id_map, fact_id_map, session,
+            request.node_fact_links,
+            node_id_map,
+            fact_id_map,
+            session,
         )
         edge_count = await import_edges(
-            request.edges, node_id_map, session, fact_id_map=fact_id_map,
+            request.edges,
+            node_id_map,
+            session,
+            fact_id_map=fact_id_map,
         )
         seed_count = await create_seeds_from_import(
-            request.nodes, request.node_fact_links,
-            node_id_map, fact_id_map, write_session,
+            request.nodes,
+            request.node_fact_links,
+            node_id_map,
+            fact_id_map,
+            write_session,
         )
 
         await write_session.commit()
@@ -181,10 +197,16 @@ async def import_facts_stream(
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     async def on_progress(phase: str, processed: int, total: int) -> None:
-        await queue.put(_sse_event({
-            "type": "progress", "phase": phase,
-            "processed": processed, "total": total,
-        }))
+        await queue.put(
+            _sse_event(
+                {
+                    "type": "progress",
+                    "phase": phase,
+                    "processed": processed,
+                    "total": total,
+                }
+            )
+        )
 
     async def run_import() -> ImportResponse:
         embedding_service = _get_embedding_service()
@@ -193,7 +215,10 @@ async def import_facts_stream(
         write_session = get_write_session_factory_cached()()
         try:
             fact_results, _, rejected = await import_facts(
-                request.facts, session, embedding_service, on_progress=on_progress,
+                request.facts,
+                session,
+                embedding_service,
+                on_progress=on_progress,
                 do_cleanup=request.cleanup,
                 cleanup_min_words=request.cleanup_min_words,
                 cleanup_gateway=cleanup_gateway,
@@ -212,9 +237,15 @@ async def import_facts_stream(
         )
 
     return StreamingResponse(
-        _stream_with_progress(queue, run_import, {
-            "type": "start", "phase": "facts", "total": len(request.facts),
-        }),
+        _stream_with_progress(
+            queue,
+            run_import,
+            {
+                "type": "start",
+                "phase": "facts",
+                "total": len(request.facts),
+            },
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -232,10 +263,16 @@ async def import_nodes_stream(
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     async def on_progress(phase: str, processed: int, total: int) -> None:
-        await queue.put(_sse_event({
-            "type": "progress", "phase": phase,
-            "processed": processed, "total": total,
-        }))
+        await queue.put(
+            _sse_event(
+                {
+                    "type": "progress",
+                    "phase": phase,
+                    "processed": processed,
+                    "total": total,
+                }
+            )
+        )
 
     async def run_import() -> ImportResponse:
         embedding_service = _get_embedding_service()
@@ -246,7 +283,10 @@ async def import_nodes_stream(
         write_session = get_write_session_factory_cached()()
         try:
             fact_results, fact_id_map, rejected = await import_facts(
-                request.facts, session, embedding_service, on_progress=on_progress,
+                request.facts,
+                session,
+                embedding_service,
+                on_progress=on_progress,
                 do_cleanup=request.cleanup,
                 cleanup_min_words=request.cleanup_min_words,
                 cleanup_gateway=cleanup_gateway,
@@ -255,20 +295,32 @@ async def import_nodes_stream(
                 write_session=write_session,
             )
             node_results, node_id_map = await import_nodes(
-                request.nodes, session, embedding_service, on_progress=on_progress,
+                request.nodes,
+                session,
+                embedding_service,
+                on_progress=on_progress,
                 qdrant_client=qdrant,
             )
             await link_facts_to_nodes(
-                request.node_fact_links, node_id_map, fact_id_map, session,
+                request.node_fact_links,
+                node_id_map,
+                fact_id_map,
+                session,
                 on_progress=on_progress,
             )
             edge_count = await import_edges(
-                request.edges, node_id_map, session, on_progress=on_progress,
+                request.edges,
+                node_id_map,
+                session,
+                on_progress=on_progress,
                 fact_id_map=fact_id_map,
             )
             seed_count = await create_seeds_from_import(
-                request.nodes, request.node_fact_links,
-                node_id_map, fact_id_map, write_session,
+                request.nodes,
+                request.node_fact_links,
+                node_id_map,
+                fact_id_map,
+                write_session,
             )
 
             await write_session.commit()
@@ -285,13 +337,17 @@ async def import_nodes_stream(
         )
 
     return StreamingResponse(
-        _stream_with_progress(queue, run_import, {
-            "type": "start",
-            "facts": len(request.facts),
-            "nodes": len(request.nodes),
-            "links": len(request.node_fact_links),
-            "edges": len(request.edges),
-        }),
+        _stream_with_progress(
+            queue,
+            run_import,
+            {
+                "type": "start",
+                "facts": len(request.facts),
+                "nodes": len(request.nodes),
+                "links": len(request.node_fact_links),
+                "edges": len(request.edges),
+            },
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

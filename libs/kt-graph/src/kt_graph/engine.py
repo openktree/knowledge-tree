@@ -54,10 +54,12 @@ async def _retry_on_deadlock(
             return result
         except DBAPIError as exc:
             if _is_deadlock(exc) and attempt < max_retries:
-                delay = 0.05 * (2 ** attempt) + random.uniform(0, 0.05)
+                delay = 0.05 * (2**attempt) + random.uniform(0, 0.05)
                 logger.debug(
                     "Deadlock detected (attempt %d/%d), retrying in %.3fs",
-                    attempt + 1, max_retries, delay,
+                    attempt + 1,
+                    max_retries,
+                    delay,
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -125,10 +127,10 @@ class GraphEngine:
         self._write_dim_repo = None
         self._write_fact_repo = None
         if write_session is not None:
-            from kt_db.repositories.write_nodes import WriteNodeRepository
-            from kt_db.repositories.write_edges import WriteEdgeRepository
             from kt_db.repositories.write_dimensions import WriteDimensionRepository
+            from kt_db.repositories.write_edges import WriteEdgeRepository
             from kt_db.repositories.write_facts import WriteFactRepository
+            from kt_db.repositories.write_nodes import WriteNodeRepository
 
             self._write_node_repo = WriteNodeRepository(write_session)
             self._write_edge_repo = WriteEdgeRepository(write_session)
@@ -184,6 +186,7 @@ class GraphEngine:
             wn = await self._write_node_repo.get_by_uuid(node_id)
             if wn is not None:
                 from kt_db.keys import key_to_uuid
+
                 parent_id = key_to_uuid(wn.parent_key) if wn.parent_key else None
                 return Node(
                     id=wn.node_uuid,
@@ -379,6 +382,7 @@ class GraphEngine:
         """Increment a node's access_count by 1 (best-effort)."""
         if self._write_node_repo is not None:
             from kt_db.keys import make_node_key
+
             node = await self._get_cached_or_db(node_id)
             if node:
                 try:
@@ -401,6 +405,7 @@ class GraphEngine:
         """Increment a node's update_count by 1 (best-effort)."""
         if self._write_node_repo is not None:
             from kt_db.keys import make_node_key
+
             node = await self._get_cached_or_db(node_id)
             if node:
                 try:
@@ -444,7 +449,10 @@ class GraphEngine:
         return node
 
     async def search_nodes(
-        self, query: str, limit: int = 10, node_type: str | None = None,
+        self,
+        query: str,
+        limit: int = 10,
+        node_type: str | None = None,
     ) -> list[Node]:
         """Search nodes by concept name (text search)."""
         return await self._node_repo.search_by_concept(query, limit=limit, node_type=node_type)
@@ -467,7 +475,10 @@ class GraphEngine:
         # Convert: score_threshold = 1 - distance_threshold
         score_threshold = 1.0 - threshold
         results = await self._qdrant_node_repo.search_similar(
-            embedding, limit=limit, score_threshold=score_threshold, node_type=node_type,
+            embedding,
+            limit=limit,
+            score_threshold=score_threshold,
+            node_type=node_type,
         )
         if not results:
             return []
@@ -486,7 +497,9 @@ class GraphEngine:
         sort: str = "updated_at",
     ) -> list[Node]:
         """List nodes with pagination and optional node_type filter."""
-        return await self._node_repo.list_paginated(offset=offset, limit=limit, search=search, node_type=node_type, sort=sort)
+        return await self._node_repo.list_paginated(
+            offset=offset, limit=limit, search=search, node_type=node_type, sort=sort
+        )
 
     async def count_nodes(self, search: str | None = None, node_type: str | None = None) -> int:
         """Count total nodes, optionally filtered by node_type."""
@@ -543,6 +556,7 @@ class GraphEngine:
 
             # Cache edge UUID -> key for link_fact_to_edge
             from kt_db.keys import key_to_uuid
+
             self._edge_key_cache[key_to_uuid(edge_key)] = edge_key
 
             # Write-db only — sync worker creates graph-db edge + EdgeFacts
@@ -568,17 +582,14 @@ class GraphEngine:
         The sync worker propagates to graph-db.
         """
         if node_id == parent_id:
-            raise ValueError(
-                f"Cannot set node {node_id} as its own parent"
-            )
+            raise ValueError(f"Cannot set node {node_id} as its own parent")
         ok, reason = await self._validate_parent_chain(node_id, parent_id)
         if not ok:
-            raise ValueError(
-                f"Invalid parent {parent_id} for node {node_id}: {reason}"
-            )
+            raise ValueError(f"Invalid parent {parent_id} for node {node_id}: {reason}")
 
         if self._write_node_repo is not None:
             from kt_db.keys import make_node_key
+
             node = await self._get_cached_or_db(node_id)
             parent = await self._get_cached_or_db(parent_id)
             if node and parent:
@@ -694,8 +705,11 @@ class GraphEngine:
     ) -> list[Edge]:
         """List edges with pagination and optional filters."""
         return await self._edge_repo.list_paginated(
-            offset=offset, limit=limit, relationship_type=relationship_type,
-            node_id=node_id, search=search,
+            offset=offset,
+            limit=limit,
+            relationship_type=relationship_type,
+            node_id=node_id,
+            search=search,
         )
 
     async def count_edges(
@@ -706,7 +720,9 @@ class GraphEngine:
     ) -> int:
         """Count total edges, optionally filtered."""
         return await self._edge_repo.count(
-            relationship_type=relationship_type, node_id=node_id, search=search,
+            relationship_type=relationship_type,
+            node_id=node_id,
+            search=search,
         )
 
     async def get_nodes_by_ids(self, node_ids: list[uuid.UUID]) -> list[Node]:
@@ -717,10 +733,7 @@ class GraphEngine:
         """
         if self._write_node_repo is not None:
             write_nodes = await self._write_node_repo.get_by_uuids(node_ids)
-            return [
-                Node(id=wn.node_uuid, concept=wn.concept, node_type=wn.node_type)
-                for wn in write_nodes
-            ]
+            return [Node(id=wn.node_uuid, concept=wn.concept, node_type=wn.node_type) for wn in write_nodes]
         return await self._node_repo.get_by_ids(node_ids)
 
     async def delete_edge(self, edge_id: uuid.UUID) -> bool:
@@ -768,23 +781,14 @@ class GraphEngine:
                 break
             all_ids |= new_ids
 
-        node_stmt = (
-            select(Node)
-            .where(Node.id.in_(list(all_ids)))
-            .options(selectinload(Node.convergence_report))
-        )
+        node_stmt = select(Node).where(Node.id.in_(list(all_ids))).options(selectinload(Node.convergence_report))
         node_result = await self._session.execute(node_stmt)
         nodes = list(node_result.scalars().all())
 
-        parent_ids = {
-            n.parent_id for n in nodes
-            if n.parent_id is not None and n.parent_id not in all_ids
-        }
+        parent_ids = {n.parent_id for n in nodes if n.parent_id is not None and n.parent_id not in all_ids}
         if parent_ids:
             parent_stmt = (
-                select(Node)
-                .where(Node.id.in_(list(parent_ids)))
-                .options(selectinload(Node.convergence_report))
+                select(Node).where(Node.id.in_(list(parent_ids))).options(selectinload(Node.convergence_report))
             )
             parent_result = await self._session.execute(parent_stmt)
             parent_nodes = list(parent_result.scalars().all())
@@ -859,6 +863,7 @@ class GraphEngine:
             # Try cache first for node key
             if node_id in self._node_cache:
                 from kt_db.keys import make_node_key
+
                 node = self._node_cache[node_id]
                 node_key = make_node_key(node.node_type, node.concept)
             else:
@@ -870,7 +875,9 @@ class GraphEngine:
                     # Node not in write-db — fall through to graph-db
                     return await _retry_on_deadlock(
                         self._session,
-                        lambda: self._fact_repo.link_to_node(node_id, fact_id, relevance_score=relevance, stance=stance),
+                        lambda: self._fact_repo.link_to_node(
+                            node_id, fact_id, relevance_score=relevance, stance=stance
+                        ),
                     )
             await self._write_node_repo.append_fact_id(node_key, str(fact_id))
             await self._write_session.commit()  # type: ignore[union-attr]
@@ -891,6 +898,7 @@ class GraphEngine:
         if self._write_node_repo is not None:
             if node_id in self._node_cache:
                 from kt_db.keys import make_node_key
+
                 node = self._node_cache[node_id]
                 node_key = make_node_key(node.node_type, node.concept)
             else:
@@ -905,7 +913,8 @@ class GraphEngine:
         return await self._fact_repo.unlink_from_node(node_id, fact_id)
 
     async def get_fact_ids_for_nodes(
-        self, node_ids: list[uuid.UUID],
+        self,
+        node_ids: list[uuid.UUID],
     ) -> dict[uuid.UUID, set[uuid.UUID]]:
         """Return {node_id: set(fact_id)} for the given nodes."""
         return await self._fact_repo.get_fact_ids_for_nodes(node_ids)
@@ -922,10 +931,7 @@ class GraphEngine:
             if wn and wn.fact_ids:
                 fact_uuids = [uuid.UUID(fid) for fid in wn.fact_ids]
                 write_facts = await self._write_fact_repo.get_by_ids(fact_uuids)
-                return [
-                    Fact(id=wf.id, content=wf.content, fact_type=wf.fact_type)
-                    for wf in write_facts
-                ]
+                return [Fact(id=wf.id, content=wf.content, fact_type=wf.fact_type) for wf in write_facts]
             return []
         return await self._fact_repo.get_facts_by_node(node_id)
 
@@ -946,8 +952,12 @@ class GraphEngine:
     ) -> list[Fact]:
         """List facts with pagination and optional source filters."""
         return await self._fact_repo.list_paginated(
-            offset=offset, limit=limit, search=search, fact_type=fact_type,
-            author_org=author_org, source_domain=source_domain,
+            offset=offset,
+            limit=limit,
+            search=search,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
         )
 
     async def count_facts(
@@ -959,8 +969,10 @@ class GraphEngine:
     ) -> int:
         """Count total facts."""
         return await self._fact_repo.count(
-            search=search, fact_type=fact_type,
-            author_org=author_org, source_domain=source_domain,
+            search=search,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
         )
 
     async def update_fact(self, fact_id: uuid.UUID, **kwargs: object) -> Fact:
@@ -1010,11 +1022,11 @@ class GraphEngine:
         """
         if self._write_dim_repo is not None:
             from kt_db.keys import make_node_key
+
             node = await self._get_cached_or_db(node_id)
             if not node:
                 logger.error(
-                    "add_dimension: node %s not found in cache, write-db, or graph-db — "
-                    "dimension will NOT be stored",
+                    "add_dimension: node %s not found in cache, write-db, or graph-db — dimension will NOT be stored",
                     node_id,
                 )
                 return None
@@ -1082,11 +1094,7 @@ class GraphEngine:
 
     async def get_dimensions_with_facts(self, node_id: uuid.UUID) -> list[Dimension]:
         """Get all dimensions for a node with dimension_facts eagerly loaded."""
-        stmt = (
-            select(Dimension)
-            .where(Dimension.node_id == node_id)
-            .options(selectinload(Dimension.dimension_facts))
-        )
+        stmt = select(Dimension).where(Dimension.node_id == node_id).options(selectinload(Dimension.dimension_facts))
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -1185,13 +1193,9 @@ class GraphEngine:
         id_a, id_b = sorted([keep_id, absorb_id])
         lock_a = id_a.int & 0x7FFFFFFF
         lock_b = id_b.int & 0x7FFFFFFF
-        await self._session.execute(
-            text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_a}
-        )
+        await self._session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_a})
         if lock_a != lock_b:
-            await self._session.execute(
-                text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_b}
-            )
+            await self._session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_b})
 
         keep = await self._node_repo.get_by_id(keep_id)
         if keep is None:
@@ -1217,7 +1221,9 @@ class GraphEngine:
                 continue
             try:
                 existing_edge = await self._edge_repo.get_edge(
-                    new_source, new_target, edge.relationship_type,
+                    new_source,
+                    new_target,
+                    edge.relationship_type,
                 )
                 if existing_edge:
                     merged_weight = (existing_edge.weight + edge.weight) / 2.0
@@ -1238,7 +1244,9 @@ class GraphEngine:
                     await self._edge_repo.link_fact_to_edge(target_edge_id, ef.fact_id, ef.relevance_score)
             except Exception:
                 logger.debug(
-                    "Error redirecting edge %s during merge", edge.id, exc_info=True,
+                    "Error redirecting edge %s during merge",
+                    edge.id,
+                    exc_info=True,
                 )
 
         dim_stmt = select(Dimension).where(Dimension.node_id == absorb_id)
@@ -1261,8 +1269,10 @@ class GraphEngine:
         Routes to write-db when available using source_concept_key.
         """
         if self._write_node_repo is not None:
-            from kt_db.write_models import WriteNode as _WN
             from sqlalchemy import select as _sel
+
+            from kt_db.write_models import WriteNode as _WN
+
             parent_wn = await self._write_node_repo.get_by_uuid(concept_node_id)
             if parent_wn is not None:
                 stmt = _sel(_WN).where(
@@ -1271,8 +1281,7 @@ class GraphEngine:
                 )
                 result = await self._write_session.execute(stmt)  # type: ignore[union-attr]
                 return [
-                    Node(id=wn.node_uuid, concept=wn.concept, node_type=wn.node_type)
-                    for wn in result.scalars().all()
+                    Node(id=wn.node_uuid, concept=wn.concept, node_type=wn.node_type) for wn in result.scalars().all()
                 ]
             return []
         return await self._node_repo.get_perspectives_for_concept(concept_node_id)
@@ -1307,7 +1316,9 @@ class GraphEngine:
             logger.error("search_fact_pool called but Qdrant fact repo is not available")
             return []
         results = await self._qdrant_fact_repo.search_similar(
-            embedding, limit=limit, score_threshold=threshold,
+            embedding,
+            limit=limit,
+            score_threshold=threshold,
         )
         if not results:
             return []
@@ -1376,7 +1387,10 @@ class GraphEngine:
 
         # Search Qdrant for similar facts, excluding source node's facts
         qdrant_results = await self._qdrant_fact_repo.search_similar(
-            query_embedding, limit=100, score_threshold=threshold, exclude_ids=source_fact_ids,
+            query_embedding,
+            limit=100,
+            score_threshold=threshold,
+            exclude_ids=source_fact_ids,
         )
         if not qdrant_results:
             return []
@@ -1386,10 +1400,13 @@ class GraphEngine:
         # Relational join: which nodes own these facts?
         if self._write_fact_repo is not None:
             return await self._write_fact_repo.find_nodes_by_embedding_facts(
-                candidate_fact_ids, source_node_id, node_limit=node_limit,
+                candidate_fact_ids,
+                source_node_id,
+                node_limit=node_limit,
             )
 
         from sqlalchemy import literal_column
+
         stmt = (
             select(
                 NodeFact.node_id,
@@ -1422,10 +1439,16 @@ class GraphEngine:
         """
         if self._write_fact_repo is not None:
             return await self._write_fact_repo.find_nodes_by_text_facts(
-                query, source_node_id, threshold=threshold, node_limit=node_limit,
+                query,
+                source_node_id,
+                threshold=threshold,
+                node_limit=node_limit,
             )
         return await self._fact_repo.find_nodes_by_text_facts(
-            query, source_node_id, threshold=threshold, node_limit=node_limit,
+            query,
+            source_node_id,
+            threshold=threshold,
+            node_limit=node_limit,
         )
 
     async def search_nodes_by_trigram(
@@ -1442,8 +1465,12 @@ class GraphEngine:
         """
         if self._write_node_repo is not None:
             from kt_db.keys import key_to_uuid
+
             write_nodes = await self._write_node_repo.search_by_trigram(
-                query, threshold=threshold, limit=limit, node_type=node_type,
+                query,
+                threshold=threshold,
+                limit=limit,
+                node_type=node_type,
             )
             return [
                 Node(
@@ -1460,7 +1487,10 @@ class GraphEngine:
                 for wn in write_nodes
             ]
         return await self._require_node_repo().search_by_trigram(
-            query, threshold=threshold, limit=limit, node_type=node_type,
+            query,
+            threshold=threshold,
+            limit=limit,
+            node_type=node_type,
         )
 
     async def search_fact_pool_trigram(
@@ -1516,7 +1546,10 @@ class GraphEngine:
         rejected_ids = await self.get_rejected_fact_ids(node_id)
         exclude_list = list(rejected_ids) if rejected_ids else None
         results = await self._qdrant_fact_repo.search_similar(
-            embedding, limit=limit, score_threshold=threshold, exclude_ids=exclude_list,
+            embedding,
+            limit=limit,
+            score_threshold=threshold,
+            exclude_ids=exclude_list,
         )
         if not results:
             return []
@@ -1532,11 +1565,15 @@ class GraphEngine:
         """Text search fact pool, excluding facts rejected for this node."""
         if self._write_fact_repo is not None:
             write_facts = await self._write_fact_repo.search_text_excluding_rejected(
-                query, node_id, limit=limit,
+                query,
+                node_id,
+                limit=limit,
             )
             return [Fact(id=wf.id, content=wf.content, fact_type=wf.fact_type) for wf in write_facts]
         return await self._fact_repo.search_fact_pool_text_excluding_rejected(
-            query, node_id, limit=limit,
+            query,
+            node_id,
+            limit=limit,
         )
 
     async def get_recent_edge_pairs(
@@ -1551,10 +1588,14 @@ class GraphEngine:
         """
         if self._write_edge_repo is not None:
             return await self._write_edge_repo.get_recent_edge_pairs(
-                node_id, candidate_ids, staleness_days=staleness_days,
+                node_id,
+                candidate_ids,
+                staleness_days=staleness_days,
             )
         return await self._edge_repo.get_recent_edge_pairs(
-            node_id, candidate_ids, staleness_days=staleness_days,
+            node_id,
+            candidate_ids,
+            staleness_days=staleness_days,
         )
 
     async def find_nodes_with_similar_facts(
@@ -1574,7 +1615,9 @@ class GraphEngine:
         node_counts: dict[uuid.UUID, int] = {}
         for emb in fact_embeddings:
             results = await self._qdrant_fact_repo.search_similar(
-                emb, limit=20, score_threshold=threshold,
+                emb,
+                limit=20,
+                score_threshold=threshold,
             )
             if not results:
                 continue
@@ -1652,11 +1695,7 @@ class GraphEngine:
 
             edges = await self._edge_repo.get_edges(current_id, direction="both")
             for edge in edges:
-                neighbor_id = (
-                    edge.target_node_id
-                    if edge.source_node_id == current_id
-                    else edge.source_node_id
-                )
+                neighbor_id = edge.target_node_id if edge.source_node_id == current_id else edge.source_node_id
 
                 if neighbor_id in visited:
                     continue

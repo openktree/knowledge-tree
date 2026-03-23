@@ -93,10 +93,13 @@ class EdgeClassifier:
         sem = asyncio.Semaphore(concurrency)
         slots: list[list[dict[str, Any] | None]] = [[] for _ in batches]
 
-        async def _classify_batch(idx: int, batch: list[EdgeCandidate], prompt: str, fact_index_maps: list[dict[int, uuid.UUID]]) -> None:
+        async def _classify_batch(
+            idx: int, batch: list[EdgeCandidate], prompt: str, fact_index_maps: list[dict[int, uuid.UUID]]
+        ) -> None:
             async with sem:
                 try:
-                    from kt_models.usage import set_usage_task, clear_usage_task
+                    from kt_models.usage import clear_usage_task, set_usage_task
+
                     set_usage_task("edge_classification")
                     llm_result = await self._ctx.model_gateway.generate_json(
                         model_id=model_id,
@@ -125,10 +128,9 @@ class EdgeClassifier:
 
                 slots[idx] = batch_decisions
 
-        await asyncio.gather(*[
-            _classify_batch(idx, batch, prompt, fmaps)
-            for idx, (_, batch, prompt, fmaps) in enumerate(batches)
-        ])
+        await asyncio.gather(
+            *[_classify_batch(idx, batch, prompt, fmaps) for idx, (_, batch, prompt, fmaps) in enumerate(batches)]
+        )
 
         # Reassemble in original order
         all_decisions: list[dict[str, Any] | None] = []

@@ -9,11 +9,9 @@ def _isolate_config(monkeypatch, tmp_path, yaml_content: str = "") -> None:
 def test_yaml_section_overrides_defaults(tmp_path, monkeypatch):
     """YAML values in sections should override Python defaults."""
     _isolate_config(
-        monkeypatch, tmp_path,
-        "orchestrator:\n"
-        "  nav_budget: 999\n"
-        "infrastructure:\n"
-        "  log_level: DEBUG\n",
+        monkeypatch,
+        tmp_path,
+        "orchestrator:\n  nav_budget: 999\ninfrastructure:\n  log_level: DEBUG\n",
     )
     monkeypatch.delenv("DEFAULT_NAV_BUDGET", raising=False)
     monkeypatch.delenv("LOG_LEVEL", raising=False)
@@ -28,9 +26,9 @@ def test_yaml_section_overrides_defaults(tmp_path, monkeypatch):
 def test_env_overrides_yaml(tmp_path, monkeypatch):
     """Environment variables should take precedence over YAML."""
     _isolate_config(
-        monkeypatch, tmp_path,
-        "orchestrator:\n"
-        "  nav_budget: 999\n",
+        monkeypatch,
+        tmp_path,
+        "orchestrator:\n  nav_budget: 999\n",
     )
     monkeypatch.setenv("DEFAULT_NAV_BUDGET", "42")
 
@@ -66,9 +64,9 @@ def test_empty_yaml_file_uses_defaults(tmp_path, monkeypatch):
 def test_yaml_complex_types_in_section(tmp_path, monkeypatch):
     """YAML should handle complex types like dicts within sections."""
     _isolate_config(
-        monkeypatch, tmp_path,
-        "seeds:\n"
-        "  re_embed_thresholds: \"5,15,50\"\n",
+        monkeypatch,
+        tmp_path,
+        'seeds:\n  re_embed_thresholds: "5,15,50"\n',
     )
 
     from kt_config.settings import Settings
@@ -80,11 +78,9 @@ def test_yaml_complex_types_in_section(tmp_path, monkeypatch):
 def test_yaml_bool_types(tmp_path, monkeypatch):
     """YAML booleans should map correctly."""
     _isolate_config(
-        monkeypatch, tmp_path,
-        "search:\n"
-        "  enable_full_text_fetch: false\n"
-        "orchestrator:\n"
-        "  enable_semantic_expansion: true\n",
+        monkeypatch,
+        tmp_path,
+        "search:\n  enable_full_text_fetch: false\norchestrator:\n  enable_semantic_expansion: true\n",
     )
     monkeypatch.delenv("ENABLE_FULL_TEXT_FETCH", raising=False)
     monkeypatch.delenv("ENABLE_SEMANTIC_EXPANSION", raising=False)
@@ -99,11 +95,9 @@ def test_yaml_bool_types(tmp_path, monkeypatch):
 def test_yaml_unknown_section_ignored(tmp_path, monkeypatch):
     """Unknown sections and keys should be silently ignored."""
     _isolate_config(
-        monkeypatch, tmp_path,
-        "unknown_section:\n"
-        "  totally_unknown_key: 123\n"
-        "infrastructure:\n"
-        "  log_level: WARNING\n",
+        monkeypatch,
+        tmp_path,
+        "unknown_section:\n  totally_unknown_key: 123\ninfrastructure:\n  log_level: WARNING\n",
     )
     monkeypatch.delenv("LOG_LEVEL", raising=False)
 
@@ -117,7 +111,8 @@ def test_yaml_unknown_section_ignored(tmp_path, monkeypatch):
 def test_same_key_different_sections_no_collision(tmp_path, monkeypatch):
     """'model' in orchestrator vs decomposition should map to different fields."""
     _isolate_config(
-        monkeypatch, tmp_path,
+        monkeypatch,
+        tmp_path,
         "orchestrator:\n"
         "  model: orch/model-a\n"
         "decomposition:\n"
@@ -140,7 +135,8 @@ def test_same_key_different_sections_no_collision(tmp_path, monkeypatch):
 def test_short_keys_map_correctly(tmp_path, monkeypatch):
     """Short YAML keys should map to their full Settings field names."""
     _isolate_config(
-        monkeypatch, tmp_path,
+        monkeypatch,
+        tmp_path,
         "embeddings:\n"
         "  dimensions: 1536\n"
         "  timeout: 60\n"
@@ -166,7 +162,8 @@ def test_short_keys_map_correctly(tmp_path, monkeypatch):
 def test_multiple_fields_per_section(tmp_path, monkeypatch):
     """Multiple fields within a single section should all be picked up."""
     _isolate_config(
-        monkeypatch, tmp_path,
+        monkeypatch,
+        tmp_path,
         "decomposition:\n"
         "  model: test/model\n"
         "  thinking_level: high\n"

@@ -24,8 +24,7 @@ def upgrade() -> None:
         "WHERE definition IS NOT NULL AND metadata->>'ontology_stable' = 'true'"
     )
     op.execute(
-        "UPDATE nodes SET definition_source = 'synthesized' "
-        "WHERE definition IS NOT NULL AND definition_source IS NULL"
+        "UPDATE nodes SET definition_source = 'synthesized' WHERE definition IS NOT NULL AND definition_source IS NULL"
     )
 
 

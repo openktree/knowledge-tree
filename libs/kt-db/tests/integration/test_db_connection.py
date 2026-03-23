@@ -39,5 +39,3 @@ async def test_tables_exist(db_session):
         "query_origins",
     }
     assert expected_tables.issubset(tables), f"Missing tables: {expected_tables - tables}"
-
-

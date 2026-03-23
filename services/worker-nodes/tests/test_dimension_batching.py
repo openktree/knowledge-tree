@@ -23,7 +23,7 @@ def _make_dimension(batch_index=0, is_definitive=False, fact_ids=None):
 
     # Build mock dimension_facts
     dim_facts = []
-    for fid in (fact_ids or []):
+    for fid in fact_ids or []:
         df = MagicMock()
         df.fact_id = fid
         dim_facts.append(df)

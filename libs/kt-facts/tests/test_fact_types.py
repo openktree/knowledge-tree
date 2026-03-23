@@ -1,12 +1,12 @@
 """Unit tests for fact type specifications."""
 
+from kt_config.types import COMPOUND_FACT_TYPES, FactType
 from kt_facts.prompt.types import (
     ALL_FACT_TYPES,
     FACT_TYPE_BY_NAME,
     IMAGE_FACT_TYPES,
     FactTypeSpec,
 )
-from kt_config.types import COMPOUND_FACT_TYPES, FactType
 
 
 def test_all_fact_types_has_10_entries():

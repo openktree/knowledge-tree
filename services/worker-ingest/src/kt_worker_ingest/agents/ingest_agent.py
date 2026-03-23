@@ -14,8 +14,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
 from kt_agents_core.base import BaseAgent
-from kt_worker_ingest.agents.ingest_state import IngestState
 from kt_agents_core.state import AgentContext
+from kt_worker_ingest.agents.ingest_state import IngestState
 from kt_worker_ingest.agents.tools.ingest_tools import create_ingest_tools
 from kt_worker_ingest.ingest.pipeline import DecompositionSummary
 
@@ -218,8 +218,7 @@ def _build_fact_summary(decomp_summary: DecompositionSummary) -> str:
     # Type counts
     if decomp_summary.fact_type_counts:
         type_lines = [
-            f"  - {ft}: {count}"
-            for ft, count in sorted(decomp_summary.fact_type_counts.items(), key=lambda x: -x[1])
+            f"  - {ft}: {count}" for ft, count in sorted(decomp_summary.fact_type_counts.items(), key=lambda x: -x[1])
         ]
         parts.append("**Fact types:**\n" + "\n".join(type_lines))
 
@@ -300,9 +299,7 @@ class IngestAgentImpl(BaseAgent[IngestState]):
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(args)
                 await self.ctx.session.commit()
-                tool_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"], name=name)
-                )
+                tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
             except Exception as exc:
                 logger.warning("Ingest tool %s error: %s: %s", name, type(exc).__name__, exc)
                 try:
@@ -355,7 +352,9 @@ class IngestAgentImpl(BaseAgent[IngestState]):
         if not response.tool_calls and state.nav_remaining > 2:
             logger.info(
                 "Ingest agent tried to finish with %d nav remaining, nudging (%d/%d)",
-                state.nav_remaining, state.nudge_count + 1, self.MAX_NUDGES,
+                state.nav_remaining,
+                state.nudge_count + 1,
+                self.MAX_NUDGES,
             )
             nudge = (
                 f"You still have {state.nav_remaining} nav budget remaining. "
@@ -366,8 +365,7 @@ class IngestAgentImpl(BaseAgent[IngestState]):
             )
             if not state.created_nodes:
                 nudge += (
-                    " CRITICAL: You haven't built ANY nodes yet. "
-                    "Start with browse_index() to see available sections."
+                    " CRITICAL: You haven't built ANY nodes yet. Start with browse_index() to see available sections."
                 )
             return {
                 "messages": [response, HumanMessage(content=nudge)],

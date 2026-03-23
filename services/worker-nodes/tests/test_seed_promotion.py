@@ -80,15 +80,18 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="Albert Einstein", node_type="entity", seed_key=make_seed_key("entity", "Albert Einstein"), entity_subtype="person")
+        task = CreateNodeTask(
+            name="Albert Einstein",
+            node_type="entity",
+            seed_key=make_seed_key("entity", "Albert Einstein"),
+            entity_subtype="person",
+        )
         seed_key = make_seed_key("entity", "Albert Einstein")
 
         facts = [_make_fact() for _ in range(10)]
         seed = _make_seed(seed_key, "Albert Einstein", "entity", fact_count=10)
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_seed_by_key = AsyncMock(return_value=seed)
             mock_repo.get_facts_for_seed = AsyncMock(return_value=[f.id for f in facts])
@@ -107,15 +110,15 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="Obscure Topic", node_type="concept", seed_key=make_seed_key("concept", "Obscure Topic"))
+        task = CreateNodeTask(
+            name="Obscure Topic", node_type="concept", seed_key=make_seed_key("concept", "Obscure Topic")
+        )
         task.embedding = [0.1] * 10
         seed_key = make_seed_key("concept", "Obscure Topic")
 
         seed = _make_seed(seed_key, "Obscure Topic", "concept", fact_count=1)
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_seed_by_key = AsyncMock(return_value=seed)
 
@@ -135,9 +138,7 @@ class TestSeedAwareClassification:
         task = CreateNodeTask(name="New Topic", node_type="concept", seed_key=make_seed_key("concept", "New Topic"))
         task.embedding = [0.1] * 10
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_seed_by_key = AsyncMock(return_value=None)
 
@@ -154,7 +155,9 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="No Write Session", node_type="concept", seed_key=make_seed_key("concept", "No Write Session"))
+        task = CreateNodeTask(
+            name="No Write Session", node_type="concept", seed_key=make_seed_key("concept", "No Write Session")
+        )
         task.embedding = [0.1] * 10
 
         await pipeline._classify_task(task, state)
@@ -172,9 +175,7 @@ class TestSeedAwareClassification:
         task = CreateNodeTask(name="Error Topic", node_type="concept", seed_key=make_seed_key("concept", "Error Topic"))
         task.embedding = [0.1] * 10
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             MockRepo.side_effect = Exception("DB connection error")
 
             await pipeline._classify_task(task, state)
@@ -189,15 +190,15 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="Merged Topic", node_type="concept", seed_key=make_seed_key("concept", "Merged Topic"))
+        task = CreateNodeTask(
+            name="Merged Topic", node_type="concept", seed_key=make_seed_key("concept", "Merged Topic")
+        )
         task.embedding = [0.1] * 10
         seed_key = make_seed_key("concept", "Merged Topic")
 
         seed = _make_seed(seed_key, "Merged Topic", "concept", status="merged", fact_count=10)
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_seed_by_key = AsyncMock(return_value=seed)
 
@@ -213,15 +214,15 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="Empty Facts Topic", node_type="concept", seed_key=make_seed_key("concept", "Empty Facts Topic"))
+        task = CreateNodeTask(
+            name="Empty Facts Topic", node_type="concept", seed_key=make_seed_key("concept", "Empty Facts Topic")
+        )
         task.embedding = [0.1] * 10
         seed_key = make_seed_key("concept", "Empty Facts Topic")
 
         seed = _make_seed(seed_key, "Empty Facts Topic", "concept", fact_count=5)
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.get_seed_by_key = AsyncMock(return_value=seed)
             mock_repo.get_facts_for_seed = AsyncMock(return_value=[uuid.uuid4() for _ in range(5)])
@@ -245,7 +246,9 @@ class TestSeedPromotion:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="Quantum Physics", node_type="concept", seed_key=make_seed_key("concept", "Quantum Physics"))
+        task = CreateNodeTask(
+            name="Quantum Physics", node_type="concept", seed_key=make_seed_key("concept", "Quantum Physics")
+        )
         task.pool_facts = [_make_fact() for _ in range(3)]
 
         node = MagicMock()
@@ -255,9 +258,7 @@ class TestSeedPromotion:
         node.embedding = [0.1] * 10
         ctx.graph_engine.create_node = AsyncMock(return_value=node)
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.promote_seed = AsyncMock(return_value=True)
 
@@ -273,7 +274,9 @@ class TestSeedPromotion:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="Resilient Node", node_type="concept", seed_key=make_seed_key("concept", "Resilient Node"))
+        task = CreateNodeTask(
+            name="Resilient Node", node_type="concept", seed_key=make_seed_key("concept", "Resilient Node")
+        )
         task.pool_facts = [_make_fact()]
 
         node = MagicMock()
@@ -282,9 +285,7 @@ class TestSeedPromotion:
         node.node_type = "concept"
         ctx.graph_engine.create_node = AsyncMock(return_value=node)
 
-        with patch(
-            "kt_db.repositories.write_seeds.WriteSeedRepository"
-        ) as MockRepo:
+        with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
             mock_repo.promote_seed = AsyncMock(side_effect=Exception("DB error"))
 
@@ -301,7 +302,9 @@ class TestSeedPromotion:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(name="No Session Node", node_type="concept", seed_key=make_seed_key("concept", "No Session Node"))
+        task = CreateNodeTask(
+            name="No Session Node", node_type="concept", seed_key=make_seed_key("concept", "No Session Node")
+        )
         task.pool_facts = [_make_fact()]
 
         node = MagicMock()
@@ -384,10 +387,12 @@ class TestRefreshSeedMetadata:
 
         with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.get_seed_by_key = AsyncMock(side_effect=lambda k: {
-                seed_key: seed,
-                "concept:deep-learning": merge_src,
-            }.get(k))
+            mock_repo.get_seed_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    seed_key: seed,
+                    "concept:deep-learning": merge_src,
+                }.get(k)
+            )
             mock_repo.get_merges_for_seed = AsyncMock(return_value=[merge])
             mock_repo.get_facts_for_seed = AsyncMock(return_value=seed_fact_ids)
             mock_repo.get_route_for_child = AsyncMock(return_value=None)
@@ -480,11 +485,13 @@ class TestRefreshSeedMetadata:
 
         with patch("kt_db.repositories.write_seeds.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.get_seed_by_key = AsyncMock(side_effect=lambda k: {
-                child_key: seed,
-                parent_key: parent_seed,
-                "concept:python-snake": sibling_seed,
-            }.get(k))
+            mock_repo.get_seed_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    child_key: seed,
+                    parent_key: parent_seed,
+                    "concept:python-snake": sibling_seed,
+                }.get(k)
+            )
             mock_repo.get_merges_for_seed = AsyncMock(return_value=[])
             mock_repo.get_facts_for_seed = AsyncMock(return_value=seed_fact_ids)
             mock_repo.get_route_for_child = AsyncMock(return_value=child_route)

@@ -1,14 +1,12 @@
 """Tests for QdrantFactRepository."""
 
 import uuid
-from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from kt_qdrant.repositories.facts import (
     FACTS_COLLECTION,
-    FactSearchResult,
     QdrantFactRepository,
 )
 

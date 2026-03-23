@@ -28,7 +28,9 @@ def _make_seed(
     return seed
 
 
-def _make_write_node(key: str, concept: str, node_type: str = "concept", fact_ids: list[str] | None = None) -> MagicMock:
+def _make_write_node(
+    key: str, concept: str, node_type: str = "concept", fact_ids: list[str] | None = None
+) -> MagicMock:
     node = MagicMock()
     node.key = key
     node.concept = concept
@@ -39,7 +41,10 @@ def _make_write_node(key: str, concept: str, node_type: str = "concept", fact_id
 
 
 def _make_dimension(
-    key: str, node_key: str, model_id: str = "model-a", batch_index: int = 0,
+    key: str,
+    node_key: str,
+    model_id: str = "model-a",
+    batch_index: int = 0,
 ) -> MagicMock:
     dim = MagicMock()
     dim.key = key
@@ -57,8 +62,11 @@ def _make_dimension(
 
 
 def _make_edge(
-    key: str, source_key: str, target_key: str,
-    rel_type: str = "related", weight: float = 0.5,
+    key: str,
+    source_key: str,
+    target_key: str,
+    rel_type: str = "related",
+    weight: float = 0.5,
     fact_ids: list[str] | None = None,
 ) -> MagicMock:
     edge = MagicMock()
@@ -121,11 +129,15 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         loser_seed = _make_seed(
-            "concept:old", "Old Name", promoted_node_key="concept:old",
+            "concept:old",
+            "Old Name",
+            promoted_node_key="concept:old",
             merged_into_key="concept:new",
         )
         winner_seed = _make_seed(
-            "concept:new", "New Name", status="promoted",
+            "concept:new",
+            "New Name",
+            status="promoted",
             promoted_node_key="concept:new",
         )
         loser_node = _make_write_node("concept:old", "Old Name", fact_ids=["f1", "f2"])
@@ -148,9 +160,12 @@ class TestAbsorbMergedNodes:
             seed_repo.clear_promoted_node_key = AsyncMock()
 
             node_repo = MockNodeRepo.return_value
-            node_repo.get_by_key = AsyncMock(side_effect=lambda k: {
-                "concept:new": winner_node, "concept:old": loser_node,
-            }.get(k))
+            node_repo.get_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    "concept:new": winner_node,
+                    "concept:old": loser_node,
+                }.get(k)
+            )
             node_repo.merge_fact_ids = AsyncMock()
             node_repo.delete_by_key = AsyncMock()
 
@@ -198,11 +213,15 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         loser_seed = _make_seed(
-            "concept:old", "Old", promoted_node_key="concept:old",
+            "concept:old",
+            "Old",
+            promoted_node_key="concept:old",
             merged_into_key="concept:new",
         )
         winner_seed = _make_seed(
-            "concept:new", "New", status="active",
+            "concept:new",
+            "New",
+            status="active",
             promoted_node_key=None,
         )
 
@@ -236,11 +255,15 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         loser_seed = _make_seed(
-            "concept:old", "Old", promoted_node_key="concept:old",
+            "concept:old",
+            "Old",
+            promoted_node_key="concept:old",
             merged_into_key="concept:new",
         )
         winner_seed = _make_seed(
-            "concept:new", "New", status="promoted",
+            "concept:new",
+            "New",
+            status="promoted",
             promoted_node_key="concept:new",
         )
         winner_node = _make_write_node("concept:new", "New")
@@ -260,9 +283,11 @@ class TestAbsorbMergedNodes:
             seed_repo.clear_promoted_node_key = AsyncMock()
 
             node_repo = MockNodeRepo.return_value
-            node_repo.get_by_key = AsyncMock(side_effect=lambda k: {
-                "concept:new": winner_node,
-            }.get(k))  # loser returns None
+            node_repo.get_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    "concept:new": winner_node,
+                }.get(k)
+            )  # loser returns None
 
             state = _make_state(write_sf=lambda: _FakeSessionContext(ws))
             result = await _absorb_merged_nodes(state, _make_settings(), _make_ctx())
@@ -276,11 +301,15 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         loser_seed = _make_seed(
-            "concept:old", "Old", promoted_node_key="concept:old",
+            "concept:old",
+            "Old",
+            promoted_node_key="concept:old",
             merged_into_key="concept:new",
         )
         winner_seed = _make_seed(
-            "concept:new", "New", status="promoted",
+            "concept:new",
+            "New",
+            status="promoted",
             promoted_node_key="concept:new",
         )
         loser_node = _make_write_node("concept:old", "Old", fact_ids=[])
@@ -289,7 +318,8 @@ class TestAbsorbMergedNodes:
         # Edge from loser to winner — becomes self-edge after absorption
         self_edge = _make_edge(
             "related|concept:new|concept:old",
-            "concept:new", "concept:old",
+            "concept:new",
+            "concept:old",
         )
 
         ws = MagicMock()
@@ -307,9 +337,12 @@ class TestAbsorbMergedNodes:
             seed_repo.clear_promoted_node_key = AsyncMock()
 
             node_repo = MockNodeRepo.return_value
-            node_repo.get_by_key = AsyncMock(side_effect=lambda k: {
-                "concept:new": winner_node, "concept:old": loser_node,
-            }.get(k))
+            node_repo.get_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    "concept:new": winner_node,
+                    "concept:old": loser_node,
+                }.get(k)
+            )
             node_repo.merge_fact_ids = AsyncMock()
             node_repo.delete_by_key = AsyncMock()
 
@@ -336,11 +369,15 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         loser_seed = _make_seed(
-            "concept:old", "Old", promoted_node_key="concept:old",
+            "concept:old",
+            "Old",
+            promoted_node_key="concept:old",
             merged_into_key="concept:new",
         )
         winner_seed = _make_seed(
-            "concept:new", "New", status="promoted",
+            "concept:new",
+            "New",
+            status="promoted",
             promoted_node_key="concept:new",
         )
         loser_node = _make_write_node("concept:old", "Old", fact_ids=[])
@@ -363,9 +400,12 @@ class TestAbsorbMergedNodes:
             seed_repo.clear_promoted_node_key = AsyncMock()
 
             node_repo = MockNodeRepo.return_value
-            node_repo.get_by_key = AsyncMock(side_effect=lambda k: {
-                "concept:new": winner_node, "concept:old": loser_node,
-            }.get(k))
+            node_repo.get_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    "concept:new": winner_node,
+                    "concept:old": loser_node,
+                }.get(k)
+            )
             node_repo.merge_fact_ids = AsyncMock()
             node_repo.delete_by_key = AsyncMock()
 
@@ -402,11 +442,15 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         loser_seed = _make_seed(
-            "concept:old", "Old", promoted_node_key="concept:old",
+            "concept:old",
+            "Old",
+            promoted_node_key="concept:old",
             merged_into_key="concept:new",
         )
         winner_seed = _make_seed(
-            "concept:new", "New", status="promoted",
+            "concept:new",
+            "New",
+            status="promoted",
             promoted_node_key="concept:new",
         )
         loser_node = _make_write_node("concept:old", "Old", fact_ids=[])
@@ -430,9 +474,12 @@ class TestAbsorbMergedNodes:
             seed_repo.clear_promoted_node_key = AsyncMock()
 
             node_repo = MockNodeRepo.return_value
-            node_repo.get_by_key = AsyncMock(side_effect=lambda k: {
-                "concept:new": winner_node, "concept:old": loser_node,
-            }.get(k))
+            node_repo.get_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    "concept:new": winner_node,
+                    "concept:old": loser_node,
+                }.get(k)
+            )
             node_repo.merge_fact_ids = AsyncMock()
             node_repo.delete_by_key = AsyncMock()
 
@@ -462,11 +509,15 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         loser_seed = _make_seed(
-            "concept:old", "Old", promoted_node_key="concept:old",
+            "concept:old",
+            "Old",
+            promoted_node_key="concept:old",
             merged_into_key="concept:new",
         )
         winner_seed = _make_seed(
-            "concept:new", "New", status="promoted",
+            "concept:new",
+            "New",
+            status="promoted",
             promoted_node_key="concept:new",
         )
         loser_node = _make_write_node("concept:old", "Old", fact_ids=[])
@@ -474,7 +525,8 @@ class TestAbsorbMergedNodes:
 
         edge = _make_edge(
             "related|concept:old|concept:third",
-            "concept:old", "concept:third",
+            "concept:old",
+            "concept:third",
         )
 
         ws = MagicMock()
@@ -492,9 +544,12 @@ class TestAbsorbMergedNodes:
             seed_repo.clear_promoted_node_key = AsyncMock()
 
             node_repo = MockNodeRepo.return_value
-            node_repo.get_by_key = AsyncMock(side_effect=lambda k: {
-                "concept:new": winner_node, "concept:old": loser_node,
-            }.get(k))
+            node_repo.get_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    "concept:new": winner_node,
+                    "concept:old": loser_node,
+                }.get(k)
+            )
             node_repo.merge_fact_ids = AsyncMock()
             node_repo.delete_by_key = AsyncMock()
 
@@ -523,15 +578,21 @@ class TestAbsorbMergedNodes:
         from kt_worker_nodes.workflows.auto_build import _absorb_merged_nodes
 
         seed_ok = _make_seed(
-            "concept:ok", "Ok", promoted_node_key="concept:ok",
+            "concept:ok",
+            "Ok",
+            promoted_node_key="concept:ok",
             merged_into_key="concept:winner",
         )
         seed_err = _make_seed(
-            "concept:err", "Err", promoted_node_key="concept:err",
+            "concept:err",
+            "Err",
+            promoted_node_key="concept:err",
             merged_into_key="concept:winner",
         )
         winner_seed = _make_seed(
-            "concept:winner", "Winner", status="promoted",
+            "concept:winner",
+            "Winner",
+            status="promoted",
             promoted_node_key="concept:winner",
         )
         ok_node = _make_write_node("concept:ok", "Ok", fact_ids=[])
@@ -553,11 +614,13 @@ class TestAbsorbMergedNodes:
             seed_repo.clear_promoted_node_key = AsyncMock()
 
             node_repo = MockNodeRepo.return_value
-            node_repo.get_by_key = AsyncMock(side_effect=lambda k: {
-                "concept:winner": winner_node,
-                "concept:ok": ok_node,
-                "concept:err": err_node,
-            }.get(k))
+            node_repo.get_by_key = AsyncMock(
+                side_effect=lambda k: {
+                    "concept:winner": winner_node,
+                    "concept:ok": ok_node,
+                    "concept:err": err_node,
+                }.get(k)
+            )
             node_repo.merge_fact_ids = AsyncMock()
             node_repo.delete_by_key = AsyncMock()
 

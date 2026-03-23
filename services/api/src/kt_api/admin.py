@@ -33,8 +33,10 @@ async def reindex(
     # Get Qdrant client
     try:
         from kt_qdrant.client import get_qdrant_client
+
         qdrant_client = get_qdrant_client()
         from kt_qdrant.repositories.nodes import QdrantNodeRepository
+
         qdrant_repo = QdrantNodeRepository(qdrant_client)
     except Exception:
         return {"status": "error", "message": "Qdrant not available."}

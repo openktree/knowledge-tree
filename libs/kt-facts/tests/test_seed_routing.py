@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from seed_fixtures import make_route, make_seed, make_seed_repo_mock
 
 from kt_facts.processing.seed_heuristics import (
     build_seed_context,
@@ -15,24 +16,19 @@ from kt_facts.processing.seed_routing import (
     maybe_re_embed_seed,
     route_seed,
 )
-from seed_fixtures import make_route, make_seed, make_seed_repo_mock
 
 
 @pytest.mark.asyncio
 class TestRouteActiveAndPromoted:
     async def test_active_seed_returns_same_key(self):
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            return_value=make_seed("entity:mars", "Mars", "entity", status="active")
-        )
+        repo.get_seed_by_key = AsyncMock(return_value=make_seed("entity:mars", "Mars", "entity", status="active"))
         result = await route_seed("Mars", "entity", "Mars is red", repo)
         assert result == "entity:mars"
 
     async def test_promoted_seed_returns_same_key(self):
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            return_value=make_seed("entity:mars", "Mars", "entity", status="promoted")
-        )
+        repo.get_seed_by_key = AsyncMock(return_value=make_seed("entity:mars", "Mars", "entity", status="promoted"))
         result = await route_seed("Mars", "entity", "Mars is red", repo)
         assert result == "entity:mars"
 
@@ -44,10 +40,12 @@ class TestRouteMergedSeed:
         merged = make_seed("entity:mars", "Mars", "entity", status="merged", merged_into_key="entity:mars-planet")
         winner = make_seed("entity:mars-planet", "Mars (planet)", "entity", status="active")
 
-        repo.get_seed_by_key = AsyncMock(side_effect=lambda k: {
-            "entity:mars": merged,
-            "entity:mars-planet": winner,
-        }.get(k))
+        repo.get_seed_by_key = AsyncMock(
+            side_effect=lambda k: {
+                "entity:mars": merged,
+                "entity:mars-planet": winner,
+            }.get(k)
+        )
 
         result = await route_seed("Mars", "entity", "Mars is red", repo)
         assert result == "entity:mars-planet"
@@ -61,10 +59,12 @@ class TestRouteMergedSeed:
             make_route("entity:mars", "entity:mars-planet", "planet"),
             make_route("entity:mars", "entity:mars-god", "Roman god"),
         ]
-        repo.get_seed_by_key = AsyncMock(side_effect=lambda k: {
-            "entity:m": merged,
-            "entity:mars": ambiguous,
-        }.get(k))
+        repo.get_seed_by_key = AsyncMock(
+            side_effect=lambda k: {
+                "entity:m": merged,
+                "entity:mars": ambiguous,
+            }.get(k)
+        )
         repo.get_routes_for_parent = AsyncMock(return_value=routes)
 
         # Without embedding service, returns first child
@@ -100,8 +100,12 @@ class TestRouteAmbiguousSeed:
         qdrant_repo.find_similar = AsyncMock(return_value=[planet_match, god_match])
 
         result = await route_seed(
-            "Mars", "entity", "Mars has a thin atmosphere",
-            repo, embedding_service=emb_svc, qdrant_seed_repo=qdrant_repo,
+            "Mars",
+            "entity",
+            "Mars has a thin atmosphere",
+            repo,
+            embedding_service=emb_svc,
+            qdrant_seed_repo=qdrant_repo,
         )
         assert result == "entity:mars-planet"
 
@@ -135,8 +139,12 @@ class TestRouteAmbiguousSeed:
         gateway.generate_json = AsyncMock(return_value={"choice": 2})
 
         result = await route_seed(
-            "Mars", "entity", "Mars was worshipped in Rome",
-            repo, embedding_service=emb_svc, qdrant_seed_repo=qdrant_repo,
+            "Mars",
+            "entity",
+            "Mars was worshipped in Rome",
+            repo,
+            embedding_service=emb_svc,
+            qdrant_seed_repo=qdrant_repo,
             model_gateway=gateway,
         )
         assert result == "entity:mars-god"
@@ -226,7 +234,8 @@ class TestBuildSeedContext:
 
     def test_with_facts_and_aliases(self):
         ctx = build_seed_context(
-            "Mars", "entity",
+            "Mars",
+            "entity",
             top_facts=["Mars is a planet", "Mars has two moons"],
             aliases=["Red Planet"],
         )
@@ -254,8 +263,11 @@ class TestMaybeReEmbedSeed:
         qdrant = MagicMock()
         # fact_count=3 is not in default thresholds [5,15,50,100]
         await maybe_re_embed_seed(
-            "entity:test", 3, repo,
-            embedding_service=emb_svc, qdrant_seed_repo=qdrant,
+            "entity:test",
+            3,
+            repo,
+            embedding_service=emb_svc,
+            qdrant_seed_repo=qdrant,
         )
         emb_svc.embed_text.assert_not_called()
 
@@ -272,8 +284,11 @@ class TestMaybeReEmbedSeed:
         qdrant.upsert = AsyncMock()
 
         await maybe_re_embed_seed(
-            "entity:test", 5, repo,
-            embedding_service=emb_svc, qdrant_seed_repo=qdrant,
+            "entity:test",
+            5,
+            repo,
+            embedding_service=emb_svc,
+            qdrant_seed_repo=qdrant,
         )
         emb_svc.embed_text.assert_called_once()
         qdrant.upsert.assert_called_once()
@@ -292,7 +307,10 @@ class TestMaybeReEmbedSeed:
         qdrant = MagicMock()
 
         await maybe_re_embed_seed(
-            "entity:test", 5, repo,
-            embedding_service=emb_svc, qdrant_seed_repo=qdrant,
+            "entity:test",
+            5,
+            repo,
+            embedding_service=emb_svc,
+            qdrant_seed_repo=qdrant,
         )
         emb_svc.embed_text.assert_not_called()

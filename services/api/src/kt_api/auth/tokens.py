@@ -54,7 +54,9 @@ class ApiTokenRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, user_id: uuid.UUID, name: str, raw_token: str, expires_at: datetime | None = None) -> ApiToken:
+    async def create(
+        self, user_id: uuid.UUID, name: str, raw_token: str, expires_at: datetime | None = None
+    ) -> ApiToken:
         token = ApiToken(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -80,9 +82,7 @@ class ApiTokenRepository:
 
     async def find_by_raw(self, raw_token: str) -> ApiToken | None:
         """Find a non-revoked, non-expired token matching raw_token."""
-        result = await self._session.execute(
-            select(ApiToken).where(ApiToken.revoked.is_(False))
-        )
+        result = await self._session.execute(select(ApiToken).where(ApiToken.revoked.is_(False)))
         for token in result.scalars().all():
             if token.expires_at and token.expires_at < datetime.now(UTC).replace(tzinfo=None):
                 continue
@@ -92,9 +92,7 @@ class ApiTokenRepository:
 
     async def revoke(self, token_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         result = await self._session.execute(
-            update(ApiToken)
-            .where(ApiToken.id == token_id, ApiToken.user_id == user_id)
-            .values(revoked=True)
+            update(ApiToken).where(ApiToken.id == token_id, ApiToken.user_id == user_id).values(revoked=True)
         )
         return result.rowcount > 0
 

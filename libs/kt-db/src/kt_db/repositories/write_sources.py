@@ -30,9 +30,7 @@ class WriteSourceRepository:
 
     async def get_by_id(self, source_id: uuid.UUID) -> WriteRawSource | None:
         """Find a WriteRawSource by its ID."""
-        result = await self._session.execute(
-            select(WriteRawSource).where(WriteRawSource.id == source_id)
-        )
+        result = await self._session.execute(select(WriteRawSource).where(WriteRawSource.id == source_id))
         return result.scalar_one_or_none()
 
     async def create_or_get(
@@ -110,10 +108,6 @@ class WriteSourceRepository:
         }
         if content_type is not None:
             values["content_type"] = content_type
-        await self._session.execute(
-            update(WriteRawSource)
-            .where(WriteRawSource.id == source_id)
-            .values(**values)
-        )
+        await self._session.execute(update(WriteRawSource).where(WriteRawSource.id == source_id).values(**values))
         await self._session.flush()
         return True

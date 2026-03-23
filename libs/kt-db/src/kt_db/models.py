@@ -265,7 +265,9 @@ class RawSource(Base):
 
     # Relationships
     fact_sources: Mapped[list["FactSource"]] = relationship(back_populates="raw_source", cascade="all, delete-orphan")
-    prohibited_chunks: Mapped[list["ProhibitedChunk"]] = relationship(back_populates="raw_source", cascade="all, delete-orphan")
+    prohibited_chunks: Mapped[list["ProhibitedChunk"]] = relationship(
+        back_populates="raw_source", cascade="all, delete-orphan"
+    )
 
 
 class ProhibitedChunk(Base):
@@ -470,7 +472,6 @@ class IngestSource(Base):
     # Relationships
     conversation: Mapped["Conversation"] = relationship()
     raw_source: Mapped["RawSource | None"] = relationship()
-
 
 
 # ---------------------------------------------------------------------------

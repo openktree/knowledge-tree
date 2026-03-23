@@ -78,24 +78,23 @@ async def search_and_store(
             pages_tried = 0
 
             while needed > 0 and pages_tried < max_extra_pages:
-                extra_results = await ctx.provider_registry.search_all(
-                    query, max_results=max_results
-                )
+                extra_results = await ctx.provider_registry.search_all(query, max_results=max_results)
                 seen_uris = {r.uri for r in raw_results}
                 new_results = [r for r in extra_results if r.uri not in seen_uris]
 
                 if not new_results:
                     break
 
-                new_filtered, _new_skipped = await filter_fresh_urls(
-                    new_results, page_log, stale_days
-                )
+                new_filtered, _new_skipped = await filter_fresh_urls(new_results, page_log, stale_days)
                 filtered.extend(new_filtered)
                 needed -= len(new_filtered)
                 pages_tried += 1
 
         sources = await store_and_fetch(
-            filtered, ctx, max_fetch_urls=max_fetch_urls, write_session=write_session,
+            filtered,
+            ctx,
+            max_fetch_urls=max_fetch_urls,
+            write_session=write_session,
         )
 
         # Record fetched URLs in the page log
@@ -264,7 +263,9 @@ async def store_and_fetch(
                 placeholder = fetch_result.content or "[Image content]"
                 try:
                     updated = await source_repo.update_content(
-                        source.id, placeholder, is_full_text=True,
+                        source.id,
+                        placeholder,
+                        is_full_text=True,
                         content_type=fetch_result.content_type,
                     )
                     if updated:
@@ -279,13 +280,16 @@ async def store_and_fetch(
                 except Exception:
                     logger.debug(
                         "Failed to update source %s with image placeholder",
-                        source.id, exc_info=True,
+                        source.id,
+                        exc_info=True,
                     )
             elif fetch_result.success:
                 assert fetch_result.content is not None
                 try:
                     updated = await source_repo.update_content(
-                        source.id, fetch_result.content, is_full_text=True,
+                        source.id,
+                        fetch_result.content,
+                        is_full_text=True,
                         content_type=fetch_result.content_type,
                     )
                     if updated:
@@ -301,13 +305,15 @@ async def store_and_fetch(
                 except Exception:
                     logger.debug(
                         "Failed to update source %s with full text: %s",
-                        source.id, fetch_result.uri,
+                        source.id,
+                        fetch_result.uri,
                         exc_info=True,
                     )
             else:
                 logger.debug(
                     "Full-text fetch failed for %s: %s",
-                    fetch_result.uri, fetch_result.error,
+                    fetch_result.uri,
+                    fetch_result.error,
                 )
 
         if owns_session:

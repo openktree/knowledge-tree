@@ -101,7 +101,8 @@ async def expand_candidates(
 
     logger.info(
         "semantic_expansion for '%s': %d terms to search",
-        node.concept, len(terms),
+        node.concept,
+        len(terms),
     )
 
     # 3. Embed each term individually and search
@@ -147,9 +148,7 @@ async def expand_candidates(
             for match_node_id, match_count in fact_matches:
                 if match_node_id in candidates:
                     candidates[match_node_id].match_count += match_count
-                    candidates[match_node_id].match_sources.append(
-                        f"fact_match:{match_count}"
-                    )
+                    candidates[match_node_id].match_sources.append(f"fact_match:{match_count}")
                 else:
                     match_node = await ctx.graph_engine.get_node(match_node_id)
                     if match_node:
@@ -172,7 +171,9 @@ async def expand_candidates(
 
     logger.info(
         "semantic_expansion for '%s': %d candidates found from %d terms",
-        node.concept, len(sorted_candidates), len(terms),
+        node.concept,
+        len(sorted_candidates),
+        len(terms),
     )
 
     return sorted_candidates[:20]  # Cap at 20 candidates

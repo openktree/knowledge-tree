@@ -36,9 +36,7 @@ router = APIRouter(prefix="/api/v1/export", tags=["export"])
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-async def _batch_convergence_scores(
-    session: AsyncSession, node_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, float]:
+async def _batch_convergence_scores(session: AsyncSession, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
     """Fetch convergence scores for a batch of node IDs in a single query."""
     if not node_ids:
         return {}
@@ -50,7 +48,8 @@ async def _batch_convergence_scores(
 
 
 def _node_to_response(
-    n: object, cr_map: dict[uuid.UUID, float],
+    n: object,
+    cr_map: dict[uuid.UUID, float],
     embedding_map: dict[uuid.UUID, list[float]] | None = None,
 ) -> NodeResponse:
     return NodeResponse(
@@ -87,7 +86,8 @@ def _edge_to_response(e: object) -> EdgeResponse:
 
 
 def _fact_to_response(
-    f: object, *,
+    f: object,
+    *,
     include_raw_content: bool = False,
     embedding_map: dict[uuid.UUID, list[float]] | None = None,
 ) -> FactResponse:
@@ -121,7 +121,8 @@ def _fact_to_response(
 
 
 async def _get_node_fact_links(
-    session: AsyncSession, node_ids: list[uuid.UUID],
+    session: AsyncSession,
+    node_ids: list[uuid.UUID],
 ) -> list[NodeFactLinkItem]:
     """Query NodeFact junction table to get links with relevance_score and stance."""
     if not node_ids:
@@ -215,6 +216,7 @@ async def export_nodes(
     all_facts = []
     if all_fact_ids:
         from kt_db.repositories.facts import FactRepository
+
         fact_repo = FactRepository(session)
         all_facts = await fact_repo.get_by_ids_with_sources(all_fact_ids)
 
@@ -224,7 +226,9 @@ async def export_nodes(
     embedding_model: str | None = None
     if include_embeddings and qdrant is not None:
         node_emb_map, fact_emb_map = await _fetch_embeddings(
-            qdrant, node_ids, all_fact_ids,
+            qdrant,
+            node_ids,
+            all_fact_ids,
         )
         embedding_model = get_settings().embedding_model
 
@@ -237,7 +241,9 @@ async def export_nodes(
         ),
         nodes=[_node_to_response(n, cr_map, embedding_map=node_emb_map) for n in nodes],
         edges=[_edge_to_response(e) for e in edges],
-        facts=[_fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in all_facts],
+        facts=[
+            _fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in all_facts
+        ],
         node_fact_links=node_fact_links,
     )
 
@@ -258,7 +264,9 @@ async def export_facts(
     embedding_model: str | None = None
     if include_embeddings and qdrant is not None:
         _, fact_emb_map = await _fetch_embeddings(
-            qdrant, [], [f.id for f in facts],
+            qdrant,
+            [],
+            [f.id for f in facts],
         )
         embedding_model = get_settings().embedding_model
 
@@ -269,7 +277,9 @@ async def export_facts(
             total_items=len(facts),
             embedding_model=embedding_model,
         ),
-        facts=[_fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in facts],
+        facts=[
+            _fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in facts
+        ],
     )
 
 
@@ -337,6 +347,7 @@ async def export_conversation(
     all_facts = []
     if all_fact_ids:
         from kt_db.repositories.facts import FactRepository
+
         fact_repo = FactRepository(session)
         all_facts = await fact_repo.get_by_ids_with_sources(all_fact_ids)
 
@@ -347,7 +358,9 @@ async def export_conversation(
     embedding_model: str | None = None
     if include_embeddings and qdrant is not None:
         node_emb_map, fact_emb_map = await _fetch_embeddings(
-            qdrant, conv_node_ids, all_fact_ids,
+            qdrant,
+            conv_node_ids,
+            all_fact_ids,
         )
         embedding_model = get_settings().embedding_model
 
@@ -363,6 +376,8 @@ async def export_conversation(
         conversation=_conv_to_response(conv),
         nodes=[_node_to_response(n, cr_map, embedding_map=node_emb_map) for n in nodes],
         edges=[_edge_to_response(e) for e in edges],
-        facts=[_fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in all_facts],
+        facts=[
+            _fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in all_facts
+        ],
         node_fact_links=node_fact_links,
     )

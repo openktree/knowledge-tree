@@ -119,7 +119,8 @@ class TestGetChildren:
 class TestCrystallizationHelpers:
     async def test_is_crystallized_db_node(self, db_session: AsyncSession) -> None:
         node = await _create_node(
-            db_session, "crystallized-node",
+            db_session,
+            "crystallized-node",
             metadata_={"ontology_stable": True, "crystallized_at": datetime.now(timezone.utc).isoformat()},
         )
         assert _is_crystallized(node) is True
@@ -129,11 +130,13 @@ class TestCrystallizationHelpers:
         assert _is_crystallized(node) is False
 
     async def test_needs_recrystallization_with_db_children(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ) -> None:
         crystallized_at = datetime.now(timezone.utc) - timedelta(hours=2)
         parent = await _create_node(
-            db_session, "recryst-parent",
+            db_session,
+            "recryst-parent",
             metadata_={
                 "ontology_stable": True,
                 "crystallized_at": crystallized_at.isoformat(),
@@ -157,12 +160,14 @@ class TestCrystallizationPipelineIntegration:
     ) -> None:
         """Full pipeline: create parent + 10 children, then crystallize."""
         parent = await _create_node(
-            db_session, "full-cryst-parent",
+            db_session,
+            "full-cryst-parent",
             definition="A simple definition",
         )
         for i in range(10):
             await _create_node(
-                db_session, f"full-cryst-child-{i}",
+                db_session,
+                f"full-cryst-child-{i}",
                 parent_id=parent.id,
                 definition=f"Child {i} definition",
             )
@@ -192,7 +197,8 @@ class TestCrystallizationPipelineIntegration:
         parent = await _create_node(db_session, "low-child-parent")
         for i in range(5):
             await _create_node(
-                db_session, f"low-child-{i}",
+                db_session,
+                f"low-child-{i}",
                 parent_id=parent.id,
             )
 
@@ -211,7 +217,8 @@ class TestCrystallizationPipelineIntegration:
         from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 
         parent = await _create_node(
-            db_session, "preserved-def-parent",
+            db_session,
+            "preserved-def-parent",
             metadata_={"ontology_stable": True},
             definition="Preserved crystallized definition",
         )

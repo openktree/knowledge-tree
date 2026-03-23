@@ -35,26 +35,30 @@ async def test_seed_dedup_processes_active_seeds(mock_session: AsyncMock) -> Non
     mock_repo = MagicMock()
     mock_repo.get_seeds_by_keys_batch = AsyncMock(return_value=seeds_by_key)
 
-    with patch(
-        "kt_db.repositories.write_seeds.WriteSeedRepository",
-        return_value=mock_repo,
-    ), patch(
-        "kt_facts.processing.seed_dedup.deduplicate_seed",
-        new_callable=AsyncMock,
-    ) as mock_dedup:
+    with (
+        patch(
+            "kt_db.repositories.write_seeds.WriteSeedRepository",
+            return_value=mock_repo,
+        ),
+        patch(
+            "kt_facts.processing.seed_dedup.deduplicate_seed",
+            new_callable=AsyncMock,
+        ) as mock_dedup,
+    ):
         mock_dedup.side_effect = [
-            "key_a",       # Alpha: no merge
+            "key_a",  # Alpha: no merge
             "key_winner",  # Beta: merged into key_winner
         ]
 
-        from kt_facts.processing.seed_dedup import deduplicate_seed
-
         # Simulate what the Hatchet task does
         from kt_db.repositories.write_seeds import WriteSeedRepository
+        from kt_facts.processing.seed_dedup import deduplicate_seed
+
         repo = WriteSeedRepository(mock_session)
 
         input_data = SeedDedupBatchInput(
-            seed_keys=["key_a", "key_b", "key_c"], scope_id="test-scope",
+            seed_keys=["key_a", "key_b", "key_c"],
+            scope_id="test-scope",
         )
         unique_keys = list(dict.fromkeys(input_data.seed_keys))
         seeds = await repo.get_seeds_by_keys_batch(unique_keys)
@@ -99,16 +103,19 @@ async def test_seed_dedup_handles_errors(mock_session: AsyncMock) -> None:
         return_value={"key_a": seed_a},
     )
 
-    with patch(
-        "kt_db.repositories.write_seeds.WriteSeedRepository",
-        return_value=mock_repo,
-    ), patch(
-        "kt_facts.processing.seed_dedup.deduplicate_seed",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("dedup error"),
+    with (
+        patch(
+            "kt_db.repositories.write_seeds.WriteSeedRepository",
+            return_value=mock_repo,
+        ),
+        patch(
+            "kt_facts.processing.seed_dedup.deduplicate_seed",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("dedup error"),
+        ),
     ):
-        from kt_facts.processing.seed_dedup import deduplicate_seed
         from kt_db.repositories.write_seeds import WriteSeedRepository
+        from kt_facts.processing.seed_dedup import deduplicate_seed
 
         repo = WriteSeedRepository(mock_session)
         seeds = await repo.get_seeds_by_keys_batch(["key_a"])

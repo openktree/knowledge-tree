@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_qdrant_client_cached, require_api_key
-from kt_db.models import User
 from kt_api.schemas import (
     ConvergenceResponse,
     DeleteResponse,
@@ -34,7 +33,7 @@ from kt_api.schemas import (
     QuickPerspectiveValidateResponse,
 )
 from kt_config.settings import get_settings
-from kt_db.models import ConvergenceReport, Dimension, Edge, FactSource, Node, NodeFact
+from kt_db.models import ConvergenceReport, Dimension, Edge, FactSource, Node, NodeFact, User
 from kt_graph.convergence import compute_convergence
 from kt_graph.engine import GraphEngine
 
@@ -67,9 +66,7 @@ def _dedupe_sources(sources: list[FactSource]) -> list[FactSourceInfo]:
     return result
 
 
-async def _batch_parent_concepts(
-    session: AsyncSession, nodes: list[Node]
-) -> dict[uuid.UUID, tuple[str, str]]:
+async def _batch_parent_concepts(session: AsyncSession, nodes: list[Node]) -> dict[uuid.UUID, tuple[str, str]]:
     """Fetch parent (concept, node_type) for a batch of nodes in a single query."""
     parent_ids = [n.parent_id for n in nodes if n.parent_id is not None]
     if not parent_ids:
@@ -80,9 +77,7 @@ async def _batch_parent_concepts(
     return {row.id: (row.concept, row.node_type) for row in result.all()}
 
 
-async def _batch_convergence_scores(
-    session: AsyncSession, node_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, float]:
+async def _batch_convergence_scores(session: AsyncSession, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
     """Fetch convergence scores for a batch of node IDs in a single query."""
     if not node_ids:
         return {}
@@ -157,10 +152,7 @@ async def _batch_seed_fact_counts(
 
     write_sf = get_write_session_factory_cached()
     async with write_sf() as ws:
-        stmt = (
-            select(WriteSeed.promoted_node_key, WriteSeed.fact_count)
-            .where(WriteSeed.promoted_node_key.in_(keys))
-        )
+        stmt = select(WriteSeed.promoted_node_key, WriteSeed.fact_count).where(WriteSeed.promoted_node_key.in_(keys))
         rows = await ws.execute(stmt)
         for row in rows.all():
             node_id = key_to_id.get(row.promoted_node_key)
@@ -172,9 +164,7 @@ async def _batch_seed_fact_counts(
     return result
 
 
-async def _batch_edge_counts(
-    session: AsyncSession, nodes: list[Node]
-) -> dict[uuid.UUID, int]:
+async def _batch_edge_counts(session: AsyncSession, nodes: list[Node]) -> dict[uuid.UUID, int]:
     """Count edges (source or target) per node in a single query."""
     if not nodes:
         return {}
@@ -198,18 +188,12 @@ async def _batch_edge_counts(
     return counts
 
 
-async def _batch_child_counts(
-    session: AsyncSession, nodes: list[Node]
-) -> dict[uuid.UUID, int]:
+async def _batch_child_counts(session: AsyncSession, nodes: list[Node]) -> dict[uuid.UUID, int]:
     """Count children (nodes where parent_id = this node) per node in a single query."""
     if not nodes:
         return {}
     node_ids = [n.id for n in nodes]
-    stmt = (
-        select(Node.parent_id, func.count(Node.id))
-        .where(Node.parent_id.in_(node_ids))
-        .group_by(Node.parent_id)
-    )
+    stmt = select(Node.parent_id, func.count(Node.id)).where(Node.parent_id.in_(node_ids)).group_by(Node.parent_id)
     result = await session.execute(stmt)
     return {row[0]: row[1] for row in result.all()}
 
@@ -313,9 +297,8 @@ async def _list_nodes_by_pending_facts(
     seed_fc: dict[uuid.UUID, int] = {}
     write_sf = get_write_session_factory_cached()
     async with write_sf() as ws:
-        seed_stmt = (
-            select(WriteSeed.promoted_node_key, WriteSeed.fact_count)
-            .where(WriteSeed.promoted_node_key.in_(list(key_to_id.keys())))
+        seed_stmt = select(WriteSeed.promoted_node_key, WriteSeed.fact_count).where(
+            WriteSeed.promoted_node_key.in_(list(key_to_id.keys()))
         )
         seed_rows = await ws.execute(seed_stmt)
         for sr in seed_rows.all():
@@ -351,8 +334,14 @@ async def _list_nodes_by_pending_facts(
 
     items = [
         _build_node_response(
-            n, parent_map, richness_map, cr_map, edge_count_map,
-            child_count_map, fact_count_map, seed_fact_count_map,
+            n,
+            parent_map,
+            richness_map,
+            cr_map,
+            edge_count_map,
+            child_count_map,
+            fact_count_map,
+            seed_fact_count_map,
         )
         for n in nodes
     ]
@@ -383,8 +372,14 @@ async def list_nodes(
     seed_fact_count_map = await _batch_seed_fact_counts(nodes)
     items = [
         _build_node_response(
-            n, parent_map, richness_map, cr_map, edge_count_map,
-            child_count_map, fact_count_map, seed_fact_count_map,
+            n,
+            parent_map,
+            richness_map,
+            cr_map,
+            edge_count_map,
+            child_count_map,
+            fact_count_map,
+            seed_fact_count_map,
         )
         for n in nodes
     ]
@@ -413,8 +408,14 @@ async def search_nodes(
     seed_fact_count_map = await _batch_seed_fact_counts(nodes)
     return [
         _build_node_response(
-            n, parent_map, richness_map, cr_map, edge_count_map,
-            child_count_map, fact_count_map, seed_fact_count_map,
+            n,
+            parent_map,
+            richness_map,
+            cr_map,
+            edge_count_map,
+            child_count_map,
+            fact_count_map,
+            seed_fact_count_map,
         )
         for n in nodes
     ]
@@ -445,8 +446,14 @@ async def get_node(
     child_count_map = await _batch_child_counts(session, [node])
     seed_fact_count_map = await _batch_seed_fact_counts([node])
     return _build_node_response(
-        node, parent_map, richness_map, cr_map, edge_count_map,
-        child_count_map, fact_count_map, seed_fact_count_map,
+        node,
+        parent_map,
+        richness_map,
+        cr_map,
+        edge_count_map,
+        child_count_map,
+        fact_count_map,
+        seed_fact_count_map,
         access_count_override=node.access_count + 1,
     )
 
@@ -479,8 +486,14 @@ async def update_node(
     child_count_map = await _batch_child_counts(session, [node])
     seed_fact_count_map = await _batch_seed_fact_counts([node])
     return _build_node_response(
-        node, parent_map, richness_map, cr_map, edge_count_map,
-        child_count_map, fact_count_map, seed_fact_count_map,
+        node,
+        parent_map,
+        richness_map,
+        cr_map,
+        edge_count_map,
+        child_count_map,
+        fact_count_map,
+        seed_fact_count_map,
         update_count_override=node.update_count + 1,
     )
 
@@ -705,8 +718,14 @@ async def get_node_perspectives(
     seed_fact_count_map = await _batch_seed_fact_counts(perspectives)
     return [
         _build_node_response(
-            p, parent_map, richness_map, cr_map, edge_count_map,
-            child_count_map, fact_count_map, seed_fact_count_map,
+            p,
+            parent_map,
+            richness_map,
+            cr_map,
+            edge_count_map,
+            child_count_map,
+            fact_count_map,
+            seed_fact_count_map,
         )
         for p in perspectives
     ]
@@ -734,8 +753,14 @@ async def get_node_children(
     seed_fact_count_map = await _batch_seed_fact_counts(children)
     return [
         _build_node_response(
-            c, parent_map, richness_map, cr_map, edge_count_map,
-            child_count_map, fact_count_map, seed_fact_count_map,
+            c,
+            parent_map,
+            richness_map,
+            cr_map,
+            edge_count_map,
+            child_count_map,
+            fact_count_map,
+            seed_fact_count_map,
         )
         for c in children
     ]
@@ -815,9 +840,9 @@ async def quick_add_node(
     # Generate a deterministic scope_id for tracking
     scope_id = f"quick-add-{uuid.uuid4().hex[:8]}"
 
+    from kt_api.dependencies import get_write_session_factory_cached
     from kt_db.keys import make_seed_key
     from kt_db.repositories.write_seeds import WriteSeedRepository
-    from kt_api.dependencies import get_write_session_factory_cached
     from kt_hatchet.models import BuildNodeInput
     from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
 
@@ -883,6 +908,7 @@ async def validate_perspective_pair(
         )
 
         import json
+
         # Try to parse JSON from response
         text = response.strip()
         # Handle potential markdown code fences
@@ -923,8 +949,8 @@ async def quick_add_perspective(
 
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
 
-    from kt_models.embeddings import EmbeddingService
     from kt_config.types import ALL_PERSPECTIVES_ID
+    from kt_models.embeddings import EmbeddingService
 
     settings = get_settings()
     embedding_service = EmbeddingService() if settings.openrouter_api_key else None
@@ -937,9 +963,7 @@ async def quick_add_perspective(
             parent_id = parent_nodes[0].id
 
     # Create thesis
-    thesis_embedding = (
-        await embedding_service.embed_text(body.thesis) if embedding_service else None
-    )
+    thesis_embedding = await embedding_service.embed_text(body.thesis) if embedding_service else None
     thesis_node = await engine.create_node(
         concept=body.thesis,
         embedding=thesis_embedding,
@@ -950,9 +974,7 @@ async def quick_add_perspective(
     )
 
     # Create antithesis
-    anti_embedding = (
-        await embedding_service.embed_text(body.antithesis) if embedding_service else None
-    )
+    anti_embedding = await embedding_service.embed_text(body.antithesis) if embedding_service else None
     anti_node = await engine.create_node(
         concept=body.antithesis,
         embedding=anti_embedding,
@@ -981,9 +1003,7 @@ async def quick_add_perspective(
             anti_node.id,
             "contradicts",
             -0.7,
-            justification=(
-                f"Dialectic pair: thesis '{body.thesis}' vs antithesis '{body.antithesis}'"
-            ),
+            justification=(f"Dialectic pair: thesis '{body.thesis}' vs antithesis '{body.antithesis}'"),
         )
     except Exception:
         logger.warning("Failed to create contradicts edge", exc_info=True)
@@ -991,9 +1011,9 @@ async def quick_add_perspective(
     await session.commit()
 
     # Kick off full pipeline for both nodes via Hatchet
+    from kt_api.dependencies import get_write_session_factory_cached as _gwsf
     from kt_db.keys import make_seed_key as _msk
     from kt_db.repositories.write_seeds import WriteSeedRepository as _WSR
-    from kt_api.dependencies import get_write_session_factory_cached as _gwsf
     from kt_hatchet.models import BuildNodeInput
     from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
 
@@ -1101,10 +1121,7 @@ async def get_source_nodes(
 
     # Find draws_from edges where this node is the source (composite draws from base nodes)
     edges = await engine.get_edges(uid, direction="outgoing")
-    source_ids = [
-        e.target_node_id for e in edges
-        if e.relationship_type == "draws_from"
-    ]
+    source_ids = [e.target_node_id for e in edges if e.relationship_type == "draws_from"]
     if not source_ids:
         return []
 
@@ -1126,8 +1143,14 @@ async def get_source_nodes(
     seed_fact_count_map = await _batch_seed_fact_counts(source_nodes)
     return [
         _build_node_response(
-            n, parent_map, richness_map, cr_map, edge_count_map,
-            child_count_map, fact_count_map, seed_fact_count_map,
+            n,
+            parent_map,
+            richness_map,
+            cr_map,
+            edge_count_map,
+            child_count_map,
+            fact_count_map,
+            seed_fact_count_map,
         )
         for n in source_nodes
     ]

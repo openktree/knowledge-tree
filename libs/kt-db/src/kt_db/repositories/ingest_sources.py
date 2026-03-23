@@ -39,9 +39,7 @@ class IngestSourceRepository:
 
     async def get_by_id(self, source_id: uuid.UUID) -> IngestSource | None:
         """Get an ingest source by ID."""
-        result = await self._session.execute(
-            select(IngestSource).where(IngestSource.id == source_id)
-        )
+        result = await self._session.execute(select(IngestSource).where(IngestSource.id == source_id))
         return result.scalar_one_or_none()
 
     async def get_by_conversation(self, conversation_id: uuid.UUID) -> list[IngestSource]:
@@ -63,13 +61,9 @@ class IngestSourceRepository:
         values: dict[str, object] = {"status": status}
         if error is not None:
             values["error"] = error
-        await self._session.execute(
-            update(IngestSource).where(IngestSource.id == source_id).values(**values)
-        )
+        await self._session.execute(update(IngestSource).where(IngestSource.id == source_id).values(**values))
 
     async def update_fields(self, source_id: uuid.UUID, **kwargs: object) -> None:
         """Update arbitrary fields on an ingest source."""
         if kwargs:
-            await self._session.execute(
-                update(IngestSource).where(IngestSource.id == source_id).values(**kwargs)
-            )
+            await self._session.execute(update(IngestSource).where(IngestSource.id == source_id).values(**kwargs))

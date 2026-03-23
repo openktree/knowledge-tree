@@ -36,9 +36,7 @@ class OntologyProvider(ABC):
         ...
 
     @abstractmethod
-    async def get_ancestry(
-        self, concept_name: str, node_type: str
-    ) -> AncestryChain | None:
+    async def get_ancestry(self, concept_name: str, node_type: str) -> AncestryChain | None:
         """Return an ancestry chain for the given concept, or None if not found."""
         ...
 

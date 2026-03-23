@@ -6,10 +6,9 @@ import yaml
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
+    DotEnvSettingsSource,
     PydanticBaseSettingsSource,
 )
-from pydantic_settings import DotEnvSettingsSource
-
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
@@ -34,198 +33,246 @@ def _register(section: str, fields: dict[str, str]) -> None:
 
 
 # ---- Infrastructure --------------------------------------------------------
-_register("infrastructure", {
-    "database_url":           "database_url",
-    "db_pool_size":           "db_pool_size",
-    "db_max_overflow":        "db_max_overflow",
-    "db_pool_timeout":        "db_pool_timeout",
-    "write_database_url":     "write_database_url",
-    "write_db_pool_size":     "write_db_pool_size",
-    "write_db_max_overflow":  "write_db_max_overflow",
-    "write_db_pool_timeout":  "write_db_pool_timeout",
-    "qdrant_url":             "qdrant_url",
-    "redis_url":              "redis_url",
-    "sync_interval_seconds":  "sync_interval_seconds",
-    "sync_batch_size":        "sync_batch_size",
-    "sync_max_retries":       "sync_max_retries",
-    "sync_retry_base_seconds": "sync_retry_base_seconds",
-    "log_level":              "log_level",
-    "pipeline_concurrency":   "pipeline_concurrency",
-})
+_register(
+    "infrastructure",
+    {
+        "database_url": "database_url",
+        "db_pool_size": "db_pool_size",
+        "db_max_overflow": "db_max_overflow",
+        "db_pool_timeout": "db_pool_timeout",
+        "write_database_url": "write_database_url",
+        "write_db_pool_size": "write_db_pool_size",
+        "write_db_max_overflow": "write_db_max_overflow",
+        "write_db_pool_timeout": "write_db_pool_timeout",
+        "qdrant_url": "qdrant_url",
+        "redis_url": "redis_url",
+        "sync_interval_seconds": "sync_interval_seconds",
+        "sync_batch_size": "sync_batch_size",
+        "sync_max_retries": "sync_max_retries",
+        "sync_retry_base_seconds": "sync_retry_base_seconds",
+        "log_level": "log_level",
+        "pipeline_concurrency": "pipeline_concurrency",
+    },
+)
 
 # ---- Auth ------------------------------------------------------------------
-_register("auth", {
-    "jwt_secret_key":              "jwt_secret_key",
-    "access_token_expire_minutes": "access_token_expire_minutes",
-    "refresh_token_expire_days":   "refresh_token_expire_days",
-    "skip_auth":                   "skip_auth",
-    "google_oauth_client_id":      "google_oauth_client_id",
-    "google_oauth_client_secret":  "google_oauth_client_secret",
-    "byok_encryption_key":         "byok_encryption_key",
-})
+_register(
+    "auth",
+    {
+        "jwt_secret_key": "jwt_secret_key",
+        "access_token_expire_minutes": "access_token_expire_minutes",
+        "refresh_token_expire_days": "refresh_token_expire_days",
+        "skip_auth": "skip_auth",
+        "google_oauth_client_id": "google_oauth_client_id",
+        "google_oauth_client_secret": "google_oauth_client_secret",
+        "byok_encryption_key": "byok_encryption_key",
+    },
+)
 
 # ---- API keys (secrets — prefer .env) --------------------------------------
-_register("api_keys", {
-    "openrouter_api_key": "openrouter",
-    "brave_key":          "brave",
-    "serper_key":         "serper",
-    "openai_api_key":     "openai",
-})
+_register(
+    "api_keys",
+    {
+        "openrouter_api_key": "openrouter",
+        "brave_key": "brave",
+        "serper_key": "serper",
+        "openai_api_key": "openai",
+    },
+)
 
 # ---- Models ----------------------------------------------------------------
-_register("models", {
-    "default_model":          "default",
-    "default_thinking_level": "default_thinking_level",
-    "enable_secondary_models": "enable_secondary_models",
-})
+_register(
+    "models",
+    {
+        "default_model": "default",
+        "default_thinking_level": "default_thinking_level",
+        "enable_secondary_models": "enable_secondary_models",
+    },
+)
 
 # ---- Embeddings ------------------------------------------------------------
-_register("embeddings", {
-    "embedding_model":            "model",
-    "embedding_dimensions":       "dimensions",
-    "embedding_timeout":          "timeout",
-    "embedding_batch_chunk_size": "batch_chunk_size",
-})
+_register(
+    "embeddings",
+    {
+        "embedding_model": "model",
+        "embedding_dimensions": "dimensions",
+        "embedding_timeout": "timeout",
+        "embedding_batch_chunk_size": "batch_chunk_size",
+    },
+)
 
 # ---- Search ----------------------------------------------------------------
-_register("search", {
-    "default_search_provider":   "provider",
-    "enable_full_text_fetch":    "enable_full_text_fetch",
-    "full_text_fetch_max_urls":  "full_text_fetch_max_urls",
-    "full_text_fetch_timeout":   "full_text_fetch_timeout",
-    "page_stale_days":           "page_stale_days",
-    "page_fetch_max_extra_pages": "page_fetch_max_extra_pages",
-    "full_text_fetch_per_budget_point": "full_text_fetch_per_budget_point",
-    "fetch_guarantee_max_rounds": "fetch_guarantee_max_rounds",
-})
+_register(
+    "search",
+    {
+        "default_search_provider": "provider",
+        "enable_full_text_fetch": "enable_full_text_fetch",
+        "full_text_fetch_max_urls": "full_text_fetch_max_urls",
+        "full_text_fetch_timeout": "full_text_fetch_timeout",
+        "page_stale_days": "page_stale_days",
+        "page_fetch_max_extra_pages": "page_fetch_max_extra_pages",
+        "full_text_fetch_per_budget_point": "full_text_fetch_per_budget_point",
+        "fetch_guarantee_max_rounds": "fetch_guarantee_max_rounds",
+    },
+)
 
 # ---- Orchestrator ----------------------------------------------------------
-_register("orchestrator", {
-    "orchestrator_model":              "model",
-    "orchestrator_thinking_level":     "thinking_level",
-    "scope_model":                     "scope_model",
-    "scope_thinking_level":            "scope_thinking_level",
-    "agent_select_model":              "agent_select_model",
-    "agent_select_thinking_level":     "agent_select_thinking_level",
-    "agent_select_concurrency":        "agent_select_concurrency",
-    "prioritization_model":            "prioritization_model",
-    "default_nav_budget":              "nav_budget",
-    "default_explore_budget":          "explore_budget",
-    "default_wave_count":              "wave_count",
-    "enable_semantic_expansion":       "enable_semantic_expansion",
-    "semantic_expansion_max_terms":    "semantic_expansion_max_terms",
-    "semantic_expansion_fact_threshold": "semantic_expansion_fact_threshold",
-    "agent_inactivity_timeout_seconds": "inactivity_timeout_seconds",
-    "scope_timeout_seconds":           "scope_timeout_seconds",
-    "hatchet_execution_timeout_minutes": "hatchet_execution_timeout_minutes",
-    "hatchet_schedule_timeout_minutes": "hatchet_schedule_timeout_minutes",
-    "use_hatchet":                     "use_hatchet",
-})
+_register(
+    "orchestrator",
+    {
+        "orchestrator_model": "model",
+        "orchestrator_thinking_level": "thinking_level",
+        "scope_model": "scope_model",
+        "scope_thinking_level": "scope_thinking_level",
+        "agent_select_model": "agent_select_model",
+        "agent_select_thinking_level": "agent_select_thinking_level",
+        "agent_select_concurrency": "agent_select_concurrency",
+        "prioritization_model": "prioritization_model",
+        "default_nav_budget": "nav_budget",
+        "default_explore_budget": "explore_budget",
+        "default_wave_count": "wave_count",
+        "enable_semantic_expansion": "enable_semantic_expansion",
+        "semantic_expansion_max_terms": "semantic_expansion_max_terms",
+        "semantic_expansion_fact_threshold": "semantic_expansion_fact_threshold",
+        "agent_inactivity_timeout_seconds": "inactivity_timeout_seconds",
+        "scope_timeout_seconds": "scope_timeout_seconds",
+        "hatchet_execution_timeout_minutes": "hatchet_execution_timeout_minutes",
+        "hatchet_schedule_timeout_minutes": "hatchet_schedule_timeout_minutes",
+        "use_hatchet": "use_hatchet",
+    },
+)
 
 # ---- Decomposition ---------------------------------------------------------
-_register("decomposition", {
-    "decomposition_model":               "model",
-    "decomposition_thinking_level":      "thinking_level",
-    "file_decomposition_model":          "file_model",
-    "file_decomposition_thinking_level": "file_thinking_level",
-    "entity_extraction_model":           "entity_extraction_model",
-    "entity_extraction_thinking_level":  "entity_extraction_thinking_level",
-    "entity_extraction_batch_size":      "entity_extraction_batch_size",
-    "entity_extraction_concurrency":     "entity_extraction_concurrency",
-    "fact_pool_threshold":               "fact_pool_threshold",
-    "default_max_content_tokens":        "max_content_tokens",
-    "default_stale_after_days":          "stale_after_days",
-    "llm_call_timeout_seconds":          "llm_call_timeout_seconds",
-    "super_source_token_threshold":      "super_source_token_threshold",
-    "super_source_page_threshold":       "super_source_page_threshold",
-})
+_register(
+    "decomposition",
+    {
+        "decomposition_model": "model",
+        "decomposition_thinking_level": "thinking_level",
+        "file_decomposition_model": "file_model",
+        "file_decomposition_thinking_level": "file_thinking_level",
+        "entity_extraction_model": "entity_extraction_model",
+        "entity_extraction_thinking_level": "entity_extraction_thinking_level",
+        "entity_extraction_batch_size": "entity_extraction_batch_size",
+        "entity_extraction_concurrency": "entity_extraction_concurrency",
+        "fact_pool_threshold": "fact_pool_threshold",
+        "default_max_content_tokens": "max_content_tokens",
+        "default_stale_after_days": "stale_after_days",
+        "llm_call_timeout_seconds": "llm_call_timeout_seconds",
+        "super_source_token_threshold": "super_source_token_threshold",
+        "super_source_page_threshold": "super_source_page_threshold",
+    },
+)
 
 # ---- Synthesis -------------------------------------------------------------
-_register("synthesis", {
-    "synthesis_model":          "model",
-    "synthesis_thinking_level": "thinking_level",
-    "chat_model":               "chat_model",
-    "chat_thinking_level":      "chat_thinking_level",
-    "query_agent_model":        "query_agent_model",
-})
+_register(
+    "synthesis",
+    {
+        "synthesis_model": "model",
+        "synthesis_thinking_level": "thinking_level",
+        "chat_model": "chat_model",
+        "chat_thinking_level": "chat_thinking_level",
+        "query_agent_model": "query_agent_model",
+    },
+)
 
 # ---- Node pipeline ---------------------------------------------------------
-_register("node_pipeline", {
-    "dimension_model":           "dimension_model",
-    "dimension_thinking_level":  "dimension_thinking_level",
-    "dimension_fact_limit":      "dimension_fact_limit",
-    "dimension_saturation_ratio": "dimension_saturation_ratio",
-    "dimension_pool_multiplier": "dimension_pool_multiplier",
-    "definition_model":          "definition_model",
-    "definition_thinking_level": "definition_thinking_level",
-})
+_register(
+    "node_pipeline",
+    {
+        "dimension_model": "dimension_model",
+        "dimension_thinking_level": "dimension_thinking_level",
+        "dimension_fact_limit": "dimension_fact_limit",
+        "dimension_saturation_ratio": "dimension_saturation_ratio",
+        "dimension_pool_multiplier": "dimension_pool_multiplier",
+        "definition_model": "definition_model",
+        "definition_thinking_level": "definition_thinking_level",
+    },
+)
 
 # ---- Edges -----------------------------------------------------------------
-_register("edges", {
-    "edge_resolution_model":         "resolution_model",
-    "edge_resolution_thinking_level": "resolution_thinking_level",
-    "relation_dedup_threshold":      "relation_dedup_threshold",
-    "edge_staleness_days":           "staleness_days",
-    "edge_classification_batch_size": "classification_batch_size",
-    "edge_facts_per_type_cap":       "facts_per_type_cap",
-    "edge_facts_per_candidate_cap":  "facts_per_candidate_cap",
-    "parent_selection_model":        "parent_selection_model",
-    "parent_selection_thinking_level": "parent_selection_thinking_level",
-})
+_register(
+    "edges",
+    {
+        "edge_resolution_model": "resolution_model",
+        "edge_resolution_thinking_level": "resolution_thinking_level",
+        "relation_dedup_threshold": "relation_dedup_threshold",
+        "edge_staleness_days": "staleness_days",
+        "edge_classification_batch_size": "classification_batch_size",
+        "edge_facts_per_type_cap": "facts_per_type_cap",
+        "edge_facts_per_candidate_cap": "facts_per_candidate_cap",
+        "parent_selection_model": "parent_selection_model",
+        "parent_selection_thinking_level": "parent_selection_thinking_level",
+    },
+)
 
 # ---- Ontology --------------------------------------------------------------
-_register("ontology", {
-    "ontology_model":                   "model",
-    "ontology_cache_ttl":               "cache_ttl",
-    "enable_ontology_ancestry":         "enable_ancestry",
-    "ontology_similarity_threshold":    "similarity_threshold",
-    "wikidata_user_agent":              "wikidata_user_agent",
-    "crystallization_child_threshold":  "crystallization_child_threshold",
-    "crystallization_child_change_ratio": "crystallization_child_change_ratio",
-    "crystallization_model":            "crystallization_model",
-    "crystallization_thinking_level":   "crystallization_thinking_level",
-})
+_register(
+    "ontology",
+    {
+        "ontology_model": "model",
+        "ontology_cache_ttl": "cache_ttl",
+        "enable_ontology_ancestry": "enable_ancestry",
+        "ontology_similarity_threshold": "similarity_threshold",
+        "wikidata_user_agent": "wikidata_user_agent",
+        "crystallization_child_threshold": "crystallization_child_threshold",
+        "crystallization_child_change_ratio": "crystallization_child_change_ratio",
+        "crystallization_model": "crystallization_model",
+        "crystallization_thinking_level": "crystallization_thinking_level",
+    },
+)
 
 # ---- Ingest ----------------------------------------------------------------
-_register("ingest", {
-    "ingest_upload_dir":              "upload_dir",
-    "ingest_max_file_size_mb":        "max_file_size_mb",
-    "ingest_short_content_threshold": "short_content_threshold",
-    "import_cleanup_batch_size":      "import_cleanup_batch_size",
-})
+_register(
+    "ingest",
+    {
+        "ingest_upload_dir": "upload_dir",
+        "ingest_max_file_size_mb": "max_file_size_mb",
+        "ingest_short_content_threshold": "short_content_threshold",
+        "import_cleanup_batch_size": "import_cleanup_batch_size",
+    },
+)
 
 # ---- Graph building (automated, no LLM) ------------------------------------
-_register("graph_building", {
-    "graph_build_auto_promote_min_facts":       "auto_promote_min_facts",
-    "graph_build_edge_min_shared_facts":         "edge_min_shared_facts",
-    "graph_build_batch_size":                    "batch_size",
-    "graph_build_auto_recalculate_min_new_facts": "auto_recalculate_min_new_facts",
-    "graph_build_auto_recalculate_batch_size":    "auto_recalculate_batch_size",
-})
+_register(
+    "graph_building",
+    {
+        "graph_build_auto_promote_min_facts": "auto_promote_min_facts",
+        "graph_build_edge_min_shared_facts": "edge_min_shared_facts",
+        "graph_build_batch_size": "batch_size",
+        "graph_build_auto_recalculate_min_new_facts": "auto_recalculate_min_new_facts",
+        "graph_build_auto_recalculate_batch_size": "auto_recalculate_batch_size",
+    },
+)
 
 # ---- On-demand enrichment --------------------------------------------------
-_register("enrichment", {
-    "enrichment_min_facts_for_dimensions":         "min_facts_for_dimensions",
-    "enrichment_access_count_trigger":              "access_count_trigger",
-    "enrichment_dimension_sample_size":             "dimension_sample_size",
-    "enrichment_edge_justification_sample_size":    "edge_justification_sample_size",
-})
+_register(
+    "enrichment",
+    {
+        "enrichment_min_facts_for_dimensions": "min_facts_for_dimensions",
+        "enrichment_access_count_trigger": "access_count_trigger",
+        "enrichment_dimension_sample_size": "dimension_sample_size",
+        "enrichment_edge_justification_sample_size": "edge_justification_sample_size",
+    },
+)
 
 # ---- Seeds -----------------------------------------------------------------
-_register("seeds", {
-    "seed_dedup_embedding_threshold":       "dedup_embedding_threshold",
-    "seed_dedup_trigram_threshold":          "dedup_trigram_threshold",
-    "seed_disambiguation_fact_threshold":    "disambiguation_fact_threshold",
-    "seed_disambiguation_cluster_threshold": "disambiguation_cluster_threshold",
-    "seed_promotion_min_facts":             "promotion_min_facts",
-    "seed_routing_embedding_threshold":     "routing_embedding_threshold",
-    "seed_routing_llm_ambiguity_margin":    "routing_llm_ambiguity_margin",
-    "seed_phonetic_trigram_threshold":       "phonetic_trigram_threshold",
-    "seed_dedup_typo_floor":                "dedup_typo_floor",
-    "seed_re_embed_thresholds":             "re_embed_thresholds",
-    "seed_dedup_auto_merge_threshold":      "dedup_auto_merge_threshold",
-    "seed_dedup_llm_model":                 "dedup_llm_model",
-})
+_register(
+    "seeds",
+    {
+        "seed_dedup_embedding_threshold": "dedup_embedding_threshold",
+        "seed_dedup_trigram_threshold": "dedup_trigram_threshold",
+        "seed_disambiguation_fact_threshold": "disambiguation_fact_threshold",
+        "seed_disambiguation_cluster_threshold": "disambiguation_cluster_threshold",
+        "seed_promotion_min_facts": "promotion_min_facts",
+        "seed_routing_embedding_threshold": "routing_embedding_threshold",
+        "seed_routing_llm_ambiguity_margin": "routing_llm_ambiguity_margin",
+        "seed_phonetic_trigram_threshold": "phonetic_trigram_threshold",
+        "seed_dedup_typo_floor": "dedup_typo_floor",
+        "seed_re_embed_thresholds": "re_embed_thresholds",
+        "seed_dedup_auto_merge_threshold": "dedup_auto_merge_threshold",
+        "seed_dedup_llm_model": "dedup_llm_model",
+    },
+)
 
 
 class YamlSettingsSource(PydanticBaseSettingsSource):
@@ -268,9 +315,7 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
                     resolved[field_name] = value
         return resolved
 
-    def get_field_value(
-        self, field: FieldInfo, field_name: str
-    ) -> tuple[Any, str, bool]:
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
         val = self._yaml_data.get(field_name)
         return val, field_name, self.field_is_complex(field)
 

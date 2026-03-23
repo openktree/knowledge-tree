@@ -47,20 +47,25 @@ def main() -> None:
         ingest_partition_wf,
     )
     from kt_worker_nodes.workflows.auto_build import auto_build_task
-    from kt_worker_nodes.workflows.enrich_node import enrich_edge_task, enrich_node_task
     from kt_worker_nodes.workflows.composite import (
         build_composite_task,
         regenerate_composite_task,
     )
+    from kt_worker_nodes.workflows.enrich_node import enrich_edge_task, enrich_node_task
     from kt_worker_nodes.workflows.node_pipeline import (
         crystallize_task,
         edge_task,
         node_pipeline_wf,
         recalculate_task,
     )
-    from kt_worker_orchestrator.bottom_up import agent_select_wf, bottom_up_wf, bottom_up_scope_wf, bottom_up_prepare_scope_wf, bottom_up_prepare_wf
+    from kt_worker_orchestrator.bottom_up import (
+        agent_select_wf,
+        bottom_up_prepare_scope_wf,
+        bottom_up_prepare_wf,
+        bottom_up_scope_wf,
+        bottom_up_wf,
+    )
     from kt_worker_query.workflows.query import query_wf
-    from kt_worker_sync.workflows.sync import sync_wf
     from kt_worker_search.workflows.decompose import (
         decompose_source_task,
         decompose_sources_wf,
@@ -73,6 +78,7 @@ def main() -> None:
         search_wf,
     )
     from kt_worker_search.workflows.seed_dedup import seed_dedup_task
+    from kt_worker_sync.workflows.sync import sync_wf
 
     hatchet = get_hatchet()
     worker = hatchet.worker(

@@ -4,8 +4,8 @@ Revision ID: w022
 Revises: w021
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "w022"
 down_revision = "w021"

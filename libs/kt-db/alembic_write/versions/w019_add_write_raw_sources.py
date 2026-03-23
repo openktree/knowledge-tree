@@ -11,8 +11,8 @@ Revises: w018
 revision = "w019"
 down_revision = "w018"
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 

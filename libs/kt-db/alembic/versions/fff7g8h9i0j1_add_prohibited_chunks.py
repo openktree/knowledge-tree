@@ -5,8 +5,8 @@ Revises: eee6f7g8h9i0
 Create Date: 2026-03-17
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "fff7g8h9i0j1"
@@ -19,7 +19,9 @@ def upgrade() -> None:
     op.create_table(
         "prohibited_chunks",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("raw_source_id", UUID(as_uuid=True), sa.ForeignKey("raw_sources.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "raw_source_id", UUID(as_uuid=True), sa.ForeignKey("raw_sources.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("chunk_text", sa.Text, nullable=False),
         sa.Column("model_id", sa.String(200), nullable=False),
         sa.Column("fallback_model_id", sa.String(200), nullable=True),

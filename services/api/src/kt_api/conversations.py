@@ -37,14 +37,21 @@ router = APIRouter(prefix="/api/v1", tags=["conversations"])
 
 
 # Task display names that map to pipeline scopes (top-level scope tasks only)
-_SCOPE_TASKS = frozenset({
-    "synthesize", "resynthesize",
-    "handle_follow_up", "handle_ingest", "handle_query",
-    "bottom_up_orchestrate", "bottom_up_scope",
-    "bottom_up_prepare_scope", "bottom_up_prepare",
-    "node_pipeline", "build_composite",
-})
-
+_SCOPE_TASKS = frozenset(
+    {
+        "synthesize",
+        "resynthesize",
+        "handle_follow_up",
+        "handle_ingest",
+        "handle_query",
+        "bottom_up_orchestrate",
+        "bottom_up_scope",
+        "bottom_up_prepare_scope",
+        "bottom_up_prepare",
+        "node_pipeline",
+        "build_composite",
+    }
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -131,10 +138,12 @@ async def create_conversation(
 
     from hatchet_sdk import TriggerWorkflowOptions
 
-    wf_options = TriggerWorkflowOptions(additional_metadata={
-        "conversation_id": str(conv.id),
-        "message_id": str(assistant_msg.id),
-    })
+    wf_options = TriggerWorkflowOptions(
+        additional_metadata={
+            "conversation_id": str(conv.id),
+            "message_id": str(assistant_msg.id),
+        }
+    )
 
     from kt_hatchet.models import QueryInput
     from kt_worker_query.workflows.query import query_wf
@@ -171,14 +180,16 @@ async def list_conversations(
     items: list[ConversationListItem] = []
     for conv in conversations:
         msg_count = await repo.get_message_count(conv.id)
-        items.append(ConversationListItem(
-            id=str(conv.id),
-            title=conv.title,
-            mode=getattr(conv, "mode", "research"),
-            message_count=msg_count,
-            created_at=conv.created_at,
-            updated_at=conv.updated_at,
-        ))
+        items.append(
+            ConversationListItem(
+                id=str(conv.id),
+                title=conv.title,
+                mode=getattr(conv, "mode", "research"),
+                message_count=msg_count,
+                created_at=conv.created_at,
+                updated_at=conv.updated_at,
+            )
+        )
 
     return PaginatedConversationsResponse(
         items=items,
@@ -316,6 +327,7 @@ async def send_message(
     original_query = conv.title or ""
 
     from hatchet_sdk import TriggerWorkflowOptions
+
     from kt_hatchet.models import FollowUpInput
     from kt_worker_conv.workflows.conversations import follow_up_wf
 
@@ -331,10 +343,12 @@ async def send_message(
             message_id=str(assistant_msg.id),
             api_key=api_key,
         ),
-        options=TriggerWorkflowOptions(additional_metadata={
-            "conversation_id": str(conv_uuid),
-            "message_id": str(assistant_msg.id),
-        }),
+        options=TriggerWorkflowOptions(
+            additional_metadata={
+                "conversation_id": str(conv_uuid),
+                "message_id": str(assistant_msg.id),
+            }
+        ),
     )
     await repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
     await session.commit()
@@ -393,6 +407,7 @@ async def resynthesize_message(
 
     try:
         from hatchet_sdk import TriggerWorkflowOptions
+
         from kt_hatchet.models import ResynthesizeInput
         from kt_worker_conv.workflows.conversations import resynthesize_task
 
@@ -404,10 +419,12 @@ async def resynthesize_message(
                 message_id=str(msg_uuid),
                 api_key=api_key,
             ),
-            options=TriggerWorkflowOptions(additional_metadata={
-                "conversation_id": str(conv_uuid),
-                "message_id": str(msg_uuid),
-            }),
+            options=TriggerWorkflowOptions(
+                additional_metadata={
+                    "conversation_id": str(conv_uuid),
+                    "message_id": str(msg_uuid),
+                }
+            ),
         )
         await repo.update_message(msg_uuid, workflow_run_id=ref.workflow_run_id)
         await session.commit()
@@ -501,11 +518,7 @@ async def get_pipeline_snapshot(
             limit=200,
         )
         rows = getattr(run_list, "rows", run_list) if not isinstance(run_list, list) else run_list
-        tasks = [
-            _task_summary_to_item(t)
-            for t in rows
-            if _bare_name(t.display_name or "") in _SCOPE_TASKS
-        ]
+        tasks = [_task_summary_to_item(t) for t in rows if _bare_name(t.display_name or "") in _SCOPE_TASKS]
         # Sort by start time so the pipeline view is in execution order
         tasks.sort(key=lambda t: t.started_at or "")
     except Exception:
@@ -602,11 +615,7 @@ async def get_message_progress(
                 limit=200,
             )
             rows = getattr(run_list, "rows", run_list) if not isinstance(run_list, list) else run_list
-            tasks = [
-                _task_summary_to_item(t)
-                for t in rows
-                if _bare_name(t.display_name or "") in _SCOPE_TASKS
-            ]
+            tasks = [_task_summary_to_item(t) for t in rows if _bare_name(t.display_name or "") in _SCOPE_TASKS]
             tasks.sort(key=lambda t: t.started_at or "")
         except Exception:
             logger.warning("Failed to fetch pipeline tasks for message %s", message_id, exc_info=True)

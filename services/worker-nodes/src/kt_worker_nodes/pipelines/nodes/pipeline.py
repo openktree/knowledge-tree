@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 from typing import Any
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_agents_core.state import AgentContext
 from kt_config.settings import get_settings
 from kt_db.models import Fact
 from kt_facts.pipeline import DecompositionPipeline
+from kt_providers.search_and_fetch import search_and_store
 from kt_worker_nodes.pipelines.building.helpers import (
     collect_suggested_concepts,
     dedup_on_refresh,
@@ -23,7 +22,7 @@ from kt_worker_nodes.pipelines.building.helpers import (
 )
 from kt_worker_nodes.pipelines.nodes.enrichment import PoolEnricher
 from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
-from kt_providers.search_and_fetch import search_and_store
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -123,12 +122,14 @@ class NodeCreationPipeline:
             actions[t.action] = actions.get(t.action, 0) + 1
         node_details: list[dict[str, Any]] = []
         for t in active_tasks[:10]:
-            node_details.append({
-                "name": t.name,
-                "type": t.node_type,
-                "action": t.action,
-                "pool_facts": len(t.pool_facts),
-            })
+            node_details.append(
+                {
+                    "name": t.name,
+                    "type": t.node_type,
+                    "action": t.action,
+                    "pool_facts": len(t.pool_facts),
+                }
+            )
         return {
             "actions": actions,
             "external_searches": sum(1 for t in active_tasks if t.explore_charged),
@@ -149,7 +150,10 @@ class NodeCreationPipeline:
         # SQL so LIMIT isn't consumed by irrelevant types.
         type_filter = None if task.is_concept else task.node_type
         existing = await ctx.graph_engine.search_nodes_by_trigram(
-            task.name, threshold=0.3, limit=5, node_type=type_filter,
+            task.name,
+            threshold=0.3,
+            limit=5,
+            node_type=type_filter,
         )
 
         if not existing and task.embedding:
@@ -219,6 +223,7 @@ class NodeCreationPipeline:
                 if seed is not None and seed.status == "promoted" and seed.promoted_node_key:
                     # Seed already promoted → enrich the existing node
                     from kt_db.keys import key_to_uuid
+
                     node_uuid = key_to_uuid(seed.promoted_node_key)
                     existing = await ctx.graph_engine.get_node_by_id(node_uuid)
                     if existing:
@@ -231,7 +236,11 @@ class NodeCreationPipeline:
                         state.exploration_path.append(task.name)
                         return
 
-                if seed is not None and seed.status in ("active", "ambiguous") and seed.fact_count >= settings.seed_promotion_min_facts:
+                if (
+                    seed is not None
+                    and seed.status in ("active", "ambiguous")
+                    and seed.fact_count >= settings.seed_promotion_min_facts
+                ):
                     # Load facts from seed (aggregate descendants for ambiguous)
                     if seed.status == "ambiguous":
                         seed_fact_ids = await seed_repo.get_all_descendant_facts(task.seed_key)
@@ -240,9 +249,9 @@ class NodeCreationPipeline:
                         if routes:
                             child_names = [r.label for r in routes]
                             task.seed_context = (
-                                f'This concept encompasses multiple distinct senses: '
-                                f'{", ".join(child_names)}. '
-                                f'Facts below are aggregated from all senses.'
+                                f"This concept encompasses multiple distinct senses: "
+                                f"{', '.join(child_names)}. "
+                                f"Facts below are aggregated from all senses."
                             )
                     else:
                         seed_fact_ids = await seed_repo.get_facts_for_seed(task.seed_key)
@@ -250,16 +259,16 @@ class NodeCreationPipeline:
                         meta = seed.metadata_ or {}
                         aliases = meta.get("aliases", [])
                         if aliases:
-                            task.seed_context = (
-                                f'Also known as: {", ".join(aliases)}.'
-                            )
+                            task.seed_context = f"Also known as: {', '.join(aliases)}."
                     if seed_fact_ids:
                         seed_facts = await ctx.graph_engine.get_facts_by_ids(seed_fact_ids)
                         if seed_facts:
                             task.pool_facts = seed_facts
                             logger.info(
                                 "Seed '%s' (%s) has %d facts — promoting without external search",
-                                task.name, seed.status, len(seed_facts),
+                                task.name,
+                                seed.status,
+                                len(seed_facts),
                             )
                             return
             except Exception:
@@ -301,10 +310,7 @@ class NodeCreationPipeline:
             Metrics dict with enrichment counts and per-node detail.
         """
         ctx = self._ctx
-        enrich_tasks = [
-            t for t in tasks
-            if t.action == "enrich" and t.existing_node is not None and not t.result
-        ]
+        enrich_tasks = [t for t in tasks if t.action == "enrich" and t.existing_node is not None and not t.result]
         if not enrich_tasks:
             return {"node_count": 0, "total_new_facts_linked": 0, "dimensions_regenerated": 0, "nodes": []}
 
@@ -337,11 +343,13 @@ class NodeCreationPipeline:
                 if dims_regen:
                     dims_regen_count += 1
                 if len(node_details) < 10:
-                    node_details.append({
-                        "name": t.name,
-                        "new_facts_linked": new_linked,
-                        "dimensions_regenerated": bool(dims_regen),
-                    })
+                    node_details.append(
+                        {
+                            "name": t.name,
+                            "new_facts_linked": new_linked,
+                            "dimensions_regenerated": bool(dims_regen),
+                        }
+                    )
             except Exception:
                 logger.exception("Error enriching node '%s'", t.name)
                 # Fall back to a read result so the task isn't left without a result
@@ -414,7 +422,9 @@ class NodeCreationPipeline:
                     # t.node was absorbed into an existing node — redirect to survivor
                     logger.info(
                         "create_batch: node '%s' absorbed into existing '%s' (%s)",
-                        t.name, survivor.concept, survivor.id,
+                        t.name,
+                        survivor.concept,
+                        survivor.id,
                     )
                     t.node = survivor
             except Exception:
@@ -426,12 +436,14 @@ class NodeCreationPipeline:
         node_details: list[dict[str, Any]] = []
         for t in tasks:
             if t.node is not None and t.action in ("create", "refresh") and len(node_details) < 10:
-                node_details.append({
-                    "name": t.name,
-                    "type": t.node_type,
-                    "action": t.action,
-                    "fact_count": len(t.pool_facts),
-                })
+                node_details.append(
+                    {
+                        "name": t.name,
+                        "type": t.node_type,
+                        "action": t.action,
+                        "fact_count": len(t.pool_facts),
+                    }
+                )
         return {"created": created_count, "refreshed": refreshed_count, "nodes": node_details}
 
     async def _handle_refresh(
@@ -543,15 +555,16 @@ class NodeCreationPipeline:
                         await ctx.graph_engine.link_fact_to_node(node.id, fact.id)
                     logger.info(
                         "Refresh: linked %d descendant seed facts for ambiguous '%s'",
-                        len(seed_facts), t.name,
+                        len(seed_facts),
+                        t.name,
                     )
                 routes = await seed_repo.get_routes_for_parent(t.seed_key)
                 if routes:
                     child_names = [r.label for r in routes]
                     t.seed_context = (
-                        f'This concept encompasses multiple distinct senses: '
-                        f'{", ".join(child_names)}. '
-                        f'Facts below are aggregated from all senses.'
+                        f"This concept encompasses multiple distinct senses: "
+                        f"{', '.join(child_names)}. "
+                        f"Facts below are aggregated from all senses."
                     )
                     extra_meta["seed_ambiguity"] = {
                         "is_disambiguated": False,
@@ -567,12 +580,13 @@ class NodeCreationPipeline:
                         await ctx.graph_engine.link_fact_to_node(node.id, fact.id)
                     logger.info(
                         "Refresh: linked %d seed facts for '%s'",
-                        len(seed_facts), t.name,
+                        len(seed_facts),
+                        t.name,
                     )
 
                 # Set alias-based seed context for dimension generation
                 if aliases:
-                    t.seed_context = f'Also known as: {", ".join(aliases)}.'
+                    t.seed_context = f"Also known as: {', '.join(aliases)}."
 
                 # Check if this seed is a disambiguated child
                 route = await seed_repo.get_route_for_child(t.seed_key)
@@ -592,10 +606,13 @@ class NodeCreationPipeline:
                     }
 
             if extra_meta:
-                await ctx.graph_engine.update_node(node.id, metadata_={
-                    **(node.metadata_ or {}),
-                    **extra_meta,
-                })
+                await ctx.graph_engine.update_node(
+                    node.id,
+                    metadata_={
+                        **(node.metadata_ or {}),
+                        **extra_meta,
+                    },
+                )
         except Exception:
             logger.debug("Seed metadata refresh failed for '%s'", t.name, exc_info=True)
 
@@ -670,10 +687,13 @@ class NodeCreationPipeline:
                     }
 
                 if extra_meta:
-                    await ctx.graph_engine.update_node(node.id, metadata_={
-                        **(node.metadata_ or {}),
-                        **extra_meta,
-                    })
+                    await ctx.graph_engine.update_node(
+                        node.id,
+                        metadata_={
+                            **(node.metadata_ or {}),
+                            **extra_meta,
+                        },
+                    )
             except Exception:
                 logger.debug("Seed promotion failed for '%s'", t.name, exc_info=True)
 

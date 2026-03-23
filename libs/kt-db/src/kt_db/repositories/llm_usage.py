@@ -104,18 +104,15 @@ class LlmUsageRepository:
     ) -> list[dict[str, Any]]:
         """SUM GROUP BY conversation_id, joining conversations for title."""
         date_filters = self._date_filters(since, until)
-        q = (
-            select(
-                LlmUsage.conversation_id,
-                Conversation.title,
-                func.sum(LlmUsage.prompt_tokens).label("prompt"),
-                func.sum(LlmUsage.completion_tokens).label("completion"),
-                func.sum(LlmUsage.cost_usd).label("cost"),
-                func.count(func.distinct(LlmUsage.message_id)).label("report_count"),
-                func.max(LlmUsage.created_at).label("last_at"),
-            )
-            .join(Conversation, LlmUsage.conversation_id == Conversation.id)
-        )
+        q = select(
+            LlmUsage.conversation_id,
+            Conversation.title,
+            func.sum(LlmUsage.prompt_tokens).label("prompt"),
+            func.sum(LlmUsage.completion_tokens).label("completion"),
+            func.sum(LlmUsage.cost_usd).label("cost"),
+            func.count(func.distinct(LlmUsage.message_id)).label("report_count"),
+            func.max(LlmUsage.created_at).label("last_at"),
+        ).join(Conversation, LlmUsage.conversation_id == Conversation.id)
         for f in date_filters:
             q = q.where(f)
         q = q.group_by(LlmUsage.conversation_id, Conversation.title)
@@ -136,7 +133,8 @@ class LlmUsageRepository:
         ]
 
     async def get_by_conversation(
-        self, conversation_id: uuid.UUID,
+        self,
+        conversation_id: uuid.UUID,
     ) -> dict[str, Any]:
         """SUM GROUP BY message_id for a single conversation."""
         msg_q = (
@@ -226,7 +224,8 @@ class LlmUsageRepository:
         ]
 
     async def get_message_breakdown(
-        self, message_id: uuid.UUID,
+        self,
+        message_id: uuid.UUID,
     ) -> dict[str, Any]:
         """Per task_type + per model_id for a single message."""
         by_task_q = (

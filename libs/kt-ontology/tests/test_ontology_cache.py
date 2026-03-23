@@ -8,7 +8,6 @@ import pytest
 from kt_ontology.base import AncestorEntry, AncestryChain
 from kt_ontology.cache import CachedOntologyProvider, _normalize_name
 
-
 # ── Normalization tests ──────────────────────────────────────────
 
 

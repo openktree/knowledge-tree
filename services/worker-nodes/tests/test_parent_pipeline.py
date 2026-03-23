@@ -8,10 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kt_agents_core.state import AgentContext
+from kt_config.types import DEFAULT_PARENTS
 from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
 from kt_worker_nodes.pipelines.parent.pipeline import ParentSelectionPipeline
-from kt_config.types import DEFAULT_PARENTS
-
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -119,7 +118,8 @@ async def test_no_edges_assigns_default_parent() -> None:
     await pipeline.select_parents_batch([task])
 
     ctx.graph_engine.set_parent.assert_awaited_once_with(
-        node.id, DEFAULT_PARENTS["concept"],
+        node.id,
+        DEFAULT_PARENTS["concept"],
     )
 
 
@@ -142,7 +142,8 @@ async def test_no_same_type_candidates_assigns_default() -> None:
     await pipeline.select_parents_batch([task])
 
     ctx.graph_engine.set_parent.assert_awaited_once_with(
-        node.id, DEFAULT_PARENTS["concept"],
+        node.id,
+        DEFAULT_PARENTS["concept"],
     )
 
 
@@ -190,7 +191,8 @@ async def test_null_choice_assigns_default() -> None:
     await pipeline.select_parents_batch([task])
 
     ctx.graph_engine.set_parent.assert_awaited_once_with(
-        node.id, DEFAULT_PARENTS["concept"],
+        node.id,
+        DEFAULT_PARENTS["concept"],
     )
 
 
@@ -214,7 +216,8 @@ async def test_out_of_range_choice_assigns_default() -> None:
     await pipeline.select_parents_batch([task])
 
     ctx.graph_engine.set_parent.assert_awaited_once_with(
-        node.id, DEFAULT_PARENTS["concept"],
+        node.id,
+        DEFAULT_PARENTS["concept"],
     )
 
 
@@ -409,7 +412,8 @@ async def test_system_prompt_contains_type_instruction() -> None:
     task = _make_task(node, node_type="event")
 
     candidate = _make_node(
-        concept="Battle of Normandy", node_type="event",
+        concept="Battle of Normandy",
+        node_type="event",
     )
     ctx.graph_engine.get_edges.return_value = [
         _make_edge(node.id, candidate.id, weight=0.8),

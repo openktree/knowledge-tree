@@ -111,13 +111,9 @@ class UsageAccumulator:
         }
 
 
-_usage_ctx: ContextVar[UsageAccumulator | None] = ContextVar(
-    "llm_usage_accumulator", default=None
-)
+_usage_ctx: ContextVar[UsageAccumulator | None] = ContextVar("llm_usage_accumulator", default=None)
 
-_task_label_ctx: ContextVar[str | None] = ContextVar(
-    "llm_usage_task_label", default=None
-)
+_task_label_ctx: ContextVar[str | None] = ContextVar("llm_usage_task_label", default=None)
 
 
 def start_usage_tracking() -> UsageAccumulator:

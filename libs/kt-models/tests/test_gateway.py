@@ -252,9 +252,7 @@ class TestGenerateJsonRetry:
         assert mock_acompletion.call_count == 5
 
     @patch("kt_models.gateway.acompletion")
-    async def test_logs_token_limit_cause(
-        self, mock_acompletion: AsyncMock, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_logs_token_limit_cause(self, mock_acompletion: AsyncMock, caplog: pytest.LogCaptureFixture) -> None:
         """Token limit cause is logged on retry."""
         truncated = _make_json_response('{"facts": [{"content": "par', finish_reason="length")
         valid = _make_json_response('{"facts": []}')
@@ -268,9 +266,7 @@ class TestGenerateJsonRetry:
         assert any("finish_reason='length'" in rec.message for rec in caplog.records)
 
     @patch("kt_models.gateway.acompletion")
-    async def test_logs_format_error_cause(
-        self, mock_acompletion: AsyncMock, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_logs_format_error_cause(self, mock_acompletion: AsyncMock, caplog: pytest.LogCaptureFixture) -> None:
         """Format error cause is logged on retry."""
         bad = _make_json_response("not json at all", finish_reason="stop")
         valid = _make_json_response('{"ok": true}')

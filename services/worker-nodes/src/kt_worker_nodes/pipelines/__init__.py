@@ -4,6 +4,7 @@ Provides OOP classes for building, enriching, and connecting nodes in the
 knowledge graph. Sub-pipelines handle nodes, edges, dimensions, and gathering.
 """
 
+from kt_worker_nodes.pipelines.batch import BatchPipeline, NodePipeline
 from kt_worker_nodes.pipelines.building import (
     NodeBuilder,
     UnifiedNodeBuilder,
@@ -28,7 +29,6 @@ from kt_worker_nodes.pipelines.models import (
     PerspectiveResult,
 )
 from kt_worker_nodes.pipelines.nodes import NodeCreationPipeline
-from kt_worker_nodes.pipelines.batch import BatchPipeline, NodePipeline
 
 __all__ = [
     "BatchPipeline",

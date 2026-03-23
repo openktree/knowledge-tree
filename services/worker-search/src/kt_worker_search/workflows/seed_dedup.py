@@ -48,21 +48,18 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
             # Batch-fetch all seeds, filter to active only
             unique_keys = list(dict.fromkeys(input.seed_keys))
             seeds_by_key = await repo.get_seeds_by_keys_batch(unique_keys)
-            active_seeds = [
-                (k, s) for k, s in seeds_by_key.items()
-                if s.status == "active"
-            ]
+            active_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "active"]
 
             # Build Qdrant seed repo — required for embedding dedup
             if state.qdrant_client is None:
-                raise RuntimeError(
-                    "Qdrant client is required for seed dedup but was not available on WorkerState"
-                )
+                raise RuntimeError("Qdrant client is required for seed dedup but was not available on WorkerState")
 
             from kt_qdrant.repositories.seeds import QdrantSeedRepository
+
             qdrant_seed_repo = QdrantSeedRepository(state.qdrant_client)
 
             from kt_db.repositories.write_facts import WriteFactRepository
+
             write_fact_repo = WriteFactRepository(session)
 
             for seed_key, seed in active_seeds:
@@ -86,7 +83,10 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
 
     logger.info(
         "seed_dedup_batch: processed=%d merges=%d errors=%d scope=%s",
-        processed, len(merges), errors, input.scope_id,
+        processed,
+        len(merges),
+        errors,
+        input.scope_id,
     )
 
     return SeedDedupBatchOutput(

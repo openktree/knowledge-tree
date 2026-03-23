@@ -11,11 +11,11 @@ import logging
 import uuid
 from typing import Any
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_agents_core.state import AgentContext
 from kt_config.settings import get_settings
 from kt_db.models import Fact
 from kt_facts.pipeline import DecompositionPipeline
+from kt_providers.search_and_fetch import search_and_store
 from kt_worker_nodes.pipelines.building.base import NodeBuilder
 from kt_worker_nodes.pipelines.building.helpers import (
     dedup_on_refresh,
@@ -26,7 +26,7 @@ from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
 from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
 from kt_worker_nodes.pipelines.nodes.enrichment import PoolEnricher
-from kt_providers.search_and_fetch import search_and_store
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -77,14 +77,20 @@ class UnifiedNodeBuilder(NodeBuilder):
         # filter in SQL so LIMIT isn't consumed by irrelevant types.
         type_filter = None if is_concept else node_type
         existing = await ctx.graph_engine.search_nodes_by_trigram(
-            name, threshold=0.3, limit=5, node_type=type_filter,
+            name,
+            threshold=0.3,
+            limit=5,
+            node_type=type_filter,
         )
 
         if not existing and ctx.embedding_service:
             try:
                 embedding = await ctx.embedding_service.embed_text(name)
                 similar = await ctx.graph_engine.find_similar_nodes(
-                    embedding, threshold=0.25, limit=5, node_type=type_filter,
+                    embedding,
+                    threshold=0.25,
+                    limit=5,
+                    node_type=type_filter,
                 )
                 if similar:
                     existing = similar

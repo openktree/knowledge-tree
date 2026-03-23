@@ -1,6 +1,6 @@
 """Tests for the WikidataOntologyProvider SPARQL response parsing."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -41,10 +41,11 @@ def _binding(
 class TestWikidataSearchItem:
     async def test_search_finds_qid(self) -> None:
         provider = WikidataOntologyProvider()
-        mock_response = _make_sparql_response([
-            _binding("item", "http://www.wikidata.org/entity/Q5294",
-                     "itemLabel", "sorting algorithm"),
-        ])
+        mock_response = _make_sparql_response(
+            [
+                _binding("item", "http://www.wikidata.org/entity/Q5294", "itemLabel", "sorting algorithm"),
+            ]
+        )
 
         provider._client = AsyncMock()
         provider._client.get = AsyncMock(return_value=mock_response)
@@ -64,9 +65,11 @@ class TestWikidataSearchItem:
 
     async def test_search_skips_non_entity_uris(self) -> None:
         provider = WikidataOntologyProvider()
-        mock_response = _make_sparql_response([
-            _binding("item", "http://example.org/not-an-entity"),
-        ])
+        mock_response = _make_sparql_response(
+            [
+                _binding("item", "http://example.org/not-an-entity"),
+            ]
+        )
 
         provider._client = AsyncMock()
         provider._client.get = AsyncMock(return_value=mock_response)
@@ -81,16 +84,24 @@ class TestWikidataP279Walk:
         provider = WikidataOntologyProvider()
 
         # Step 1: Q5294 -> Q8366 (algorithm)
-        resp1 = _make_sparql_response([
-            _binding("parent", "http://www.wikidata.org/entity/Q8366",
-                     "parentLabel", "algorithm",
-                     "parentDescription", "sequence of instructions"),
-        ])
+        resp1 = _make_sparql_response(
+            [
+                _binding(
+                    "parent",
+                    "http://www.wikidata.org/entity/Q8366",
+                    "parentLabel",
+                    "algorithm",
+                    "parentDescription",
+                    "sequence of instructions",
+                ),
+            ]
+        )
         # Step 2: Q8366 -> Q21198 (computer science)
-        resp2 = _make_sparql_response([
-            _binding("parent", "http://www.wikidata.org/entity/Q21198",
-                     "parentLabel", "computer science"),
-        ])
+        resp2 = _make_sparql_response(
+            [
+                _binding("parent", "http://www.wikidata.org/entity/Q21198", "parentLabel", "computer science"),
+            ]
+        )
         # Step 3: Q21198 -> no more parents
         resp3 = _make_sparql_response([])
 
@@ -109,14 +120,16 @@ class TestWikidataP279Walk:
         provider = WikidataOntologyProvider()
 
         # Q1 -> Q2 -> Q1 (cycle)
-        resp1 = _make_sparql_response([
-            _binding("parent", "http://www.wikidata.org/entity/Q2",
-                     "parentLabel", "B"),
-        ])
-        resp2 = _make_sparql_response([
-            _binding("parent", "http://www.wikidata.org/entity/Q1",
-                     "parentLabel", "A"),
-        ])
+        resp1 = _make_sparql_response(
+            [
+                _binding("parent", "http://www.wikidata.org/entity/Q2", "parentLabel", "B"),
+            ]
+        )
+        resp2 = _make_sparql_response(
+            [
+                _binding("parent", "http://www.wikidata.org/entity/Q1", "parentLabel", "A"),
+            ]
+        )
 
         provider._client = AsyncMock()
         provider._client.get = AsyncMock(side_effect=[resp1, resp2])
@@ -145,9 +158,11 @@ class TestWikidataGetAncestry:
     async def test_successful_ancestry(self) -> None:
         provider = WikidataOntologyProvider()
         provider._search_item = AsyncMock(return_value="Q5294")
-        provider._walk_p279_chain = AsyncMock(return_value=[
-            AncestorEntry(name="algorithm", description="a procedure", external_id="Q8366"),
-        ])
+        provider._walk_p279_chain = AsyncMock(
+            return_value=[
+                AncestorEntry(name="algorithm", description="a procedure", external_id="Q8366"),
+            ]
+        )
 
         result = await provider.get_ancestry("quicksort", "concept")
         assert result is not None

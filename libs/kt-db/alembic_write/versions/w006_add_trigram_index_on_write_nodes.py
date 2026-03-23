@@ -8,10 +8,10 @@ Revises: w005
 Create Date: 2026-03-10 12:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-
 
 # revision identifiers, used by Alembic.
 revision: str = "w006"
@@ -21,10 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_write_nodes_concept_trgm "
-        "ON write_nodes USING gin (concept gin_trgm_ops)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_write_nodes_concept_trgm ON write_nodes USING gin (concept gin_trgm_ops)")
 
 
 def downgrade() -> None:

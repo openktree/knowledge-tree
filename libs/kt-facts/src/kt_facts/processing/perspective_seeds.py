@@ -57,20 +57,24 @@ async def store_perspective_seeds(
         antithesis_key = make_seed_key("perspective", antithesis)
 
         # Build thesis seed
-        seed_upserts.append({
-            "key": thesis_key,
-            "name": claim,
-            "node_type": "perspective",
-            "fact_count": 1,
-        })
+        seed_upserts.append(
+            {
+                "key": thesis_key,
+                "name": claim,
+                "node_type": "perspective",
+                "fact_count": 1,
+            }
+        )
 
         # Build antithesis seed
-        seed_upserts.append({
-            "key": antithesis_key,
-            "name": antithesis,
-            "node_type": "perspective",
-            "fact_count": 1,
-        })
+        seed_upserts.append(
+            {
+                "key": antithesis_key,
+                "name": antithesis,
+                "node_type": "perspective",
+                "fact_count": 1,
+            }
+        )
 
         # Metadata for thesis — contains full pair info
         thesis_meta = {

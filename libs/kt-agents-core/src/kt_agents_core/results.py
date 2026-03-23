@@ -52,9 +52,7 @@ async def build_subgraph(
     if not uuids:
         return {"nodes": [], "edges": []}
 
-    subgraph_data: dict[str, Any] = await ctx.graph_engine.get_subgraph(
-        uuids, depth=depth
-    )
+    subgraph_data: dict[str, Any] = await ctx.graph_engine.get_subgraph(uuids, depth=depth)
 
     sg_nodes = subgraph_data.get("nodes", [])
     sg_edges = subgraph_data.get("edges", [])
@@ -65,18 +63,12 @@ async def build_subgraph(
                 "id": str(n.id),
                 "concept": n.concept,
                 "node_type": n.node_type,
-                "parent_id": (
-                    str(n.parent_id) if n.parent_id else None
-                ),
+                "parent_id": (str(n.parent_id) if n.parent_id else None),
                 "attractor": n.attractor,
                 "filter_id": n.filter_id,
                 "max_content_tokens": n.max_content_tokens,
-                "created_at": (
-                    n.created_at.isoformat() if n.created_at else None
-                ),
-                "updated_at": (
-                    n.updated_at.isoformat() if n.updated_at else None
-                ),
+                "created_at": (n.created_at.isoformat() if n.created_at else None),
+                "updated_at": (n.updated_at.isoformat() if n.updated_at else None),
                 "update_count": n.update_count,
                 "access_count": n.access_count,
                 "richness": 0.0,
@@ -91,9 +83,7 @@ async def build_subgraph(
                 "relationship_type": e.relationship_type,
                 "weight": e.weight,
                 "justification": e.justification,
-                "created_at": (
-                    e.created_at.isoformat() if e.created_at else None
-                ),
+                "created_at": (e.created_at.isoformat() if e.created_at else None),
             }
             for e in sg_edges
         ],
@@ -117,23 +107,21 @@ async def build_ingest_subgraph(
         try:
             node = await ctx.graph_engine.get_node(uuid.UUID(nid))
             if node:
-                nodes_data.append({
-                    "id": str(node.id),
-                    "concept": node.concept,
-                    "node_type": node.node_type,
-                    "parent_id": (
-                        str(node.parent_id)
-                        if node.parent_id
-                        else None
-                    ),
-                    "created_at": node.created_at.isoformat(),
-                    "updated_at": node.updated_at.isoformat(),
-                    "update_count": node.update_count,
-                    "access_count": node.access_count,
-                    "richness": 0.0,
-                    "convergence_score": 0.0,
-                    "max_content_tokens": node.max_content_tokens,
-                })
+                nodes_data.append(
+                    {
+                        "id": str(node.id),
+                        "concept": node.concept,
+                        "node_type": node.node_type,
+                        "parent_id": (str(node.parent_id) if node.parent_id else None),
+                        "created_at": node.created_at.isoformat(),
+                        "updated_at": node.updated_at.isoformat(),
+                        "update_count": node.update_count,
+                        "access_count": node.access_count,
+                        "richness": 0.0,
+                        "convergence_score": 0.0,
+                        "max_content_tokens": node.max_content_tokens,
+                    }
+                )
         except Exception:
             logger.debug("Error loading node %s for subgraph", nid, exc_info=True)
 
@@ -144,16 +132,18 @@ async def build_ingest_subgraph(
             edge_repo = EdgeRepository(ctx.session)
             edge = await edge_repo.get_by_id(uuid.UUID(eid))
             if edge:
-                edges_data.append({
-                    "id": str(edge.id),
-                    "source_node_id": str(edge.source_node_id),
-                    "target_node_id": str(edge.target_node_id),
-                    "relationship_type": edge.relationship_type,
-                    "weight": edge.weight,
-                    "justification": edge.justification,
-                    "supporting_fact_ids": [],
-                    "created_at": edge.created_at.isoformat(),
-                })
+                edges_data.append(
+                    {
+                        "id": str(edge.id),
+                        "source_node_id": str(edge.source_node_id),
+                        "target_node_id": str(edge.target_node_id),
+                        "relationship_type": edge.relationship_type,
+                        "weight": edge.weight,
+                        "justification": edge.justification,
+                        "supporting_fact_ids": [],
+                        "created_at": edge.created_at.isoformat(),
+                    }
+                )
         except Exception:
             logger.debug("Error loading edge %s for subgraph", eid, exc_info=True)
 

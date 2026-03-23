@@ -150,10 +150,7 @@ async def get_node(node_id: str) -> dict:
             return {"error": "Node not found"}
 
         # Counts
-        fact_stmt = (
-            select(func.count(NodeFact.fact_id))
-            .where(NodeFact.node_id == uid)
-        )
+        fact_stmt = select(func.count(NodeFact.fact_id)).where(NodeFact.node_id == uid)
         fact_count = (await session.execute(fact_stmt)).scalar() or 0
 
         edge_count = 0
@@ -161,10 +158,7 @@ async def get_node(node_id: str) -> dict:
             stmt = select(func.count(Edge.id)).where(col == uid)
             edge_count += (await session.execute(stmt)).scalar() or 0
 
-        dim_count_stmt = (
-            select(func.count(Dimension.id))
-            .where(Dimension.node_id == uid)
-        )
+        dim_count_stmt = select(func.count(Dimension.id)).where(Dimension.node_id == uid)
         dim_count = (await session.execute(dim_count_stmt)).scalar() or 0
 
         # Extract metadata fields shown in the wiki frontend
@@ -344,16 +338,18 @@ async def get_edges(
         for e in page:
             other_id = e.target_node_id if e.source_node_id == uid else e.source_node_id
             target_info = target_nodes.get(other_id, {})
-            edge_items.append({
-                "edge_id": str(e.id),
-                "other_node_id": str(other_id),
-                "other_concept": target_info.get("concept"),
-                "other_node_type": target_info.get("node_type"),
-                "relationship_type": e.relationship_type,
-                "weight": e.weight,
-                "justification": e.justification,
-                "fact_count": edge_fact_counts.get(e.id, 0),
-            })
+            edge_items.append(
+                {
+                    "edge_id": str(e.id),
+                    "other_node_id": str(other_id),
+                    "other_concept": target_info.get("concept"),
+                    "other_node_type": target_info.get("node_type"),
+                    "relationship_type": e.relationship_type,
+                    "weight": e.weight,
+                    "justification": e.justification,
+                    "fact_count": edge_fact_counts.get(e.id, 0),
+                }
+            )
 
         return {
             "node_id": str(uid),
@@ -489,23 +485,21 @@ async def get_facts(
                         "title": rs.title if rs else None,
                         "provider_id": rs.provider_id if rs else None,
                         "published_date": _extract_published_date(rs) if rs else None,
-                        "retrieved_at": (
-                            rs.retrieved_at.isoformat()
-                            if rs and rs.retrieved_at
-                            else None
-                        ),
+                        "retrieved_at": (rs.retrieved_at.isoformat() if rs and rs.retrieved_at else None),
                         "author_person": fs.author_person if fs else None,
                         "author_org": fs.author_org if fs else None,
                         "attribution": fs.attribution if fs else None,
                         "facts": [],
                     }
 
-                source_groups[key]["facts"].append({
-                    "fact_id": str(f.id),
-                    "content": f.content,
-                    "fact_type": f.fact_type,
-                    "created_at": f.created_at.isoformat() if f.created_at else None,
-                })
+                source_groups[key]["facts"].append(
+                    {
+                        "fact_id": str(f.id),
+                        "content": f.content,
+                        "fact_type": f.fact_type,
+                        "created_at": f.created_at.isoformat() if f.created_at else None,
+                    }
+                )
 
             groups = sorted(
                 source_groups.values(),
@@ -527,14 +521,16 @@ async def get_facts(
                 "offset": offset,
                 "next_offset": offset + returned if has_more else None,
                 "filters": {
-                    k: v for k, v in {
+                    k: v
+                    for k, v in {
                         "source_node_id": source_node_id,
                         "source_node_concept": source_node_concept,
                         "author_org": author_org,
                         "source_domain": source_domain,
                         "search": search,
                         "fact_type": fact_type,
-                    }.items() if v is not None
+                    }.items()
+                    if v is not None
                 },
             }
 
@@ -558,9 +554,7 @@ async def get_facts(
                     "provider_id": src.raw_source.provider_id if src else None,
                     "published_date": _extract_published_date(src.raw_source) if src else None,
                     "retrieved_at": (
-                        src.raw_source.retrieved_at.isoformat()
-                        if src and src.raw_source.retrieved_at
-                        else None
+                        src.raw_source.retrieved_at.isoformat() if src and src.raw_source.retrieved_at else None
                     ),
                     "author_person": src.author_person if src else None,
                     "author_org": src.author_org if src else None,
@@ -569,12 +563,17 @@ async def get_facts(
                 }
 
             source_groups[key]["fact_count"] += 1
-            flat_facts.append((key, {
-                "fact_id": str(f.id),
-                "content": f.content,
-                "fact_type": f.fact_type,
-                "created_at": f.created_at.isoformat() if f.created_at else None,
-            }))
+            flat_facts.append(
+                (
+                    key,
+                    {
+                        "fact_id": str(f.id),
+                        "content": f.content,
+                        "fact_type": f.fact_type,
+                        "created_at": f.created_at.isoformat() if f.created_at else None,
+                    },
+                )
+            )
 
         # Slice the flat list by offset/limit
         page = flat_facts[offset : offset + limit]
@@ -642,18 +641,20 @@ async def get_fact_sources(node_id: str) -> dict:
                 if uri in seen:
                     continue
                 seen.add(uri)
-                sources.append({
-                    "source_id": str(fs.raw_source.id),
-                    "uri": uri,
-                    "title": fs.raw_source.title,
-                    "provider_id": fs.raw_source.provider_id,
-                    "published_date": _extract_published_date(fs.raw_source),
-                    "retrieved_at": fs.raw_source.retrieved_at.isoformat() if fs.raw_source.retrieved_at else None,
-                    "context_snippet": fs.context_snippet,
-                    "author_person": fs.author_person,
-                    "author_org": fs.author_org,
-                    "attribution": fs.attribution,
-                })
+                sources.append(
+                    {
+                        "source_id": str(fs.raw_source.id),
+                        "uri": uri,
+                        "title": fs.raw_source.title,
+                        "provider_id": fs.raw_source.provider_id,
+                        "published_date": _extract_published_date(fs.raw_source),
+                        "retrieved_at": fs.raw_source.retrieved_at.isoformat() if fs.raw_source.retrieved_at else None,
+                        "context_snippet": fs.context_snippet,
+                        "author_person": fs.author_person,
+                        "author_org": fs.author_org,
+                        "attribution": fs.attribution,
+                    }
+                )
 
         return {
             "node_id": str(uid),
@@ -743,14 +744,20 @@ async def search_facts(
 
         # Get total count for pagination
         total = await engine.count_facts(
-            search=query, fact_type=fact_type,
-            author_org=author_org, source_domain=source_domain,
+            search=query,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
         )
 
         # Get paginated results
         facts = await engine.list_facts(
-            offset=offset, limit=limit, search=query, fact_type=fact_type,
-            author_org=author_org, source_domain=source_domain,
+            offset=offset,
+            limit=limit,
+            search=query,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
         )
 
         if not facts:
@@ -785,11 +792,13 @@ async def search_facts(
             fid = row[0]
             if fid not in fact_nodes:
                 fact_nodes[fid] = []
-            fact_nodes[fid].append({
-                "node_id": str(row[1]),
-                "concept": row[2],
-                "node_type": row[3],
-            })
+            fact_nodes[fid].append(
+                {
+                    "node_id": str(row[1]),
+                    "concept": row[2],
+                    "node_type": row[3],
+                }
+            )
 
         items = []
         for f in facts:
@@ -798,23 +807,27 @@ async def search_facts(
             rich_fact = facts_with_sources.get(f.id)
             if rich_fact and rich_fact.sources:
                 for fs in rich_fact.sources:
-                    sources.append({
-                        "uri": fs.raw_source.uri,
-                        "title": fs.raw_source.title,
-                        "provider_id": fs.raw_source.provider_id,
-                        "published_date": _extract_published_date(fs.raw_source),
-                        "author_person": fs.author_person,
-                        "author_org": fs.author_org,
-                    })
+                    sources.append(
+                        {
+                            "uri": fs.raw_source.uri,
+                            "title": fs.raw_source.title,
+                            "provider_id": fs.raw_source.provider_id,
+                            "published_date": _extract_published_date(fs.raw_source),
+                            "author_person": fs.author_person,
+                            "author_org": fs.author_org,
+                        }
+                    )
 
-            items.append({
-                "fact_id": str(f.id),
-                "content": f.content,
-                "fact_type": f.fact_type,
-                "created_at": f.created_at.isoformat() if f.created_at else None,
-                "sources": sources,
-                "linked_nodes": fact_nodes.get(f.id, []),
-            })
+            items.append(
+                {
+                    "fact_id": str(f.id),
+                    "content": f.content,
+                    "fact_type": f.fact_type,
+                    "created_at": f.created_at.isoformat() if f.created_at else None,
+                    "sources": sources,
+                    "linked_nodes": fact_nodes.get(f.id, []),
+                }
+            )
 
         returned = len(items)
         has_more = offset + returned < total
@@ -885,13 +898,24 @@ async def get_node_paths(
             return {"error": "Target node not found"}
 
         raw_paths = await engine.find_shortest_paths(
-            source_uid, target_uid, max_depth=max_depth, limit=limit,
+            source_uid,
+            target_uid,
+            max_depth=max_depth,
+            limit=limit,
         )
 
         if not raw_paths:
             return {
-                "source": {"node_id": str(source_uid), "concept": source_node.concept, "node_type": source_node.node_type},
-                "target": {"node_id": str(target_uid), "concept": target_node.concept, "node_type": target_node.node_type},
+                "source": {
+                    "node_id": str(source_uid),
+                    "concept": source_node.concept,
+                    "node_type": source_node.node_type,
+                },
+                "target": {
+                    "node_id": str(target_uid),
+                    "concept": target_node.concept,
+                    "node_type": target_node.node_type,
+                },
                 "paths": [],
                 "total_found": 0,
                 "message": "No path found between these nodes within the depth limit.",
@@ -926,10 +950,12 @@ async def get_node_paths(
                         "justification": step.edge.justification,
                     }
                 steps.append(step_dict)
-            paths.append({
-                "steps": steps,
-                "length": len(raw_path) - 1,  # Number of hops
-            })
+            paths.append(
+                {
+                    "steps": steps,
+                    "length": len(raw_path) - 1,  # Number of hops
+                }
+            )
 
         return {
             "source": {"node_id": str(source_uid), "concept": source_node.concept, "node_type": source_node.node_type},

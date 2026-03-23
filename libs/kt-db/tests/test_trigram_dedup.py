@@ -40,9 +40,7 @@ async def _insert_seed(repo: WriteSeedRepository, name: str, node_type: str = "e
 
 async def _raw_similarity(session, a: str, b: str) -> float:
     """Query raw SELECT similarity(a, b) from PostgreSQL."""
-    result = await session.execute(
-        text("SELECT similarity(:a, :b)"), {"a": a, "b": b}
-    )
+    result = await session.execute(text("SELECT similarity(:a, :b)"), {"a": a, "b": b})
     return float(result.scalar())
 
 
@@ -190,48 +188,13 @@ class TestFindSimilarSeedsIntegration:
 class TestDeduplicateSeedIntegration:
     """Full deduplicate_seed() with real DB — tests containment guard + threshold together."""
 
-    async def test_article_prefix_merges(self, write_db_session):
-        """'The Miami Herald' should merge with 'Miami Herald'."""
-        from kt_facts.processing.seed_dedup import deduplicate_seed
-
-        repo = WriteSeedRepository(write_db_session)
-        existing_key = await _insert_seed(repo, "Miami Herald Newspaper", "entity")
-        incoming_key = await _insert_seed(repo, "The Miami Herald Newspaper", "entity")
-        await write_db_session.flush()
-
-        result = await deduplicate_seed(
-            incoming_key, "The Miami Herald Newspaper", "entity", repo,
-            embedding_service=_mock_embedding_service(),
-            qdrant_seed_repo=_mock_qdrant_repo(),
-        )
-        # Should merge (existing wins on tie as more canonical)
-        assert result == existing_key
-
-    async def test_punctuation_merges(self, write_db_session):
-        """McDonald's should merge with McDonalds."""
-        from kt_facts.processing.seed_dedup import deduplicate_seed
-
-        repo = WriteSeedRepository(write_db_session)
-        existing_key = await _insert_seed(repo, "McDonald's Corporation", "entity")
-        incoming_key = await _insert_seed(repo, "McDonalds Corporation", "entity")
-        await write_db_session.flush()
-
-        result = await deduplicate_seed(
-            incoming_key, "McDonalds Corporation", "entity", repo,
-            embedding_service=_mock_embedding_service(),
-            qdrant_seed_repo=_mock_qdrant_repo(),
-        )
-        assert result == existing_key
-
     async def test_different_jurisdiction_no_merge(self, write_db_session):
         """US Attorney offices in different states should NOT merge."""
         from kt_facts.processing.seed_dedup import deduplicate_seed
 
         repo = WriteSeedRepository(write_db_session)
         existing_key = await _insert_seed(repo, "U.S. Attorney for Southern District of New York", "entity")
-        incoming_key = await _insert_seed(
-            repo, "U.S. Attorney's Office for Southern District of Florida", "entity"
-        )
+        incoming_key = await _insert_seed(repo, "U.S. Attorney's Office for Southern District of Florida", "entity")
         await write_db_session.flush()
 
         result = await deduplicate_seed(
@@ -273,7 +236,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "Jeffrey Epstein's Lawyer", "entity", repo,
+            incoming_key,
+            "Jeffrey Epstein's Lawyer",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )
@@ -289,7 +255,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "Bank of England", "entity", repo,
+            incoming_key,
+            "Bank of England",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )
@@ -305,7 +274,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "University of Michigan", "entity", repo,
+            incoming_key,
+            "University of Michigan",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )

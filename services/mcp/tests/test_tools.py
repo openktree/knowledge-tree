@@ -10,8 +10,8 @@ import pytest
 from kt_mcp.server import (
     get_dimensions,
     get_edges,
-    get_facts,
     get_fact_sources,
+    get_facts,
     get_node,
     get_node_paths,
     search_facts,
@@ -553,8 +553,7 @@ class TestGetFacts:
 
         # 3 facts from source A, 1 from source B
         facts = [
-            _make_mock_fact(content=f"Fact A{i}", sources=[_make_mock_fact_source(raw_source=src_a)])
-            for i in range(3)
+            _make_mock_fact(content=f"Fact A{i}", sources=[_make_mock_fact_source(raw_source=src_a)]) for i in range(3)
         ] + [
             _make_mock_fact(content="Fact B0", sources=[_make_mock_fact_source(raw_source=src_b)]),
         ]
@@ -851,8 +850,12 @@ class TestSearchFacts:
             await search_facts("test", limit=999)
 
             engine_instance.list_facts.assert_called_once_with(
-                offset=0, limit=100, search="test", fact_type=None,
-                author_org=None, source_domain=None,
+                offset=0,
+                limit=100,
+                search="test",
+                fact_type=None,
+                author_org=None,
+                source_domain=None,
             )
 
 

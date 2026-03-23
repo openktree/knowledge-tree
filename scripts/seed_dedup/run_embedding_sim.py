@@ -14,11 +14,10 @@ import asyncio
 import sys
 from collections import defaultdict
 
-import numpy as np
-
 from datasets import ALL_PAIRS
-from kt_facts.processing.seed_heuristics import is_acronym_match, is_containment_mismatch
 from utils import cosine_similarity, embed_pairs, load_settings_thresholds
+
+from kt_facts.processing.seed_heuristics import is_acronym_match, is_containment_mismatch
 
 
 async def main() -> None:
@@ -30,9 +29,7 @@ async def main() -> None:
     embeddings = await embed_pairs(ALL_PAIRS, svc)
 
     # Track per-category stats
-    category_stats: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"correct": 0, "wrong": 0, "unknown": 0}
-    )
+    category_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"correct": 0, "wrong": 0, "unknown": 0})
 
     print()
     header = f"{'Pair':<65} {'Score':>6}  {'Result':>8}  {'Expected':>8}  {'Acro':>5}  {'Cont':>5}  {'Status'}"
@@ -77,12 +74,11 @@ async def main() -> None:
             total_wrong += 1
             category_stats[pair.category]["wrong"] += 1
 
-        expected_str = (
-            "merge" if pair.should_merge
-            else ("skip" if pair.should_merge is False else "?")
-        )
+        expected_str = "merge" if pair.should_merge else ("skip" if pair.should_merge is False else "?")
         pair_str = f"{pair.name_a} <-> {pair.name_b}"
-        print(f"  {pair_str:<63} {score:>6.4f}  {merge_str:>8}  {expected_str:>8}  {acro_str:>5}  {cont_str:>5}  {status}")
+        print(
+            f"  {pair_str:<63} {score:>6.4f}  {merge_str:>8}  {expected_str:>8}  {acro_str:>5}  {cont_str:>5}  {status}"
+        )
 
     # Category summary
     print()

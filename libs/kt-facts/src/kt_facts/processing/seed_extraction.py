@@ -94,9 +94,7 @@ async def store_seeds_from_extracted_nodes(
                 "entity_subtype": node.get("entity_subtype"),
                 "fact_count": 1,
             }
-            seed_contexts[seed_key] = (
-                "; ".join(fact_contents) if fact_contents else name
-            )
+            seed_contexts[seed_key] = "; ".join(fact_contents) if fact_contents else name
             if node_aliases:
                 seed_aliases[seed_key] = list(node_aliases)
 
@@ -107,16 +105,14 @@ async def store_seeds_from_extracted_nodes(
                 continue
             fact = all_facts[idx - 1]
             fact_id = fact.id
-            seed_links.append({
-                "seed_key": seed_key,
-                "fact_id": fact_id,
-                "extraction_context": (
-                    fact.content[:500]
-                    if hasattr(fact, "content") and fact.content
-                    else None
-                ),
-                "extraction_role": extraction_role,
-            })
+            seed_links.append(
+                {
+                    "seed_key": seed_key,
+                    "fact_id": fact_id,
+                    "extraction_context": (fact.content[:500] if hasattr(fact, "content") and fact.content else None),
+                    "extraction_role": extraction_role,
+                }
+            )
             if fact_id not in fact_to_seeds:
                 fact_to_seeds[fact_id] = []
             fact_to_seeds[fact_id].append(seed_key)
@@ -146,7 +142,9 @@ async def store_seeds_from_extracted_nodes(
 
             async with write_seed_repo._session.begin_nested():
                 resolved_key = await route_seed(
-                    name, node_type, fact_context,
+                    name,
+                    node_type,
+                    fact_context,
                     write_seed_repo,
                     embedding_service=embedding_service,  # type: ignore[arg-type]
                     qdrant_seed_repo=qdrant_seed_repo,  # type: ignore[arg-type]
@@ -166,18 +164,14 @@ async def store_seeds_from_extracted_nodes(
                             from kt_db.write_models import WriteSeed
 
                             await write_seed_repo._session.execute(
-                                sa_update(WriteSeed)
-                                .where(WriteSeed.key == resolved_key)
-                                .values(metadata_=meta)
+                                sa_update(WriteSeed).where(WriteSeed.key == resolved_key).values(metadata_=meta)
                             )
                 else:
                     phonetic_code = compute_phonetic_code(name)
                     if phonetic_code:
                         phonetic_codes[seed_key] = phonetic_code
         except Exception:
-            logger.debug(
-                "Routing failed for '%s', will batch-upsert", name, exc_info=True
-            )
+            logger.debug("Routing failed for '%s', will batch-upsert", name, exc_info=True)
 
         key_remap[seed_key] = resolved_key
 
@@ -210,8 +204,10 @@ async def store_seeds_from_extracted_nodes(
             try:
                 async with write_seed_repo._session.begin_nested():
                     await write_seed_repo.upsert_seed(
-                        sdata["key"], sdata["name"],
-                        sdata["node_type"], sdata.get("entity_subtype"),
+                        sdata["key"],
+                        sdata["name"],
+                        sdata["node_type"],
+                        sdata.get("entity_subtype"),
                     )
             except Exception:
                 logger.exception("Error upserting seed '%s'", sdata["key"])
@@ -250,7 +246,8 @@ async def store_seeds_from_extracted_nodes(
             try:
                 async with write_seed_repo._session.begin_nested():
                     is_new = await write_seed_repo.link_fact(
-                        lnk["seed_key"], lnk["fact_id"],
+                        lnk["seed_key"],
+                        lnk["fact_id"],
                         extraction_context=lnk.get("extraction_context"),
                     )
                     if is_new:
@@ -272,22 +269,22 @@ async def store_seeds_from_extracted_nodes(
     for fact_id, seed_keys_in_fact in remapped_fact_to_seeds.items():
         unique_keys = list(dict.fromkeys(seed_keys_in_fact))
         for i, key_a in enumerate(unique_keys):
-            for key_b in unique_keys[i + 1:]:
+            for key_b in unique_keys[i + 1 :]:
                 a, b = sorted([key_a, key_b])
-                edge_candidates.append({
-                    "seed_key_a": a,
-                    "seed_key_b": b,
-                    "fact_id": str(fact_id),
-                })
+                edge_candidates.append(
+                    {
+                        "seed_key_a": a,
+                        "seed_key_b": b,
+                        "fact_id": str(fact_id),
+                    }
+                )
 
     if edge_candidates:
         try:
             async with write_seed_repo._session.begin_nested():
                 await write_seed_repo.upsert_edge_candidates_batch(edge_candidates)
         except Exception:
-            logger.exception(
-                "Batch edge candidate upsert failed, falling back to sequential"
-            )
+            logger.exception("Batch edge candidate upsert failed, falling back to sequential")
             for ec in edge_candidates:
                 try:
                     async with write_seed_repo._session.begin_nested():
@@ -299,7 +296,8 @@ async def store_seeds_from_extracted_nodes(
                 except Exception:
                     logger.debug(
                         "Edge candidate upsert failed for %s<->%s",
-                        ec["seed_key_a"], ec["seed_key_b"],
+                        ec["seed_key_a"],
+                        ec["seed_key_b"],
                         exc_info=True,
                     )
 
@@ -331,10 +329,7 @@ async def dedup_seeds_batch(
     # Batch-fetch all seeds in one query to filter early
     unique_keys = list(dict.fromkeys(seed_keys))
     seeds_by_key = await write_seed_repo.get_seeds_by_keys_batch(unique_keys)
-    active_seeds = [
-        (k, s) for k, s in seeds_by_key.items()
-        if s.status == "active"
-    ]
+    active_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "active"]
 
     if not active_seeds:
         return {}
@@ -350,11 +345,13 @@ async def dedup_seeds_batch(
                 async with write_session_factory() as session:
                     async with session.begin():
                         from kt_db.repositories.write_seeds import WriteSeedRepository as _WSR
+
                         repo = _WSR(session)
                         # Build per-session write_fact_repo if model_gateway available
                         _wfr = None
                         if model_gateway is not None:
                             from kt_db.repositories.write_facts import WriteFactRepository
+
                             _wfr = WriteFactRepository(session)
                         surviving = await deduplicate_seed(
                             seed_key=seed_key,
@@ -368,10 +365,7 @@ async def dedup_seeds_batch(
                         )
                         return seed_key, surviving
 
-        tasks = [
-            _dedup_one(k, s.name, s.node_type)
-            for k, s in active_seeds
-        ]
+        tasks = [_dedup_one(k, s.name, s.node_type) for k, s in active_seeds]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
             if isinstance(r, BaseException):

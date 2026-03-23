@@ -14,7 +14,11 @@ import json
 import logging
 import uuid
 from datetime import timedelta
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from kt_agents_core.state import AgentContext
+    from kt_graph.engine import GraphEngine
 
 from hatchet_sdk import Context
 
@@ -67,13 +71,16 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
 
     ctx.log(f"build_composite: type={input.node_type}, concept={input.concept!r}")
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id or "composite",
-        "phase": "composite_build",
-        "status": "started",
-        "node_type": input.node_type,
-        "concept": input.concept,
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id or "composite",
+            "phase": "composite_build",
+            "status": "started",
+            "node_type": input.node_type,
+            "concept": input.concept,
+        },
+    )
 
     from kt_agents_core.state import AgentContext
     from kt_db.keys import make_node_key
@@ -169,7 +176,9 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
             # ── Create draws_from edges ───────────────────────────────
             if node_id:
                 draws_from_edge_ids = await _create_draws_from_edges(
-                    graph_engine, uuid.UUID(node_id), source_ids,
+                    graph_engine,
+                    uuid.UUID(node_id),
+                    source_ids,
                 )
 
             # ── Save version ──────────────────────────────────────────
@@ -205,12 +214,15 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
             if write_session:
                 await write_session.close()
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id or "composite",
-        "phase": "composite_build",
-        "status": "completed",
-        "node_id": node_id,
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id or "composite",
+            "phase": "composite_build",
+            "status": "completed",
+            "node_id": node_id,
+        },
+    )
 
     ctx.log(
         f"build_composite: done node_id={node_id}, merged={merged_into}, "
@@ -361,6 +373,7 @@ async def _run_composite_agent(
     """Run the appropriate composite agent and return the definition text."""
     if node_type == "synthesis":
         from kt_worker_nodes.pipelines.composite.synthesis_agent import build_synthesis_impl
+
         result = await build_synthesis_impl(
             agent_ctx,
             source_node_ids=source_node_ids,
@@ -369,6 +382,7 @@ async def _run_composite_agent(
         )
     elif node_type == "perspective":
         from kt_worker_nodes.pipelines.composite.perspective_agent import build_perspective_impl
+
         result = await build_perspective_impl(
             agent_ctx,
             source_node_ids=source_node_ids,
@@ -413,13 +427,15 @@ async def _create_draws_from_edges(
                 target_id=src_id,
                 rel_type="draws_from",
                 weight=1.0,
-                justification=f"Composite node draws from source node",
+                justification="Composite node draws from source node",
             )
             if edge is not None:
                 edge_ids.append(str(edge.id))
         except Exception:
             logger.warning(
                 "Failed to create draws_from edge %s → %s",
-                composite_node_id, src_id_str, exc_info=True,
+                composite_node_id,
+                src_id_str,
+                exc_info=True,
             )
     return edge_ids

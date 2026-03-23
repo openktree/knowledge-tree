@@ -185,9 +185,7 @@ class GatewayChat(BaseChatModel):
                 # Format tool results as user messages for models that
                 # don't support native tool_result role
                 tool_name = getattr(msg, "name", "tool")
-                gateway_messages.append(
-                    {"role": "user", "content": f"[Tool Result: {tool_name}]\n{content}"}
-                )
+                gateway_messages.append({"role": "user", "content": f"[Tool Result: {tool_name}]\n{content}"})
             else:
                 gateway_messages.append({"role": "user", "content": content})
 

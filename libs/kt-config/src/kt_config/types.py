@@ -32,12 +32,12 @@ COMPOUND_FACT_TYPES: frozenset[str] = frozenset(
 
 
 class NodeType(str, Enum):
-    concept = "concept"        # Abstract topic, idea, technique, phenomenon
-    perspective = "perspective" # Debatable claim with stance-classified facts
-    entity = "entity"          # Subject capable of intent (person, organization)
-    event = "event"            # Temporal occurrence (historical, scientific, ongoing)
-    synthesis = "synthesis"    # Composite node synthesising multiple source nodes
-    location = "location"      # Geographic place (country, city, region, landmark)
+    concept = "concept"  # Abstract topic, idea, technique, phenomenon
+    perspective = "perspective"  # Debatable claim with stance-classified facts
+    entity = "entity"  # Subject capable of intent (person, organization)
+    event = "event"  # Temporal occurrence (historical, scientific, ongoing)
+    synthesis = "synthesis"  # Composite node synthesising multiple source nodes
+    location = "location"  # Geographic place (country, city, region, landmark)
 
 
 # Composite node types — built from other nodes rather than raw facts alone.
@@ -48,9 +48,9 @@ BASE_NODE_TYPES: frozenset[str] = frozenset({"concept", "entity", "event", "loca
 
 
 class EntitySubtype(str, Enum):
-    person = "person"              # Individual human
+    person = "person"  # Individual human
     organization = "organization"  # Company, institution, government body, NGO
-    other = "other"                # Unclassified entity
+    other = "other"  # Unclassified entity
 
 
 class FactStance(str, Enum):
@@ -76,9 +76,7 @@ STRUCTURAL_EDGE_TYPES: frozenset[str] = frozenset()
 TRANSITIVE_EDGE_TYPES: frozenset[str] = frozenset()
 
 
-def canonicalize_edge_ids(
-    source: UUID, target: UUID, relationship_type: str
-) -> tuple[UUID, UUID]:
+def canonicalize_edge_ids(source: UUID, target: UUID, relationship_type: str) -> tuple[UUID, UUID]:
     """Return (source, target) in canonical order for undirected edges.
 
     Undirected edges: the smaller UUID is always placed as source

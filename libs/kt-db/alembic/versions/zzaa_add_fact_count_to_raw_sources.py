@@ -5,8 +5,8 @@ Revises: zz9y8x7w6v5u
 Create Date: 2026-03-13
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "zzaa_fact_count"
 down_revision = "aaa1b2c3d4e5"

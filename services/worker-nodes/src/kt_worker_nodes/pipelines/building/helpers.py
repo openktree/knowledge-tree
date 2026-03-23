@@ -10,10 +10,10 @@ import logging
 import uuid
 from typing import Any
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_agents_core.state import AgentContext
 from kt_config.settings import get_settings
 from kt_db.models import Fact
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,10 @@ async def dedup_on_refresh(
 
             logger.info(
                 "Dedup merged '%s' (%s) into '%s' (%s)",
-                absorbed_concept, absorbed_id_str, keep_concept, survivor_id_str,
+                absorbed_concept,
+                absorbed_id_str,
+                keep_concept,
+                survivor_id_str,
             )
             await ctx.emit(
                 "activity_log",
@@ -185,7 +188,9 @@ async def dedup_on_refresh(
         except Exception:
             logger.debug(
                 "Error merging '%s' into '%s'",
-                candidate.concept, node_concept, exc_info=True,
+                candidate.concept,
+                node_concept,
+                exc_info=True,
             )
 
     return node if merged_any else None

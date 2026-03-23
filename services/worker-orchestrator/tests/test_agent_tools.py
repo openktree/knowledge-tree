@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_agents_core.state import AgentContext
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_worker_orchestrator.agents.tools.synthesize_answer import _extract_text_content, synthesize_answer_impl
 
 pytestmark = pytest.mark.asyncio
@@ -161,9 +161,7 @@ async def test_synthesize_answer_with_facts() -> None:
     ctx.graph_engine.get_node_facts = AsyncMock(return_value=mock_facts)
 
     # Mock get_node_facts_with_stance for the sub-agent's tool
-    ctx.graph_engine.get_node_facts_with_stance = AsyncMock(
-        return_value=[(mock_facts[0], None)]
-    )
+    ctx.graph_engine.get_node_facts_with_stance = AsyncMock(return_value=[(mock_facts[0], None)])
     # Mock get_node_facts_with_sources for formatting
     ctx.graph_engine.get_node_facts_with_sources = AsyncMock(return_value=mock_facts)
 
@@ -173,19 +171,23 @@ async def test_synthesize_answer_with_facts() -> None:
     # Sub-agent: first call get_node_facts, then call finish
     get_facts_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "get_node_facts",
-            "args": {"node_id": str(node_id)},
-            "id": "synth_call_1",
-        }],
+        tool_calls=[
+            {
+                "name": "get_node_facts",
+                "args": {"node_id": str(node_id)},
+                "id": "synth_call_1",
+            }
+        ],
     )
     finish_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "finish",
-            "args": {"answer": "Water boils at 100 degrees Celsius."},
-            "id": "synth_call_2",
-        }],
+        tool_calls=[
+            {
+                "name": "finish",
+                "args": {"answer": "Water boils at 100 degrees Celsius."},
+                "id": "synth_call_2",
+            }
+        ],
     )
     synth_chat = _make_synth_chat_model([get_facts_msg, finish_msg])
     ctx.model_gateway.get_chat_model = MagicMock(return_value=synth_chat)
@@ -219,19 +221,23 @@ async def test_synthesize_answer_no_facts() -> None:
 
     get_facts_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "get_node_facts",
-            "args": {"node_id": str(node_id)},
-            "id": "synth_call_1",
-        }],
+        tool_calls=[
+            {
+                "name": "get_node_facts",
+                "args": {"node_id": str(node_id)},
+                "id": "synth_call_1",
+            }
+        ],
     )
     finish_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "finish",
-            "args": {"answer": "No facts were available to answer the question."},
-            "id": "synth_call_2",
-        }],
+        tool_calls=[
+            {
+                "name": "finish",
+                "args": {"answer": "No facts were available to answer the question."},
+                "id": "synth_call_2",
+            }
+        ],
     )
     synth_chat = _make_synth_chat_model([get_facts_msg, finish_msg])
     ctx.model_gateway.get_chat_model = MagicMock(return_value=synth_chat)
@@ -612,7 +618,9 @@ async def test_build_nodes_returns_results_for_each() -> None:
     ctx.model_gateway.dimension_model = "test-model"
 
     entries = [{"name": n, "node_type": "concept"} for n in ["alpha", "beta", "gamma"]]
-    with patch("kt_worker_nodes.pipelines.dimensions.pipeline.generate_dimensions", new_callable=AsyncMock, return_value=[]):
+    with patch(
+        "kt_worker_nodes.pipelines.dimensions.pipeline.generate_dimensions", new_callable=AsyncMock, return_value=[]
+    ):
         result = await build_nodes_impl(entries, ctx, state)
 
     assert result["count"] == 3
@@ -673,16 +681,18 @@ async def test_build_nodes_actions_summary() -> None:
 
 async def test_search_all_single_string_returns_list() -> None:
     """search_all with a single string returns list (backwards compatible)."""
-    from kt_providers.registry import ProviderRegistry
     from kt_config.types import RawSearchResult
+    from kt_providers.registry import ProviderRegistry
 
     registry = ProviderRegistry()
     provider = AsyncMock()
     provider.provider_id = "test"
     provider.is_available = AsyncMock(return_value=True)
-    provider.search = AsyncMock(return_value=[
-        RawSearchResult(title="Result 1", uri="http://a.com", raw_content="content", provider_id="test"),
-    ])
+    provider.search = AsyncMock(
+        return_value=[
+            RawSearchResult(title="Result 1", uri="http://a.com", raw_content="content", provider_id="test"),
+        ]
+    )
     registry.register(provider)
 
     result = await registry.search_all("test query")
@@ -693,8 +703,8 @@ async def test_search_all_single_string_returns_list() -> None:
 
 async def test_search_all_list_returns_dict() -> None:
     """search_all with a list of queries returns dict keyed by query."""
-    from kt_providers.registry import ProviderRegistry
     from kt_config.types import RawSearchResult
+    from kt_providers.registry import ProviderRegistry
 
     registry = ProviderRegistry()
     provider = AsyncMock()
@@ -702,7 +712,9 @@ async def test_search_all_list_returns_dict() -> None:
     provider.is_available = AsyncMock(return_value=True)
 
     async def mock_search(query: str, max_results: int = 10) -> list[RawSearchResult]:
-        return [RawSearchResult(title=f"Result for {query}", uri=f"http://{query}.com", raw_content="", provider_id="test")]
+        return [
+            RawSearchResult(title=f"Result for {query}", uri=f"http://{query}.com", raw_content="", provider_id="test")
+        ]
 
     provider.search = AsyncMock(side_effect=mock_search)
     registry.register(provider)
@@ -732,6 +744,7 @@ async def test_search_all_list_error_handling() -> None:
         if "fail" in query:
             raise ValueError("Search failed")
         from kt_config.types import RawSearchResult
+
         return [RawSearchResult(title=f"OK {query}", uri=f"http://{query}.com", raw_content="", provider_id="test")]
 
     provider.search = AsyncMock(side_effect=mock_search)
@@ -756,10 +769,12 @@ async def test_scout_uses_batch_search() -> None:
     queries = ["query1", "query2"]
 
     # Mock: search_all receives the list and returns dict
-    ctx.provider_registry.search_all = AsyncMock(return_value={
-        "query1": [],
-        "query2": [],
-    })
+    ctx.provider_registry.search_all = AsyncMock(
+        return_value={
+            "query1": [],
+            "query2": [],
+        }
+    )
     ctx.embedding_service.embed_batch = AsyncMock(return_value=[[0.1] * 10, [0.2] * 10])
     ctx.graph_engine.search_nodes = AsyncMock(return_value=[])
     ctx.graph_engine.find_similar_nodes = AsyncMock(return_value=[])
@@ -800,8 +815,12 @@ async def test_gather_facts_uses_batch_search() -> None:
     mock_settings.fetch_guarantee_max_rounds = 1
     mock_settings.page_stale_days = 30
 
-    with patch("kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch", new_callable=AsyncMock, return_value=[]) as mock_store:
-        with patch("kt_worker_nodes.pipelines.gathering.pipeline.WritePageFetchLogRepository", return_value=mock_page_log):
+    with patch(
+        "kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch", new_callable=AsyncMock, return_value=[]
+    ) as mock_store:
+        with patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.WritePageFetchLogRepository", return_value=mock_page_log
+        ):
             with patch("kt_worker_nodes.pipelines.gathering.pipeline.get_settings", return_value=mock_settings):
                 with patch("kt_worker_nodes.pipelines.gathering.pipeline.DecompositionPipeline") as MockPipeline:
                     MockPipeline.return_value.decompose = AsyncMock(return_value=[])
@@ -883,10 +902,12 @@ async def test_build_node_enrich_does_not_regenerate_dimensions() -> None:
 
     existing_fact = _make_mock_fact(content="existing")
     new_fact = _make_mock_fact(content="new pool")
-    ctx.graph_engine.get_node_facts = AsyncMock(side_effect=[
-        [existing_fact],  # First call in enrich
-        [existing_fact, new_fact],  # Second call after enrichment
-    ])
+    ctx.graph_engine.get_node_facts = AsyncMock(
+        side_effect=[
+            [existing_fact],  # First call in enrich
+            [existing_fact, new_fact],  # Second call after enrichment
+        ]
+    )
     ctx.graph_engine.search_fact_pool_excluding_rejected = AsyncMock(return_value=[new_fact])
     ctx.graph_engine.search_fact_pool_text_excluding_rejected = AsyncMock(return_value=[])
     ctx.graph_engine.link_fact_to_node = AsyncMock()
@@ -920,10 +941,12 @@ async def test_build_node_enrich_below_threshold_no_regen() -> None:
     # 10 existing, 1 new → ratio=0.1 < 0.25 → no regen
     existing_facts = [_make_mock_fact(content=f"fact {i}") for i in range(10)]
     new_fact = _make_mock_fact(content="new pool")
-    ctx.graph_engine.get_node_facts = AsyncMock(side_effect=[
-        existing_facts,  # First call in enrich_node_from_pool
-        existing_facts + [new_fact],  # Second call after enrichment
-    ])
+    ctx.graph_engine.get_node_facts = AsyncMock(
+        side_effect=[
+            existing_facts,  # First call in enrich_node_from_pool
+            existing_facts + [new_fact],  # Second call after enrichment
+        ]
+    )
     ctx.graph_engine.search_fact_pool_excluding_rejected = AsyncMock(return_value=[new_fact])
     ctx.graph_engine.search_fact_pool_text_excluding_rejected = AsyncMock(return_value=[])
     ctx.graph_engine.link_fact_to_node = AsyncMock()
@@ -976,8 +999,8 @@ async def test_resolve_edges_no_write_session() -> None:
 
 async def test_resolve_edges_creates_edge_from_candidates() -> None:
     """resolve_from_candidates creates an edge when candidate seed is promoted."""
+    from kt_db.keys import key_to_uuid, make_seed_key
     from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
-    from kt_db.keys import make_seed_key, key_to_uuid
 
     ctx = _make_ctx()
     node = _make_mock_node(concept="quantum computing")
@@ -1009,9 +1032,13 @@ async def test_resolve_edges_creates_edge_from_candidates() -> None:
     mock_edge = _make_mock_edge()
     ctx.graph_engine.create_edge = AsyncMock(return_value=mock_edge)
 
-    ctx.model_gateway.generate_json = AsyncMock(return_value=[{
-        "justification": "Quantum computing relies on quantum mechanics via {fact:1}",
-    }])
+    ctx.model_gateway.generate_json = AsyncMock(
+        return_value=[
+            {
+                "justification": "Quantum computing relies on quantum mechanics via {fact:1}",
+            }
+        ]
+    )
 
     with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
         mock_repo = MockRepo.return_value
@@ -1028,8 +1055,8 @@ async def test_resolve_edges_creates_edge_from_candidates() -> None:
 
 async def test_resolve_edges_skips_unpromoted_seed() -> None:
     """resolve_from_candidates skips candidates where target seed is not promoted."""
+    from kt_db.keys import key_to_uuid, make_seed_key
     from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
-    from kt_db.keys import make_seed_key, key_to_uuid
 
     ctx = _make_ctx()
     node = _make_mock_node(concept="physics")
@@ -1068,8 +1095,8 @@ async def test_resolve_edges_skips_unpromoted_seed() -> None:
 
 async def test_resolve_edges_cross_type_detected() -> None:
     """resolve_from_candidates uses cross_type for different node types."""
+    from kt_db.keys import key_to_uuid, make_seed_key
     from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
-    from kt_db.keys import make_seed_key, key_to_uuid
 
     ctx = _make_ctx()
     node = _make_mock_node(concept="Albert Einstein")
@@ -1101,9 +1128,13 @@ async def test_resolve_edges_cross_type_detected() -> None:
     mock_edge = _make_mock_edge()
     ctx.graph_engine.create_edge = AsyncMock(return_value=mock_edge)
 
-    ctx.model_gateway.generate_json = AsyncMock(return_value=[{
-        "justification": "Einstein developed the theory of relativity",
-    }])
+    ctx.model_gateway.generate_json = AsyncMock(
+        return_value=[
+            {
+                "justification": "Einstein developed the theory of relativity",
+            }
+        ]
+    )
 
     with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
         mock_repo = MockRepo.return_value
@@ -1121,8 +1152,8 @@ async def test_resolve_edges_cross_type_detected() -> None:
 
 async def test_resolve_edges_handles_llm_error() -> None:
     """resolve_from_candidates handles LLM errors gracefully."""
+    from kt_db.keys import key_to_uuid, make_seed_key
     from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
-    from kt_db.keys import make_seed_key, key_to_uuid
 
     ctx = _make_ctx()
     node = _make_mock_node(concept="error_node")
@@ -1236,7 +1267,9 @@ def test_build_classification_prompt_caps_facts() -> None:
         evidence_facts=facts,
     )
 
-    prompt, fact_maps = EdgeClassifier.build_classification_prompt([candidate], facts_per_type_cap=5, facts_per_candidate_cap=50)
+    prompt, fact_maps = EdgeClassifier.build_classification_prompt(
+        [candidate], facts_per_type_cap=5, facts_per_candidate_cap=50
+    )
 
     # Count fact lines (lines starting with numbered list items)
     fact_lines = [line for line in prompt.split("\n") if line.strip().startswith(tuple(f"{i}." for i in range(1, 30)))]
@@ -1265,7 +1298,9 @@ def test_build_classification_prompt_total_cap() -> None:
         evidence_facts=all_facts,
     )
 
-    prompt, fact_maps = EdgeClassifier.build_classification_prompt([candidate], facts_per_type_cap=20, facts_per_candidate_cap=8)
+    prompt, fact_maps = EdgeClassifier.build_classification_prompt(
+        [candidate], facts_per_type_cap=20, facts_per_candidate_cap=8
+    )
 
     fact_lines = [line for line in prompt.split("\n") if line.strip().startswith(tuple(f"{i}." for i in range(1, 30)))]
     assert len(fact_lines) == 8
@@ -1377,9 +1412,10 @@ def test_cap_facts_by_type_preserves_diversity() -> None:
 
 async def test_classify_in_batches() -> None:
     """25 candidates split into 3 batches (10+10+5), all decisions collected."""
+    from typing import Any
+
     from kt_worker_nodes.pipelines.edges.classifier import EdgeClassifier
     from kt_worker_nodes.pipelines.models import EdgeCandidate
-    from typing import Any
 
     ctx = _make_ctx()
 
@@ -1387,14 +1423,16 @@ async def test_classify_in_batches() -> None:
     candidates: list[EdgeCandidate] = []
     for i in range(25):
         fact = _make_mock_fact(fact_id=uuid.uuid4(), content=f"fact {i}")
-        candidates.append(EdgeCandidate(
-            source_node_id=uuid.uuid4(),
-            source_concept=f"source_{i}",
-            target_node_id=uuid.uuid4(),
-            target_concept=f"target_{i}",
-            evidence_fact_ids=[fact.id],
-            evidence_facts=[fact],
-        ))
+        candidates.append(
+            EdgeCandidate(
+                source_node_id=uuid.uuid4(),
+                source_concept=f"source_{i}",
+                target_node_id=uuid.uuid4(),
+                target_concept=f"target_{i}",
+                evidence_fact_ids=[fact.id],
+                evidence_facts=[fact],
+            )
+        )
 
     # LLM returns valid justifications for each batch
     call_count = {"n": 0}
@@ -1403,10 +1441,7 @@ async def test_classify_in_batches() -> None:
         call_count["n"] += 1
         prompt_text = kwargs["messages"][0]["content"]
         pair_count = prompt_text.count("--- Pair")
-        return [
-            {"justification": f"batch {call_count['n']} pair {j}"}
-            for j in range(pair_count)
-        ]
+        return [{"justification": f"batch {call_count['n']} pair {j}"} for j in range(pair_count)]
 
     ctx.model_gateway.generate_json = AsyncMock(side_effect=mock_generate_json)
 
@@ -1423,8 +1458,8 @@ async def test_classify_in_batches() -> None:
 
 async def test_resolve_edges_multiple_candidates_batch() -> None:
     """Multiple candidate pairs are all resolved in one call."""
+    from kt_db.keys import key_to_uuid, make_seed_key
     from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
-    from kt_db.keys import make_seed_key, key_to_uuid
 
     ctx = _make_ctx()
     node = _make_mock_node(concept="photosynthesis")
@@ -1467,9 +1502,7 @@ async def test_resolve_edges_multiple_candidates_batch() -> None:
     fact_a = _make_mock_fact(fact_id=fid_a, content="chloroplast performs photosynthesis")
     fact_b = _make_mock_fact(fact_id=fid_b, content="sunlight powers photosynthesis")
 
-    ctx.graph_engine.get_facts_by_ids = AsyncMock(
-        side_effect=lambda ids: [fact_a] if fid_a in ids else [fact_b]
-    )
+    ctx.graph_engine.get_facts_by_ids = AsyncMock(side_effect=lambda ids: [fact_a] if fid_a in ids else [fact_b])
     ctx.graph_engine.create_edge = AsyncMock(return_value=_make_mock_edge())
     ctx.model_gateway.generate_json = AsyncMock(
         return_value=[{"justification": "connected via shared photosynthesis facts"}]
@@ -1478,14 +1511,10 @@ async def test_resolve_edges_multiple_candidates_batch() -> None:
     with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
         mock_repo = MockRepo.return_value
         mock_repo.get_candidates_for_seed = AsyncMock(return_value=[row_a, row_b])
-        mock_repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: seed_a if k == target_key_a else seed_b
-        )
+        mock_repo.get_seed_by_key = AsyncMock(side_effect=lambda k: seed_a if k == target_key_a else seed_b)
         mock_repo.accept_candidate_facts = AsyncMock()
 
         result = await EdgeResolver(ctx).resolve_from_candidates(node)
 
     assert result["edges_created"] == 2
     assert len(result["edge_ids"]) == 2
-
-

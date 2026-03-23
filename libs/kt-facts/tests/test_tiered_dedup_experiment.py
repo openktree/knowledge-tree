@@ -38,11 +38,13 @@ class SeedPair:
 
 async def fetch_merged_pairs(session: AsyncSession) -> list[SeedPair]:
     """Fetch all LLM-confirmed merges with their embedding scores."""
-    result = await session.execute(text("""
+    result = await session.execute(
+        text("""
         SELECT source_seed_key, target_seed_key, reason
         FROM write_seed_merges
         WHERE operation = 'merge' AND reason LIKE '%LLM confirmed%'
-    """))
+    """)
+    )
     pairs = []
     for row in result.fetchall():
         score_match = re.search(r"score=([0-9.]+)", row[2])
@@ -50,17 +52,23 @@ async def fetch_merged_pairs(session: AsyncSession) -> list[SeedPair]:
         # Get names from keys (strip type prefix, replace hyphens)
         name_a = row[0].split(":", 1)[1].replace("-", " ") if ":" in row[0] else row[0]
         name_b = row[1].split(":", 1)[1].replace("-", " ") if ":" in row[1] else row[1]
-        pairs.append(SeedPair(
-            name_a=name_a, name_b=name_b,
-            key_a=row[0], key_b=row[1],
-            llm_verdict="merge", recorded_score=score,
-        ))
+        pairs.append(
+            SeedPair(
+                name_a=name_a,
+                name_b=name_b,
+                key_a=row[0],
+                key_b=row[1],
+                llm_verdict="merge",
+                recorded_score=score,
+            )
+        )
     return pairs
 
 
 async def fetch_rejected_pairs(session: AsyncSession) -> list[SeedPair]:
     """Fetch LLM-rejected pairs (embedding disambiguation routes)."""
-    result = await session.execute(text("""
+    result = await session.execute(
+        text("""
         SELECT DISTINCT ON (r.parent_seed_key, r.child_seed_key)
             p.name, c.name, r.parent_seed_key, r.child_seed_key
         FROM write_seed_routes r
@@ -69,14 +77,20 @@ async def fetch_rejected_pairs(session: AsyncSession) -> list[SeedPair]:
         WHERE r.ambiguity_type = 'embedding'
           AND r.child_seed_key NOT LIKE '%\\:disambig'
         ORDER BY r.parent_seed_key, r.child_seed_key
-    """))
+    """)
+    )
     pairs = []
     for row in result.fetchall():
-        pairs.append(SeedPair(
-            name_a=row[0], name_b=row[1],
-            key_a=row[2], key_b=row[3],
-            llm_verdict="reject", recorded_score=None,
-        ))
+        pairs.append(
+            SeedPair(
+                name_a=row[0],
+                name_b=row[1],
+                key_a=row[2],
+                key_b=row[3],
+                llm_verdict="reject",
+                recorded_score=None,
+            )
+        )
     return pairs
 
 
@@ -208,9 +222,11 @@ async def run_experiment() -> None:
     print(f"  Recommended auto-merge threshold: {safe_threshold:.3f} (rejected max + 0.01 margin)")
 
     result = analyze_threshold(scored, safe_threshold)
-    print(f"  At {safe_threshold:.3f}: {result['true_auto_merges']} auto-merges, "
-          f"{result['false_merges']} false merges, "
-          f"{result['pct_llm_saved']:.1f}% LLM calls saved")
+    print(
+        f"  At {safe_threshold:.3f}: {result['true_auto_merges']} auto-merges, "
+        f"{result['false_merges']} false merges, "
+        f"{result['pct_llm_saved']:.1f}% LLM calls saved"
+    )
 
     # ── Tiered analysis: embedding + string heuristics ─────────────
     print()
@@ -222,6 +238,9 @@ async def run_experiment() -> None:
 
     from kt_facts.processing.seed_heuristics import (
         edit_distance,
+        is_containment_mismatch,
+    )
+    from kt_facts.processing.seed_heuristics import (
         is_safe_auto_merge as _is_safe_auto_merge,
     )
 
@@ -257,8 +276,7 @@ async def run_experiment() -> None:
     print("=" * 80)
     print("REJECTED PAIR CLASSIFICATION (embedding >= 0.93)")
     print("=" * 80)
-    high_rejected = [(p, s) for p, s in scored
-                     if p.llm_verdict == "reject" and is_safe_auto_merge(p, s, 0.93)]
+    high_rejected = [(p, s) for p, s in scored if p.llm_verdict == "reject" and is_safe_auto_merge(p, s, 0.93)]
     for p, s in sorted(high_rejected, key=lambda x: -x[1]):
         ss = string_similarity(p.name_a, p.name_b)
         cm = is_containment_mismatch(p.name_a.lower(), p.name_b.lower())
@@ -274,9 +292,9 @@ async def run_experiment() -> None:
             total_merges = len([p for p, _ in scored if p.llm_verdict == "merge"])
             print(f"  BEST SAFE THRESHOLD: {t:.2f}")
             print(f"    Auto-merges: {len(true_m)} ({len(true_m) / total_merges * 100:.1f}% of LLM calls saved)")
-            print(f"    False merges: 0")
+            print("    False merges: 0")
             # Show some examples of what auto-merges at this level
-            print(f"    Example auto-merges:")
+            print("    Example auto-merges:")
             for p, s in sorted(true_m, key=lambda x: x[1])[:5]:
                 print(f"      {s:.4f} '{p.name_a}' vs '{p.name_b}'")
             break

@@ -43,7 +43,9 @@ async def scout_impl(queries: list[str], ctx: AgentContext) -> dict[str, Any]:
             for q, emb in zip(queries, all_embeddings):
                 embeddings_by_query[q] = emb
         except Exception:
-            logger.warning("Scout: batch embedding failed — Tier 2 (semantic) graph search disabled for this call", exc_info=True)
+            logger.warning(
+                "Scout: batch embedding failed — Tier 2 (semantic) graph search disabled for this call", exc_info=True
+            )
     else:
         logger.warning("Scout: no embedding service available — Tier 2 (semantic) graph search disabled")
 
@@ -54,11 +56,13 @@ async def scout_impl(queries: list[str], ctx: AgentContext) -> dict[str, Any]:
         raw_results = external_by_query.get(query, [])
         for r in raw_results:
             snippet = r.raw_content[:300] if r.raw_content else ""
-            entry["external"].append({
-                "title": r.title,
-                "snippet": snippet,
-                "url": r.uri,
-            })
+            entry["external"].append(
+                {
+                    "title": r.title,
+                    "snippet": snippet,
+                    "url": r.uri,
+                }
+            )
 
         # Internal graph search — text + embedding (sequential, uses DB session)
         try:
