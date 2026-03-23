@@ -10,7 +10,7 @@ env:
 
 jobs:
   backend-images:
-    name: Build ${{ matrix.service }}
+    name: Build ${{ matrix.image }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -18,16 +18,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service:
-          - api
-          - mcp
-          - worker-orchestrator
-          - worker-search
-          - worker-nodes
-          - worker-query
-          - worker-ingest
-          - worker-conversations
-          - worker-sync
+        include:
+          - service: api
+            image: openktree-api
+          - service: mcp
+            image: openktree-mcp
+          - service: worker-orchestrator
+            image: openktree-worker-orchestrator
+          - service: worker-search
+            image: openktree-worker-search
+          - service: worker-nodes
+            image: openktree-worker-nodes
+          - service: worker-query
+            image: openktree-worker-query
+          - service: worker-ingest
+            image: openktree-worker-ingest
+          - service: worker-conversations
+            image: openktree-worker-conversations
+          - service: worker-sync
+            image: openktree-worker-sync
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
@@ -39,7 +48,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -55,7 +64,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   frontend-image:
-    name: Build frontend
+    name: Build openktree-frontend
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -71,7 +80,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.IMAGE_PREFIX }}/frontend
+          images: ${{ env.IMAGE_PREFIX }}/openktree-frontend
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -87,7 +96,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
 
   wiki-frontend-image:
-    name: Build wiki-frontend
+    name: Build openktree-wiki-frontend
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -103,7 +112,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.IMAGE_PREFIX }}/wiki-frontend
+          images: ${{ env.IMAGE_PREFIX }}/openktree-wiki-frontend
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
