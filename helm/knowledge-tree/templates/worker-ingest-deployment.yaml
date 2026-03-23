@@ -24,7 +24,7 @@ spec:
         {{- include "knowledge-tree.initWaitContainers" . | nindent 8 }}
       containers:
         - name: worker
-          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.workers.ingest.image "defaultName" "kt-worker-ingest") }}
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.workers.ingest.image "defaultName" "openktree-worker-ingest") }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           env:
             {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
