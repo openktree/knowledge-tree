@@ -22,13 +22,14 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+RUN apk add --no-cache su-exec
 
 COPY --from=build /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Entrypoint script to replace API URL placeholder at runtime
-RUN cat <<'SCRIPT' > /app/entrypoint.sh
+# Entrypoint: replace API URL placeholder as root, then drop to nextjs
+COPY <<'SCRIPT' /app/entrypoint.sh
 #!/bin/sh
 set -e
 if [ -n "$NEXT_PUBLIC_API_URL" ] && [ "$NEXT_PUBLIC_API_URL" != "__NEXT_PUBLIC_API_URL_PLACEHOLDER__" ]; then
@@ -36,11 +37,10 @@ if [ -n "$NEXT_PUBLIC_API_URL" ] && [ "$NEXT_PUBLIC_API_URL" != "__NEXT_PUBLIC_A
   find /app/.next -name '*.js' -exec sed -i "s|__NEXT_PUBLIC_API_URL_PLACEHOLDER__|$NEXT_PUBLIC_API_URL|g" {} +
   find /app -maxdepth 1 -name '*.js' -exec sed -i "s|__NEXT_PUBLIC_API_URL_PLACEHOLDER__|$NEXT_PUBLIC_API_URL|g" {} +
 fi
-exec node server.js
+exec su-exec nextjs node server.js
 SCRIPT
 RUN chmod +x /app/entrypoint.sh
 
-USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
