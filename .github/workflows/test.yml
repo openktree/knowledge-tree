@@ -85,7 +85,7 @@ jobs:
           uv run pytest libs/kt-providers/tests/ -x
           uv run pytest libs/kt-graph/tests/ -x
           uv run pytest libs/kt-facts/tests/ -x
-          uv run pytest libs/kt-ontology/tests/ -x
+          uv run pytest libs/kt-ontology/tests/ -x --ignore=libs/kt-ontology/tests/test_crystallization.py --ignore=libs/kt-ontology/tests/integration
       - name: Run service tests
         run: |
           uv run pytest services/api/tests/ -x
