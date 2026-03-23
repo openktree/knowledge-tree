@@ -8,6 +8,6 @@ COPY pyproject.toml uv.lock ./
 COPY libs/ libs/
 COPY services/worker-conversations/ services/worker-conversations/
 
-RUN cd services/worker-conversations && uv sync --frozen --no-dev
+RUN cd services/worker-conversations && uv sync --frozen --no-dev --package kt-worker-conversations
 
 CMD ["uv", "run", "--project", "services/worker-conversations", "-m", "kt_worker_conv"]

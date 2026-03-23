@@ -8,6 +8,6 @@ COPY pyproject.toml uv.lock ./
 COPY libs/ libs/
 COPY services/worker-query/ services/worker-query/
 
-RUN cd services/worker-query && uv sync --frozen --no-dev
+RUN cd services/worker-query && uv sync --frozen --no-dev --package kt-worker-query
 
 CMD ["uv", "run", "--project", "services/worker-query", "-m", "kt_worker_query"]
