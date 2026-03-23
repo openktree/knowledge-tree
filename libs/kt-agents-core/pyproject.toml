@@ -8,6 +8,7 @@ dependencies = [
     "kt-models",
     "kt-providers",
     "kt-config",
+    "langchain-core>=0.3.0",
     "langgraph>=1.0.8",
     "langchain-openai>=1.1.9",
 ]

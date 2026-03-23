@@ -1629,7 +1629,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.1.0"
+version = "0.1.4"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1667,6 +1667,7 @@ dependencies = [
     { name = "kt-graph" },
     { name = "kt-models" },
     { name = "kt-providers" },
+    { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langgraph" },
 ]
@@ -1677,6 +1678,7 @@ requires-dist = [
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
     { name = "langchain-openai", specifier = ">=1.1.9" },
     { name = "langgraph", specifier = ">=1.0.8" },
 ]
@@ -1760,6 +1762,7 @@ source = { editable = "libs/kt-db" }
 dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
+    { name = "fastapi-users", extra = ["sqlalchemy"] },
     { name = "kt-config" },
     { name = "sqlalchemy" },
 ]
@@ -1768,6 +1771,7 @@ dependencies = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.18.4" },
     { name = "asyncpg", specifier = ">=0.31.0" },
+    { name = "fastapi-users", extras = ["sqlalchemy"], specifier = ">=15.0.4" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "sqlalchemy", specifier = ">=2.0.46" },
 ]
@@ -1779,6 +1783,7 @@ source = { editable = "libs/kt-facts" }
 dependencies = [
     { name = "kt-db" },
     { name = "kt-models" },
+    { name = "kt-providers" },
     { name = "metaphone" },
     { name = "numpy" },
     { name = "scipy" },
@@ -1788,6 +1793,7 @@ dependencies = [
 requires-dist = [
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-models", editable = "libs/kt-models" },
+    { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "metaphone", specifier = ">=0.6" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "scipy", specifier = ">=1.17.1" },
@@ -1816,24 +1822,30 @@ version = "0.1.0"
 source = { editable = "libs/kt-hatchet" }
 dependencies = [
     { name = "hatchet-sdk" },
+    { name = "kt-agents-core" },
     { name = "kt-config" },
     { name = "kt-db" },
     { name = "kt-models" },
     { name = "kt-ontology" },
     { name = "kt-providers" },
     { name = "kt-qdrant" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
     { name = "python-dotenv" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "hatchet-sdk", specifier = ">=1.26.0" },
+    { name = "kt-agents-core", editable = "libs/kt-agents-core" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=1.0.8" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
 
@@ -1870,7 +1882,9 @@ version = "0.1.0"
 source = { editable = "libs/kt-models" }
 dependencies = [
     { name = "kt-config" },
+    { name = "kt-db" },
     { name = "langchain-openai" },
+    { name = "langsmith" },
     { name = "litellm" },
     { name = "tiktoken" },
 ]
@@ -1878,7 +1892,9 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "kt-config", editable = "libs/kt-config" },
+    { name = "kt-db", editable = "libs/kt-db" },
     { name = "langchain-openai", specifier = ">=1.1.9" },
+    { name = "langsmith", specifier = ">=0.7.14" },
     { name = "litellm", specifier = ">=1.81.11" },
     { name = "tiktoken", specifier = ">=0.12.0" },
 ]
@@ -1891,6 +1907,8 @@ dependencies = [
     { name = "httpx" },
     { name = "kt-config" },
     { name = "kt-db" },
+    { name = "kt-graph" },
+    { name = "kt-models" },
     { name = "redis" },
 ]
 
@@ -1899,6 +1917,8 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
+    { name = "kt-graph", editable = "libs/kt-graph" },
+    { name = "kt-models", editable = "libs/kt-models" },
     { name = "redis", specifier = ">=5.0.0" },
 ]
 
@@ -1908,16 +1928,20 @@ version = "0.1.0"
 source = { editable = "libs/kt-providers" }
 dependencies = [
     { name = "httpx" },
+    { name = "kt-agents-core" },
     { name = "kt-config" },
     { name = "pydantic" },
+    { name = "structlog" },
     { name = "trafilatura" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "kt-agents-core", editable = "libs/kt-agents-core" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "structlog", specifier = ">=25.5.0" },
     { name = "trafilatura", specifier = ">=2.0.0" },
 ]
 
@@ -2001,6 +2025,9 @@ dependencies = [
     { name = "kt-hatchet" },
     { name = "kt-models" },
     { name = "kt-providers" },
+    { name = "kt-worker-orchestrator" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
     { name = "pymupdf" },
 ]
 
@@ -2014,6 +2041,9 @@ requires-dist = [
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
+    { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=1.0.8" },
     { name = "pymupdf", specifier = ">=1.27.1" },
 ]
 
@@ -2032,6 +2062,8 @@ dependencies = [
     { name = "kt-ontology" },
     { name = "kt-providers" },
     { name = "kt-worker-orchestrator" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
 ]
 
 [package.metadata]
@@ -2046,6 +2078,8 @@ requires-dist = [
     { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=1.0.8" },
 ]
 
 [[package]]
@@ -2062,6 +2096,10 @@ dependencies = [
     { name = "kt-models" },
     { name = "kt-ontology" },
     { name = "kt-providers" },
+    { name = "kt-worker-nodes" },
+    { name = "kt-worker-query" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
 ]
 
 [package.metadata]
@@ -2075,6 +2113,10 @@ requires-dist = [
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
+    { name = "kt-worker-nodes", editable = "services/worker-nodes" },
+    { name = "kt-worker-query", editable = "services/worker-query" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=1.0.8" },
 ]
 
 [[package]]
@@ -2089,6 +2131,9 @@ dependencies = [
     { name = "kt-hatchet" },
     { name = "kt-models" },
     { name = "kt-providers" },
+    { name = "kt-worker-orchestrator" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
 ]
 
 [package.metadata]
@@ -2100,6 +2145,9 @@ requires-dist = [
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
+    { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=1.0.8" },
 ]
 
 [[package]]
