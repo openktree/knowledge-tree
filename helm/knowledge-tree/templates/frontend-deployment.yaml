@@ -30,6 +30,10 @@ spec:
               value: "0.0.0.0"
             - name: PORT
               value: {{ .Values.frontend.port | quote }}
+            {{- if .Values.frontend.env.NEXT_PUBLIC_API_URL }}
+            - name: NEXT_PUBLIC_API_URL
+              value: {{ .Values.frontend.env.NEXT_PUBLIC_API_URL | quote }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /
