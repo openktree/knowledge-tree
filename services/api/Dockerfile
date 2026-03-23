@@ -14,7 +14,7 @@ COPY libs/ libs/
 COPY services/api/ services/api/
 
 # Install dependencies
-RUN cd services/api && uv sync --frozen --no-dev
+RUN cd services/api && uv sync --frozen --no-dev --package kt-api
 
 EXPOSE 8000
 
