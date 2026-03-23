@@ -27,8 +27,12 @@ secrets:
   googleOauthClientId: ""
   googleOauthClientSecret: ""
 
-  # Leave empty to auto-generate via Helm hook job
+  # Leave empty to auto-generate via token job
   hatchetClientToken: ""
+
+  # Hatchet admin credentials (used for initial seed)
+  hatchetAdminEmail: "admin@example.com"
+  hatchetAdminPassword: "Admin123!!"
 
 # =============================================================================
 # CloudNativePG Databases

@@ -54,6 +54,18 @@ spec:
               value: {{ default (printf "http://%s-hatchet:8080" (include "knowledge-tree.fullname" .)) .Values.hatchet.serverUrl | quote }}
             - name: SERVER_AUTH_SET_EMAIL_VERIFIED
               value: "t"
+            - name: ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "knowledge-tree.secretName" . }}
+                  key: hatchet-admin-email
+                  optional: true
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "knowledge-tree.secretName" . }}
+                  key: hatchet-admin-password
+                  optional: true
             - name: SERVER_FLUSH_PERIOD_MILLISECONDS
               value: "250"
           livenessProbe:
