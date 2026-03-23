@@ -8,6 +8,8 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
+from kt_agents_core.results import AgentResult, build_ingest_subgraph, extract_final_state
+from kt_agents_core.worker_base import BaseWorker
 from kt_worker_ingest.agents.ingest_agent import (
     INGEST_SYSTEM_PROMPT,
     MAX_ITERATIONS,
@@ -16,9 +18,7 @@ from kt_worker_ingest.agents.ingest_agent import (
     _describe_prior_nodes,
 )
 from kt_worker_ingest.agents.ingest_state import IngestState
-from kt_agents_core.results import AgentResult, build_ingest_subgraph, extract_final_state
 from kt_worker_ingest.ingest.pipeline import DecompositionSummary, ProcessedSource
-from kt_agents_core.worker_base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,8 @@ class IngestWorker(BaseWorker):
         is_expansion = bool(prior_created_nodes)
         if is_expansion and prior_created_nodes:
             prior_node_descriptions = await _describe_prior_nodes(
-                prior_created_nodes[:50], ctx,
+                prior_created_nodes[:50],
+                ctx,
             )
             system_prompt += (
                 f"\n\n## EXPANSION MODE\n\n"
@@ -183,7 +184,8 @@ class IngestWorker(BaseWorker):
         try:
             final = await self._compile_and_invoke(agent, state, MAX_ITERATIONS * 3)
             fs = extract_final_state(
-                final, state,
+                final,
+                state,
                 ["answer", "nav_used", "visited_nodes", "created_nodes", "created_edges"],
             )
             answer = fs["answer"] or ""
@@ -251,8 +253,8 @@ class IngestWorker(BaseWorker):
         await ctx.emit(
             "activity_log",
             action=f"Expanding ingest: {len(prior_created)} existing nodes, "
-                   f"{decomp_summary.total_facts} facts in pool, "
-                   f"budget +{nav_budget} nodes",
+            f"{decomp_summary.total_facts} facts in pool, "
+            f"budget +{nav_budget} nodes",
             tool="ingest",
         )
 

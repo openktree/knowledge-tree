@@ -42,7 +42,9 @@ async def test_batch_creates_new_facts():
 
     with patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=mock_qdrant_fact_repo):
         results = await deduplicate_facts(
-            items, mock_repo, mock_embedding_service,
+            items,
+            mock_repo,
+            mock_embedding_service,
             qdrant_client=mock_qdrant_client,
             write_fact_repo=mock_write_fact_repo,
         )
@@ -88,7 +90,9 @@ async def test_batch_finds_existing_fact():
 
     with patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=mock_qdrant_fact_repo):
         results = await deduplicate_facts(
-            items, mock_repo, mock_embedding_service,
+            items,
+            mock_repo,
+            mock_embedding_service,
             qdrant_client=mock_qdrant_client,
             write_fact_repo=mock_write_fact_repo,
         )
@@ -121,7 +125,9 @@ async def test_batch_type_aware_thresholds():
 
     with patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=mock_qdrant_fact_repo):
         await deduplicate_facts(
-            items, mock_repo, mock_embedding_service,
+            items,
+            mock_repo,
+            mock_embedding_service,
             qdrant_client=mock_qdrant_client,
             write_fact_repo=mock_write_fact_repo,
         )
@@ -156,7 +162,9 @@ async def test_batch_no_embedding_service():
     ]
 
     results = await deduplicate_facts(
-        items, mock_repo, embedding_service=None,
+        items,
+        mock_repo,
+        embedding_service=None,
         write_fact_repo=mock_write_fact_repo,
     )
 
@@ -179,7 +187,9 @@ async def test_no_qdrant_client_logs_error():
     items = [("Water boils at 100C", "measurement")]
 
     results = await deduplicate_facts(
-        items, mock_repo, mock_embedding_service,
+        items,
+        mock_repo,
+        mock_embedding_service,
         qdrant_client=None,
         write_fact_repo=mock_write_fact_repo,
     )
@@ -208,7 +218,9 @@ async def test_missing_write_fact_repo_raises():
     with patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=mock_qdrant_fact_repo):
         with pytest.raises(RuntimeError, match="write_fact_repo is required"):
             await deduplicate_facts(
-                items, mock_repo, mock_embedding_service,
+                items,
+                mock_repo,
+                mock_embedding_service,
                 qdrant_client=mock_qdrant_client,
                 write_fact_repo=None,
             )

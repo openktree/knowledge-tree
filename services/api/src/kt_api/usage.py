@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, Query
 
 from kt_api.auth.tokens import require_admin
 from kt_api.dependencies import get_session_factory_cached
-from kt_db.models import User
 from kt_api.schemas import (
     ConversationUsageResponse,
     ConversationUsageSummary,
@@ -22,6 +21,7 @@ from kt_api.schemas import (
     TokenUsageByModel,
     UsageSummaryResponse,
 )
+from kt_db.models import User
 
 router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 

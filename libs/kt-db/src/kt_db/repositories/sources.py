@@ -4,11 +4,10 @@ import uuid
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy.orm import selectinload
 
-from kt_db.models import Fact, FactSource, ProhibitedChunk, RawSource
 from kt_config.types import RawSearchResult
+from kt_db.models import Fact, FactSource, ProhibitedChunk, RawSource
 
 
 class SourceRepository:
@@ -44,17 +43,14 @@ class SourceRepository:
         content_hash = self.compute_hash(search_result.raw_content)
         new_id = uuid.uuid4()
 
-        stmt = (
-            pg_insert(RawSource)
-            .values(
-                id=new_id,
-                uri=search_result.uri,
-                title=search_result.title,
-                raw_content=search_result.raw_content,
-                content_hash=content_hash,
-                provider_id=search_result.provider_id,
-                provider_metadata=search_result.provider_metadata,
-            )
+        stmt = pg_insert(RawSource).values(
+            id=new_id,
+            uri=search_result.uri,
+            title=search_result.title,
+            raw_content=search_result.raw_content,
+            content_hash=content_hash,
+            provider_id=search_result.provider_id,
+            provider_metadata=search_result.provider_metadata,
         )
         # Use DO UPDATE (no-op) instead of DO NOTHING to avoid deadlocks
         # when concurrent transactions insert rows with the same content_hash.
@@ -104,11 +100,7 @@ class SourceRepository:
         }
         if content_type is not None:
             values["content_type"] = content_type
-        await self._session.execute(
-            update(RawSource)
-            .where(RawSource.id == source_id)
-            .values(**values)
-        )
+        await self._session.execute(update(RawSource).where(RawSource.id == source_id).values(**values))
         await self._session.flush()
         return True
 
@@ -136,9 +128,7 @@ class SourceRepository:
 
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(
-                RawSource.title.ilike(pattern) | RawSource.uri.ilike(pattern)
-            )
+            stmt = stmt.where(RawSource.title.ilike(pattern) | RawSource.uri.ilike(pattern))
         if provider_id:
             stmt = stmt.where(RawSource.provider_id == provider_id)
         if has_prohibited is True:
@@ -165,9 +155,7 @@ class SourceRepository:
         stmt = select(func.count(RawSource.id))
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(
-                RawSource.title.ilike(pattern) | RawSource.uri.ilike(pattern)
-            )
+            stmt = stmt.where(RawSource.title.ilike(pattern) | RawSource.uri.ilike(pattern))
         if provider_id:
             stmt = stmt.where(RawSource.provider_id == provider_id)
         if has_prohibited is True:
@@ -196,9 +184,7 @@ class SourceRepository:
     async def increment_fact_count(self, source_id: uuid.UUID, delta: int = 1) -> None:
         """Increment the cached fact_count on a RawSource."""
         await self._session.execute(
-            update(RawSource)
-            .where(RawSource.id == source_id)
-            .values(fact_count=RawSource.fact_count + delta)
+            update(RawSource).where(RawSource.id == source_id).values(fact_count=RawSource.fact_count + delta)
         )
         await self._session.flush()
 
@@ -216,10 +202,7 @@ class SourceRepository:
 
     async def get_fact_sources_for_source(self, source_id: uuid.UUID) -> list[FactSource]:
         """Get all FactSource junction rows for a given source."""
-        stmt = (
-            select(FactSource)
-            .where(FactSource.raw_source_id == source_id)
-        )
+        stmt = select(FactSource).where(FactSource.raw_source_id == source_id)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -236,6 +219,7 @@ class SourceRepository:
     async def get_linked_nodes_for_source(self, source_id: uuid.UUID) -> list[dict]:
         """Get nodes linked to a source via facts, with counts."""
         from kt_db.models import Node, NodeFact
+
         stmt = (
             select(
                 Node.id,

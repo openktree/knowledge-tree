@@ -57,7 +57,10 @@ class NodeRepository:
         return list(result.scalars().all())
 
     async def search_by_concept(
-        self, query: str, limit: int = 10, node_type: str | None = None,
+        self,
+        query: str,
+        limit: int = 10,
+        node_type: str | None = None,
     ) -> list[Node]:
         """Text search by concept name using pg_trgm similarity.
 
@@ -235,11 +238,7 @@ class NodeRepository:
 
     async def get_children(self, parent_id: uuid.UUID) -> list[Node]:
         """Get all child nodes of a given parent."""
-        stmt = (
-            select(Node)
-            .where(Node.parent_id == parent_id)
-            .order_by(Node.updated_at.desc())
-        )
+        stmt = select(Node).where(Node.parent_id == parent_id).order_by(Node.updated_at.desc())
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -278,11 +277,6 @@ class NodeRepository:
         # stale_after is in days; compare updated_at + interval(stale_after days) < now
         # Using a simpler approach: filter where updated_at < now - max_age_days
         cutoff = now - timedelta(days=max_age_days)
-        stmt = (
-            select(Node)
-            .where(Node.updated_at < cutoff)
-            .order_by(Node.updated_at.asc())
-            .limit(limit)
-        )
+        stmt = select(Node).where(Node.updated_at < cutoff).order_by(Node.updated_at.asc()).limit(limit)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

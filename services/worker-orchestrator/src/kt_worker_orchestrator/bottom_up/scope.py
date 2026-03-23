@@ -181,8 +181,7 @@ async def plan_perspectives(
         return []
 
     node_list = "\n".join(
-        f"- {n.get('concept', n.get('name', '?'))} ({n.get('node_type', 'concept')})"
-        for n in built_nodes
+        f"- {n.get('concept', n.get('name', '?'))} ({n.get('node_type', 'concept')})" for n in built_nodes
     )
 
     content_context = ""
@@ -198,7 +197,8 @@ async def plan_perspectives(
     )
 
     try:
-        from kt_models.usage import set_usage_task, clear_usage_task
+        from kt_models.usage import clear_usage_task, set_usage_task
+
         set_usage_task("perspective_planning")
         tool_calls = await ctx.model_gateway.generate_with_tools(
             model_id=ctx.model_gateway.scope_model,
@@ -216,17 +216,20 @@ async def plan_perspectives(
                 continue
             args = tc["arguments"]
             if args.get("claim") and args.get("antithesis") and args.get("source_concept"):
-                plans.append({
-                    "claim": args["claim"],
-                    "antithesis": args["antithesis"],
-                    "source_concept_id": args["source_concept"],
-                })
+                plans.append(
+                    {
+                        "claim": args["claim"],
+                        "antithesis": args["antithesis"],
+                        "source_concept_id": args["source_concept"],
+                    }
+                )
         return plans[:max_perspectives]
 
     except Exception:
         logger.warning(
             "Failed to plan perspectives for scope %r",
-            scope_description, exc_info=True,
+            scope_description,
+            exc_info=True,
         )
         return []
 
@@ -362,10 +365,7 @@ async def prioritize_extracted_nodes(
     if not filtered_nodes:
         return []
 
-    node_list = "\n".join(
-        f"- {n.get('name', '?')} ({n.get('node_type', 'concept')})"
-        for n in filtered_nodes
-    )
+    node_list = "\n".join(f"- {n.get('name', '?')} ({n.get('node_type', 'concept')})" for n in filtered_nodes)
 
     user_msg = PRIORITIZE_USER.format(
         query=query,
@@ -375,7 +375,8 @@ async def prioritize_extracted_nodes(
     )
 
     try:
-        from kt_models.usage import set_usage_task, clear_usage_task
+        from kt_models.usage import clear_usage_task, set_usage_task
+
         set_usage_task("prioritization")
         result = await ctx.model_gateway.generate_json(
             model_id=ctx.model_gateway.prioritization_model,
@@ -422,8 +423,7 @@ async def prioritize_extracted_nodes(
                 n["node_type"] = match.get("node_type", n.get("node_type", "concept"))
                 perspectives = match.get("perspectives") or []
                 n["perspectives"] = [
-                    p for p in perspectives
-                    if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
+                    p for p in perspectives if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
                 ]
             else:
                 n.setdefault("priority", 5)
@@ -466,25 +466,32 @@ async def batched_prioritize_nodes(
 
     if len(filtered_nodes) <= _PRIORITIZE_BATCH_SIZE:
         return await prioritize_extracted_nodes(
-            ctx, filtered_nodes, query, content_summary=content_summary,
+            ctx,
+            filtered_nodes,
+            query,
+            content_summary=content_summary,
         )
 
     import asyncio
 
     batches = [
-        filtered_nodes[i : i + _PRIORITIZE_BATCH_SIZE]
-        for i in range(0, len(filtered_nodes), _PRIORITIZE_BATCH_SIZE)
+        filtered_nodes[i : i + _PRIORITIZE_BATCH_SIZE] for i in range(0, len(filtered_nodes), _PRIORITIZE_BATCH_SIZE)
     ]
 
     logger.info(
         "Batched prioritization: %d nodes → %d batches of ≤%d",
-        len(filtered_nodes), len(batches), _PRIORITIZE_BATCH_SIZE,
+        len(filtered_nodes),
+        len(batches),
+        _PRIORITIZE_BATCH_SIZE,
     )
 
     results = await asyncio.gather(
         *[
             prioritize_extracted_nodes(
-                ctx, batch, query, content_summary=content_summary,
+                ctx,
+                batch,
+                query,
+                content_summary=content_summary,
             )
             for batch in batches
         ],
@@ -505,5 +512,3 @@ async def batched_prioritize_nodes(
 
     merged.sort(key=lambda x: x.get("priority", 0), reverse=True)
     return merged
-
-

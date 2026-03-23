@@ -5,12 +5,12 @@ Revises: w003
 Create Date: 2026-03-09 00:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-
 
 # revision identifiers, used by Alembic.
 revision: str = "w004"
@@ -62,8 +62,10 @@ def upgrade() -> None:
     op.create_index("ix_write_nfr_updated_at", "write_node_fact_rejections", ["updated_at"])
     op.create_index("ix_write_nfr_node_id", "write_node_fact_rejections", ["node_id"])
     op.create_index(
-        "uq_write_nfr_node_fact", "write_node_fact_rejections",
-        ["node_id", "fact_id"], unique=True,
+        "uq_write_nfr_node_fact",
+        "write_node_fact_rejections",
+        ["node_id", "fact_id"],
+        unique=True,
     )
 
     # write_fact_edge_evaluations
@@ -78,19 +80,19 @@ def upgrade() -> None:
     )
     op.create_index("ix_write_fee_updated_at", "write_fact_edge_evaluations", ["updated_at"])
     op.create_index(
-        "ix_write_fee_source_target", "write_fact_edge_evaluations",
+        "ix_write_fee_source_target",
+        "write_fact_edge_evaluations",
         ["source_node_id", "target_node_id"],
     )
     op.create_index(
-        "uq_write_fee", "write_fact_edge_evaluations",
-        ["source_node_id", "target_node_id", "fact_id"], unique=True,
+        "uq_write_fee",
+        "write_fact_edge_evaluations",
+        ["source_node_id", "target_node_id", "fact_id"],
+        unique=True,
     )
 
     # GIN index on write_nodes.fact_ids for array overlap queries
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_write_nodes_fact_ids_gin "
-        "ON write_nodes USING GIN (fact_ids)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_write_nodes_fact_ids_gin ON write_nodes USING GIN (fact_ids)")
 
 
 def downgrade() -> None:

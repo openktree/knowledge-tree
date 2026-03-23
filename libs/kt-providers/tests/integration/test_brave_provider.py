@@ -1,9 +1,9 @@
 import pytest
 
 from kt_config.settings import get_settings
+from kt_config.types import RawSearchResult
 from kt_db.repositories.sources import SourceRepository
 from kt_providers.brave import BraveSearchProvider
-from kt_config.types import RawSearchResult
 
 pytestmark = pytest.mark.asyncio
 

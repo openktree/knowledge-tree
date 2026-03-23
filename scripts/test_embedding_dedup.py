@@ -3,8 +3,8 @@
 # Run: uv run --project libs/kt-models python scripts/seed_dedup/run_embedding_sim.py
 
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "seed_dedup"))
 from run_embedding_sim import main  # noqa: E402

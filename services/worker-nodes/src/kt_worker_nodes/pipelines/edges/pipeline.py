@@ -56,10 +56,12 @@ class EdgePipeline:
                 total_created += created
                 all_edge_ids.extend(edge_ids)
                 if len(node_details) < 10:
-                    node_details.append({
-                        "name": t.name,
-                        "edges_created": created,
-                    })
+                    node_details.append(
+                        {
+                            "name": t.name,
+                            "edges_created": created,
+                        }
+                    )
             except Exception:
                 logger.debug(
                     "resolve_from_candidates_batch: error processing '%s'",

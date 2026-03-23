@@ -77,7 +77,7 @@ def url_key_to_node_key(url_key: str) -> str:
     for nt in _KNOWN_NODE_TYPES:
         prefix = f"{nt}-"
         if url_key.startswith(prefix):
-            return f"{nt}:{url_key[len(prefix):]}"
+            return f"{nt}:{url_key[len(prefix) :]}"
     # Fallback: return as-is (caller will try key_to_uuid which may fail)
     return url_key
 

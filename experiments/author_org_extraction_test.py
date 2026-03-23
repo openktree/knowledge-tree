@@ -10,11 +10,11 @@ import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from kt_models.gateway import ModelGateway
 from kt_facts.author import LlmHeaderStrategy, SourceContext
-
+from kt_models.gateway import ModelGateway
 
 SOURCES = [
     {

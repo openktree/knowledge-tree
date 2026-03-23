@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import cast
 from datetime import timedelta
+from typing import cast
 
 from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
 
@@ -51,7 +51,9 @@ async def sync_task(input: dict, ctx: Context) -> dict:
     except Exception:
         elapsed = time.monotonic() - t0
         logger.error(
-            "Sync task FAILED after %.2fs", elapsed, exc_info=True,
+            "Sync task FAILED after %.2fs",
+            elapsed,
+            exc_info=True,
         )
         raise
 

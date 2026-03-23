@@ -75,33 +75,21 @@ class WriteNodeVersionRepository:
             return None
 
         # Clear all defaults for this node
-        clear_stmt = (
-            update(WriteNodeVersion)
-            .where(WriteNodeVersion.node_key == node_key)
-            .values(is_default=False)
-        )
+        clear_stmt = update(WriteNodeVersion).where(WriteNodeVersion.node_key == node_key).values(is_default=False)
         await self._session.execute(clear_stmt)
 
         # Set the best one as default
-        set_stmt = (
-            update(WriteNodeVersion)
-            .where(WriteNodeVersion.id == best_id)
-            .values(is_default=True)
-        )
+        set_stmt = update(WriteNodeVersion).where(WriteNodeVersion.id == best_id).values(is_default=True)
         await self._session.execute(set_stmt)
         await self._session.flush()
 
         # Fetch and return the new default
-        result = await self._session.execute(
-            select(WriteNodeVersion).where(WriteNodeVersion.id == best_id)
-        )
+        result = await self._session.execute(select(WriteNodeVersion).where(WriteNodeVersion.id == best_id))
         return result.scalar_one_or_none()
 
     async def next_version_number(self, node_key: str) -> int:
         """Return the next version number for a node (max + 1, or 1 if none)."""
-        stmt = select(func.max(WriteNodeVersion.version_number)).where(
-            WriteNodeVersion.node_key == node_key
-        )
+        stmt = select(func.max(WriteNodeVersion.version_number)).where(WriteNodeVersion.node_key == node_key)
         result = await self._session.execute(stmt)
         current_max = result.scalar_one_or_none()
         return (current_max or 0) + 1

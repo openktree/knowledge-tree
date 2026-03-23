@@ -60,34 +60,23 @@ class WriteSeedRepository:
         )
         await self._session.execute(stmt)
         # Fetch and return the seed
-        result = await self._session.execute(
-            select(WriteSeed).where(WriteSeed.key == key)
-        )
+        result = await self._session.execute(select(WriteSeed).where(WriteSeed.key == key))
         return result.scalar_one()
 
     async def get_seed_by_key(self, key: str) -> WriteSeed | None:
-        result = await self._session.execute(
-            select(WriteSeed).where(WriteSeed.key == key)
-        )
+        result = await self._session.execute(select(WriteSeed).where(WriteSeed.key == key))
         return result.scalar_one_or_none()
 
-    async def get_seeds_by_status(
-        self, status: str, limit: int = 100
-    ) -> list[WriteSeed]:
+    async def get_seeds_by_status(self, status: str, limit: int = 100) -> list[WriteSeed]:
         result = await self._session.execute(
-            select(WriteSeed)
-            .where(WriteSeed.status == status)
-            .order_by(WriteSeed.fact_count.desc())
-            .limit(limit)
+            select(WriteSeed).where(WriteSeed.status == status).order_by(WriteSeed.fact_count.desc()).limit(limit)
         )
         return list(result.scalars().all())
 
     async def get_seeds_by_keys(self, keys: list[str]) -> list[WriteSeed]:
         if not keys:
             return []
-        result = await self._session.execute(
-            select(WriteSeed).where(WriteSeed.key.in_(keys))
-        )
+        result = await self._session.execute(select(WriteSeed).where(WriteSeed.key.in_(keys)))
         return list(result.scalars().all())
 
     async def get_seeds_by_keys_batch(
@@ -97,9 +86,7 @@ class WriteSeedRepository:
         """Batch fetch seeds by keys. Returns key → WriteSeed mapping."""
         if not seed_keys:
             return {}
-        result = await self._session.execute(
-            select(WriteSeed).where(WriteSeed.key.in_(seed_keys))
-        )
+        result = await self._session.execute(select(WriteSeed).where(WriteSeed.key.in_(seed_keys)))
         return {s.key: s for s in result.scalars().all()}
 
     async def update_seed_metadata(self, seed_key: str, metadata: dict) -> None:
@@ -110,9 +97,7 @@ class WriteSeedRepository:
         merged = seed.metadata_ or {}
         merged.update(metadata)
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == seed_key)
-            .values(metadata_=merged, updated_at=func.now())
+            update(WriteSeed).where(WriteSeed.key == seed_key).values(metadata_=merged, updated_at=func.now())
         )
 
     async def list_perspective_pairs(
@@ -134,9 +119,13 @@ class WriteSeedRepository:
             WriteSeed.node_type == "perspective",
             WriteSeed.metadata_["dialectic_role"].astext == "thesis",
         )
-        count_base = select(func.count()).select_from(WriteSeed).where(
-            WriteSeed.node_type == "perspective",
-            WriteSeed.metadata_["dialectic_role"].astext == "thesis",
+        count_base = (
+            select(func.count())
+            .select_from(WriteSeed)
+            .where(
+                WriteSeed.node_type == "perspective",
+                WriteSeed.metadata_["dialectic_role"].astext == "thesis",
+            )
         )
 
         if status:
@@ -153,9 +142,7 @@ class WriteSeedRepository:
 
         if source_node_id:
             # Filter by source_node_id in metadata->source_node_ids JSON array
-            json_filter = text(
-                "metadata->>'source_node_ids' LIKE :pattern"
-            ).bindparams(pattern=f"%{source_node_id}%")
+            json_filter = text("metadata->>'source_node_ids' LIKE :pattern").bindparams(pattern=f"%{source_node_id}%")
             base = base.where(json_filter)
             count_base = count_base.where(json_filter)
 
@@ -189,16 +176,10 @@ class WriteSeedRepository:
         ).subquery()
 
         # Zero out seeds that may only have source_attribution links
-        await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key.in_(seed_keys))
-            .values(fact_count=0)
-        )
+        await self._session.execute(update(WriteSeed).where(WriteSeed.key.in_(seed_keys)).values(fact_count=0))
 
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == counts_subq.c.seed_key)
-            .values(fact_count=counts_subq.c.cnt)
+            update(WriteSeed).where(WriteSeed.key == counts_subq.c.seed_key).values(fact_count=counts_subq.c.cnt)
         )
 
     async def link_fact(
@@ -236,15 +217,11 @@ class WriteSeedRepository:
         return [row[0] for row in result.all()]
 
     async def get_facts_for_seed(self, seed_key: str) -> list[uuid.UUID]:
-        result = await self._session.execute(
-            select(WriteSeedFact.fact_id).where(WriteSeedFact.seed_key == seed_key)
-        )
+        result = await self._session.execute(select(WriteSeedFact.fact_id).where(WriteSeedFact.seed_key == seed_key))
         return [row[0] for row in result.all()]
 
     async def get_seed_facts(self, seed_key: str) -> list[WriteSeedFact]:
-        result = await self._session.execute(
-            select(WriteSeedFact).where(WriteSeedFact.seed_key == seed_key)
-        )
+        result = await self._session.execute(select(WriteSeedFact).where(WriteSeedFact.seed_key == seed_key))
         return list(result.scalars().all())
 
     # ── Edge candidates ────────────────────────────────────────────────
@@ -305,10 +282,7 @@ class WriteSeedRepository:
         """Get all candidate fact rows for a seed filtered by status."""
         result = await self._session.execute(
             select(WriteEdgeCandidate).where(
-                (
-                    (WriteEdgeCandidate.seed_key_a == seed_key)
-                    | (WriteEdgeCandidate.seed_key_b == seed_key)
-                ),
+                ((WriteEdgeCandidate.seed_key_a == seed_key) | (WriteEdgeCandidate.seed_key_b == seed_key)),
                 WriteEdgeCandidate.status == status,
             )
         )
@@ -407,32 +381,22 @@ class WriteSeedRepository:
 
     async def get_routes_for_parent(self, parent_key: str) -> list[WriteSeedRoute]:
         """Get all child routes for an ambiguous parent seed."""
-        result = await self._session.execute(
-            select(WriteSeedRoute).where(
-                WriteSeedRoute.parent_seed_key == parent_key
-            )
-        )
+        result = await self._session.execute(select(WriteSeedRoute).where(WriteSeedRoute.parent_seed_key == parent_key))
         return list(result.scalars().all())
 
     async def get_route_for_child(self, child_key: str) -> WriteSeedRoute | None:
         """Reverse lookup: find a route pointing to this child (first match)."""
         result = await self._session.execute(
-            select(WriteSeedRoute).where(
-                WriteSeedRoute.child_seed_key == child_key
-            ).limit(1)
+            select(WriteSeedRoute).where(WriteSeedRoute.child_seed_key == child_key).limit(1)
         )
         return result.scalar_one_or_none()
 
-    async def get_routes_for_children_batch(
-        self, child_keys: list[str]
-    ) -> dict[str, WriteSeedRoute]:
+    async def get_routes_for_children_batch(self, child_keys: list[str]) -> dict[str, WriteSeedRoute]:
         """Batch fetch routes where these keys are children. Returns child_key -> route mapping."""
         if not child_keys:
             return {}
         result = await self._session.execute(
-            select(WriteSeedRoute).where(
-                WriteSeedRoute.child_seed_key.in_(child_keys)
-            )
+            select(WriteSeedRoute).where(WriteSeedRoute.child_seed_key.in_(child_keys))
         )
         return {r.child_seed_key: r for r in result.scalars().all()}
 
@@ -462,17 +426,13 @@ class WriteSeedRepository:
     async def update_phonetic_code(self, seed_key: str, code: str) -> None:
         """Update the phonetic code for a seed."""
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == seed_key)
-            .values(phonetic_code=code, updated_at=func.now())
+            update(WriteSeed).where(WriteSeed.key == seed_key).values(phonetic_code=code, updated_at=func.now())
         )
 
     async def update_context_hash(self, seed_key: str, hash_value: str) -> None:
         """Update the context hash for a seed (staleness detection)."""
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == seed_key)
-            .values(context_hash=hash_value, updated_at=func.now())
+            update(WriteSeed).where(WriteSeed.key == seed_key).values(context_hash=hash_value, updated_at=func.now())
         )
 
     # ── Merge / Split ──────────────────────────────────────────────────
@@ -503,7 +463,8 @@ class WriteSeedRepository:
         # Delete duplicates first to avoid unique constraint violations
         # when both losing and winning seeds share candidates for the
         # same partner seed + fact.
-        from sqlalchemy import and_, delete, exists, select as sa_select
+        from sqlalchemy import and_, delete, exists
+        from sqlalchemy import select as sa_select
 
         # Remove losing-key rows that would collide with existing winning-key rows
         # (same partner seed + fact already exists under winning key)
@@ -516,16 +477,21 @@ class WriteSeedRepository:
 
             # Alias for the subquery
             from sqlalchemy.orm import aliased
+
             WEC2 = aliased(WriteEdgeCandidate)
             wec2_update_col = getattr(WEC2, col_to_update)
             wec2_other_col = getattr(WEC2, other_col)
 
             # Delete rows from losing key that would conflict after reassignment
-            conflict_subq = sa_select(WEC2.id).where(
-                wec2_update_col == winning_key,
-                wec2_other_col == other_col_attr,
-                WEC2.fact_id == WriteEdgeCandidate.fact_id,
-            ).correlate(WriteEdgeCandidate)
+            conflict_subq = (
+                sa_select(WEC2.id)
+                .where(
+                    wec2_update_col == winning_key,
+                    wec2_other_col == other_col_attr,
+                    WEC2.fact_id == WriteEdgeCandidate.fact_id,
+                )
+                .correlate(WriteEdgeCandidate)
+            )
 
             await self._session.execute(
                 delete(WriteEdgeCandidate).where(
@@ -565,16 +531,16 @@ class WriteSeedRepository:
 
         # Update winning seed fact_count (excluding source_attribution links)
         new_count_result = await self._session.execute(
-            select(func.count()).select_from(WriteSeedFact).where(
+            select(func.count())
+            .select_from(WriteSeedFact)
+            .where(
                 WriteSeedFact.seed_key == winning_key,
                 WriteSeedFact.extraction_role != "source_attribution",
             )
         )
         new_count = new_count_result.scalar() or 0
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == winning_key)
-            .values(fact_count=new_count, updated_at=func.now())
+            update(WriteSeed).where(WriteSeed.key == winning_key).values(fact_count=new_count, updated_at=func.now())
         )
 
         # Append losing seed's name to winning seed's aliases
@@ -586,11 +552,7 @@ class WriteSeedRepository:
             if losing_seed.name not in aliases:
                 aliases.append(losing_seed.name)
             meta["aliases"] = aliases
-            await self._session.execute(
-                update(WriteSeed)
-                .where(WriteSeed.key == winning_key)
-                .values(metadata_=meta)
-            )
+            await self._session.execute(update(WriteSeed).where(WriteSeed.key == winning_key).values(metadata_=meta))
 
         # Record audit
         merge_record = WriteSeedMerge(
@@ -683,9 +645,7 @@ class WriteSeedRepository:
 
         # Mark original as ambiguous
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == original_key)
-            .values(status="ambiguous", updated_at=func.now())
+            update(WriteSeed).where(WriteSeed.key == original_key).values(status="ambiguous", updated_at=func.now())
         )
 
         await self._session.flush()
@@ -766,17 +726,13 @@ class WriteSeedRepository:
             ORDER BY ws.fact_count DESC
             LIMIT :limit
         """)
-        result = await self._session.execute(
-            stmt, {"node_type": node_type, "alias": alias, "limit": limit}
-        )
+        result = await self._session.execute(stmt, {"node_type": node_type, "alias": alias, "limit": limit})
         # Map raw rows back to WriteSeed ORM objects
         rows = result.fetchall()
         if not rows:
             return []
         keys = [r.key for r in rows]
-        orm_result = await self._session.execute(
-            select(WriteSeed).where(WriteSeed.key.in_(keys))
-        )
+        orm_result = await self._session.execute(select(WriteSeed).where(WriteSeed.key.in_(keys)))
         return list(orm_result.scalars().all())
 
     async def update_aliases_batch(
@@ -805,15 +761,15 @@ class WriteSeedRepository:
                     existing_lower.add(alias.lower())
             meta["aliases"] = existing
             await self._session.execute(
-                update(WriteSeed)
-                .where(WriteSeed.key == seed_key)
-                .values(metadata_=meta, updated_at=func.now())
+                update(WriteSeed).where(WriteSeed.key == seed_key).values(metadata_=meta, updated_at=func.now())
             )
 
     # ── Tree / descendant queries ───────────────────────────────────────
 
     async def get_all_descendant_facts(
-        self, seed_key: str, max_depth: int = 10,
+        self,
+        seed_key: str,
+        max_depth: int = 10,
     ) -> list[uuid.UUID]:
         """Recursively collect fact IDs from all descendant seeds via BFS."""
         all_facts: set[uuid.UUID] = set()
@@ -839,7 +795,9 @@ class WriteSeedRepository:
         return list(all_facts)
 
     async def get_seed_tree(
-        self, seed_key: str, max_depth: int = 10,
+        self,
+        seed_key: str,
+        max_depth: int = 10,
     ) -> dict | None:
         """Build tree: walk UP to root ancestor, then DOWN to all leaves."""
         root_key = seed_key
@@ -852,7 +810,10 @@ class WriteSeedRepository:
         return await self._build_tree_node(root_key, max_depth, set())
 
     async def _build_tree_node(
-        self, key: str, remaining_depth: int, visited: set[str],
+        self,
+        key: str,
+        remaining_depth: int,
+        visited: set[str],
     ) -> dict | None:
         if key in visited or remaining_depth <= 0:
             return None
@@ -865,7 +826,9 @@ class WriteSeedRepository:
         children = []
         for r in routes:
             child = await self._build_tree_node(
-                r.child_seed_key, remaining_depth - 1, visited,
+                r.child_seed_key,
+                remaining_depth - 1,
+                visited,
             )
             if child:
                 child["ambiguity_type"] = r.ambiguity_type
@@ -951,10 +914,9 @@ class WriteSeedRepository:
     async def get_merges_for_seed(self, seed_key: str) -> list[WriteSeedMerge]:
         """Get all merge/split audit records involving a seed."""
         result = await self._session.execute(
-            select(WriteSeedMerge).where(
-                (WriteSeedMerge.source_seed_key == seed_key)
-                | (WriteSeedMerge.target_seed_key == seed_key)
-            ).order_by(WriteSeedMerge.created_at.desc())
+            select(WriteSeedMerge)
+            .where((WriteSeedMerge.source_seed_key == seed_key) | (WriteSeedMerge.target_seed_key == seed_key))
+            .order_by(WriteSeedMerge.created_at.desc())
         )
         return list(result.scalars().all())
 
@@ -1022,11 +984,7 @@ class WriteSeedRepository:
         total_created = 0
         for i in range(0, len(rows), chunk_size):
             chunk = rows[i : i + chunk_size]
-            stmt = (
-                pg_insert(WriteSeedFact)
-                .values(chunk)
-                .on_conflict_do_nothing(index_elements=["seed_key", "fact_id"])
-            )
+            stmt = pg_insert(WriteSeedFact).values(chunk).on_conflict_do_nothing(index_elements=["seed_key", "fact_id"])
             result = await self._session.execute(stmt)
             total_created += result.rowcount or 0
         return total_created  # type: ignore[return-value]
@@ -1056,11 +1014,7 @@ class WriteSeedRepository:
         chunk_size = 4000
         for i in range(0, len(rows), chunk_size):
             chunk = rows[i : i + chunk_size]
-            stmt = (
-                pg_insert(WriteEdgeCandidate)
-                .values(chunk)
-                .on_conflict_do_nothing(constraint="uq_wec_pair_fact")
-            )
+            stmt = pg_insert(WriteEdgeCandidate).values(chunk).on_conflict_do_nothing(constraint="uq_wec_pair_fact")
             await self._session.execute(stmt)
 
     async def list_edge_candidate_pairs(
@@ -1110,9 +1064,7 @@ class WriteSeedRepository:
             base = base.having(func.count() >= min_facts)
 
         if status_filter:
-            base = base.having(
-                func.count(case((WEC.status == status_filter, 1))) > 0
-            )
+            base = base.having(func.count(case((WEC.status == status_filter, 1))) > 0)
 
         if search:
             base = base.having(
@@ -1163,9 +1115,7 @@ class WriteSeedRepository:
             subq = subq.having(func.count() >= min_facts)
 
         if status_filter:
-            subq = subq.having(
-                func.count(case((WEC.status == status_filter, 1))) > 0
-            )
+            subq = subq.having(func.count(case((WEC.status == status_filter, 1))) > 0)
 
         if search:
             subq = subq.having(
@@ -1260,9 +1210,7 @@ class WriteSeedRepository:
             .group_by(WEC.seed_key_a, WEC.seed_key_b)
             .subquery()
         )
-        count_result = await self._session.execute(
-            select(func.count()).select_from(count_subq)
-        )
+        count_result = await self._session.execute(select(func.count()).select_from(count_subq))
         total = count_result.scalar() or 0
 
         return pairs, total
@@ -1301,28 +1249,21 @@ class WriteSeedRepository:
 
         Returns seeds ordered by similarity score descending.
         """
-        stmt = (
-            select(WriteSeed)
-            .where(func.similarity(WriteSeed.name, query) >= threshold)
-        )
+        stmt = select(WriteSeed).where(func.similarity(WriteSeed.name, query) >= threshold)
         if node_type:
             stmt = stmt.where(WriteSeed.node_type == node_type)
         if status:
             stmt = stmt.where(WriteSeed.status == status)
         elif exclude_merged:
             stmt = stmt.where(WriteSeed.status.notin_(["merged", "garbage"]))
-        stmt = (
-            stmt.order_by(func.similarity(WriteSeed.name, query).desc())
-            .limit(limit)
-        )
+        stmt = stmt.order_by(func.similarity(WriteSeed.name, query).desc()).limit(limit)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
     async def get_seed_fact_ids(self, seed_key: str) -> list[uuid.UUID]:
         """Return all fact IDs linked to a seed (excluding source_attribution)."""
         result = await self._session.execute(
-            select(WriteSeedFact.fact_id)
-            .where(
+            select(WriteSeedFact.fact_id).where(
                 WriteSeedFact.seed_key == seed_key,
                 WriteSeedFact.extraction_role != "source_attribution",
             )
@@ -1358,9 +1299,7 @@ class WriteSeedRepository:
             ORDER BY (ws.fact_count - COALESCE(wn.facts_at_last_build, 0)) DESC
             LIMIT :batch_size
         """)
-        result = await self._session.execute(
-            stmt, {"threshold": threshold, "batch_size": batch_size}
-        )
+        result = await self._session.execute(stmt, {"threshold": threshold, "batch_size": batch_size})
         return [
             {
                 "seed_key": row.seed_key,
@@ -1416,12 +1355,8 @@ class WriteSeedRepository:
             )
             .where(
                 WriteEdgeCandidate.status.in_(["pending", "accepted"]),
-                WriteEdgeCandidate.seed_key_a.in_(
-                    select(WriteSeed.key).where(WriteSeed.status == "promoted")
-                ),
-                WriteEdgeCandidate.seed_key_b.in_(
-                    select(WriteSeed.key).where(WriteSeed.status == "promoted")
-                ),
+                WriteEdgeCandidate.seed_key_a.in_(select(WriteSeed.key).where(WriteSeed.status == "promoted")),
+                WriteEdgeCandidate.seed_key_b.in_(select(WriteSeed.key).where(WriteSeed.status == "promoted")),
             )
             .group_by(
                 WriteEdgeCandidate.seed_key_a,
@@ -1433,10 +1368,7 @@ class WriteSeedRepository:
         )
 
         result = await self._session.execute(stmt)
-        return [
-            (row.seed_key_a, row.seed_key_b, row.shared_count, list(row.fact_ids))
-            for row in result.all()
-        ]
+        return [(row.seed_key_a, row.seed_key_b, row.shared_count, list(row.fact_ids)) for row in result.all()]
 
     async def mark_seed_promoted(
         self,
@@ -1476,24 +1408,16 @@ class WriteSeedRepository:
         Multiple seeds may share the same promoted_node_key after merging/dedup,
         so we return the first match.
         """
-        result = await self._session.execute(
-            select(WriteSeed)
-            .where(WriteSeed.promoted_node_key == node_key)
-            .limit(1)
-        )
+        result = await self._session.execute(select(WriteSeed).where(WriteSeed.promoted_node_key == node_key).limit(1))
         return result.scalar_one_or_none()
 
     async def get_seeds_by_promoted_node_key(self, node_key: str) -> list[WriteSeed]:
         """Find all seeds that were promoted to the given node key."""
-        result = await self._session.execute(
-            select(WriteSeed).where(WriteSeed.promoted_node_key == node_key)
-        )
+        result = await self._session.execute(select(WriteSeed).where(WriteSeed.promoted_node_key == node_key))
         return list(result.scalars().all())
 
     async def clear_promoted_node_key(self, seed_key: str) -> None:
         """Clear promoted_node_key after absorption so it won't be reprocessed."""
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == seed_key)
-            .values(promoted_node_key=None, updated_at=func.now())
+            update(WriteSeed).where(WriteSeed.key == seed_key).values(promoted_node_key=None, updated_at=func.now())
         )

@@ -14,10 +14,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "CREATE INDEX ix_nodes_composite ON nodes (node_type) "
-        "WHERE node_type IN ('synthesis', 'perspective')"
-    )
+    op.execute("CREATE INDEX ix_nodes_composite ON nodes (node_type) WHERE node_type IN ('synthesis', 'perspective')")
 
 
 def downgrade() -> None:

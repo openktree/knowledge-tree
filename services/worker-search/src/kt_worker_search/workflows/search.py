@@ -18,6 +18,8 @@ from typing import cast
 
 from hatchet_sdk import Context
 
+from kt_config.settings import get_settings
+from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import (
     DecomposeChunkInput,
@@ -27,8 +29,6 @@ from kt_hatchet.models import (
     SearchOutput,
     WebSearchInput,
 )
-from kt_hatchet.client import get_hatchet
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 # Decompose-chunk: standalone task (leaf of the fan-out tree)
 # ---------------------------------------------------------------------------
 
+
 @hatchet.task(
     name="decompose_chunk",
     input_validator=DecomposeChunkInput,
@@ -47,8 +48,8 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 )
 async def decompose_chunk_task(input: DecomposeChunkInput, ctx: Context) -> dict:
     """Decompose a single text chunk into provenance-tracked facts."""
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -206,11 +207,11 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
     """Execute web search, store results, fan out page decomposition."""
     state = cast(WorkerState, ctx.lifespan)
 
+    from kt_config.types import RawSearchResult
     from kt_db.repositories.sources import SourceRepository
     from kt_db.repositories.write_sources import WriteSourceRepository
     from kt_providers.fetcher import ContentFetcher
     from kt_providers.registry import ProviderRegistry
-    from kt_config.types import RawSearchResult
 
     provider_registry = cast(ProviderRegistry, state.provider_registry)
     content_fetcher = cast(ContentFetcher | None, state.content_fetcher)

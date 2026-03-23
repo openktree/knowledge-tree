@@ -132,9 +132,7 @@ class DimensionPipeline:
             # generation for the same node (e.g. from parallel Hatchet tasks).
             # Released automatically on transaction commit/rollback.
             lock_key = node.id.int & 0x7FFFFFFF  # positive 32-bit int from UUID
-            await ctx.graph_engine._write_session.execute(
-                text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key}
-            )
+            await ctx.graph_engine._write_session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
 
             # Reload with sources for attribution in dimension prompt
             facts_with_sources = await ctx.graph_engine.get_node_facts_with_sources(node.id)
@@ -159,18 +157,14 @@ class DimensionPipeline:
             if mode != "neutral":
                 kwargs["mode"] = mode
 
-            saturation_threshold = int(
-                settings.dimension_fact_limit * settings.dimension_saturation_ratio
-            )
+            saturation_threshold = int(settings.dimension_fact_limit * settings.dimension_saturation_ratio)
 
-            from kt_models.usage import set_usage_task, clear_usage_task
+            from kt_models.usage import clear_usage_task, set_usage_task
 
             for batch_index, batch_facts, existing_dim in batches:
                 # Generate dimension for this batch
                 set_usage_task("dimensions")
-                dim_results = await generate_dimensions(
-                    node, batch_facts, model_ids, ctx.model_gateway, **kwargs
-                )
+                dim_results = await generate_dimensions(node, batch_facts, model_ids, ctx.model_gateway, **kwargs)
                 clear_usage_task()
                 result.dim_results.extend(dim_results)
 
@@ -180,9 +174,7 @@ class DimensionPipeline:
 
                 for d in dim_results:
                     suggested = d.get("suggested_concepts")
-                    suggested_list: list[str] | None = (
-                        list(suggested) if isinstance(suggested, list) else None
-                    )
+                    suggested_list: list[str] | None = list(suggested) if isinstance(suggested, list) else None
 
                     # Collect relevant fact indices from this batch
                     relevant = d.get("relevant_facts")
@@ -246,9 +238,7 @@ class DimensionPipeline:
             except Exception:
                 logger.debug("Error reloading facts for '%s'", t.name, exc_info=True)
 
-        saturation_threshold = int(
-            settings.dimension_fact_limit * settings.dimension_saturation_ratio
-        )
+        saturation_threshold = int(settings.dimension_fact_limit * settings.dimension_saturation_ratio)
 
         # Parallel LLM dimension generation (batched per task)
         async def _gen_dims(t: CreateNodeTask) -> None:
@@ -263,8 +253,9 @@ class DimensionPipeline:
 
                     # For batch pipeline, new nodes have no existing dims
                     # Just generate one batch with up to fact_limit facts
-                    from kt_models.usage import set_usage_task, clear_usage_task
-                    batch_facts = t.pool_facts[:settings.dimension_fact_limit]
+                    from kt_models.usage import clear_usage_task, set_usage_task
+
+                    batch_facts = t.pool_facts[: settings.dimension_fact_limit]
                     set_usage_task("dimensions")
                     t.dim_results = await generate_dimensions(
                         t.node,
@@ -327,10 +318,12 @@ class DimensionPipeline:
 
             total_dims += len(t.dim_results)
             if len(node_details) < 10:
-                node_details.append({
-                    "name": t.name,
-                    "dimensions": len(t.dim_results),
-                })
+                node_details.append(
+                    {
+                        "name": t.name,
+                        "dimensions": len(t.dim_results),
+                    }
+                )
 
         try:
             await ctx.graph_engine._write_session.commit()

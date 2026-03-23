@@ -95,9 +95,7 @@ class WriteEdgeRepository:
 
         # Build UUID→key mapping for the relevant nodes
         all_ids = list({node_id} | set(candidate_ids))
-        node_result = await self._session.execute(
-            select(WriteNode).where(WriteNode.node_uuid.in_(all_ids))
-        )
+        node_result = await self._session.execute(select(WriteNode).where(WriteNode.node_uuid.in_(all_ids)))
         uuid_to_key: dict[uuid.UUID, str] = {}
         for wn in node_result.scalars().all():
             uuid_to_key[wn.node_uuid] = wn.key
@@ -111,19 +109,14 @@ class WriteEdgeRepository:
         edge_result = await self._session.execute(
             select(WriteEdge).where(
                 WriteEdge.created_at >= cutoff,
-                (WriteEdge.source_node_key == source_key)
-                | (WriteEdge.target_node_key == source_key),
+                (WriteEdge.source_node_key == source_key) | (WriteEdge.target_node_key == source_key),
             )
         )
 
         stale: set[uuid.UUID] = set()
         key_to_uuid_map = {v: k for k, v in uuid_to_key.items()}
         for edge in edge_result.scalars().all():
-            other_key = (
-                edge.target_node_key
-                if edge.source_node_key == source_key
-                else edge.source_node_key
-            )
+            other_key = edge.target_node_key if edge.source_node_key == source_key else edge.source_node_key
             other_uuid = key_to_uuid_map.get(other_key)
             if other_uuid is not None and other_uuid in set(candidate_ids):
                 stale.add(other_uuid)
@@ -143,8 +136,7 @@ class WriteEdgeRepository:
     async def get_edges_for_node(self, node_key: str) -> list[WriteEdge]:
         """Return all edges involving a given node key."""
         stmt = select(WriteEdge).where(
-            (WriteEdge.source_node_key == node_key)
-            | (WriteEdge.target_node_key == node_key)
+            (WriteEdge.source_node_key == node_key) | (WriteEdge.target_node_key == node_key)
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

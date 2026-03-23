@@ -60,25 +60,17 @@ class WriteFactRepository:
             return
         update_dict = dict(kwargs)
         update_dict["updated_at"] = func.clock_timestamp()
-        stmt = (
-            WriteFact.__table__.update()
-            .where(WriteFact.id == fact_id)
-            .values(**update_dict)
-        )
+        stmt = WriteFact.__table__.update().where(WriteFact.id == fact_id).values(**update_dict)
         await self._session.execute(stmt)
 
     async def get_by_id(self, fact_id: uuid.UUID) -> WriteFact | None:
-        result = await self._session.execute(
-            select(WriteFact).where(WriteFact.id == fact_id)
-        )
+        result = await self._session.execute(select(WriteFact).where(WriteFact.id == fact_id))
         return result.scalar_one_or_none()
 
     async def get_by_ids(self, fact_ids: list[uuid.UUID]) -> list[WriteFact]:
         if not fact_ids:
             return []
-        result = await self._session.execute(
-            select(WriteFact).where(WriteFact.id.in_(fact_ids))
-        )
+        result = await self._session.execute(select(WriteFact).where(WriteFact.id.in_(fact_ids)))
         return list(result.scalars().all())
 
     # ── Fact sources ───────────────────────────────────────────────────
@@ -257,7 +249,10 @@ class WriteFactRepository:
         return list(result.scalars().all())
 
     async def search_trigram(
-        self, query: str, threshold: float = 0.3, limit: int = 30,
+        self,
+        query: str,
+        threshold: float = 0.3,
+        limit: int = 30,
     ) -> list[WriteFact]:
         """Search facts using trigram word_similarity (pg_trgm)."""
         stmt = (
@@ -280,9 +275,7 @@ class WriteFactRepository:
         Uses plainto_tsquery for word-boundary matching.
         """
         rejected_subq = (
-            select(WriteNodeFactRejection.fact_id)
-            .where(WriteNodeFactRejection.node_id == node_id)
-            .subquery()
+            select(WriteNodeFactRejection.fact_id).where(WriteNodeFactRejection.node_id == node_id).subquery()
         )
         ts_query = func.plainto_tsquery("english", query)
         stmt = (
@@ -300,7 +293,9 @@ class WriteFactRepository:
     # ── Fact rejection tracking ────────────────────────────────────────
 
     async def record_fact_rejection(
-        self, node_id: uuid.UUID, fact_id: uuid.UUID,
+        self,
+        node_id: uuid.UUID,
+        fact_id: uuid.UUID,
     ) -> bool:
         """Record that a fact was rejected for a node. Returns True if new."""
         stmt = (
@@ -312,9 +307,6 @@ class WriteFactRepository:
         return result.rowcount > 0  # type: ignore[return-value]
 
     async def get_rejected_fact_ids(self, node_id: uuid.UUID) -> set[uuid.UUID]:
-        stmt = select(WriteNodeFactRejection.fact_id).where(
-            WriteNodeFactRejection.node_id == node_id
-        )
+        stmt = select(WriteNodeFactRejection.fact_id).where(WriteNodeFactRejection.node_id == node_id)
         result = await self._session.execute(stmt)
         return {row[0] for row in result.all()}
-

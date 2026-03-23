@@ -65,10 +65,7 @@ async def import_facts(
             batch_size=cleanup_batch_size,
             on_progress=on_progress,
         )
-        rejected = [
-            RejectedFactInfo(content=r.content, reason=r.reason)
-            for r in result.rejected
-        ]
+        rejected = [RejectedFactInfo(content=r.content, reason=r.reason) for r in result.rejected]
         facts = result.kept  # type: ignore[assignment]
 
     fact_repo = FactRepository(session)
@@ -80,6 +77,7 @@ async def import_facts(
     write_fact_repo = None
     if write_session is not None:
         from kt_db.repositories.write_facts import WriteFactRepository
+
         write_fact_repo = WriteFactRepository(write_session)
 
     # Build pre-computed embeddings if available from export
@@ -90,7 +88,9 @@ async def import_facts(
     # Batch dedup: one embed_batch() call for all facts (or use pre-computed)
     items = [(f.content, f.fact_type) for f in facts]
     dedup_results = await deduplicate_facts(
-        items, fact_repo, embedding_service,
+        items,
+        fact_repo,
+        embedding_service,
         qdrant_client=qdrant_client,
         write_fact_repo=write_fact_repo,
         pre_embeddings=pre_embeddings,
@@ -99,28 +99,38 @@ async def import_facts(
     for i, (fact_data, (new_fact_id, is_new)) in enumerate(zip(facts, dedup_results)):
         try:
             id_map[fact_data.id] = str(new_fact_id)
-            results.append(ImportResultItem(
-                old_id=fact_data.id,
-                new_id=str(new_fact_id),
-                is_new=is_new,
-            ))
+            results.append(
+                ImportResultItem(
+                    old_id=fact_data.id,
+                    new_id=str(new_fact_id),
+                    is_new=is_new,
+                )
+            )
 
             # Also create in graph-db for immediate API visibility
             # (sync worker will skip if already present via ON CONFLICT)
             if is_new:
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
                 from kt_db.models import Fact as FactModel
-                stmt = pg_insert(FactModel).values(
-                    id=new_fact_id,
-                    content=fact_data.content,
-                    fact_type=fact_data.fact_type,
-                ).on_conflict_do_nothing(index_elements=["id"])
+
+                stmt = (
+                    pg_insert(FactModel)
+                    .values(
+                        id=new_fact_id,
+                        content=fact_data.content,
+                        fact_type=fact_data.fact_type,
+                    )
+                    .on_conflict_do_nothing(index_elements=["id"])
+                )
                 await session.execute(stmt)
 
             # Import sources for this fact
             for source_info in fact_data.sources:
                 source_id = await _create_or_get_source(
-                    source_info, session, write_session,
+                    source_info,
+                    session,
+                    write_session,
                 )
 
                 # Link fact->source (use savepoint to handle duplicates)
@@ -167,7 +177,9 @@ async def import_nodes(
             # Use pre-computed embedding for dedup search if available
             embedding_for_search = node_data.embedding
             matched_node = await _find_existing_node(
-                node_repo, node_data.concept, embedding_service,
+                node_repo,
+                node_data.concept,
+                embedding_service,
                 qdrant_client=qdrant_client,
                 pre_embedding=embedding_for_search,
             )
@@ -188,27 +200,37 @@ async def import_nodes(
 
                 # Queue Qdrant upsert for new nodes with embeddings
                 if node_data.embedding is not None:
-                    qdrant_node_batch.append((
-                        new_node.id, node_data.embedding,
-                        node_data.node_type, node_data.concept,
-                    ))
+                    qdrant_node_batch.append(
+                        (
+                            new_node.id,
+                            node_data.embedding,
+                            node_data.node_type,
+                            node_data.concept,
+                        )
+                    )
                 elif embedding_service is not None:
                     # Generate embedding for new node if not provided
                     try:
                         emb = await embedding_service.embed_text(node_data.concept)
-                        qdrant_node_batch.append((
-                            new_node.id, emb,
-                            node_data.node_type, node_data.concept,
-                        ))
+                        qdrant_node_batch.append(
+                            (
+                                new_node.id,
+                                emb,
+                                node_data.node_type,
+                                node_data.concept,
+                            )
+                        )
                     except Exception:
                         logger.warning("Failed to embed new node %s", node_data.concept)
 
             id_map[node_data.id] = new_id
-            results.append(ImportResultItem(
-                old_id=node_data.id,
-                new_id=new_id,
-                is_new=is_new,
-            ))
+            results.append(
+                ImportResultItem(
+                    old_id=node_data.id,
+                    new_id=new_id,
+                    is_new=is_new,
+                )
+            )
 
         except Exception as e:
             logger.warning("Failed to import node %s: %s", node_data.id, e)
@@ -220,6 +242,7 @@ async def import_nodes(
     if qdrant_client is not None and qdrant_node_batch:
         try:
             from kt_qdrant.repositories.nodes import QdrantNodeRepository
+
             qdrant_repo = QdrantNodeRepository(qdrant_client)
             await qdrant_repo.upsert_batch(qdrant_node_batch)
         except Exception:
@@ -278,7 +301,9 @@ async def import_edges(
         if not new_source or not new_target:
             logger.debug(
                 "Skipping edge %s: missing node mapping (source=%s, target=%s)",
-                edge_data.id, edge_data.source_node_id, edge_data.target_node_id,
+                edge_data.id,
+                edge_data.source_node_id,
+                edge_data.target_node_id,
             )
             if on_progress is not None:
                 await on_progress("edges", i + 1, total)
@@ -306,7 +331,8 @@ async def import_edges(
                     if new_fact_id:
                         try:
                             await edge_repo.link_fact_to_edge(
-                                edge.id, uuid.UUID(new_fact_id),
+                                edge.id,
+                                uuid.UUID(new_fact_id),
                             )
                         except Exception:
                             pass  # Duplicate or missing fact — skip
@@ -389,7 +415,6 @@ async def create_seeds_from_import(
     for node_data in nodes:
         if node_data.id not in node_id_map:
             continue
-        new_node_id = node_id_map[node_data.id]
         seed_key = make_seed_key(node_data.node_type, node_data.concept)
 
         if seed_key in seed_keys_created:
@@ -400,24 +425,28 @@ async def create_seeds_from_import(
         links_for_node = node_links.get(node_data.id, [])
         fact_count = len(links_for_node)
 
-        seed_dicts.append({
-            "key": seed_key,
-            "name": node_data.concept,
-            "node_type": node_data.node_type,
-            "entity_subtype": node_data.entity_subtype,
-            "fact_count": fact_count,
-        })
+        seed_dicts.append(
+            {
+                "key": seed_key,
+                "name": node_data.concept,
+                "node_type": node_data.node_type,
+                "entity_subtype": node_data.entity_subtype,
+                "fact_count": fact_count,
+            }
+        )
 
         # Build seed-fact links
         for link in links_for_node:
             new_fact_id = fact_id_map.get(link.fact_id)
             if new_fact_id:
-                seed_fact_links.append({
-                    "seed_key": seed_key,
-                    "fact_id": new_fact_id,
-                    "confidence": link.relevance_score,
-                    "extraction_context": None,
-                })
+                seed_fact_links.append(
+                    {
+                        "seed_key": seed_key,
+                        "fact_id": new_fact_id,
+                        "confidence": link.relevance_score,
+                        "extraction_context": None,
+                    }
+                )
 
     if not seed_dicts:
         return 0
@@ -431,6 +460,7 @@ async def create_seeds_from_import(
 
     # Promote each seed (mark as promoted with the node key)
     from kt_db.keys import make_node_key
+
     for node_data in nodes:
         if node_data.id not in node_id_map:
             continue
@@ -469,9 +499,12 @@ async def _find_existing_node(
     if embedding is not None and qdrant_client is not None:
         try:
             from kt_qdrant.repositories.nodes import QdrantNodeRepository
+
             qdrant_repo = QdrantNodeRepository(qdrant_client)
             results = await qdrant_repo.search_similar(
-                embedding, limit=1, score_threshold=0.75,
+                embedding,
+                limit=1,
+                score_threshold=0.75,
             )
             if results:
                 node = await node_repo.get_by_id(results[0].node_id)
@@ -529,6 +562,7 @@ async def _create_or_get_source(
     # Also create in write-db for sync worker
     if write_session is not None:
         from kt_db.repositories.write_sources import WriteSourceRepository
+
         write_source_repo = WriteSourceRepository(write_session)
         await write_source_repo.create_or_get(
             source_id=source_id,

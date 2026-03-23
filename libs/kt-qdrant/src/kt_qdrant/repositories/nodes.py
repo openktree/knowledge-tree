@@ -105,11 +105,7 @@ class QdrantNodeRepository:
                 PointStruct(
                     id=str(nid),
                     vector=emb,
-                    payload={
-                        k: v
-                        for k, v in [("node_type", nt), ("concept", concept)]
-                        if v is not None
-                    },
+                    payload={k: v for k, v in [("node_type", nt), ("concept", concept)] if v is not None},
                 )
                 for nid, emb, nt, concept in chunk
             ]

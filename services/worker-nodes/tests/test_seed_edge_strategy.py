@@ -57,6 +57,7 @@ def _make_candidate_row(seed_key_a, seed_key_b, fact_id):
 class TestResolveFromCandidates:
     async def test_no_write_session_returns_empty(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         ctx = _make_ctx(write_session=None)
         node = _make_node()
         result = await EdgeResolver(ctx).resolve_from_candidates(node)
@@ -64,6 +65,7 @@ class TestResolveFromCandidates:
 
     async def test_no_candidates_returns_empty(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         write_session = MagicMock()
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="unknown concept")
@@ -78,6 +80,7 @@ class TestResolveFromCandidates:
 
     async def test_promoted_seed_produces_edge(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         write_session = MagicMock()
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="quantum mechanics", node_type="concept")
@@ -87,7 +90,9 @@ class TestResolveFromCandidates:
         fid = uuid.uuid4()
 
         target_seed = _make_seed(
-            target_key, "Niels Bohr", "entity",
+            target_key,
+            "Niels Bohr",
+            "entity",
             status="promoted",
             promoted_node_key=target_key,
         )
@@ -116,6 +121,7 @@ class TestResolveFromCandidates:
 
     async def test_unpromoted_seed_filtered_out(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         write_session = MagicMock()
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="physics", node_type="concept")
@@ -138,6 +144,7 @@ class TestResolveFromCandidates:
 
     async def test_same_type_uses_related_edge_type(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         write_session = MagicMock()
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="biology", node_type="concept")
@@ -147,7 +154,9 @@ class TestResolveFromCandidates:
         fid = uuid.uuid4()
 
         target_seed = _make_seed(
-            target_key, "genetics", "concept",
+            target_key,
+            "genetics",
+            "concept",
             status="promoted",
             promoted_node_key=target_key,
         )
@@ -174,6 +183,7 @@ class TestResolveFromCandidates:
 
     async def test_accepts_candidate_facts_after_edge_creation(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         write_session = MagicMock()
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="math", node_type="concept")
@@ -183,7 +193,9 @@ class TestResolveFromCandidates:
         fid = uuid.uuid4()
 
         target_seed = _make_seed(
-            target_key, "algebra", "concept",
+            target_key,
+            "algebra",
+            "concept",
             status="promoted",
             promoted_node_key=target_key,
         )
@@ -209,6 +221,7 @@ class TestResolveFromCandidates:
 
     async def test_missing_seed_skipped(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         write_session = MagicMock()
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="chemistry", node_type="concept")
@@ -230,6 +243,7 @@ class TestResolveFromCandidates:
 
     async def test_weight_scales_with_fact_count(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
+
         write_session = MagicMock()
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="evolution", node_type="concept")
@@ -239,7 +253,9 @@ class TestResolveFromCandidates:
         fact_ids = [uuid.uuid4() for _ in range(5)]
 
         target_seed = _make_seed(
-            target_key, "natural selection", "concept",
+            target_key,
+            "natural selection",
+            "concept",
             status="promoted",
             promoted_node_key=target_key,
         )

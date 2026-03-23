@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_config.settings import get_settings
 from kt_db.models import RawSource
 from kt_db.repositories.ingest_sources import IngestSourceRepository
+from kt_providers.fetcher import ContentFetcher, FileDataStore
 from kt_worker_ingest.ingest.processing import process_uploaded_file
 from kt_worker_ingest.ingest.section_index import SectionMeta, build_section_index
-from kt_providers.fetcher import ContentFetcher, FileDataStore
 
 if TYPE_CHECKING:
     from kt_agents_core.state import AgentContext, EventCallback

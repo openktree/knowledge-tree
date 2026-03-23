@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_api.dependencies import get_db_session
+from kt_api.main import create_app
 from kt_db.models import (
     Conversation,
     ConversationMessage,
@@ -21,7 +22,6 @@ from kt_db.models import (
     NodeFact,
     RawSource,
 )
-from kt_api.main import create_app
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -873,8 +873,7 @@ async def test_export_nodes_includes_facts(api_session_factory):
             assert len(data["node_fact_links"]) >= 1
             # Verify the link references the correct node and fact
             link_found = any(
-                lnk["node_id"] == str(node.id) and lnk["fact_id"] == str(fact.id)
-                for lnk in data["node_fact_links"]
+                lnk["node_id"] == str(node.id) and lnk["fact_id"] == str(fact.id) for lnk in data["node_fact_links"]
             )
             assert link_found
 
@@ -962,12 +961,15 @@ async def test_export_import_roundtrip_preserves_edges(api_session_factory):
             assert len(export_data["edges"]) >= 1
 
             # Import
-            import_resp = await c.post("/api/v1/import/nodes", json={
-                "nodes": export_data["nodes"],
-                "edges": export_data["edges"],
-                "facts": export_data["facts"],
-                "node_fact_links": export_data["node_fact_links"],
-            })
+            import_resp = await c.post(
+                "/api/v1/import/nodes",
+                json={
+                    "nodes": export_data["nodes"],
+                    "edges": export_data["edges"],
+                    "facts": export_data["facts"],
+                    "node_fact_links": export_data["node_fact_links"],
+                },
+            )
             assert import_resp.status_code == 200
             import_data = import_resp.json()
             assert import_data["imported_edges"] >= 1
@@ -1059,15 +1061,20 @@ async def test_import_facts_creates_new(api_session_factory):
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.post("/api/v1/import/facts", json={
-                "facts": [{
-                    "id": "old-fact-id",
-                    "content": unique_content,
-                    "fact_type": "claim",
-                    "created_at": "2025-01-01T00:00:00Z",
-                    "sources": [],
-                }],
-            })
+            resp = await c.post(
+                "/api/v1/import/facts",
+                json={
+                    "facts": [
+                        {
+                            "id": "old-fact-id",
+                            "content": unique_content,
+                            "fact_type": "claim",
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "sources": [],
+                        }
+                    ],
+                },
+            )
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["imported_facts"]) == 1
@@ -1104,26 +1111,31 @@ async def test_import_nodes_creates_new(api_session_factory):
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.post("/api/v1/import/nodes", json={
-                "nodes": [{
-                    "id": "old-node-id",
-                    "concept": "Unique Imported Test Concept XYZ123",
-                    "node_type": "concept",
-                    "parent_id": None,
-                    "attractor": None,
-                    "filter_id": None,
-                    "max_content_tokens": 500,
-                    "created_at": "2025-01-01T00:00:00Z",
-                    "updated_at": "2025-01-01T00:00:00Z",
-                    "update_count": 0,
-                    "access_count": 0,
-                    "richness": 0.0,
-                    "convergence_score": 0.0,
-                }],
-                "edges": [],
-                "facts": [],
-                "node_fact_links": [],
-            })
+            resp = await c.post(
+                "/api/v1/import/nodes",
+                json={
+                    "nodes": [
+                        {
+                            "id": "old-node-id",
+                            "concept": "Unique Imported Test Concept XYZ123",
+                            "node_type": "concept",
+                            "parent_id": None,
+                            "attractor": None,
+                            "filter_id": None,
+                            "max_content_tokens": 500,
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "updated_at": "2025-01-01T00:00:00Z",
+                            "update_count": 0,
+                            "access_count": 0,
+                            "richness": 0.0,
+                            "convergence_score": 0.0,
+                        }
+                    ],
+                    "edges": [],
+                    "facts": [],
+                    "node_fact_links": [],
+                },
+            )
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["imported_nodes"]) == 1
@@ -1163,7 +1175,9 @@ async def test_export_includes_full_source_fields(api_session_factory):
         link = NodeFact(node_id=node.id, fact_id=fact.id, relevance_score=0.9, stance="supporting")
         session.add(link)
         fact_source = FactSource(
-            id=uuid.uuid4(), fact_id=fact.id, raw_source_id=raw_source.id,
+            id=uuid.uuid4(),
+            fact_id=fact.id,
+            raw_source_id=raw_source.id,
         )
         session.add(fact_source)
         await session.flush()
@@ -1200,7 +1214,8 @@ async def test_export_includes_full_source_fields(api_session_factory):
 
             # Verify node_fact_links include relevance_score and stance
             link_data = next(
-                lnk for lnk in data["node_fact_links"]
+                lnk
+                for lnk in data["node_fact_links"]
                 if lnk["node_id"] == str(node.id) and lnk["fact_id"] == str(fact.id)
             )
             assert link_data["relevance_score"] == 0.9
@@ -1221,41 +1236,50 @@ async def test_import_v10_backwards_compat(api_session_factory):
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.post("/api/v1/import/nodes", json={
-                "nodes": [{
-                    "id": "old-v10-node",
-                    "concept": "V10 Compat Test Node Unique ABC",
-                    "node_type": "concept",
-                    "parent_id": None,
-                    "attractor": None,
-                    "filter_id": None,
-                    "max_content_tokens": 500,
-                    "created_at": "2025-01-01T00:00:00Z",
-                    "updated_at": "2025-01-01T00:00:00Z",
-                    "update_count": 0,
-                    "access_count": 0,
-                    "richness": 0.0,
-                    "convergence_score": 0.0,
-                }],
-                "facts": [{
-                    "id": "old-v10-fact",
-                    "content": "V10 compat fact unique XYZ",
-                    "fact_type": "claim",
-                    "created_at": "2025-01-01T00:00:00Z",
-                    "sources": [{
-                        "source_id": "old-source-id",
-                        "uri": "https://example.com/v10-source",
-                        "title": "V10 Source",
-                        "provider_id": "brave_search",
-                        "retrieved_at": "2025-01-01T00:00:00Z",
-                    }],
-                }],
-                # v1.0 links: no relevance_score/stance
-                "node_fact_links": [
-                    {"node_id": "old-v10-node", "fact_id": "old-v10-fact"},
-                ],
-                "edges": [],
-            })
+            resp = await c.post(
+                "/api/v1/import/nodes",
+                json={
+                    "nodes": [
+                        {
+                            "id": "old-v10-node",
+                            "concept": "V10 Compat Test Node Unique ABC",
+                            "node_type": "concept",
+                            "parent_id": None,
+                            "attractor": None,
+                            "filter_id": None,
+                            "max_content_tokens": 500,
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "updated_at": "2025-01-01T00:00:00Z",
+                            "update_count": 0,
+                            "access_count": 0,
+                            "richness": 0.0,
+                            "convergence_score": 0.0,
+                        }
+                    ],
+                    "facts": [
+                        {
+                            "id": "old-v10-fact",
+                            "content": "V10 compat fact unique XYZ",
+                            "fact_type": "claim",
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "sources": [
+                                {
+                                    "source_id": "old-source-id",
+                                    "uri": "https://example.com/v10-source",
+                                    "title": "V10 Source",
+                                    "provider_id": "brave_search",
+                                    "retrieved_at": "2025-01-01T00:00:00Z",
+                                }
+                            ],
+                        }
+                    ],
+                    # v1.0 links: no relevance_score/stance
+                    "node_fact_links": [
+                        {"node_id": "old-v10-node", "fact_id": "old-v10-fact"},
+                    ],
+                    "edges": [],
+                },
+            )
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["imported_nodes"]) == 1
@@ -1279,30 +1303,38 @@ async def test_import_with_content_hash_uses_real_hash(api_session_factory):
         real_hash = "abc123" + str(uuid.uuid4()).replace("-", "")[:58]
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.post("/api/v1/import/facts", json={
-                "facts": [{
-                    "id": "hash-test-fact",
-                    "content": "Fact with real hash unique " + real_hash[:20],
-                    "fact_type": "claim",
-                    "created_at": "2025-01-01T00:00:00Z",
-                    "sources": [{
-                        "source_id": "hash-source-id",
-                        "uri": "https://example.com/real-hash",
-                        "title": "Real Hash Source",
-                        "provider_id": "brave_search",
-                        "retrieved_at": "2025-01-01T00:00:00Z",
-                        "content_hash": real_hash,
-                        "is_full_text": True,
-                        "content_type": "text/html",
-                    }],
-                }],
-            })
+            resp = await c.post(
+                "/api/v1/import/facts",
+                json={
+                    "facts": [
+                        {
+                            "id": "hash-test-fact",
+                            "content": "Fact with real hash unique " + real_hash[:20],
+                            "fact_type": "claim",
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "sources": [
+                                {
+                                    "source_id": "hash-source-id",
+                                    "uri": "https://example.com/real-hash",
+                                    "title": "Real Hash Source",
+                                    "provider_id": "brave_search",
+                                    "retrieved_at": "2025-01-01T00:00:00Z",
+                                    "content_hash": real_hash,
+                                    "is_full_text": True,
+                                    "content_type": "text/html",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["imported_facts"]) == 1
 
             # Verify the source was created with the real hash
             from kt_db.repositories.sources import SourceRepository
+
             source_repo = SourceRepository(session)
             source = await source_repo.get_by_hash(real_hash)
             assert source is not None
@@ -1324,38 +1356,45 @@ async def test_import_creates_seeds(api_session_factory):
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.post("/api/v1/import/nodes", json={
-                "nodes": [{
-                    "id": "seed-test-node",
-                    "concept": "Seed Import Test Unique Node QRS",
-                    "node_type": "concept",
-                    "parent_id": None,
-                    "attractor": None,
-                    "filter_id": None,
-                    "max_content_tokens": 500,
-                    "created_at": "2025-01-01T00:00:00Z",
-                    "updated_at": "2025-01-01T00:00:00Z",
-                    "update_count": 0,
-                    "access_count": 0,
-                    "richness": 0.0,
-                    "convergence_score": 0.0,
-                }],
-                "facts": [{
-                    "id": "seed-test-fact",
-                    "content": "Seed test fact content unique QRS",
-                    "fact_type": "claim",
-                    "created_at": "2025-01-01T00:00:00Z",
-                    "sources": [],
-                }],
-                "node_fact_links": [
-                    {
-                        "node_id": "seed-test-node",
-                        "fact_id": "seed-test-fact",
-                        "relevance_score": 0.85,
-                    },
-                ],
-                "edges": [],
-            })
+            resp = await c.post(
+                "/api/v1/import/nodes",
+                json={
+                    "nodes": [
+                        {
+                            "id": "seed-test-node",
+                            "concept": "Seed Import Test Unique Node QRS",
+                            "node_type": "concept",
+                            "parent_id": None,
+                            "attractor": None,
+                            "filter_id": None,
+                            "max_content_tokens": 500,
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "updated_at": "2025-01-01T00:00:00Z",
+                            "update_count": 0,
+                            "access_count": 0,
+                            "richness": 0.0,
+                            "convergence_score": 0.0,
+                        }
+                    ],
+                    "facts": [
+                        {
+                            "id": "seed-test-fact",
+                            "content": "Seed test fact content unique QRS",
+                            "fact_type": "claim",
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "sources": [],
+                        }
+                    ],
+                    "node_fact_links": [
+                        {
+                            "node_id": "seed-test-node",
+                            "fact_id": "seed-test-fact",
+                            "relevance_score": 0.85,
+                        },
+                    ],
+                    "edges": [],
+                },
+            )
             assert resp.status_code == 200
             data = resp.json()
             assert data["imported_seeds"] == 1

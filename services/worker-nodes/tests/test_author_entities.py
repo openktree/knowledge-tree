@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
 from kt_facts.author import AuthorInfo
-
 
 # Import from the gathering pipeline
 from kt_worker_nodes.pipelines.gathering.pipeline import (
@@ -90,8 +87,20 @@ class TestMergeExtractedNodes:
             {"name": "CRISPR-Cas9", "node_type": "concept", "fact_indices": [1, 3]},
         ]
         author_nodes = [
-            {"name": "Jennifer Doudna", "node_type": "entity", "entity_subtype": "person", "fact_indices": [3, 4], "from_author_extraction": True},
-            {"name": "Nature", "node_type": "entity", "entity_subtype": "organization", "fact_indices": [1, 2, 3, 4], "from_author_extraction": True},
+            {
+                "name": "Jennifer Doudna",
+                "node_type": "entity",
+                "entity_subtype": "person",
+                "fact_indices": [3, 4],
+                "from_author_extraction": True,
+            },
+            {
+                "name": "Nature",
+                "node_type": "entity",
+                "entity_subtype": "organization",
+                "fact_indices": [1, 2, 3, 4],
+                "from_author_extraction": True,
+            },
         ]
         result = merge_extracted_nodes(llm_nodes, author_nodes)
 

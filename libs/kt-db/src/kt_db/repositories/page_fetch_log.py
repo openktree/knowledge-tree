@@ -20,9 +20,7 @@ class PageFetchLogRepository:
 
     async def get_by_url(self, url: str) -> PageFetchLog | None:
         """Find a PageFetchLog entry by URL."""
-        result = await self._session.execute(
-            select(PageFetchLog).where(PageFetchLog.url == url)
-        )
+        result = await self._session.execute(select(PageFetchLog).where(PageFetchLog.url == url))
         return result.scalar_one_or_none()
 
     async def is_fresh(self, url: str, stale_days: int = 30) -> bool:
@@ -37,9 +35,7 @@ class PageFetchLogRepository:
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=stale_days)
         return entry.fetched_at >= cutoff
 
-    async def check_urls_freshness(
-        self, urls: list[str], stale_days: int = 30
-    ) -> dict[str, bool]:
+    async def check_urls_freshness(self, urls: list[str], stale_days: int = 30) -> dict[str, bool]:
         """Batch check freshness for multiple URLs.
 
         Returns dict mapping URL -> True if fresh (should skip).
@@ -48,9 +44,7 @@ class PageFetchLogRepository:
             return {}
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=stale_days)
         result = await self._session.execute(
-            select(PageFetchLog.url, PageFetchLog.fetched_at).where(
-                PageFetchLog.url.in_(urls)
-            )
+            select(PageFetchLog.url, PageFetchLog.fetched_at).where(PageFetchLog.url.in_(urls))
         )
         rows = result.all()
         freshness: dict[str, bool] = {}

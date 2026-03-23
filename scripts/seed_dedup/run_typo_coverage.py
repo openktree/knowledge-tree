@@ -28,6 +28,7 @@ async def main() -> None:
     # Try importing metaphone
     try:
         from metaphone import doublemetaphone
+
         has_metaphone = True
     except ImportError:
         has_metaphone = False

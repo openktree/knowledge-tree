@@ -11,7 +11,6 @@ from kt_facts.processing.entity_extraction import (
     extract_entities_from_facts,
 )
 
-
 # ── _is_valid_entity_name unit tests ──────────────────────────────
 
 
@@ -79,14 +78,16 @@ async def test_extraction_filters_initials() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "K. M. A.", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-                {"name": "Albert Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-            ]
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {"name": "K. M. A.", "node_type": "entity", "entity_subtype": "person", "aliases": []},
+                    {"name": "Albert Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []},
+                ]
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -100,14 +101,16 @@ async def test_extraction_filters_et_al() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "Smith et al.", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-                {"name": "quantum mechanics", "node_type": "concept", "aliases": []},
-            ]
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {"name": "Smith et al.", "node_type": "entity", "entity_subtype": "person", "aliases": []},
+                    {"name": "quantum mechanics", "node_type": "concept", "aliases": []},
+                ]
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -121,14 +124,21 @@ async def test_extraction_filters_repeated_patterns() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "K. M. A. M. H. K. M. A. M. H. K. M. A. M. H.", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-                {"name": "gene therapy", "node_type": "concept", "aliases": []},
-            ]
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {
+                        "name": "K. M. A. M. H. K. M. A. M. H. K. M. A. M. H.",
+                        "node_type": "entity",
+                        "entity_subtype": "person",
+                        "aliases": [],
+                    },
+                    {"name": "gene therapy", "node_type": "concept", "aliases": []},
+                ]
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -142,14 +152,16 @@ async def test_extraction_returns_none_when_all_filtered() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "K. M. A.", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-                {"name": "et al. (2020)", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-            ]
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {"name": "K. M. A.", "node_type": "entity", "entity_subtype": "person", "aliases": []},
+                    {"name": "et al. (2020)", "node_type": "entity", "entity_subtype": "person", "aliases": []},
+                ]
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is None

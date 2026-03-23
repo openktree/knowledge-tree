@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_qdrant_client_cached, require_api_key
-from kt_db.models import User
 from kt_api.schemas import (
     DeleteResponse,
     EdgeDetailResponse,
@@ -18,6 +17,7 @@ from kt_api.schemas import (
     FactSourceInfo,
     PaginatedEdgesResponse,
 )
+from kt_db.models import User
 from kt_graph.engine import GraphEngine
 
 router = APIRouter(prefix="/api/v1/edges", tags=["edges"])
@@ -67,11 +67,16 @@ async def list_edges(
             raise HTTPException(status_code=400, detail="Invalid node_id format")
 
     edges = await engine.list_edges(
-        offset=offset, limit=limit, relationship_type=relationship_type,
-        node_id=parsed_node_id, search=search,
+        offset=offset,
+        limit=limit,
+        relationship_type=relationship_type,
+        node_id=parsed_node_id,
+        search=search,
     )
     total = await engine.count_edges(
-        relationship_type=relationship_type, node_id=parsed_node_id, search=search,
+        relationship_type=relationship_type,
+        node_id=parsed_node_id,
+        search=search,
     )
 
     # Batch-resolve node concepts for the page
@@ -144,7 +149,9 @@ async def get_edge(
                         author_org=fs.author_org,
                     )
                     for fs in f.sources
-                ] if hasattr(f, "sources") and f.sources else [],
+                ]
+                if hasattr(f, "sources") and f.sources
+                else [],
             )
             for f in facts
         ],

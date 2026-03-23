@@ -96,9 +96,7 @@ class BaseWorker:
             return await invoke_task
         except asyncio.CancelledError:
             if stalled:
-                raise TimeoutError(
-                    f"Agent stalled -- no activity for {inactivity_timeout}s"
-                ) from None
+                raise TimeoutError(f"Agent stalled -- no activity for {inactivity_timeout}s") from None
             raise
         finally:
             watchdog_task.cancel()

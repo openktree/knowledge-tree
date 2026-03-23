@@ -5,24 +5,24 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from kt_api.admin import router as admin_router
-from kt_api.members import router as members_router
-from kt_api.system_settings import router as system_settings_router
-from kt_api.edge_candidates import router as edge_candidates_router
-from kt_api.graph_builder import router as graph_builder_router
+from kt_api.auth.router import router as auth_router
+from kt_api.auth.tokens import require_auth
 from kt_api.config_api import router as config_router
 from kt_api.conversations import router as conversations_router
+from kt_api.edge_candidates import router as edge_candidates_router
 from kt_api.edges import router as edges_router
 from kt_api.export import router as export_router
 from kt_api.facts import router as facts_router
 from kt_api.graph import router as graph_router
+from kt_api.graph_builder import router as graph_builder_router
 from kt_api.import_router import router as import_router
-from kt_api.research import router as research_router
+from kt_api.members import router as members_router
 from kt_api.nodes import router as nodes_router
+from kt_api.research import router as research_router
 from kt_api.seeds import router as seeds_router
 from kt_api.sources import router as sources_router
+from kt_api.system_settings import router as system_settings_router
 from kt_api.usage import router as usage_router
-from kt_api.auth.router import router as auth_router
-from kt_api.auth.tokens import require_auth
 
 _auth_dep = [Depends(require_auth)]
 

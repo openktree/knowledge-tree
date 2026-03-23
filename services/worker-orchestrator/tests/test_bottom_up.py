@@ -8,7 +8,6 @@ import pytest
 
 from kt_worker_orchestrator.bottom_up.state import BottomUpScopePlan
 
-
 # ── Plan dataclass tests ─────────────────────────────────────
 
 
@@ -138,16 +137,18 @@ async def test_plan_perspectives_basic() -> None:
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
     ctx.model_gateway.orchestrator_model = "test-model"
-    ctx.model_gateway.generate_with_tools = AsyncMock(return_value=[
-        {
-            "name": "propose_perspective",
-            "arguments": {
-                "claim": "Germline editing prevents suffering",
-                "antithesis": "Germline editing crosses ethical boundaries",
-                "source_concept": "germline editing",
+    ctx.model_gateway.generate_with_tools = AsyncMock(
+        return_value=[
+            {
+                "name": "propose_perspective",
+                "arguments": {
+                    "claim": "Germline editing prevents suffering",
+                    "antithesis": "Germline editing crosses ethical boundaries",
+                    "source_concept": "germline editing",
+                },
             },
-        },
-    ])
+        ]
+    )
 
     built_nodes = [
         {"concept": "CRISPR-Cas9", "node_type": "concept"},
@@ -176,16 +177,20 @@ async def test_plan_perspectives_caps_to_max() -> None:
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
     ctx.model_gateway.orchestrator_model = "test-model"
-    ctx.model_gateway.generate_with_tools = AsyncMock(return_value=[
-        {
-            "name": "propose_perspective",
-            "arguments": {"claim": f"claim {i}", "antithesis": f"anti {i}", "source_concept": "x"},
-        }
-        for i in range(10)
-    ])
+    ctx.model_gateway.generate_with_tools = AsyncMock(
+        return_value=[
+            {
+                "name": "propose_perspective",
+                "arguments": {"claim": f"claim {i}", "antithesis": f"anti {i}", "source_concept": "x"},
+            }
+            for i in range(10)
+        ]
+    )
 
     result = await plan_perspectives(
-        ctx, "test", [{"concept": "x", "node_type": "concept"}],
+        ctx,
+        "test",
+        [{"concept": "x", "node_type": "concept"}],
         max_perspectives=3,
     )
     assert len(result) == 3
@@ -201,7 +206,9 @@ async def test_plan_perspectives_handles_error() -> None:
     ctx.model_gateway.generate_with_tools = AsyncMock(side_effect=Exception("LLM error"))
 
     result = await plan_perspectives(
-        ctx, "test", [{"concept": "x", "node_type": "concept"}],
+        ctx,
+        "test",
+        [{"concept": "x", "node_type": "concept"}],
     )
     assert result == []
 
@@ -213,14 +220,27 @@ async def test_plan_perspectives_filters_incomplete() -> None:
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
     ctx.model_gateway.orchestrator_model = "test-model"
-    ctx.model_gateway.generate_with_tools = AsyncMock(return_value=[
-        {"name": "propose_perspective", "arguments": {"claim": "good claim", "antithesis": "good anti", "source_concept": "x"}},
-        {"name": "propose_perspective", "arguments": {"claim": "no antithesis", "source_concept": "x"}},  # missing antithesis
-        {"name": "propose_perspective", "arguments": {"claim": "", "antithesis": "empty claim", "source_concept": "x"}},  # empty claim
-    ])
+    ctx.model_gateway.generate_with_tools = AsyncMock(
+        return_value=[
+            {
+                "name": "propose_perspective",
+                "arguments": {"claim": "good claim", "antithesis": "good anti", "source_concept": "x"},
+            },
+            {
+                "name": "propose_perspective",
+                "arguments": {"claim": "no antithesis", "source_concept": "x"},
+            },  # missing antithesis
+            {
+                "name": "propose_perspective",
+                "arguments": {"claim": "", "antithesis": "empty claim", "source_concept": "x"},
+            },  # empty claim
+        ]
+    )
 
     result = await plan_perspectives(
-        ctx, "test", [{"concept": "x", "node_type": "concept"}],
+        ctx,
+        "test",
+        [{"concept": "x", "node_type": "concept"}],
     )
     assert len(result) == 1
     assert result[0]["claim"] == "good claim"
@@ -306,15 +326,20 @@ async def test_run_pipeline_builds_all_extracted_nodes() -> None:
         ),
     ):
         mock_pipeline = MagicMock()
-        mock_pipeline.gather = AsyncMock(return_value={
-            "queries_executed": 1, "facts_gathered": 10,
-            "explore_used": 1, "explore_remaining": 0,
-            "extracted_nodes": extracted,
-        })
+        mock_pipeline.gather = AsyncMock(
+            return_value={
+                "queries_executed": 1,
+                "facts_gathered": 10,
+                "explore_used": 1,
+                "explore_remaining": 0,
+                "extracted_nodes": extracted,
+            }
+        )
         mock_cls.return_value = mock_pipeline
 
         plan = await run_bottom_up_scope_pipeline(
-            ctx, scope_description="test",
+            ctx,
+            scope_description="test",
             explore_slice=1,
         )
 
@@ -337,15 +362,17 @@ def test_wave_threshold() -> None:
 @pytest.mark.asyncio
 async def test_agent_select_basic() -> None:
     """agent_select_nodes selects nodes via tool calls."""
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
     from kt_hatchet.models import ProposedNode
+    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
     ctx.model_gateway.orchestrator_model = "test-model"
-    ctx.model_gateway.generate_with_tools = AsyncMock(return_value=[
-        {"name": "select_nodes", "arguments": {"indices": [0, 2]}},
-    ])
+    ctx.model_gateway.generate_with_tools = AsyncMock(
+        return_value=[
+            {"name": "select_nodes", "arguments": {"indices": [0, 2]}},
+        ]
+    )
 
     nodes = [
         ProposedNode(name="Quantum Computing", node_type="concept", priority=9),
@@ -356,25 +383,27 @@ async def test_agent_select_basic() -> None:
     result = await agent_select_nodes(ctx, nodes, max_select=2, instructions="quantum")
 
     assert len(result) == 3
-    assert result[0].selected is True   # Quantum Computing
+    assert result[0].selected is True  # Quantum Computing
     assert result[1].selected is False  # science — not selected
-    assert result[2].selected is True   # Shor's Algorithm
+    assert result[2].selected is True  # Shor's Algorithm
 
 
 @pytest.mark.asyncio
 async def test_agent_select_with_edits() -> None:
     """agent_select_nodes applies edit_node tool calls."""
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
     from kt_hatchet.models import ProposedNode
+    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
     ctx.model_gateway.orchestrator_model = "test-model"
-    ctx.model_gateway.generate_with_tools = AsyncMock(return_value=[
-        {"name": "edit_node", "arguments": {"index": 0, "name": "May 2021 Marriage of Alice and Bob"}},
-        {"name": "edit_node", "arguments": {"index": 1, "node_type": "entity"}},
-        {"name": "select_nodes", "arguments": {"indices": [0, 1]}},
-    ])
+    ctx.model_gateway.generate_with_tools = AsyncMock(
+        return_value=[
+            {"name": "edit_node", "arguments": {"index": 0, "name": "May 2021 Marriage of Alice and Bob"}},
+            {"name": "edit_node", "arguments": {"index": 1, "node_type": "entity"}},
+            {"name": "select_nodes", "arguments": {"indices": [0, 1]}},
+        ]
+    )
 
     nodes = [
         ProposedNode(name="May 2021 marriage", node_type="event", priority=7),
@@ -392,15 +421,17 @@ async def test_agent_select_with_edits() -> None:
 @pytest.mark.asyncio
 async def test_agent_select_respects_max() -> None:
     """agent_select_nodes stops at max_select even if LLM selects more."""
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
     from kt_hatchet.models import ProposedNode
+    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
     ctx.model_gateway.orchestrator_model = "test-model"
-    ctx.model_gateway.generate_with_tools = AsyncMock(return_value=[
-        {"name": "select_nodes", "arguments": {"indices": [0, 1, 2, 3, 4]}},
-    ])
+    ctx.model_gateway.generate_with_tools = AsyncMock(
+        return_value=[
+            {"name": "select_nodes", "arguments": {"indices": [0, 1, 2, 3, 4]}},
+        ]
+    )
 
     nodes = [ProposedNode(name=f"node_{i}", priority=5) for i in range(5)]
 
@@ -413,8 +444,8 @@ async def test_agent_select_respects_max() -> None:
 @pytest.mark.asyncio
 async def test_agent_select_handles_error() -> None:
     """agent_select_nodes handles LLM errors gracefully."""
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
     from kt_hatchet.models import ProposedNode
+    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()

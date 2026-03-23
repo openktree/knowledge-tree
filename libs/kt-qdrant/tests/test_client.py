@@ -2,9 +2,8 @@
 
 from unittest.mock import patch
 
-from kt_qdrant.client import close_qdrant_client, get_qdrant_client
-
 import kt_qdrant.client as client_module
+from kt_qdrant.client import close_qdrant_client, get_qdrant_client
 
 
 class TestGetQdrantClient:

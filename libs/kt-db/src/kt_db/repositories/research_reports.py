@@ -75,23 +75,21 @@ class ResearchReportRepository:
         return report
 
     async def get_by_message_id(self, message_id: uuid.UUID) -> ResearchReport | None:
-        result = await self._session.execute(
-            select(ResearchReport).where(ResearchReport.message_id == message_id)
-        )
+        result = await self._session.execute(select(ResearchReport).where(ResearchReport.message_id == message_id))
         return result.scalar_one_or_none()
 
     async def get_usage_records_by_report(
-        self, report_id: uuid.UUID,
+        self,
+        report_id: uuid.UUID,
     ) -> list[LlmUsageRecord]:
         result = await self._session.execute(
-            select(LlmUsageRecord).where(
-                LlmUsageRecord.research_report_id == report_id
-            )
+            select(LlmUsageRecord).where(LlmUsageRecord.research_report_id == report_id)
         )
         return list(result.scalars().all())
 
     async def get_usage_by_conversation(
-        self, conversation_id: uuid.UUID,
+        self,
+        conversation_id: uuid.UUID,
     ) -> list[ResearchReport]:
         result = await self._session.execute(
             select(ResearchReport)
@@ -102,7 +100,8 @@ class ResearchReportRepository:
 
     @staticmethod
     def _date_filters(
-        since: datetime | None, until: datetime | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> list[Any]:
         """Build SQLAlchemy filter clauses for date range on ResearchReport.created_at."""
         filters: list[Any] = []
@@ -119,19 +118,16 @@ class ResearchReportRepository:
         until: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Get usage totals per conversation with title and report types."""
-        q = (
-            select(
-                ResearchReport.conversation_id,
-                Conversation.title,
-                func.sum(ResearchReport.total_prompt_tokens).label("prompt"),
-                func.sum(ResearchReport.total_completion_tokens).label("completion"),
-                func.sum(ResearchReport.total_cost_usd).label("cost"),
-                func.count(ResearchReport.id).label("report_count"),
-                func.max(ResearchReport.created_at).label("last_at"),
-                func.array_agg(func.distinct(ResearchReport.report_type)).label("report_types"),
-            )
-            .join(Conversation, ResearchReport.conversation_id == Conversation.id)
-        )
+        q = select(
+            ResearchReport.conversation_id,
+            Conversation.title,
+            func.sum(ResearchReport.total_prompt_tokens).label("prompt"),
+            func.sum(ResearchReport.total_completion_tokens).label("completion"),
+            func.sum(ResearchReport.total_cost_usd).label("cost"),
+            func.count(ResearchReport.id).label("report_count"),
+            func.max(ResearchReport.created_at).label("last_at"),
+            func.array_agg(func.distinct(ResearchReport.report_type)).label("report_types"),
+        ).join(Conversation, ResearchReport.conversation_id == Conversation.id)
         for f in self._date_filters(since, until):
             q = q.where(f)
         q = q.group_by(ResearchReport.conversation_id, Conversation.title)
@@ -172,15 +168,12 @@ class ResearchReportRepository:
         row = totals.one()
 
         # Per-model: join through research_reports to apply date filter
-        model_q = (
-            select(
-                LlmUsageRecord.model_id,
-                func.sum(LlmUsageRecord.prompt_tokens).label("prompt"),
-                func.sum(LlmUsageRecord.completion_tokens).label("completion"),
-                func.sum(LlmUsageRecord.cost_usd).label("cost"),
-            )
-            .join(ResearchReport, LlmUsageRecord.research_report_id == ResearchReport.id)
-        )
+        model_q = select(
+            LlmUsageRecord.model_id,
+            func.sum(LlmUsageRecord.prompt_tokens).label("prompt"),
+            func.sum(LlmUsageRecord.completion_tokens).label("completion"),
+            func.sum(LlmUsageRecord.cost_usd).label("cost"),
+        ).join(ResearchReport, LlmUsageRecord.research_report_id == ResearchReport.id)
         for f in date_filters:
             model_q = model_q.where(f)
         model_q = model_q.group_by(LlmUsageRecord.model_id)
@@ -195,9 +188,7 @@ class ResearchReportRepository:
         }
 
         # Aggregate usage_by_task across filtered reports
-        task_q = select(ResearchReport.usage_by_task).where(
-            ResearchReport.usage_by_task.isnot(None)
-        )
+        task_q = select(ResearchReport.usage_by_task).where(ResearchReport.usage_by_task.isnot(None))
         for f in date_filters:
             task_q = task_q.where(f)
         task_rows = await self._session.execute(task_q)

@@ -173,9 +173,7 @@ class LlmHeaderStrategy(AuthorStrategy):
 
         # Use the metadata-enriched template when HTML metadata is available
         if ctx.html_metadata:
-            meta_lines = "\n".join(
-                f"  {k}: {v}" for k, v in ctx.html_metadata.items() if v
-            )
+            meta_lines = "\n".join(f"  {k}: {v}" for k, v in ctx.html_metadata.items() if v)
             user_msg = _LLM_USER_TEMPLATE_WITH_META.format(
                 url=ctx.url,
                 header=header_text,
@@ -282,7 +280,9 @@ async def extract_author(
         except Exception:
             logger.debug(
                 "Author strategy %s failed for %s",
-                type(strategy).__name__, context.url, exc_info=True,
+                type(strategy).__name__,
+                context.url,
+                exc_info=True,
             )
     return AuthorInfo()
 

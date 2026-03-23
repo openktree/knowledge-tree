@@ -2,9 +2,9 @@ import json
 import logging
 import re
 
+from kt_config.types import COMPOUND_FACT_TYPES
 from kt_db.models import Fact, Node
 from kt_models.gateway import ModelGateway
-from kt_config.types import COMPOUND_FACT_TYPES
 
 logger = logging.getLogger(__name__)
 

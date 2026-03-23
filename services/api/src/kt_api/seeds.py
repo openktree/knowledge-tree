@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func as sa_func
+from sqlalchemy import select as sa_select
 
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_write_session_factory_cached, require_api_key
-from kt_db.models import User
 from kt_api.schemas import (
     PaginatedPerspectiveSeedsResponse,
     PaginatedSeedsResponse,
@@ -22,10 +23,10 @@ from kt_api.schemas import (
     SeedTreeResponse,
     SynthesizeResponse,
 )
-from sqlalchemy import select as sa_select, func as sa_func
 from kt_config.settings import get_settings
+from kt_db.models import User
 from kt_db.repositories.write_seeds import WriteSeedRepository
-from kt_db.write_models import WriteFact, WriteSeed, WriteSeedFact
+from kt_db.write_models import WriteFact, WriteSeed
 
 router = APIRouter(prefix="/api/v1/seeds", tags=["seeds"])
 
@@ -74,7 +75,9 @@ async def list_seeds(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     search: str | None = Query(None, description="Filter by name (case-insensitive substring)"),
-    status: str | None = Query(None, description="Filter by status (active, promoted, merged, ambiguous, garbage, promotable)"),
+    status: str | None = Query(
+        None, description="Filter by status (active, promoted, merged, ambiguous, garbage, promotable)"
+    ),
     node_type: str | None = Query(None, description="Filter by node type (entity, concept, event, perspective)"),
 ) -> PaginatedSeedsResponse:
     """List seeds with pagination and optional filters.
@@ -110,10 +113,7 @@ async def list_seeds(
             promotable_only=status == "promotable",
         )
         return PaginatedSeedsResponse(
-            items=[
-                _seed_to_response(s)
-                for s in items
-            ],
+            items=[_seed_to_response(s) for s in items],
             promotion_threshold=settings.seed_promotion_min_facts,
             total=total,
             offset=offset,
@@ -242,7 +242,7 @@ async def synthesize_perspective(seed_key: str) -> SynthesizeResponse:
 @router.delete("/perspectives/{seed_key:path}")
 async def dismiss_perspective_seed(seed_key: str) -> dict[str, str]:
     """Dismiss a perspective seed pair (mark thesis + antithesis as dismissed)."""
-    from sqlalchemy import update as sa_update, func as sa_func
+    from sqlalchemy import update as sa_update
 
     write_sf = get_write_session_factory_cached()
     async with write_sf() as session:
@@ -257,27 +257,21 @@ async def dismiss_perspective_seed(seed_key: str) -> dict[str, str]:
         from kt_db.write_models import WriteSeed as WS
 
         await session.execute(
-            sa_update(WS)
-            .where(WS.key == seed_key)
-            .values(status="dismissed", updated_at=sa_func.now())
+            sa_update(WS).where(WS.key == seed_key).values(status="dismissed", updated_at=sa_func.now())
         )
 
         # Also dismiss the paired seed if this is a thesis
         antithesis_key = meta.get("antithesis_seed_key")
         if antithesis_key:
             await session.execute(
-                sa_update(WS)
-                .where(WS.key == antithesis_key)
-                .values(status="dismissed", updated_at=sa_func.now())
+                sa_update(WS).where(WS.key == antithesis_key).values(status="dismissed", updated_at=sa_func.now())
             )
 
         # If this is an antithesis, also dismiss the thesis
         thesis_key = meta.get("thesis_seed_key")
         if thesis_key:
             await session.execute(
-                sa_update(WS)
-                .where(WS.key == thesis_key)
-                .values(status="dismissed", updated_at=sa_func.now())
+                sa_update(WS).where(WS.key == thesis_key).values(status="dismissed", updated_at=sa_func.now())
             )
 
         await session.commit()
@@ -509,13 +503,15 @@ async def get_seed(seed_key: str) -> SeedDetailResponse:
             child_map = {c.key: c for c in children}
             for r in routes_raw:
                 child = child_map.get(r.child_seed_key)
-                routes.append(SeedRouteResponse(
-                    child_key=r.child_seed_key,
-                    child_name=child.name if child else r.child_seed_key,
-                    child_status=child.status if child else "unknown",
-                    child_fact_count=child.fact_count if child else 0,
-                    label=r.label,
-                ))
+                routes.append(
+                    SeedRouteResponse(
+                        child_key=r.child_seed_key,
+                        child_name=child.name if child else r.child_seed_key,
+                        child_status=child.status if child else "unknown",
+                        child_fact_count=child.fact_count if child else 0,
+                        label=r.label,
+                    )
+                )
 
         # Fetch merge/split audit trail
         merges_raw = await repo.get_merges_for_seed(seed.key)
@@ -537,9 +533,7 @@ async def get_seed(seed_key: str) -> SeedDetailResponse:
         if seed_facts_raw:
             fact_uuids = [sf.fact_id for sf in seed_facts_raw]
             result = await session.execute(
-                sa_select(WriteFact.id, WriteFact.content).where(
-                    WriteFact.id.in_(fact_uuids)
-                )
+                sa_select(WriteFact.id, WriteFact.content).where(WriteFact.id.in_(fact_uuids))
             )
             for row in result.all():
                 fact_content_map[str(row[0])] = row[1]

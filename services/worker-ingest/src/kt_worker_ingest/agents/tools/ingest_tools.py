@@ -9,8 +9,8 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, tool
 
-from kt_worker_ingest.agents.ingest_state import IngestState
 from kt_agents_core.state import AgentContext
+from kt_worker_ingest.agents.ingest_state import IngestState
 from kt_worker_orchestrator.agents.tools.explore_scope import NodeEntry, PerspectiveEntry
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ def create_ingest_tools(
         if remaining <= 0:
             return json.dumps({"error": "Node budget exhausted", "nav_remaining": 0})
 
-        node_dicts = [n.model_dump() for n in nodes[:min(10, remaining)]]
+        node_dicts = [n.model_dump() for n in nodes[: min(10, remaining)]]
 
         if not node_dicts:
             return json.dumps({"error": "No valid node entries provided"})
@@ -167,7 +167,7 @@ def create_ingest_tools(
             entries = [e for e in entries if p_start <= e.idx < p_end]
 
         # Apply pagination
-        page = entries[start:start + count]
+        page = entries[start : start + count]
 
         items = []
         for e in page:
@@ -183,11 +183,14 @@ def create_ingest_tools(
                 item["char_count"] = e.char_count
             items.append(item)
 
-        return json.dumps({
-            "entries": items,
-            "total_entries": len(entries),
-            "showing": f"{start}-{start + len(page)}",
-        }, default=str)
+        return json.dumps(
+            {
+                "entries": items,
+                "total_entries": len(entries),
+                "showing": f"{start}-{start + len(page)}",
+            },
+            default=str,
+        )
 
     @tool
     async def get_summary(idx: int) -> str:
@@ -211,15 +214,18 @@ def create_ingest_tools(
         if entry is None:
             return json.dumps({"error": f"No entry at index {idx}"})
 
-        return json.dumps({
-            "idx": entry.idx,
-            "title": entry.title,
-            "summary": entry.summary,
-            "fact_count": entry.fact_count,
-            "source": entry.source_name,
-            "is_image": entry.is_image,
-            "char_count": entry.char_count,
-        }, default=str)
+        return json.dumps(
+            {
+                "idx": entry.idx,
+                "title": entry.title,
+                "summary": entry.summary,
+                "fact_count": entry.fact_count,
+                "source": entry.source_name,
+                "is_image": entry.is_image,
+                "char_count": entry.char_count,
+            },
+            default=str,
+        )
 
     @tool
     async def browse_facts(
@@ -246,6 +252,7 @@ def create_ingest_tools(
 
         # Get raw_source_ids for this conversation
         from sqlalchemy import select
+
         result = await ctx.session.execute(
             select(IngestSource.raw_source_id).where(
                 IngestSource.conversation_id == conv_uuid,
@@ -265,16 +272,22 @@ def create_ingest_tools(
             limit=min(limit, 30),
         )
 
-        return json.dumps({
-            "facts": [
-                {"id": str(f.id), "type": f.fact_type, "content": f.content}
-                for f in facts
-            ],
-            "total": len(facts),
-            "unlinked_only": unlinked_only,
-        }, default=str)
+        return json.dumps(
+            {
+                "facts": [{"id": str(f.id), "type": f.fact_type, "content": f.content} for f in facts],
+                "total": len(facts),
+                "unlinked_only": unlinked_only,
+            },
+            default=str,
+        )
 
     return [  # type: ignore[list-item]
-        build_nodes, build_perspectives, read_node, get_budget, finish_ingest,
-        browse_index, get_summary, browse_facts,
+        build_nodes,
+        build_perspectives,
+        read_node,
+        get_budget,
+        finish_ingest,
+        browse_index,
+        get_summary,
+        browse_facts,
     ]

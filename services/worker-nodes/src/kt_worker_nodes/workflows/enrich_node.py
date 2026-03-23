@@ -15,11 +15,11 @@ from typing import cast
 
 from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
 
+from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import EnrichEdgeInput, EnrichEdgeOutput, EnrichNodeInput, EnrichNodeOutput
 from kt_hatchet.pipeline import HatchetPipeline
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +65,9 @@ async def enrich_node(input: EnrichNodeInput, ctx: Context) -> dict:
     node_id = uuid.UUID(input.node_id)
 
     async with pipeline._open_sessions() as (graph_session, write_session):
+        from kt_agents_core.state import AgentContext
         from kt_db.repositories.write_nodes import WriteNodeRepository
         from kt_graph.engine import GraphEngine
-        from kt_agents_core.state import AgentContext
         from kt_models.gateway import ModelGateway
 
         if write_session is None:
@@ -106,6 +106,7 @@ async def enrich_node(input: EnrichNodeInput, ctx: Context) -> dict:
         if fact_count < min_facts:
             # Not enough facts yet — mark as partial
             from sqlalchemy import text
+
             await write_session.execute(
                 text("UPDATE write_nodes SET enrichment_status = 'partial', updated_at = NOW() WHERE key = :key"),
                 {"key": wn.key},
@@ -113,7 +114,9 @@ async def enrich_node(input: EnrichNodeInput, ctx: Context) -> dict:
             await write_session.commit()
             logger.info(
                 "Node '%s' has %d facts (need %d) — marked partial",
-                wn.concept, fact_count, min_facts,
+                wn.concept,
+                fact_count,
+                min_facts,
             )
             return EnrichNodeOutput(enriched=False).model_dump()
 
@@ -168,6 +171,7 @@ async def enrich_node(input: EnrichNodeInput, ctx: Context) -> dict:
         sample_size = settings.enrichment_dimension_sample_size
         if len(facts) > sample_size:
             import random
+
             facts = random.sample(facts, sample_size)
 
         # Generate dimensions
@@ -185,6 +189,7 @@ async def enrich_node(input: EnrichNodeInput, ctx: Context) -> dict:
 
         # Update enrichment status
         from sqlalchemy import text
+
         await write_session.execute(
             text("UPDATE write_nodes SET enrichment_status = 'enriched', updated_at = NOW() WHERE key = :key"),
             {"key": wn.key},
@@ -236,20 +241,18 @@ async def enrich_edge(input: EnrichEdgeInput, ctx: Context) -> dict:
 
         # Find the edge in write-db by UUID
         from sqlalchemy import select
+
         from kt_db.write_models import WriteEdge
 
-        result = await write_session.execute(
-            select(WriteEdge).where(WriteEdge.key.like(f"%{input.edge_id}%"))
-        )
+        result = await write_session.execute(select(WriteEdge).where(WriteEdge.key.like(f"%{input.edge_id}%")))
         we = result.scalar_one_or_none()
 
         if we is None:
             # Try finding by edge UUID derivation
             from kt_db.models import Edge
+
             if graph_session:
-                edge = (await graph_session.execute(
-                    select(Edge).where(Edge.id == edge_id)
-                )).scalar_one_or_none()
+                edge = (await graph_session.execute(select(Edge).where(Edge.id == edge_id))).scalar_one_or_none()
                 if edge and edge.justification:
                     return EnrichEdgeOutput(justified=False).model_dump()
 
@@ -273,9 +276,7 @@ async def enrich_edge(input: EnrichEdgeInput, ctx: Context) -> dict:
         from kt_db.repositories.write_facts import WriteFactRepository
 
         write_fact_repo = WriteFactRepository(write_session)
-        facts = await write_fact_repo.get_by_ids(
-            [uuid.UUID(fid) for fid in fact_ids]
-        )
+        facts = await write_fact_repo.get_by_ids([uuid.UUID(fid) for fid in fact_ids])
 
         if not facts:
             return EnrichEdgeOutput(justified=False).model_dump()
@@ -306,6 +307,7 @@ async def enrich_edge(input: EnrichEdgeInput, ctx: Context) -> dict:
         if justification:
             # Update justification without changing weight
             from sqlalchemy import text
+
             await write_session.execute(
                 text("UPDATE write_edges SET justification = :j, updated_at = NOW() WHERE key = :key"),
                 {"j": justification, "key": we.key},

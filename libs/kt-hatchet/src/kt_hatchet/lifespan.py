@@ -103,7 +103,6 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     from kt_qdrant.client import get_qdrant_client
     from kt_qdrant.repositories.facts import QdrantFactRepository
     from kt_qdrant.repositories.nodes import QdrantNodeRepository
-
     from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
     qdrant_client = get_qdrant_client()
@@ -206,7 +205,6 @@ async def build_worker_state() -> WorkerState:
     from kt_qdrant.client import get_qdrant_client
     from kt_qdrant.repositories.facts import QdrantFactRepository
     from kt_qdrant.repositories.nodes import QdrantNodeRepository
-
     from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
     qdrant_client = get_qdrant_client()

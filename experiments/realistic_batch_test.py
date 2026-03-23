@@ -14,10 +14,10 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from kt_models.gateway import ModelGateway
-
 
 STRICT_SYSTEM = """\
 You are a precision entity extractor for a knowledge graph. You receive numbered facts.
@@ -117,7 +117,7 @@ async def main():
     print(f"Facts: {len(FACTS)}")
     print()
 
-    lines = [f"{i+1}. {f}" for i, f in enumerate(FACTS)]
+    lines = [f"{i + 1}. {f}" for i, f in enumerate(FACTS)]
     user_msg = USER_TEMPLATE.format(count=len(FACTS), fact_list="\n".join(lines))
 
     t0 = time.time()
@@ -174,9 +174,7 @@ async def main():
                 correct_links += 1
             else:
                 wrong_links += 1
-                wrong_examples.append(
-                    f"  WRONG: '{name}' tagged on fact {fact_idx+1}: '{fact_text[:80]}...'"
-                )
+                wrong_examples.append(f"  WRONG: '{name}' tagged on fact {fact_idx + 1}: '{fact_text[:80]}...'")
 
     print(f"Time: {elapsed:.1f}s")
     print(f"Total entity-fact links: {total_entity_links}")

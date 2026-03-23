@@ -16,8 +16,8 @@ Create Date: 2026-03-11
 
 import uuid
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "zz9y8x7w6v5u"
 down_revision = "a4b5c6d7e8f9"
@@ -47,10 +47,7 @@ def upgrade() -> None:
 
     # 2. Fix 'All Perspectives' self-referential parent
     conn.execute(
-        sa.text(
-            "UPDATE nodes SET parent_id = NULL "
-            "WHERE id = :id AND parent_id = :id"
-        ),
+        sa.text("UPDATE nodes SET parent_id = NULL WHERE id = :id AND parent_id = :id"),
         {"id": ALL_PERSPECTIVES_ID},
     )
 

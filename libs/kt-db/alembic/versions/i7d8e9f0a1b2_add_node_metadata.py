@@ -5,8 +5,8 @@ Revises: h6c7d8e9f0a1
 Create Date: 2026-02-26
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "i7d8e9f0a1b2"

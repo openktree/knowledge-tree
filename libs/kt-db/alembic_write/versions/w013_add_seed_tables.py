@@ -8,9 +8,8 @@ Create Date: 2026-03-12
 from __future__ import annotations
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-
 from alembic import op
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 revision = "w013"
 down_revision = "w012"

@@ -3,8 +3,8 @@ import asyncio
 import httpx
 import structlog
 
-from kt_providers.base import KnowledgeProvider
 from kt_config.types import RawSearchResult
+from kt_providers.base import KnowledgeProvider
 
 logger = structlog.get_logger(__name__)
 

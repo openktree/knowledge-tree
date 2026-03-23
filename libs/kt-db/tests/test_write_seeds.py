@@ -359,8 +359,18 @@ class TestWriteSeedRoutes:
         await repo.link_fact(original_key, fid2)
 
         new_seeds = [
-            {"key": make_seed_key("entity", "Split Routes Test (planet)"), "name": "Split Routes Test (planet)", "node_type": "entity", "label": "planet"},
-            {"key": make_seed_key("entity", "Split Routes Test (god)"), "name": "Split Routes Test (god)", "node_type": "entity", "label": "god"},
+            {
+                "key": make_seed_key("entity", "Split Routes Test (planet)"),
+                "name": "Split Routes Test (planet)",
+                "node_type": "entity",
+                "label": "planet",
+            },
+            {
+                "key": make_seed_key("entity", "Split Routes Test (god)"),
+                "name": "Split Routes Test (god)",
+                "node_type": "entity",
+                "label": "god",
+            },
         ]
         fact_assignments = {
             new_seeds[0]["key"]: [fid1],

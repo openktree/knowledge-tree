@@ -158,8 +158,7 @@ def build_composite_tools(
         for dim in dimensions:
             definitive_tag = " [DEFINITIVE]" if dim.is_definitive else ""
             lines.append(
-                f"\n## {dim.model_id}{definitive_tag} "
-                f"(confidence={dim.confidence:.2f}, facts={dim.fact_count})"
+                f"\n## {dim.model_id}{definitive_tag} (confidence={dim.confidence:.2f}, facts={dim.fact_count})"
             )
             lines.append(dim.content)
 
@@ -205,9 +204,7 @@ def build_composite_tools(
         formatted: list[str] = []
         for fact in facts:
             label = _fact_label(fact.content)
-            formatted.append(
-                f"- [{fact.fact_type}] {fact.content} {{fact:{fact.id}|{label}}}"
-            )
+            formatted.append(f"- [{fact.fact_type}] {fact.content} {{fact:{fact.id}|{label}}}")
             agent_state.facts_referenced.append(str(fact.id))
 
         return "\n".join(formatted)

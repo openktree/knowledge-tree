@@ -15,13 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from kt_config.types import ALL_CONCEPTS_ID
 from kt_db.models import Node
 from kt_db.repositories.nodes import NodeRepository
 from kt_ontology.ancestry import AncestryPipeline, AncestryResult, _ResolvedAncestor
 from kt_ontology.base import AncestorEntry, AncestryChain
 from kt_ontology.registry import OntologyProviderRegistry
-from kt_config.types import ALL_CONCEPTS_ID
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -30,9 +29,7 @@ async def _ensure_root(session: AsyncSession) -> None:
     """Ensure the ALL_CONCEPTS root node exists (idempotent)."""
     from sqlalchemy import select
 
-    existing = await session.execute(
-        select(Node).where(Node.id == ALL_CONCEPTS_ID)
-    )
+    existing = await session.execute(select(Node).where(Node.id == ALL_CONCEPTS_ID))
     if not existing.scalar_one_or_none():
         session.add(Node(id=ALL_CONCEPTS_ID, concept="all concepts", node_type="concept"))
         await session.flush()
@@ -60,26 +57,30 @@ def _make_embedding(seed: float = 0.1) -> list[float]:
 
 def _make_quicksort_chain() -> str:
     """Standard AI response for 'quicksort'."""
-    return json.dumps([
-        {"name": "quicksort", "description": "A comparison-based sorting algorithm"},
-        {"name": "sorting algorithms", "description": "Algorithms that arrange elements in order"},
-        {"name": "algorithms", "description": "Step-by-step computational procedures"},
-        {"name": "computer science", "description": "The study of computation"},
-        {"name": "all concepts", "description": "Root"},
-    ])
+    return json.dumps(
+        [
+            {"name": "quicksort", "description": "A comparison-based sorting algorithm"},
+            {"name": "sorting algorithms", "description": "Algorithms that arrange elements in order"},
+            {"name": "algorithms", "description": "Step-by-step computational procedures"},
+            {"name": "computer science", "description": "The study of computation"},
+            {"name": "all concepts", "description": "Root"},
+        ]
+    )
 
 
 def _make_photosynthesis_chain() -> str:
     """Standard AI response for 'photosynthesis'."""
-    return json.dumps([
-        {"name": "photosynthesis", "description": "Converting light to chemical energy"},
-        {"name": "plant energy metabolism", "description": "Energy processes in plants"},
-        {"name": "plant physiology", "description": "Study of plant functions"},
-        {"name": "botany", "description": "Study of plants"},
-        {"name": "biology", "description": "Study of life"},
-        {"name": "natural sciences", "description": "Sciences studying nature"},
-        {"name": "all concepts", "description": "Root"},
-    ])
+    return json.dumps(
+        [
+            {"name": "photosynthesis", "description": "Converting light to chemical energy"},
+            {"name": "plant energy metabolism", "description": "Energy processes in plants"},
+            {"name": "plant physiology", "description": "Study of plant functions"},
+            {"name": "botany", "description": "Study of plants"},
+            {"name": "biology", "description": "Study of life"},
+            {"name": "natural sciences", "description": "Sciences studying nature"},
+            {"name": "all concepts", "description": "Root"},
+        ]
+    )
 
 
 @pytest.fixture
@@ -129,8 +130,11 @@ class TestAncestrySteps:
     """Test each pipeline step independently with diagnostic output."""
 
     async def test_step1_get_existing_ancestor_names(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 1: Find existing nodes that could be ancestors."""
         await _ensure_root(db_session)
@@ -148,13 +152,14 @@ class TestAncestrySteps:
         assert len(names) >= 2
 
     async def test_step2_ai_ancestry_valid_json(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 2: AI returns valid JSON ancestry chain."""
-        mock_model_gateway.generate = AsyncMock(
-            return_value=_make_quicksort_chain()
-        )
+        mock_model_gateway.generate = AsyncMock(return_value=_make_quicksort_chain())
 
         pipeline = AncestryPipeline(
             session=db_session,
@@ -164,7 +169,10 @@ class TestAncestrySteps:
         )
 
         chain = await pipeline._get_ai_ancestry(
-            "quicksort", "concept", "A sorting algorithm", ["computer science"],
+            "quicksort",
+            "concept",
+            "A sorting algorithm",
+            ["computer science"],
         )
         assert chain is not None
         assert chain.source == "ai"
@@ -174,8 +182,11 @@ class TestAncestrySteps:
         assert "algorithms" in names
 
     async def test_step2_ai_ancestry_empty_array(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 2: AI returns empty array → None."""
         mock_model_gateway.generate = AsyncMock(return_value="[]")
@@ -191,14 +202,19 @@ class TestAncestrySteps:
         assert chain is None
 
     async def test_step2_ai_ancestry_single_element(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 2: AI returns array with single element → None (needs ≥2)."""
         mock_model_gateway.generate = AsyncMock(
-            return_value=json.dumps([
-                {"name": "quicksort", "description": "A sorting algorithm"},
-            ])
+            return_value=json.dumps(
+                [
+                    {"name": "quicksort", "description": "A sorting algorithm"},
+                ]
+            )
         )
 
         pipeline = AncestryPipeline(
@@ -212,8 +228,11 @@ class TestAncestrySteps:
         assert chain is None
 
     async def test_step2_ai_ancestry_markdown_fenced(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 2: AI wraps JSON in markdown fences → now handled correctly."""
         fenced = "```json\n" + _make_quicksort_chain() + "\n```"
@@ -232,13 +251,14 @@ class TestAncestrySteps:
         assert "sorting algorithms" in names
 
     async def test_step2_ai_ancestry_llm_exception(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 2: LLM throws → returns None (no crash)."""
-        mock_model_gateway.generate = AsyncMock(
-            side_effect=Exception("API timeout")
-        )
+        mock_model_gateway.generate = AsyncMock(side_effect=Exception("API timeout"))
 
         pipeline = AncestryPipeline(
             session=db_session,
@@ -251,8 +271,11 @@ class TestAncestrySteps:
         assert chain is None
 
     async def test_step4_merge_ai_only(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 4: Merge with only AI chain (Wikidata=None)."""
         pipeline = AncestryPipeline(
@@ -275,8 +298,11 @@ class TestAncestrySteps:
         assert names == ["sorting algorithms", "algorithms", "computer science"]
 
     async def test_step4_merge_both_with_common_ancestor(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 4: Merge AI + Wikidata chains sharing 'botany' as LCA."""
         pipeline = AncestryPipeline(
@@ -309,13 +335,17 @@ class TestAncestrySteps:
         assert "botany" in names
 
     async def test_step5_resolve_exact_match(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 5: Resolve finds existing node by exact trigram match."""
         await _ensure_root(db_session)
         bio = await _create_node(
-            db_session, "biology-s5",
+            db_session,
+            "biology-s5",
             parent_id=ALL_CONCEPTS_ID,
             embedding=_make_embedding(0.5),
         )
@@ -340,13 +370,17 @@ class TestAncestrySteps:
         assert bio_resolved[0].existing_node_id == bio.id
 
     async def test_step5_resolve_excludes_self(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 5: exclude_node_id prevents a node from matching itself."""
         await _ensure_root(db_session)
         algo = await _create_node(
-            db_session, "algorithms-excl",
+            db_session,
+            "algorithms-excl",
             parent_id=ALL_CONCEPTS_ID,
             embedding=_make_embedding(0.5),
         )
@@ -369,21 +403,23 @@ class TestAncestrySteps:
         assert algo_match[0].existing_node_id == algo.id
 
         # With exclusion: algorithms-excl should NOT be matched
-        resolved_excl = await pipeline._resolve_against_system(
-            merged, "concept", exclude_node_id=algo.id
-        )
+        resolved_excl = await pipeline._resolve_against_system(merged, "concept", exclude_node_id=algo.id)
         algo_match_excl = [r for r in resolved_excl if r.entry.name == "algorithms-excl"]
         assert algo_match_excl[0].existing_node_id is None
         assert algo_match_excl[0].needs_creation is True
 
     async def test_step6_materialize_with_graft(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 6: Materialize creates stub nodes and wires parent chain."""
         await _ensure_root(db_session)
         bio = await _create_node(
-            db_session, "biology-mat-graft",
+            db_session,
+            "biology-mat-graft",
             parent_id=ALL_CONCEPTS_ID,
         )
 
@@ -442,14 +478,18 @@ class TestAncestrySteps:
         assert botany_node.parent_id == bio.id
 
     async def test_step6_materialize_excludes_self_reference(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 6: exclude_node_id filters out self-referential entries."""
         await _ensure_root(db_session)
         # Simulate the node being classified already exists in the DB
         target_node = await _create_node(
-            db_session, "algorithms-self",
+            db_session,
+            "algorithms-self",
             parent_id=ALL_CONCEPTS_ID,
         )
 
@@ -480,7 +520,9 @@ class TestAncestrySteps:
         )
 
         result = await pipeline._materialize_and_wire(
-            resolved, "concept", exclude_node_id=target_node.id,
+            resolved,
+            "concept",
+            exclude_node_id=target_node.id,
         )
 
         # The self-referential entry should be filtered out
@@ -490,8 +532,11 @@ class TestAncestrySteps:
         assert result.parent_id != target_node.id
 
     async def test_step6_materialize_no_existing(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Step 6: All gaps — stubs created with correct wiring to root."""
         await _ensure_root(db_session)
@@ -543,8 +588,11 @@ class TestAncestrySteps:
 @pytest.mark.asyncio
 class TestAncestryPipelineIntegration:
     async def test_entity_skips_ancestry(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         pipeline = AncestryPipeline(
             session=db_session,
@@ -562,14 +610,15 @@ class TestAncestryPipelineIntegration:
         mock_model_gateway.generate.assert_not_awaited()
 
     async def test_concept_creates_stubs_no_existing(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """AI proposes chain, no existing nodes → stub nodes created and wired."""
         await _ensure_root(db_session)
-        mock_model_gateway.generate = AsyncMock(
-            return_value=_make_quicksort_chain()
-        )
+        mock_model_gateway.generate = AsyncMock(return_value=_make_quicksort_chain())
 
         pipeline = AncestryPipeline(
             session=db_session,
@@ -608,20 +657,22 @@ class TestAncestryPipelineIntegration:
         assert "computer science" in chain_concepts
 
     async def test_concept_with_existing_parent(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """When an existing node matches an ancestor, stubs wire through it."""
         await _ensure_root(db_session)
 
         existing_node = await _create_node(
-            db_session, "algorithms",
+            db_session,
+            "algorithms",
             parent_id=ALL_CONCEPTS_ID,
         )
 
-        mock_model_gateway.generate = AsyncMock(
-            return_value=_make_quicksort_chain()
-        )
+        mock_model_gateway.generate = AsyncMock(return_value=_make_quicksort_chain())
 
         pipeline = AncestryPipeline(
             session=db_session,
@@ -649,14 +700,14 @@ class TestAncestryPipelineIntegration:
         assert existing_node.id in result.ancestry_chain
 
     async def test_full_with_wikidata(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
         mock_embedding_service: MagicMock,
     ) -> None:
         """Full pipeline with both AI and Wikidata chains creates stubs."""
         await _ensure_root(db_session)
-        mock_model_gateway.generate = AsyncMock(
-            return_value=_make_photosynthesis_chain()
-        )
+        mock_model_gateway.generate = AsyncMock(return_value=_make_photosynthesis_chain())
 
         wikidata_chain = AncestryChain(
             ancestors=[
@@ -676,7 +727,8 @@ class TestAncestryPipelineIntegration:
         )
 
         result = await pipeline.determine_ancestry(
-            "photosynthesis", "concept",
+            "photosynthesis",
+            "concept",
             definition="Process of converting light to chemical energy",
         )
 
@@ -688,8 +740,11 @@ class TestAncestryPipelineIntegration:
         assert result.parent_id != ALL_CONCEPTS_ID
 
     async def test_disabled_feature_falls_back(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """When ontology ancestry is disabled, use default parent."""
         pipeline = AncestryPipeline(
@@ -711,8 +766,11 @@ class TestAncestryPipelineIntegration:
         mock_model_gateway.generate.assert_not_awaited()
 
     async def test_circular_parent_prevented(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """Cycle detection: A→B→C→root, then trying to set C.parent=A should be rejected."""
         await _ensure_root(db_session)
@@ -723,6 +781,7 @@ class TestAncestryPipelineIntegration:
         node_a = await _create_node(db_session, "node-a-circ", parent_id=node_b.id)
 
         from kt_graph.engine import GraphEngine
+
         engine = GraphEngine(db_session, mock_embedding_service)
 
         # Setting C.parent = A would create A→B→C→A (cycle, never reaches root)
@@ -735,8 +794,11 @@ class TestAncestryPipelineIntegration:
         assert c_refreshed.parent_id == ALL_CONCEPTS_ID
 
     async def test_orphan_parent_rejected(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """A parent whose chain doesn't reach root should be rejected."""
         await _ensure_root(db_session)
@@ -746,24 +808,32 @@ class TestAncestryPipelineIntegration:
         child = await _create_node(db_session, "child-node", parent_id=ALL_CONCEPTS_ID)
 
         from kt_graph.engine import GraphEngine
+
         engine = GraphEngine(db_session, mock_embedding_service)
 
         with pytest.raises(ValueError, match="not a root node"):
             await engine.set_parent(child.id, orphan.id)
 
     async def test_materialize_skips_cycle_on_reparent(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """_materialize_and_wire should not re-parent if it would create a cycle."""
         await _ensure_root(db_session)
 
         # Create existing nodes: child → parent → ALL_CONCEPTS
         parent_node = await _create_node(
-            db_session, "photosynthesis-rp", parent_id=ALL_CONCEPTS_ID,
+            db_session,
+            "photosynthesis-rp",
+            parent_id=ALL_CONCEPTS_ID,
         )
         child_node = await _create_node(
-            db_session, "chlorophyll-rp", parent_id=parent_node.id,
+            db_session,
+            "chlorophyll-rp",
+            parent_id=parent_node.id,
         )
 
         # Ancestry pipeline for a NEW node proposes:
@@ -776,7 +846,8 @@ class TestAncestryPipelineIntegration:
 
         # Reset parent_node to default so the re-parent guard kicks in
         await NodeRepository(db_session).update_fields(
-            parent_node.id, parent_id=ALL_CONCEPTS_ID,
+            parent_node.id,
+            parent_id=ALL_CONCEPTS_ID,
         )
 
         resolved = [
@@ -818,30 +889,34 @@ class TestAncestryPipelineIntegration:
                 break
             current_id = node.parent_id
 
-        assert not found_cycle, (
-            f"Cycle detected: visited {visited}, ended at {current_id}"
-        )
+        assert not found_cycle, f"Cycle detected: visited {visited}, ended at {current_id}"
 
     async def test_self_referential_parent_prevented(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """When a node matches itself in the ancestry chain, it should be excluded."""
         await _ensure_root(db_session)
 
         # Create a node that will be classified — its name appears in the LLM chain
         target_node = await _create_node(
-            db_session, "algorithms",
+            db_session,
+            "algorithms",
             parent_id=ALL_CONCEPTS_ID,
         )
 
         # LLM proposes a chain that includes "algorithms" as an ancestor
-        chain_with_self = json.dumps([
-            {"name": "algorithms", "description": "Step-by-step computational procedures"},
-            {"name": "computer science", "description": "The study of computation"},
-            {"name": "formal science", "description": "Sciences studying formal systems"},
-            {"name": "all concepts", "description": "Root"},
-        ])
+        chain_with_self = json.dumps(
+            [
+                {"name": "algorithms", "description": "Step-by-step computational procedures"},
+                {"name": "computer science", "description": "The study of computation"},
+                {"name": "formal science", "description": "Sciences studying formal systems"},
+                {"name": "all concepts", "description": "Root"},
+            ]
+        )
         mock_model_gateway.generate = AsyncMock(return_value=chain_with_self)
 
         pipeline = AncestryPipeline(
@@ -853,7 +928,9 @@ class TestAncestryPipelineIntegration:
 
         # Pass node_id so the pipeline can exclude self-matches
         result = await pipeline.determine_ancestry(
-            "algorithms", "concept", node_id=target_node.id,
+            "algorithms",
+            "concept",
+            node_id=target_node.id,
         )
 
         # The parent should NOT be the node itself
@@ -862,8 +939,11 @@ class TestAncestryPipelineIntegration:
         )
 
     async def test_llm_failure_falls_back(
-        self, db_session: AsyncSession, mock_model_gateway: MagicMock,
-        mock_embedding_service: MagicMock, ontology_registry: OntologyProviderRegistry,
+        self,
+        db_session: AsyncSession,
+        mock_model_gateway: MagicMock,
+        mock_embedding_service: MagicMock,
+        ontology_registry: OntologyProviderRegistry,
     ) -> None:
         """When LLM fails, pipeline should fall back to default parent."""
         mock_model_gateway.generate = AsyncMock(side_effect=Exception("LLM down"))

@@ -105,11 +105,7 @@ async def get_edge_candidate_pair(
                 pass
         fact_content_map: dict[str, str] = {}
         if fact_uuids:
-            result = await session.execute(
-                select(WriteFact.id, WriteFact.content).where(
-                    WriteFact.id.in_(fact_uuids)
-                )
-            )
+            result = await session.execute(select(WriteFact.id, WriteFact.content).where(WriteFact.id.in_(fact_uuids)))
             for row in result.all():
                 fact_content_map[str(row[0])] = row[1]
 

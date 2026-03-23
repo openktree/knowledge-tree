@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from kt_agents_core.state import AgentContext
-from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
 from kt_config.types import DEFAULT_PARENTS
+from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +100,7 @@ class ParentSelectionPipeline:
             Metrics dict with parent assignment counts and per-node detail.
         """
         eligible = [
-            t for t in tasks
-            if t.action in ("create", "refresh") and t.node is not None and t.node_type != "entity"
+            t for t in tasks if t.action in ("create", "refresh") and t.node is not None and t.node_type != "entity"
         ]
         parents_assigned = 0
         default_parents = 0
@@ -118,10 +117,12 @@ class ParentSelectionPipeline:
             if result.is_reversal:
                 reversals += 1
             if len(node_details) < 10:
-                node_details.append({
-                    "name": task.name,
-                    "parent": result.parent_name or "default",
-                })
+                node_details.append(
+                    {
+                        "name": task.name,
+                        "parent": result.parent_name or "default",
+                    }
+                )
 
         return {
             "node_count": len(eligible),
@@ -157,7 +158,11 @@ class ParentSelectionPipeline:
 
             # 4. Build prompt and call LLM
             choice_idx = await self._ask_llm(
-                node, node_type, definition, candidates, parent_names,
+                node,
+                node_type,
+                definition,
+                candidates,
+                parent_names,
             )
 
             # 5. Apply choice or fallback to default
@@ -183,7 +188,9 @@ class ParentSelectionPipeline:
             return _ParentResult(is_default=True)
 
     async def _get_candidates(
-        self, node_id: uuid.UUID, node_type: str,
+        self,
+        node_id: uuid.UUID,
+        node_type: str,
     ) -> list[Any]:
         """Return same-type neighbor nodes from positive-weight edges."""
         edges = await self._ctx.graph_engine.get_edges(node_id, direction="both")
@@ -193,11 +200,7 @@ class ParentSelectionPipeline:
         neighbor_ids: list[uuid.UUID] = []
         for edge in edges:
             if edge.weight > 0:
-                other_id = (
-                    edge.target_node_id
-                    if edge.source_node_id == node_id
-                    else edge.source_node_id
-                )
+                other_id = edge.target_node_id if edge.source_node_id == node_id else edge.source_node_id
                 neighbor_ids.append(other_id)
 
         if not neighbor_ids:
@@ -221,7 +224,9 @@ class ParentSelectionPipeline:
         return "\n  ".join(parts)
 
     async def _resolve_parent_names(
-        self, node: Any, candidates: list[Any],
+        self,
+        node: Any,
+        candidates: list[Any],
     ) -> dict[uuid.UUID, str]:
         """Batch-resolve parent_id → concept name for node and candidates."""
         parent_ids: set[uuid.UUID] = set()
@@ -241,7 +246,9 @@ class ParentSelectionPipeline:
         return {n.id: n.concept for n in parent_nodes}
 
     def _format_parent(
-        self, parent_id: uuid.UUID | None, parent_names: dict[uuid.UUID, str],
+        self,
+        parent_id: uuid.UUID | None,
+        parent_names: dict[uuid.UUID, str],
     ) -> str:
         """Format a parent reference as a human-readable string."""
         defaults = set(DEFAULT_PARENTS.values())
@@ -263,12 +270,14 @@ class ParentSelectionPipeline:
         system = _SYSTEM_PROMPT.format(type_instruction=type_instruction)
 
         node_parent_str = self._format_parent(
-            getattr(node, "parent_id", None), parent_names,
+            getattr(node, "parent_id", None),
+            parent_names,
         )
         candidate_lines: list[str] = []
         for i, c in enumerate(candidates, 1):
             c_parent = self._format_parent(
-                getattr(c, "parent_id", None), parent_names,
+                getattr(c, "parent_id", None),
+                parent_names,
             )
             candidate_lines.append(f'{i}. "{c.concept}" (current parent: {c_parent})')
 
@@ -297,7 +306,10 @@ class ParentSelectionPipeline:
         return None
 
     async def _apply_with_reversal(
-        self, node: Any, chosen: Any, default_parent: uuid.UUID,
+        self,
+        node: Any,
+        chosen: Any,
+        default_parent: uuid.UUID,
     ) -> None:
         """Apply parent assignment with reversal if needed.
 
@@ -315,7 +327,10 @@ class ParentSelectionPipeline:
             await ge.set_parent(node.id, chosen.id)
             logger.info(
                 "Parent reversal: %s (%s) is now child of %s (%s)",
-                node.concept, node.id, chosen.concept, chosen.id,
+                node.concept,
+                node.id,
+                chosen.concept,
+                chosen.id,
             )
         else:
             await ge.set_parent(node.id, chosen.id)

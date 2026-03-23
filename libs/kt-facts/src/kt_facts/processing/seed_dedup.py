@@ -82,6 +82,7 @@ async def deduplicate_seed(
     # Skip dedup entirely for seeds with invalid names — prevents junk seeds
     # from merging with good seeds and amplifying the corruption cascade.
     from kt_facts.processing.entity_extraction import _is_valid_entity_name
+
     if not _is_valid_entity_name(name):
         logger.debug("Skipping dedup for invalid seed name: '%s'", name)
         return seed_key
@@ -128,10 +129,15 @@ async def deduplicate_seed(
                 if not is_acronym and _is_containment_mismatch(name_lower, candidate_name_lower):
                     logger.debug(
                         "Skipping alias match '%s' <-> '%s' — containment mismatch",
-                        name, candidate.name,
+                        name,
+                        candidate.name,
                     )
                     continue
-                reason = "acronym match" if is_acronym and name_lower != candidate_name_lower and name_lower not in aliases_lower else "alias match"
+                reason = (
+                    "acronym match"
+                    if is_acronym and name_lower != candidate_name_lower and name_lower not in aliases_lower
+                    else "alias match"
+                )
                 alias_candidates.append(_MergeCandidate(candidate.key, candidate.name, reason))
     except Exception:
         logger.debug("Alias/trigram candidate search failed for seed '%s'", name, exc_info=True)
@@ -168,7 +174,9 @@ async def deduplicate_seed(
 
         if len(unique_candidates) == 1:
             # Single match — merge directly
-            return await _merge_pair(seed_key, unique_candidates[0].key, write_seed_repo, reason=unique_candidates[0].reason)
+            return await _merge_pair(
+                seed_key, unique_candidates[0].key, write_seed_repo, reason=unique_candidates[0].reason
+            )
         else:
             # Multiple distinct candidates — check if they share a merged ancestor
             result = await _handle_multi_match(seed_key, unique_candidates, write_seed_repo)
@@ -181,7 +189,8 @@ async def deduplicate_seed(
     except Exception:
         logger.warning(
             "Embedding API failed for seed '%s' — skipping embedding dedup",
-            name, exc_info=True,
+            name,
+            exc_info=True,
         )
         embedding = None
 
@@ -221,7 +230,8 @@ async def deduplicate_seed(
                 # ── Tiered merge decision ──
                 # Tier 1: Very high embedding + string guards → auto-merge (skip LLM)
                 if is_safe_auto_merge(
-                    name, matched_seed.name,
+                    name,
+                    matched_seed.name,
                     embedding_score=match.score,
                     auto_merge_threshold=settings.seed_dedup_auto_merge_threshold,
                 ):
@@ -229,7 +239,9 @@ async def deduplicate_seed(
                     reason = f"embedding auto-merge (score={match.score:.3f})"
                     logger.info(
                         "Auto-merge (skipped LLM): '%s' vs '%s' (score=%.3f)",
-                        name, matched_seed.name, match.score,
+                        name,
+                        matched_seed.name,
+                        match.score,
                     )
                 # Tier 2: Moderate embedding → LLM confirmation required
                 elif model_gateway is not None and write_fact_repo is not None:
@@ -245,7 +257,9 @@ async def deduplicate_seed(
                     if not confirmed:
                         # LLM says different — create embedding-ambiguity routes
                         await _create_embedding_disambiguation(
-                            seed_key, match.seed_key, matched_seed.name,
+                            seed_key,
+                            match.seed_key,
+                            matched_seed.name,
                             write_seed_repo,
                         )
                         continue  # try next candidate
@@ -256,7 +270,9 @@ async def deduplicate_seed(
                     reason = f"embedding similarity (score={match.score:.3f})"
 
                 winner_key = await _merge_pair(
-                    seed_key, match.seed_key, write_seed_repo,
+                    seed_key,
+                    match.seed_key,
+                    write_seed_repo,
                     reason=reason,
                 )
 
@@ -269,7 +285,8 @@ async def deduplicate_seed(
         except Exception:
             logger.warning(
                 "Qdrant search failed for seed '%s' — skipping embedding dedup",
-                name, exc_info=True,
+                name,
+                exc_info=True,
             )
 
     # ── Signal 2: Phonetic + trigram typo catch (requires embedding floor) ──
@@ -280,7 +297,9 @@ async def deduplicate_seed(
             phonetic_code = compute_phonetic_code(name)
             if phonetic_code:
                 phonetic_matches = await write_seed_repo.find_by_phonetic(
-                    phonetic_code, node_type, limit=5,
+                    phonetic_code,
+                    node_type,
+                    limit=5,
                 )
                 for candidate in phonetic_matches:
                     if candidate.key == seed_key:
@@ -292,18 +311,23 @@ async def deduplicate_seed(
                     if _is_containment_mismatch(name.lower(), candidate.name.lower()):
                         logger.debug(
                             "Phonetic match '%s' <-> '%s' blocked by containment guard",
-                            name, candidate.name,
+                            name,
+                            candidate.name,
                         )
                         continue
                     # Require moderate trigram confirmation
                     try:
                         trigram_matches = await write_seed_repo.find_similar_seeds(
-                            name, node_type, limit=1,
+                            name,
+                            node_type,
+                            limit=1,
                             threshold=settings.seed_phonetic_trigram_threshold,
                         )
                         if any(m.key == candidate.key for m in trigram_matches):
                             return await _merge_pair(
-                                seed_key, candidate.key, write_seed_repo,
+                                seed_key,
+                                candidate.key,
+                                write_seed_repo,
                                 reason=f"phonetic + trigram match (code={phonetic_code}, emb={best_embedding_score:.3f})",
                             )
                     except Exception:
@@ -319,7 +343,9 @@ async def deduplicate_seed(
             logger.info(
                 "Confusable pair detected: '%s' vs trigram candidates %s "
                 "(best_embedding_score=%.3f, below threshold=%.2f)",
-                name, trigram_candidates_found, best_embedding_score,
+                name,
+                trigram_candidates_found,
+                best_embedding_score,
                 settings.seed_dedup_embedding_threshold,
             )
 
@@ -352,7 +378,9 @@ async def _handle_multi_match(
         # All candidates share a common ancestor — merge into that ancestor
         ancestor_key = next(iter(unique_ancestors))
         return await _merge_pair(
-            seed_key, ancestor_key, write_seed_repo,
+            seed_key,
+            ancestor_key,
+            write_seed_repo,
             reason=f"multi-match resolved to common ancestor ({len(candidates)} candidates)",
         )
 
@@ -367,12 +395,11 @@ async def _handle_multi_match(
     # Mark as ambiguous and create routes to each candidate
     try:
         from sqlalchemy import update as sa_update
+
         from kt_db.write_models import WriteSeed
 
         await write_seed_repo._session.execute(
-            sa_update(WriteSeed)
-            .where(WriteSeed.key == seed_key)
-            .values(status="ambiguous")
+            sa_update(WriteSeed).where(WriteSeed.key == seed_key).values(status="ambiguous")
         )
 
         for c in candidates:
@@ -431,6 +458,7 @@ async def _merge_pair(
     # Advisory lock on winner key to prevent concurrent merges into the
     # same target from corrupting state.
     from sqlalchemy import text
+
     session = write_seed_repo._session
 
     try:
@@ -442,7 +470,9 @@ async def _merge_pair(
             await write_seed_repo.merge_seeds(loser_key, winner_key, reason=reason)
         logger.info(
             "Merged seed '%s' into '%s' (reason: %s)",
-            loser_key, winner_key, reason,
+            loser_key,
+            winner_key,
+            reason,
         )
         return winner_key
     except Exception:
@@ -450,7 +480,9 @@ async def _merge_pair(
         # session stays usable. Skip this merge.
         logger.warning(
             "Merge failed (deadlock?) for '%s' into '%s', skipping",
-            loser_key, winner_key, exc_info=True,
+            loser_key,
+            winner_key,
+            exc_info=True,
         )
         return incoming_key
 
@@ -549,14 +581,14 @@ async def _llm_confirm_merge(
     facts_b_str = "\n".join(f"  - {f}" for f in candidate_facts_text) if candidate_facts_text else "  (no facts yet)"
 
     prompt = (
-        'Are these two knowledge-graph seeds the SAME concept/entity?\n'
-        'Be STRICT — only confirm for synonyms, abbreviations, or '
-        'different-specificity names for the same thing. '
-        'Related-but-distinct concepts = NOT same.\n\n'
+        "Are these two knowledge-graph seeds the SAME concept/entity?\n"
+        "Be STRICT — only confirm for synonyms, abbreviations, or "
+        "different-specificity names for the same thing. "
+        "Related-but-distinct concepts = NOT same.\n\n"
         f'Seed A: "{incoming_name}"\n'
-        f'Facts:\n{facts_a_str}\n\n'
+        f"Facts:\n{facts_a_str}\n\n"
         f'Seed B: "{candidate_name}"\n'
-        f'Facts:\n{facts_b_str}\n\n'
+        f"Facts:\n{facts_b_str}\n\n"
         'JSON: {"same_entity": bool, "preferred_name": "more specific name or null"}'
     )
 
@@ -573,13 +605,18 @@ async def _llm_confirm_merge(
                 preferred = None
             logger.info(
                 "LLM merge gate: '%s' vs '%s' -> same=%s preferred=%s",
-                incoming_name, candidate_name, same, preferred,
+                incoming_name,
+                candidate_name,
+                same,
+                preferred,
             )
             return same, preferred if same else None
     except Exception:
         logger.debug(
             "LLM merge gate failed for '%s' vs '%s' — defaulting to no-merge",
-            incoming_name, candidate_name, exc_info=True,
+            incoming_name,
+            candidate_name,
+            exc_info=True,
         )
 
     return False, None
@@ -623,7 +660,9 @@ async def _create_embedding_disambiguation(
 
         # Update the route created by split_seed to use embedding ambiguity type
         from sqlalchemy import update as sa_update
+
         from kt_db.write_models import WriteSeedRoute
+
         await write_seed_repo._session.execute(
             sa_update(WriteSeedRoute)
             .where(
@@ -645,12 +684,15 @@ async def _create_embedding_disambiguation(
 
         logger.info(
             "Created embedding disambiguation anchor '%s' -> ['%s', '%s']",
-            existing_key, child_key, incoming_key,
+            existing_key,
+            child_key,
+            incoming_key,
         )
     except Exception:
         logger.debug(
             "Failed to create embedding disambiguation for '%s'",
-            existing_key, exc_info=True,
+            existing_key,
+            exc_info=True,
         )
 
 

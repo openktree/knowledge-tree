@@ -20,8 +20,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 import numpy as np
-
 from datasets import ALL_PAIRS, SeedPair
+from utils import cosine_similarity, embed_pairs, load_settings_thresholds
+
 from kt_facts.processing.seed_heuristics import (
     DedupSignals,
     compute_phonetic_code,
@@ -31,7 +32,6 @@ from kt_facts.processing.seed_heuristics import (
     is_prefix_disambiguation_candidate,
     trigram_similarity,
 )
-from utils import cosine_similarity, embed_pairs, load_settings_thresholds
 
 
 @dataclass
@@ -124,19 +124,12 @@ async def main() -> None:
 
     # ── Display results ────────────────────────────────────────────
     print()
-    header = (
-        f"  {'Pair':<58} {'Score':>6}  {'Signal':<24} "
-        f"{'Result':>6}  {'Expected':>8}  {'Status'}"
-    )
+    header = f"  {'Pair':<58} {'Score':>6}  {'Signal':<24} {'Result':>6}  {'Expected':>8}  {'Status'}"
     print(header)
     print("  " + "-" * (len(header) - 2))
 
-    category_stats: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "unknown": 0}
-    )
-    signal_stats: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
-    )
+    category_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "unknown": 0})
+    signal_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "tn": 0, "fn": 0})
 
     total_tp = total_fp = total_tn = total_fn = total_unknown = 0
 
@@ -176,14 +169,9 @@ async def main() -> None:
             category_stats[r.pair.category]["tn"] += 1
             signal_stats[r.signal]["tn"] += 1
 
-        expected_str = (
-            "merge" if expected else ("skip" if expected is False else "?")
-        )
+        expected_str = "merge" if expected else ("skip" if expected is False else "?")
         pair_str = f"{r.pair.name_a} <-> {r.pair.name_b}"
-        print(
-            f"  {pair_str:<58} {r.embedding_score:>6.4f}  {r.signal:<24} "
-            f"{merge_str:>6}  {expected_str:>8}  {status}"
-        )
+        print(f"  {pair_str:<58} {r.embedding_score:>6.4f}  {r.signal:<24} {merge_str:>6}  {expected_str:>8}  {status}")
 
     # ── Category breakdown ─────────────────────────────────────────
     print()
@@ -196,10 +184,7 @@ async def main() -> None:
         prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
-        print(
-            f"  {cat:<22} {tp:>4} {fp:>4} {tn:>4} {fn:>4} {s['unknown']:>4}"
-            f"  {prec:>6.1%} {rec:>6.1%} {f1:>6.1%}"
-        )
+        print(f"  {cat:<22} {tp:>4} {fp:>4} {tn:>4} {fn:>4} {s['unknown']:>4}  {prec:>6.1%} {rec:>6.1%} {f1:>6.1%}")
 
     # ── Signal attribution ─────────────────────────────────────────
     print()
@@ -217,7 +202,9 @@ async def main() -> None:
 
     print()
     print(f"  Thresholds: embedding={embed_threshold}, typo_floor={typo_floor}")
-    print(f"  Total labeled: {total_labeled} (TP={total_tp} FP={total_fp} TN={total_tn} FN={total_fn} ?={total_unknown})")
+    print(
+        f"  Total labeled: {total_labeled} (TP={total_tp} FP={total_fp} TN={total_tn} FN={total_fn} ?={total_unknown})"
+    )
     print(f"  Precision: {precision:.1%}  Recall: {recall:.1%}  F1: {f1:.1%}")
     print()
 
@@ -225,10 +212,7 @@ async def main() -> None:
         print(f"  FALSE POSITIVES ({total_fp}):")
         for r in results:
             if r.pair.should_merge is False and r.would_merge:
-                print(
-                    f"    {r.pair.name_a} <-> {r.pair.name_b}  "
-                    f"(score={r.embedding_score:.4f}, signal={r.signal})"
-                )
+                print(f"    {r.pair.name_a} <-> {r.pair.name_b}  (score={r.embedding_score:.4f}, signal={r.signal})")
         print()
 
     if total_fn > 0:
@@ -246,14 +230,14 @@ async def main() -> None:
     # Separate embedding FPs (deferred to LLM gate in production) from
     # heuristic FPs (real bugs in the heuristic pipeline).
     heuristic_fps = [
-        r for r in results
-        if r.pair.should_merge is False and r.would_merge
+        r
+        for r in results
+        if r.pair.should_merge is False
+        and r.would_merge
         and r.signal not in ("embedding", "embedding_blocked_by_prefix")
     ]
     embedding_fps = [
-        r for r in results
-        if r.pair.should_merge is False and r.would_merge
-        and r.signal in ("embedding",)
+        r for r in results if r.pair.should_merge is False and r.would_merge and r.signal in ("embedding",)
     ]
 
     if embedding_fps:

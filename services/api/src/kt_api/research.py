@@ -22,7 +22,6 @@ from kt_api.schemas import (
     AgentSelectRequest,
     AgentSelectResponse,
     AgentSelectStatusResponse,
-    BottomUpConfirmedNode,
     BottomUpPrepareRequest,
     BottomUpPrepareResponse,
     BottomUpProposedNodeResponse,
@@ -83,6 +82,7 @@ def _resolve_mime(upload: UploadFile) -> str | None:
 def _conversation_to_response(conv: Any, messages: list[Any] | None = None) -> ConversationResponse:
     """Convert a Conversation ORM model to response schema."""
     from kt_api.conversations import _conversation_to_response as _orig
+
     return _orig(conv, messages)
 
 
@@ -111,6 +111,7 @@ async def prepare_ingest(
         raw = links.strip()
         if raw.startswith("["):
             import json
+
             try:
                 link_list = json.loads(raw)
             except json.JSONDecodeError:
@@ -128,8 +129,7 @@ async def prepare_ingest(
         if mime is None:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported file type: {f.filename}. "
-                       f"Accepted: .pdf, .txt, .png, .jpg, .jpeg, .webp",
+                detail=f"Unsupported file type: {f.filename}. Accepted: .pdf, .txt, .png, .jpg, .jpeg, .webp",
             )
 
     # Create conversation (mode=ingest, no messages yet)
@@ -191,8 +191,8 @@ async def prepare_ingest(
     await session.commit()
 
     # Build chunk list and run LLM review
-    from kt_worker_ingest.ingest.pipeline import build_chunk_list, review_chunks
     from kt_models.gateway import ModelGateway
+    from kt_worker_ingest.ingest.pipeline import build_chunk_list, review_chunks
 
     chunk_list = build_chunk_list(processed)
 
@@ -205,19 +205,21 @@ async def prepare_ingest(
     source_responses: list[IngestSourceResponse] = []
     db_sources = await ingest_repo.get_by_conversation(conv_id)
     for s in db_sources:
-        source_responses.append(IngestSourceResponse(
-            id=str(s.id),
-            conversation_id=str(s.conversation_id),
-            source_type=s.source_type,
-            original_name=s.original_name,
-            mime_type=s.mime_type,
-            file_size=s.file_size,
-            section_count=s.section_count,
-            summary=s.summary,
-            status=s.status,
-            error=s.error,
-            created_at=s.created_at,
-        ))
+        source_responses.append(
+            IngestSourceResponse(
+                id=str(s.id),
+                conversation_id=str(s.conversation_id),
+                source_type=s.source_type,
+                original_name=s.original_name,
+                mime_type=s.mime_type,
+                file_size=s.file_size,
+                section_count=s.section_count,
+                summary=s.summary,
+                status=s.status,
+                error=s.error,
+                created_at=s.created_at,
+            )
+        )
 
     chunk_responses = [
         ChunkInfoResponse(
@@ -312,6 +314,7 @@ async def confirm_ingest(
     await session.commit()
 
     from hatchet_sdk import TriggerWorkflowOptions
+
     from kt_hatchet.models import IngestConfirmInput
     from kt_worker_conv.workflows.conversations import ingest_confirm_wf
 
@@ -324,10 +327,12 @@ async def confirm_ingest(
             message_id=str(assistant_msg.id),
             api_key=api_key,
         ),
-        options=TriggerWorkflowOptions(additional_metadata={
-            "conversation_id": conversation_id,
-            "message_id": str(assistant_msg.id),
-        }),
+        options=TriggerWorkflowOptions(
+            additional_metadata={
+                "conversation_id": conversation_id,
+                "message_id": str(assistant_msg.id),
+            }
+        ),
     )
     await conv_repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
     await session.commit()
@@ -437,7 +442,7 @@ async def decompose_ingest(
     next_turn = await conv_repo.get_next_turn_number(conv_uuid)
 
     # User message
-    user_msg = await conv_repo.add_message(
+    await conv_repo.add_message(
         conversation_id=conv_uuid,
         turn_number=next_turn,
         role="user",
@@ -456,6 +461,7 @@ async def decompose_ingest(
     await session.commit()
 
     from hatchet_sdk import TriggerWorkflowOptions
+
     from kt_hatchet.models import IngestDecomposeInput
     from kt_worker_ingest.workflows.ingest import ingest_decompose_wf
 
@@ -467,10 +473,12 @@ async def decompose_ingest(
             selected_chunks=body.selected_chunks,
             api_key=api_key,
         ),
-        options=TriggerWorkflowOptions(additional_metadata={
-            "conversation_id": conversation_id,
-            "message_id": str(assistant_msg.id),
-        }),
+        options=TriggerWorkflowOptions(
+            additional_metadata={
+                "conversation_id": conversation_id,
+                "message_id": str(assistant_msg.id),
+            }
+        ),
     )
     await conv_repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
     await session.commit()
@@ -526,30 +534,28 @@ async def get_ingest_proposals(
         if not isinstance(n, dict) or not n.get("name"):
             continue
         ambiguity_raw = n.get("ambiguity")
-        ambiguity = (
-            ProposedNodeAmbiguityResponse(**ambiguity_raw)
-            if isinstance(ambiguity_raw, dict)
-            else None
-        )
+        ambiguity = ProposedNodeAmbiguityResponse(**ambiguity_raw) if isinstance(ambiguity_raw, dict) else None
         perspectives_raw = n.get("perspectives", [])
         perspectives = [
             BottomUpProposedPerspective(claim=p["claim"], antithesis=p["antithesis"])
             for p in perspectives_raw
             if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
         ]
-        proposed_nodes.append(BottomUpProposedNodeResponse(
-            name=n.get("name", ""),
-            node_type=n.get("node_type", "concept"),
-            entity_subtype=n.get("entity_subtype"),
-            priority=n.get("priority", 5),
-            selected=n.get("selected", True),
-            seed_key=n.get("seed_key", ""),
-            existing_node_id=n.get("existing_node_id"),
-            fact_count=n.get("fact_count", 0),
-            aliases=n.get("aliases", []),
-            ambiguity=ambiguity,
-            perspectives=perspectives,
-        ))
+        proposed_nodes.append(
+            BottomUpProposedNodeResponse(
+                name=n.get("name", ""),
+                node_type=n.get("node_type", "concept"),
+                entity_subtype=n.get("entity_subtype"),
+                priority=n.get("priority", 5),
+                selected=n.get("selected", True),
+                seed_key=n.get("seed_key", ""),
+                existing_node_id=n.get("existing_node_id"),
+                fact_count=n.get("fact_count", 0),
+                aliases=n.get("aliases", []),
+                ambiguity=ambiguity,
+                perspectives=perspectives,
+            )
+        )
 
     return IngestProposalsResponse(
         conversation_id=conversation_id,
@@ -592,7 +598,7 @@ async def build_ingest(
     next_turn = await conv_repo.get_next_turn_number(conv_uuid)
     node_count = len(body.selected_nodes)
 
-    user_msg = await conv_repo.add_message(
+    await conv_repo.add_message(
         conversation_id=conv_uuid,
         turn_number=next_turn,
         role="user",
@@ -612,6 +618,7 @@ async def build_ingest(
     await session.commit()
 
     from hatchet_sdk import TriggerWorkflowOptions
+
     from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
     from kt_worker_ingest.workflows.ingest import ingest_build_wf
 
@@ -622,10 +629,7 @@ async def build_ingest(
             entity_subtype=n.entity_subtype,
             seed_key=n.seed_key,
             existing_node_id=n.existing_node_id,
-            perspectives=[
-                ProposedPerspective(claim=p.claim, antithesis=p.antithesis)
-                for p in n.perspectives
-            ],
+            perspectives=[ProposedPerspective(claim=p.claim, antithesis=p.antithesis) for p in n.perspectives],
         )
         for n in body.selected_nodes
     ]
@@ -638,10 +642,12 @@ async def build_ingest(
             message_id=str(assistant_msg.id),
             api_key=api_key,
         ),
-        options=TriggerWorkflowOptions(additional_metadata={
-            "conversation_id": str(conv_uuid),
-            "message_id": str(assistant_msg.id),
-        }),
+        options=TriggerWorkflowOptions(
+            additional_metadata={
+                "conversation_id": str(conv_uuid),
+                "message_id": str(assistant_msg.id),
+            }
+        ),
     )
     await conv_repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
     await session.commit()
@@ -694,13 +700,16 @@ async def bottom_up_prepare(
     await session.commit()
 
     from hatchet_sdk import TriggerWorkflowOptions
+
     from kt_hatchet.models import BottomUpPrepareInput
     from kt_worker_orchestrator.bottom_up import bottom_up_prepare_wf
 
-    wf_options = TriggerWorkflowOptions(additional_metadata={
-        "conversation_id": str(conv.id),
-        "message_id": str(assistant_msg.id),
-    })
+    wf_options = TriggerWorkflowOptions(
+        additional_metadata={
+            "conversation_id": str(conv.id),
+            "message_id": str(assistant_msg.id),
+        }
+    )
 
     api_key = require_api_key(user)
     ref = await bottom_up_prepare_wf.aio_run_no_wait(
@@ -763,30 +772,28 @@ async def get_bottom_up_proposals(
         if not isinstance(n, dict) or not n.get("name"):
             continue
         ambiguity_raw = n.get("ambiguity")
-        ambiguity = (
-            ProposedNodeAmbiguityResponse(**ambiguity_raw)
-            if isinstance(ambiguity_raw, dict)
-            else None
-        )
+        ambiguity = ProposedNodeAmbiguityResponse(**ambiguity_raw) if isinstance(ambiguity_raw, dict) else None
         perspectives_raw = n.get("perspectives", [])
         perspectives = [
             BottomUpProposedPerspective(claim=p["claim"], antithesis=p["antithesis"])
             for p in perspectives_raw
             if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
         ]
-        proposed_nodes.append(BottomUpProposedNodeResponse(
-            name=n.get("name", ""),
-            node_type=n.get("node_type", "concept"),
-            entity_subtype=n.get("entity_subtype"),
-            priority=n.get("priority", 5),
-            selected=n.get("selected", True),
-            seed_key=n.get("seed_key", ""),
-            existing_node_id=n.get("existing_node_id"),
-            fact_count=n.get("fact_count", 0),
-            aliases=n.get("aliases", []),
-            ambiguity=ambiguity,
-            perspectives=perspectives,
-        ))
+        proposed_nodes.append(
+            BottomUpProposedNodeResponse(
+                name=n.get("name", ""),
+                node_type=n.get("node_type", "concept"),
+                entity_subtype=n.get("entity_subtype"),
+                priority=n.get("priority", 5),
+                selected=n.get("selected", True),
+                seed_key=n.get("seed_key", ""),
+                existing_node_id=n.get("existing_node_id"),
+                fact_count=n.get("fact_count", 0),
+                aliases=n.get("aliases", []),
+                ambiguity=ambiguity,
+                perspectives=perspectives,
+            )
+        )
 
     # Parse source URLs from metadata
     raw_sources = metadata.get("source_urls", [])
@@ -939,16 +946,18 @@ async def agent_select(
             for p in n.get("perspectives", [])
             if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
         ]
-        proposed_nodes.append(ProposedNode(
-            name=n["name"],
-            node_type=n.get("node_type", "concept"),
-            entity_subtype=n.get("entity_subtype"),
-            priority=n.get("priority", 5),
-            selected=n.get("selected", True),
-            seed_key=n.get("seed_key", ""),
-            existing_node_id=n.get("existing_node_id"),
-            perspectives=perspectives,
-        ))
+        proposed_nodes.append(
+            ProposedNode(
+                name=n["name"],
+                node_type=n.get("node_type", "concept"),
+                entity_subtype=n.get("entity_subtype"),
+                priority=n.get("priority", 5),
+                selected=n.get("selected", True),
+                seed_key=n.get("seed_key", ""),
+                existing_node_id=n.get("existing_node_id"),
+                perspectives=perspectives,
+            )
+        )
 
     if not proposed_nodes:
         raise HTTPException(status_code=400, detail="No valid proposed nodes found")
@@ -964,12 +973,15 @@ async def agent_select(
     await session.commit()
 
     from hatchet_sdk import TriggerWorkflowOptions
+
     from kt_worker_orchestrator.bottom_up import agent_select_wf
 
-    wf_options = TriggerWorkflowOptions(additional_metadata={
-        "conversation_id": str(conv_uuid),
-        "message_id": msg_id,
-    })
+    wf_options = TriggerWorkflowOptions(
+        additional_metadata={
+            "conversation_id": str(conv_uuid),
+            "message_id": msg_id,
+        }
+    )
 
     api_key = require_api_key(user)
     await agent_select_wf.aio_run_no_wait(
@@ -1039,6 +1051,7 @@ def _auto_title(files: list[UploadFile], links: list[str]) -> str:
 def _safe_filename(name: str) -> str:
     """Sanitize a filename for safe storage."""
     import re
+
     # Keep only alphanumeric, dots, hyphens, underscores
     safe = re.sub(r"[^\w.\-]", "_", name)
     # Prevent directory traversal

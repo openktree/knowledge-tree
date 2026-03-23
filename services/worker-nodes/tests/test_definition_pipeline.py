@@ -1,6 +1,6 @@
 """Unit tests for definition pipeline."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -66,9 +66,7 @@ class TestDefinitionPipeline:
 
         assert result == "Synthesized definition text."
         ctx.model_gateway.generate.assert_called_once()
-        ctx.graph_engine.set_node_definition.assert_called_once_with(
-            node_id, "Synthesized definition text."
-        )
+        ctx.graph_engine.set_node_definition.assert_called_once_with(node_id, "Synthesized definition text.")
 
     @pytest.mark.asyncio
     async def test_prompt_includes_definitive_markers(self) -> None:

@@ -24,13 +24,13 @@ from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 from kt_agents_core.base import BaseAgent, approx_tokens
-from kt_config.settings import get_settings
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState, SubExplorerState
 from kt_agents_core.state import AgentContext
+from kt_config.settings import get_settings
 from kt_worker_nodes.agents.tools.build_node import build_nodes_impl
-from kt_worker_query.agents.tools.query_tools import DEFAULT_SEARCH_LIMIT, lightweight_search_nodes
 from kt_worker_nodes.agents.tools.read_node import read_node_impl
 from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState, SubExplorerState
+from kt_worker_query.agents.tools.query_tools import DEFAULT_SEARCH_LIMIT, lightweight_search_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 class NodeEntry(BaseModel):
     """A node to build."""
+
     name: str = Field(description="Node name or label, e.g. 'quantum entanglement' or 'Albert Einstein'")
     node_type: str = Field(
         default="concept",
@@ -52,12 +53,16 @@ class NodeEntry(BaseModel):
 
 class PerspectiveEntry(BaseModel):
     """A perspective to build as a thesis/antithesis pair."""
-    claim: str = Field(description="Full propositional sentence (the thesis), e.g. 'Vaccines have a strong safety profile'")
+
+    claim: str = Field(
+        description="Full propositional sentence (the thesis), e.g. 'Vaccines have a strong safety profile'"
+    )
     source_concept_id: str = Field(description="UUID of the concept node this perspective is about")
     antithesis: str | None = Field(
         default=None,
         description="Opposing claim (the antithesis). When provided, BOTH thesis and antithesis nodes are created as a dialectic pair.",
     )
+
 
 # ── Sub-explorer system prompt ─────────────────────────────────────
 
@@ -462,16 +467,16 @@ def create_sub_explorer_tools(
             write_seed_repo=write_seed_repo,
         )
 
-        results = [
-            {"claim": p["claim"], "antithesis": p["antithesis"], "action": "seeded"}
-            for p in plans
-        ]
+        results = [{"claim": p["claim"], "antithesis": p["antithesis"], "action": "seeded"} for p in plans]
 
-        return json.dumps({
-            "results": results,
-            "seeds_created": len(thesis_keys),
-            "thesis_seed_keys": thesis_keys,
-        }, default=str)
+        return json.dumps(
+            {
+                "results": results,
+                "seeds_created": len(thesis_keys),
+                "thesis_seed_keys": thesis_keys,
+            },
+            default=str,
+        )
 
     @tool
     async def read_node(node_id: str) -> str:
@@ -493,18 +498,20 @@ def create_sub_explorer_tools(
         """Check remaining budgets. FREE."""
         state = get_state()
         nav_remaining = max(0, state.nav_budget - state.nav_used)
-        return json.dumps({
-            "nav_budget": state.nav_budget,
-            "nav_used": state.nav_used,
-            "nav_remaining": nav_remaining,
-            "explore_budget": state.explore_budget,
-            "explore_used": state.explore_used,
-            "explore_remaining": state.explore_remaining,
-            "nodes_created": len(state.created_nodes),
-            "nodes_visited": len(state.visited_nodes),
-            "facts_gathered": state.gathered_fact_count,
-            "scope": state.scope,
-        })
+        return json.dumps(
+            {
+                "nav_budget": state.nav_budget,
+                "nav_used": state.nav_used,
+                "nav_remaining": nav_remaining,
+                "explore_budget": state.explore_budget,
+                "explore_used": state.explore_used,
+                "explore_remaining": state.explore_remaining,
+                "nodes_created": len(state.created_nodes),
+                "nodes_visited": len(state.visited_nodes),
+                "facts_gathered": state.gathered_fact_count,
+                "scope": state.scope,
+            }
+        )
 
     @tool
     async def finish_scope(summary: str) -> str:
@@ -580,7 +587,9 @@ async def _emit_tool_items(ctx: AgentContext, tool_name: str, args: dict[str, An
         queries = args.get("queries", [])
         await ctx.emit("activity_log", action=f"{prefix} searching graph: {queries!r}", tool="explore_scope")
     elif tool_name == "read_node":
-        await ctx.emit("activity_log", action=f"{prefix} reading node: {args.get('node_id', '?')}", tool="explore_scope")
+        await ctx.emit(
+            "activity_log", action=f"{prefix} reading node: {args.get('node_id', '?')}", tool="explore_scope"
+        )
     elif tool_name == "finish_scope":
         summary = args.get("summary", "")[:80]
         await ctx.emit("activity_log", action=f"{prefix} finishing: {summary}...", tool="explore_scope")
@@ -604,10 +613,14 @@ async def _emit_tool_results(ctx: AgentContext, tool_name: str, result: str, sco
                     await ctx.emit("activity_log", action=f"{prefix} ✓ created {ntype}: {name}", tool="explore_scope")
                 elif action == "enriched":
                     new = r.get("new_facts_linked", 0)
-                    await ctx.emit("activity_log", action=f"{prefix} ✓ enriched: {name} (+{new} facts)", tool="explore_scope")
+                    await ctx.emit(
+                        "activity_log", action=f"{prefix} ✓ enriched: {name} (+{new} facts)", tool="explore_scope"
+                    )
                 elif action == "skipped":
                     reason = r.get("reason", "")
-                    await ctx.emit("activity_log", action=f"{prefix} ✗ skipped: {name} ({reason})", tool="explore_scope")
+                    await ctx.emit(
+                        "activity_log", action=f"{prefix} ✗ skipped: {name} ({reason})", tool="explore_scope"
+                    )
                 elif action == "error":
                     reason = r.get("reason", "")
                     await ctx.emit("activity_log", action=f"{prefix} ✗ error: {name} ({reason})", tool="explore_scope")
@@ -620,7 +633,9 @@ async def _emit_tool_results(ctx: AgentContext, tool_name: str, result: str, sco
             data = json.loads(result)
             total = data.get("facts_gathered", 0)
             queries = data.get("queries_executed", 0)
-            await ctx.emit("activity_log", action=f"{prefix} gathered {total} facts from {queries} queries", tool="explore_scope")
+            await ctx.emit(
+                "activity_log", action=f"{prefix} gathered {total} facts from {queries} queries", tool="explore_scope"
+            )
         except (json.JSONDecodeError, AttributeError):
             pass
     elif tool_name == "build_perspectives":
@@ -633,7 +648,11 @@ async def _emit_tool_results(ctx: AgentContext, tool_name: str, result: str, sco
                     await ctx.emit("activity_log", action=f"{prefix} ✓ perspective: {claim}", tool="explore_scope")
                 elif action == "skipped":
                     reason = r.get("reason", "")
-                    await ctx.emit("activity_log", action=f"{prefix} ✗ perspective skipped: {claim} ({reason})", tool="explore_scope")
+                    await ctx.emit(
+                        "activity_log",
+                        action=f"{prefix} ✗ perspective skipped: {claim} ({reason})",
+                        tool="explore_scope",
+                    )
         except (json.JSONDecodeError, AttributeError):
             pass
 
@@ -702,10 +721,14 @@ class SubExplorerAgent(BaseAgent[SubExplorerState]):
 
         logger.info(
             "[%s] iter=%d | explore=%d/%d nav=%d/%d | nodes=%d facts=%d | phase=%s",
-            state.scope, iteration,
-            state.explore_remaining, state.explore_budget,
-            nav_remaining, state.nav_budget,
-            len(state.created_nodes), state.gathered_fact_count,
+            state.scope,
+            iteration,
+            state.explore_remaining,
+            state.explore_budget,
+            nav_remaining,
+            state.nav_budget,
+            len(state.created_nodes),
+            state.gathered_fact_count,
             state.phase,
         )
 
@@ -714,9 +737,7 @@ class SubExplorerAgent(BaseAgent[SubExplorerState]):
             logger.info("[%s] Both budgets exhausted at iter=%d, forcing finish", state.scope, iteration)
             return {
                 "messages": [
-                    HumanMessage(
-                        content="Both budgets exhausted. Call finish_scope now with your briefing summary."
-                    )
+                    HumanMessage(content="Both budgets exhausted. Call finish_scope now with your briefing summary.")
                 ]
             }
 
@@ -745,21 +766,25 @@ class SubExplorerAgent(BaseAgent[SubExplorerState]):
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(args)
                 await self.ctx.session.commit()
-                tool_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"], name=name)
-                )
+                tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
 
                 await _emit_tool_results(self.ctx, name, result, state.scope)
                 logger.info("[%s] iter=%d tool=%s → OK", state.scope, iteration, name)
                 if self.ctx.pipeline_tracker:
                     await self.ctx.pipeline_tracker.log_tool_call(
-                        scope_id=state.scope, phase="exploring",
-                        tool_name=name, params=args,
+                        scope_id=state.scope,
+                        phase="exploring",
+                        tool_name=name,
+                        params=args,
                     )
             except Exception as exc:
                 logger.warning(
                     "[%s] iter=%d tool=%s → ERROR: %s: %s",
-                    state.scope, iteration, name, type(exc).__name__, exc,
+                    state.scope,
+                    iteration,
+                    name,
+                    type(exc).__name__,
+                    exc,
                 )
                 logger.debug("Full traceback for tool error:", exc_info=True)
                 try:
@@ -775,8 +800,10 @@ class SubExplorerAgent(BaseAgent[SubExplorerState]):
                 )
                 if self.ctx.pipeline_tracker:
                     await self.ctx.pipeline_tracker.log_tool_call(
-                        scope_id=state.scope, phase="exploring",
-                        tool_name=name, params={"error": f"{type(exc).__name__}: {exc}", **(args or {})},
+                        scope_id=state.scope,
+                        phase="exploring",
+                        tool_name=name,
+                        params={"error": f"{type(exc).__name__}: {exc}", **(args or {})},
                     )
 
         return tool_messages
@@ -843,10 +870,14 @@ def build_sub_explorer_graph(
 
         logger.info(
             "[%s] iter=%d | explore=%d/%d nav=%d/%d | nodes=%d facts=%d | phase=%s",
-            state.scope, iteration,
-            state.explore_remaining, state.explore_budget,
-            nav_remaining, state.nav_budget,
-            len(state.created_nodes), state.gathered_fact_count,
+            state.scope,
+            iteration,
+            state.explore_remaining,
+            state.explore_budget,
+            nav_remaining,
+            state.nav_budget,
+            len(state.created_nodes),
+            state.gathered_fact_count,
             state.phase,
         )
 
@@ -855,9 +886,7 @@ def build_sub_explorer_graph(
             logger.info("[%s] Both budgets exhausted at iter=%d, forcing finish", state.scope, iteration)
             return {
                 "messages": [
-                    HumanMessage(
-                        content="Both budgets exhausted. Call finish_scope now with your briefing summary."
-                    )
+                    HumanMessage(content="Both budgets exhausted. Call finish_scope now with your briefing summary.")
                 ]
             }
 
@@ -887,7 +916,10 @@ def build_sub_explorer_graph(
         ):
             logger.info(
                 "[%s] Agent tried to finish early with %d nav budget remaining, nudging (%d/%d)",
-                state.scope, nav_remaining, state.nudge_count + 1, max_nudges,
+                state.scope,
+                nav_remaining,
+                state.nudge_count + 1,
+                max_nudges,
             )
             nudge = (
                 f"You still have {nav_remaining} nav budget remaining and MUST use it before finishing. "
@@ -934,22 +966,26 @@ def build_sub_explorer_graph(
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(args)
                 await ctx.session.commit()
-                tool_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"], name=name)
-                )
+                tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
 
                 # Emit per-item result events for batch tools
                 await _emit_tool_results(ctx, name, result, state.scope)
                 logger.info("[%s] iter=%d tool=%s → OK", state.scope, iteration, name)
                 if ctx.pipeline_tracker:
                     await ctx.pipeline_tracker.log_tool_call(
-                        scope_id=state.scope, phase="exploring",
-                        tool_name=name, params=args,
+                        scope_id=state.scope,
+                        phase="exploring",
+                        tool_name=name,
+                        params=args,
                     )
             except Exception as exc:
                 logger.warning(
                     "[%s] iter=%d tool=%s → ERROR: %s: %s",
-                    state.scope, iteration, name, type(exc).__name__, exc,
+                    state.scope,
+                    iteration,
+                    name,
+                    type(exc).__name__,
+                    exc,
                 )
                 logger.debug("Full traceback for tool error:", exc_info=True)
                 try:
@@ -965,8 +1001,10 @@ def build_sub_explorer_graph(
                 )
                 if ctx.pipeline_tracker:
                     await ctx.pipeline_tracker.log_tool_call(
-                        scope_id=state.scope, phase="exploring",
-                        tool_name=name, params={"error": f"{type(exc).__name__}: {exc}", **(args or {})},
+                        scope_id=state.scope,
+                        phase="exploring",
+                        tool_name=name,
+                        params={"error": f"{type(exc).__name__}: {exc}", **(args or {})},
                     )
 
         return {
@@ -1048,9 +1086,7 @@ async def explore_scope_impl(
 
     # Validate budgets — reject over-allocation instead of silently capping
     orch_explore_remaining = orchestrator_state.explore_remaining
-    orch_nav_remaining = max(
-        0, orchestrator_state.nav_budget - orchestrator_state.nav_used
-    )
+    orch_nav_remaining = max(0, orchestrator_state.nav_budget - orchestrator_state.nav_used)
 
     if orch_explore_remaining <= 0 and explore_budget > 0:
         return {
@@ -1087,18 +1123,24 @@ async def explore_scope_impl(
     # Deduct explore budget upfront to prevent overspend
     orchestrator_state.explore_used += explore_budget
 
-    await ctx.emit("budget_update", data={
-        "nav_remaining": max(0, orchestrator_state.nav_budget - orchestrator_state.nav_used),
-        "nav_total": orchestrator_state.nav_budget,
-        "explore_remaining": orchestrator_state.explore_remaining,
-        "explore_total": orchestrator_state.explore_budget,
-    })
+    await ctx.emit(
+        "budget_update",
+        data={
+            "nav_remaining": max(0, orchestrator_state.nav_budget - orchestrator_state.nav_used),
+            "nav_total": orchestrator_state.nav_budget,
+            "explore_remaining": orchestrator_state.explore_remaining,
+            "explore_total": orchestrator_state.explore_budget,
+        },
+    )
 
-    await ctx.emit("scope_start", data={
-        "scope": scope,
-        "explore_allocated": explore_budget,
-        "nav_allocated": capped_nav,
-    })
+    await ctx.emit(
+        "scope_start",
+        data={
+            "scope": scope,
+            "explore_allocated": explore_budget,
+            "nav_allocated": capped_nav,
+        },
+    )
 
     # Build sub-explorer state
     system_content = (
@@ -1178,11 +1220,10 @@ async def explore_scope_impl(
         except asyncio.TimeoutError:
             logger.warning(
                 "Sub-explorer for scope '%s' timed out after %ds",
-                scope, scope_timeout,
+                scope,
+                scope_timeout,
             )
-            raise TimeoutError(
-                f"Sub-explorer for '{scope}' timed out after {scope_timeout}s"
-            ) from None
+            raise TimeoutError(f"Sub-explorer for '{scope}' timed out after {scope_timeout}s") from None
 
         if isinstance(final, dict):
             summary = final.get("summary", "")
@@ -1220,9 +1261,10 @@ async def explore_scope_impl(
         gathered_fact_count = fallback.gathered_fact_count
         if _last_state[0] is not None:
             logger.info(
-                "Recovered partial results from last state snapshot: "
-                "%d created, %d visited, %d facts",
-                len(created_nodes), len(visited_nodes), gathered_fact_count,
+                "Recovered partial results from last state snapshot: %d created, %d visited, %d facts",
+                len(created_nodes),
+                len(visited_nodes),
+                gathered_fact_count,
             )
 
         # Try to commit partial work from the child session
@@ -1253,12 +1295,15 @@ async def explore_scope_impl(
     if unused_explore > 0:
         orchestrator_state.explore_used -= unused_explore
 
-    await ctx.emit("scope_end", data={
-        "scope": scope,
-        "explore_used": actual_explore_used,
-        "explore_allocated": explore_budget,
-        "explore_refunded": unused_explore,
-    })
+    await ctx.emit(
+        "scope_end",
+        data={
+            "scope": scope,
+            "explore_used": actual_explore_used,
+            "explore_allocated": explore_budget,
+            "explore_refunded": unused_explore,
+        },
+    )
 
     # Propagate results back to orchestrator state
     for nid in created_nodes:
@@ -1285,12 +1330,15 @@ async def explore_scope_impl(
     }
     orchestrator_state.sub_explorer_summaries.append(briefing)
 
-    await ctx.emit("budget_update", data={
-        "nav_remaining": max(0, orchestrator_state.nav_budget - orchestrator_state.nav_used),
-        "nav_total": orchestrator_state.nav_budget,
-        "explore_remaining": orchestrator_state.explore_remaining,
-        "explore_total": orchestrator_state.explore_budget,
-    })
+    await ctx.emit(
+        "budget_update",
+        data={
+            "nav_remaining": max(0, orchestrator_state.nav_budget - orchestrator_state.nav_used),
+            "nav_total": orchestrator_state.nav_budget,
+            "explore_remaining": orchestrator_state.explore_remaining,
+            "explore_total": orchestrator_state.explore_budget,
+        },
+    )
 
     return {
         "scope": scope,

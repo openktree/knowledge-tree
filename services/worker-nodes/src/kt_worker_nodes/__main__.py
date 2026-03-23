@@ -26,7 +26,15 @@ def main() -> None:
     worker = hatchet.worker(
         "worker-nodes",
         lifespan=worker_lifespan,
-        workflows=[node_pipeline_wf, edge_task, crystallize_task, recalculate_task, auto_build_task, enrich_node_task, enrich_edge_task],
+        workflows=[
+            node_pipeline_wf,
+            edge_task,
+            crystallize_task,
+            recalculate_task,
+            auto_build_task,
+            enrich_node_task,
+            enrich_edge_task,
+        ],
     )
     logging.getLogger(__name__).info("Starting worker-nodes")
     worker.start()

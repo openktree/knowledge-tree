@@ -159,9 +159,15 @@ function DivergenceCard({ seedKey }: { seedKey: string }) {
   const [data, setData] = useState<SeedDivergenceResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Reset loading state when seedKey changes (avoids synchronous setState in effect)
+  const [prevSeedKey, setPrevSeedKey] = useState(seedKey);
+  if (seedKey !== prevSeedKey) {
+    setPrevSeedKey(seedKey);
+    setLoading(true);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     api.seeds
       .getDivergence(seedKey)
       .then((d) => {

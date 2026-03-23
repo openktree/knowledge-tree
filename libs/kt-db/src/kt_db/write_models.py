@@ -323,7 +323,10 @@ class WriteSeedFact(WriteBase):
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     extraction_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     extraction_role: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="mentioned", server_default="mentioned",
+        String(30),
+        nullable=False,
+        default="mentioned",
+        server_default="mentioned",
     )  # "mentioned" or "source_attribution"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
@@ -360,9 +363,7 @@ class WriteSeedMerge(WriteBase):
     """Audit trail for seed merges and splits."""
 
     __tablename__ = "write_seed_merges"
-    __table_args__ = (
-        Index("ix_write_seed_merges_updated_at", "updated_at"),
-    )
+    __table_args__ = (Index("ix_write_seed_merges_updated_at", "updated_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     operation: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -394,7 +395,9 @@ class WriteSeedRoute(WriteBase):
     child_seed_key: Mapped[str] = mapped_column(String(500), nullable=False)
     label: Mapped[str] = mapped_column(String(500), nullable=False)
     ambiguity_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="text",
+        String(20),
+        nullable=False,
+        default="text",
     )  # "text" (same name, different entities) or "embedding" (different names, close embeddings)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

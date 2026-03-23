@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_config.settings import get_settings
+from kt_config.types import DEFAULT_PARENTS
 from kt_db.repositories.nodes import NodeRepository
 from kt_graph.engine import GraphEngine
 from kt_models.embeddings import EmbeddingService
@@ -29,7 +30,6 @@ from kt_worker_nodes.prompts.ontology_architect import (
     ONTOLOGY_PROMPTS,
     build_ontology_architect_user_msg,
 )
-from kt_config.types import DEFAULT_PARENTS
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,9 @@ class AncestryPipeline:
         self._ontology_registry = ontology_registry
         self._write_session = write_session
         self._qdrant_client = qdrant_client
-        self._graph_engine = GraphEngine(session, embedding_service, write_session=write_session, qdrant_client=qdrant_client)
+        self._graph_engine = GraphEngine(
+            session, embedding_service, write_session=write_session, qdrant_client=qdrant_client
+        )
 
     async def determine_ancestry(
         self,
@@ -147,16 +149,16 @@ class AncestryPipeline:
 
         logger.info(
             "ancestry: starting pipeline for %r (type=%s, node_id=%s)",
-            node_name, node_type, node_id,
+            node_name,
+            node_type,
+            node_id,
         )
 
         # Step 1: Get existing ancestors in graph for context
         existing_ancestors = await self._get_existing_ancestor_names(node_type)
 
         # Step 2: AI ontology proposal
-        ai_chain = await self._get_ai_ancestry(
-            node_name, node_type, definition, existing_ancestors, dimension_snippets
-        )
+        ai_chain = await self._get_ai_ancestry(node_name, node_type, definition, existing_ancestors, dimension_snippets)
         if ai_chain:
             ai_names = [a.name for a in ai_chain.ancestors]
             logger.info("ancestry: AI chain for %r: %s", node_name, " → ".join(ai_names))
@@ -205,8 +207,7 @@ class AncestryPipeline:
         existing = [r for r in resolved if r.existing_node_id is not None]
         new = [r for r in resolved if r.needs_creation]
         logger.info(
-            "ancestry: resolved for %r — %d existing nodes, %d to create. "
-            "Existing: [%s], New: [%s]",
+            "ancestry: resolved for %r — %d existing nodes, %d to create. Existing: [%s], New: [%s]",
             node_name,
             len(existing),
             len(new),
@@ -219,19 +220,21 @@ class AncestryPipeline:
 
         logger.info(
             "ancestry: result for %r — parent_id=%s, stubs_created=%d, chain_length=%d",
-            node_name, result.parent_id, len(result.nodes_created), len(result.ancestry_chain),
+            node_name,
+            result.parent_id,
+            len(result.nodes_created),
+            len(result.ancestry_chain),
         )
 
         return result
 
     # ── Step 1: Existing ancestors ───────────────────────────────
 
-    async def _get_existing_ancestor_names(
-        self, node_type: str, limit: int = 30
-    ) -> list[str]:
+    async def _get_existing_ancestor_names(self, node_type: str, limit: int = 30) -> list[str]:
         """Get names of existing nodes that could serve as ancestors."""
         # Search for nodes that are likely category-level (have children)
         from sqlalchemy import func, select
+
         from kt_db.models import Node
 
         stmt = (
@@ -285,14 +288,16 @@ class AncestryPipeline:
                 # Remove opening fence (```json or ```)
                 first_nl = text.find("\n")
                 if first_nl != -1:
-                    text = text[first_nl + 1:]
+                    text = text[first_nl + 1 :]
                 # Remove closing fence
                 if text.endswith("```"):
                     text = text[:-3].rstrip()
             chain_data = json.loads(text)
         except (json.JSONDecodeError, Exception):
             logger.warning(
-                "AI ancestry parse failed for %r (raw=%s)", node_name, raw[:200],
+                "AI ancestry parse failed for %r (raw=%s)",
+                node_name,
+                raw[:200],
                 exc_info=True,
             )
             return None
@@ -318,9 +323,7 @@ class AncestryPipeline:
 
     # ── Step 3: Base ontology ────────────────────────────────────
 
-    async def _get_base_ancestry(
-        self, concept_name: str, node_type: str
-    ) -> AncestryChain | None:
+    async def _get_base_ancestry(self, concept_name: str, node_type: str) -> AncestryChain | None:
         """Get ancestry from the default ontology provider (e.g. Wikidata)."""
         provider = self._ontology_registry.get_default()
         if provider is None:
@@ -331,9 +334,7 @@ class AncestryPipeline:
                 return None
             return await provider.get_ancestry(concept_name, node_type)
         except Exception:
-            logger.warning(
-                "base ontology provider failed for %r", concept_name, exc_info=True
-            )
+            logger.warning("base ontology provider failed for %r", concept_name, exc_info=True)
             return None
 
     # ── Step 4: Merge chains ─────────────────────────────────────
@@ -408,8 +409,8 @@ class AncestryPipeline:
         lca_entry = base_ancestors[lca_idx_base]
 
         # Above LCA: use whichever has more granularity
-        above_ai = ai_ancestors[lca_idx_ai + 1:]
-        above_base = base_ancestors[lca_idx_base + 1:]
+        above_ai = ai_ancestors[lca_idx_ai + 1 :]
+        above_base = base_ancestors[lca_idx_base + 1 :]
         above_lca = above_ai if len(above_ai) >= len(above_base) else above_base
 
         # Deduplicate while preserving order
@@ -487,9 +488,7 @@ class AncestryPipeline:
                         )
                         continue
             except Exception:
-                logger.debug(
-                    "embedding search failed for ancestor %r", entry.name, exc_info=True
-                )
+                logger.debug("embedding search failed for ancestor %r", entry.name, exc_info=True)
 
             # No match — needs creation
             resolved.append(
@@ -529,15 +528,20 @@ class AncestryPipeline:
             from kt_db.repositories.write_seeds import WriteSeedRepository
 
             repo: WriteSeedRepository = write_seed_repo  # type: ignore[assignment]
-            await repo.upsert_seeds_batch([{
-                "key": seed_key,
-                "name": name,
-                "node_type": node_type,
-                "fact_count": 0,
-            }])
+            await repo.upsert_seeds_batch(
+                [
+                    {
+                        "key": seed_key,
+                        "name": name,
+                        "node_type": node_type,
+                        "fact_count": 0,
+                    }
+                ]
+            )
             logger.debug(
                 "Ensured seed for ancestry node '%s' (key=%s)",
-                name, seed_key,
+                name,
+                seed_key,
             )
 
             # Also upsert embedding to Qdrant if available
@@ -552,12 +556,14 @@ class AncestryPipeline:
                 except Exception:
                     logger.debug(
                         "Failed to upsert seed embedding to Qdrant for '%s'",
-                        name, exc_info=True,
+                        name,
+                        exc_info=True,
                     )
         except Exception:
             logger.debug(
                 "Failed to ensure seed for ancestry node '%s'",
-                name, exc_info=True,
+                name,
+                exc_info=True,
             )
 
     # ── Step 6: Materialize stubs & wire parents ────────────────
@@ -597,10 +603,7 @@ class AncestryPipeline:
 
         # Filter out the node being classified to prevent self-referential parents
         if exclude_node_id:
-            filtered = [
-                r for r in filtered
-                if r.existing_node_id != exclude_node_id
-            ]
+            filtered = [r for r in filtered if r.existing_node_id != exclude_node_id]
 
         if not filtered:
             return AncestryResult(
@@ -617,10 +620,12 @@ class AncestryPipeline:
         qdrant_seed_repo = None
         if self._write_session is not None:
             from kt_db.repositories.write_seeds import WriteSeedRepository
+
             write_seed_repo = WriteSeedRepository(self._write_session)
             if self._qdrant_client is not None:
                 try:
                     from kt_qdrant.repositories.seeds import QdrantSeedRepository
+
                     qdrant_seed_repo = QdrantSeedRepository(self._qdrant_client)
                 except Exception:
                     logger.debug("Failed to create QdrantSeedRepository", exc_info=True)
@@ -642,18 +647,16 @@ class AncestryPipeline:
                     existing = await node_repo.get_by_id(r.existing_node_id)
                     if existing and existing.parent_id in DEFAULT_PARENTS.values():
                         # Validate before re-parenting
-                        ok, reason = await self._graph_engine._validate_parent_chain(
-                            r.existing_node_id, current_parent
-                        )
+                        ok, reason = await self._graph_engine._validate_parent_chain(r.existing_node_id, current_parent)
                         if ok:
-                            await self._graph_engine.set_parent(
-                                r.existing_node_id, current_parent
-                            )
+                            await self._graph_engine.set_parent(r.existing_node_id, current_parent)
                             use_as_parent = True
                         else:
                             logger.info(
                                 "Skipping re-parent of %s → %s (%s)",
-                                r.existing_node_id, current_parent, reason,
+                                r.existing_node_id,
+                                current_parent,
+                                reason,
                             )
                     else:
                         # Node has a non-default parent already; only use it if
@@ -665,30 +668,30 @@ class AncestryPipeline:
                     # If not, re-parent it to current_parent (which always
                     # traces to root since we build top-down from the root).
                     if use_as_parent and existing:
-                        chain_ok = await self._graph_engine.chain_reaches_root(
-                            r.existing_node_id
-                        )
+                        chain_ok = await self._graph_engine.chain_reaches_root(r.existing_node_id)
                         if not chain_ok:
                             logger.info(
                                 "Re-parenting existing node %s to %s — chain did not reach root",
-                                r.existing_node_id, current_parent,
+                                r.existing_node_id,
+                                current_parent,
                             )
                             ok, reason = await self._graph_engine._validate_parent_chain(
                                 r.existing_node_id, current_parent
                             )
                             if ok:
-                                await self._graph_engine.set_parent(
-                                    r.existing_node_id, current_parent
-                                )
+                                await self._graph_engine.set_parent(r.existing_node_id, current_parent)
                             else:
                                 logger.info(
                                     "Cannot re-parent %s → %s (%s), skipping",
-                                    r.existing_node_id, current_parent, reason,
+                                    r.existing_node_id,
+                                    current_parent,
+                                    reason,
                                 )
                                 use_as_parent = False
                 except Exception:
                     logger.debug(
-                        "Failed to process existing node %s", r.existing_node_id,
+                        "Failed to process existing node %s",
+                        r.existing_node_id,
                         exc_info=True,
                     )
 
@@ -698,8 +701,11 @@ class AncestryPipeline:
 
                     # Ensure existing ancestry nodes also have a seed
                     await self._ensure_seed_for_node(
-                        r.entry.name, node_type, None,
-                        write_seed_repo, qdrant_seed_repo,
+                        r.entry.name,
+                        node_type,
+                        None,
+                        write_seed_repo,
+                        qdrant_seed_repo,
                     )
             else:
                 # Gap node — create a lightweight stub via GraphEngine
@@ -726,18 +732,24 @@ class AncestryPipeline:
                     wired.append(stub.id)
                     logger.info(
                         "Created stub node '%s' (id=%s, parent=%s)",
-                        r.entry.name, stub.id, current_parent,
+                        r.entry.name,
+                        stub.id,
+                        current_parent,
                     )
 
                     # Ensure a seed exists for the stub so every node
                     # has a corresponding seed entry.
                     await self._ensure_seed_for_node(
-                        r.entry.name, node_type, embedding,
-                        write_seed_repo, qdrant_seed_repo,
+                        r.entry.name,
+                        node_type,
+                        embedding,
+                        write_seed_repo,
+                        qdrant_seed_repo,
                     )
                 except Exception:
                     logger.warning(
-                        "Failed to create stub node '%s'", r.entry.name,
+                        "Failed to create stub node '%s'",
+                        r.entry.name,
                         exc_info=True,
                     )
                     # Skip this entry — parent stays at current_parent

@@ -175,14 +175,7 @@ class BaseAgent(ABC, Generic[S]):
         """
         if self.terminal_phase is not None:
             return {"phase": self.terminal_phase}
-        return {
-            "messages": [
-                AIMessage(
-                    content="I encountered an error processing your request. "
-                    "Please try again."
-                )
-            ]
-        }
+        return {"messages": [AIMessage(content="I encountered an error processing your request. Please try again.")]}
 
     route_nudges_to_agent: bool = False
     """When True, HumanMessages from check_budget_exhaustion/post_llm_hook
@@ -265,9 +258,7 @@ class BaseAgent(ABC, Generic[S]):
             if not isinstance(ai_msg, AIMessage) or not ai_msg.tool_calls:
                 return {}
 
-            tool_messages = await agent.execute_tool_calls(
-                state, ai_msg.tool_calls, tools_by_name
-            )
+            tool_messages = await agent.execute_tool_calls(state, ai_msg.tool_calls, tools_by_name)
 
             # Emit budget update
             budget_data = agent.emit_budget_data(state)
@@ -315,14 +306,10 @@ class BaseAgent(ABC, Generic[S]):
 
         # If there's a terminal phase or should_stop_after_tools, tools can route to END
         if terminal is not None or type(self).should_stop_after_tools is not BaseAgent.should_stop_after_tools:
-            graph.add_conditional_edges(
-                "tools", after_tools, {"agent": "agent", END: END}
-            )
+            graph.add_conditional_edges("tools", after_tools, {"agent": "agent", END: END})
         else:
             # Query agent pattern: tools always go back to agent
-            graph.add_conditional_edges(
-                "tools", after_tools, {"agent": "agent"}
-            )
+            graph.add_conditional_edges("tools", after_tools, {"agent": "agent"})
 
         return graph, tools
 

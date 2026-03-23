@@ -83,10 +83,7 @@ class ContentFetcher:
                 timeout=httpx.Timeout(self._timeout),
                 follow_redirects=True,
                 headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (compatible; KnowledgeTree/1.0; "
-                        "+https://github.com/knowledge-tree)"
-                    ),
+                    "User-Agent": ("Mozilla/5.0 (compatible; KnowledgeTree/1.0; +https://github.com/knowledge-tree)"),
                 },
             )
         return self._client
@@ -128,9 +125,7 @@ class ContentFetcher:
                 logger.debug("Error fetching %s: %s", uri, e)
                 return FetchResult(uri=uri, error=str(e))
 
-    async def _handle_pdf(
-        self, uri: str, response: httpx.Response, content_type: str
-    ) -> FetchResult:
+    async def _handle_pdf(self, uri: str, response: httpx.Response, content_type: str) -> FetchResult:
         """Extract text from a PDF response using pymupdf."""
         try:
             from kt_facts.processing.file_processing import extract_text_from_pdf
@@ -169,9 +164,7 @@ class ContentFetcher:
             logger.debug("PDF extraction failed for %s: %s", uri, e)
             return FetchResult(uri=uri, error=f"PDF extraction error: {e}", content_type=content_type)
 
-    def _handle_image(
-        self, uri: str, response: httpx.Response, content_type: str
-    ) -> FetchResult:
+    def _handle_image(self, uri: str, response: httpx.Response, content_type: str) -> FetchResult:
         """Store raw image bytes for later multimodal processing."""
         image_bytes = response.content
         if not image_bytes:
@@ -183,9 +176,7 @@ class ContentFetcher:
             raw_bytes=image_bytes,
         )
 
-    def _handle_text(
-        self, uri: str, response: httpx.Response, content_type: str
-    ) -> FetchResult:
+    def _handle_text(self, uri: str, response: httpx.Response, content_type: str) -> FetchResult:
         """Extract text from HTML or plain text responses."""
         raw_html = response.text
         ct_lower = content_type.lower()
@@ -208,7 +199,9 @@ class ContentFetcher:
             html_meta = _extract_html_metadata(raw_html)
 
             return FetchResult(
-                uri=uri, content=extracted, content_type=content_type,
+                uri=uri,
+                content=extracted,
+                content_type=content_type,
                 html_metadata=html_meta,
             )
         else:

@@ -16,8 +16,8 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, tool
 
-from kt_worker_query.agents.query_agent_state import QueryAgentState
 from kt_agents_core.state import AgentContext
+from kt_worker_query.agents.query_agent_state import QueryAgentState
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +84,7 @@ async def lightweight_search_nodes(
             embedding = embeddings_by_query.get(query)
             if embedding:
                 try:
-                    similar = await ctx.graph_engine.find_similar_nodes(
-                        embedding, threshold=0.4, limit=limit
-                    )
+                    similar = await ctx.graph_engine.find_similar_nodes(embedding, threshold=0.4, limit=limit)
                     for node in similar:
                         nid = str(node.id)
                         if nid in seen_ids:
@@ -95,9 +93,7 @@ async def lightweight_search_nodes(
 
                         facts = await ctx.graph_engine.get_node_facts(node.id)
                         dims = await ctx.graph_engine.get_dimensions(node.id)
-                        richness = ctx.graph_engine.compute_richness(
-                            node, len(facts), len(dims)
-                        )
+                        richness = ctx.graph_engine.compute_richness(node, len(facts), len(dims))
 
                         match_info = {
                             "node_id": nid,
@@ -155,17 +151,23 @@ async def lightweight_read_node(
     nav_remaining = state.nav_remaining
 
     await ctx.emit("activity_log", action=f"Reading node: '{node.concept}'", tool="query_agent")
-    await ctx.emit("node_visited", data={
-        "id": node_id,
-        "concept": node.concept,
-        "node_type": node.node_type,
-    })
-    await ctx.emit("budget_update", data={
-        "nav_remaining": nav_remaining,
-        "nav_total": state.nav_budget,
-        "explore_remaining": 0,
-        "explore_total": 0,
-    })
+    await ctx.emit(
+        "node_visited",
+        data={
+            "id": node_id,
+            "concept": node.concept,
+            "node_type": node.node_type,
+        },
+    )
+    await ctx.emit(
+        "budget_update",
+        data={
+            "nav_remaining": nav_remaining,
+            "nav_total": state.nav_budget,
+            "explore_remaining": 0,
+            "explore_total": 0,
+        },
+    )
 
     # Fetch dimensions
     dimensions = await ctx.graph_engine.get_dimensions(nid)
@@ -187,29 +189,37 @@ async def lightweight_read_node(
 
         # Emit connected node for frontend graph
         if target_node is not None:
-            await ctx.emit("node_visited", data={
-                "id": str(target_id),
-                "concept": target_concept,
-                "node_type": getattr(target_node, "node_type", "concept"),
-            })
+            await ctx.emit(
+                "node_visited",
+                data={
+                    "id": str(target_id),
+                    "concept": target_concept,
+                    "node_type": getattr(target_node, "node_type", "concept"),
+                },
+            )
 
         # Emit edge for frontend graph
-        await ctx.emit("edge_created", data={
-            "id": str(edge.id),
-            "source_node_id": str(edge.source_node_id),
-            "target_node_id": str(edge.target_node_id),
-            "relationship_type": edge.relationship_type,
-            "weight": edge.weight,
-            "justification": edge.justification,
-        })
+        await ctx.emit(
+            "edge_created",
+            data={
+                "id": str(edge.id),
+                "source_node_id": str(edge.source_node_id),
+                "target_node_id": str(edge.target_node_id),
+                "relationship_type": edge.relationship_type,
+                "weight": edge.weight,
+                "justification": edge.justification,
+            },
+        )
 
-        edge_list.append({
-            "target_node_id": str(target_id),
-            "target_concept": target_concept,
-            "relationship_type": edge.relationship_type,
-            "weight": edge.weight,
-            "direction": direction,
-        })
+        edge_list.append(
+            {
+                "target_node_id": str(target_id),
+                "target_concept": target_concept,
+                "relationship_type": edge.relationship_type,
+                "weight": edge.weight,
+                "direction": direction,
+            }
+        )
 
     # Fact count
     facts = await ctx.graph_engine.get_node_facts(nid)
@@ -224,12 +234,14 @@ async def lightweight_read_node(
         content = dim.content
         if len(content) > MAX_DIMENSION_CONTENT_LEN:
             content = content[:MAX_DIMENSION_CONTENT_LEN] + "..."
-        dim_list.append({
-            "model_id": dim.model_id,
-            "content": content,
-            "confidence": dim.confidence,
-            "suggested_concepts": dim.suggested_concepts or [],
-        })
+        dim_list.append(
+            {
+                "model_id": dim.model_id,
+                "content": content,
+                "confidence": dim.confidence,
+                "suggested_concepts": dim.suggested_concepts or [],
+            }
+        )
 
     result: dict[str, Any] = {
         "node_id": node_id,
@@ -271,11 +283,14 @@ async def lightweight_get_node_facts(
         state.visited_nodes.append(node_id)
         state.nav_used += 1
         if node:
-            await ctx.emit("node_visited", data={
-                "id": node_id,
-                "concept": node.concept,
-                "node_type": node.node_type,
-            })
+            await ctx.emit(
+                "node_visited",
+                data={
+                    "id": node_id,
+                    "concept": node.concept,
+                    "node_type": node.node_type,
+                },
+            )
         budget_cost = 1
     else:
         budget_cost = 0
@@ -293,8 +308,7 @@ async def lightweight_get_node_facts(
         "facts": [
             {
                 "fact_id": str(f.id),
-                "content": f.content[:MAX_FACT_CONTENT_LEN]
-                + ("..." if len(f.content) > MAX_FACT_CONTENT_LEN else ""),
+                "content": f.content[:MAX_FACT_CONTENT_LEN] + ("..." if len(f.content) > MAX_FACT_CONTENT_LEN else ""),
                 "type": f.fact_type,
             }
             for f in truncated
@@ -344,13 +358,16 @@ def create_query_tools(
         total_cost = sum(r.get("budget_cost", 0) for r in results)
         errors = [r for r in results if "error" in r]
 
-        return json.dumps({
-            "results": results,
-            "count": len(results),
-            "total_budget_cost": total_cost,
-            "errors": len(errors),
-            "capped": len(node_ids) > MAX_BATCH_SIZE,
-        }, default=str)
+        return json.dumps(
+            {
+                "results": results,
+                "count": len(results),
+                "total_budget_cost": total_cost,
+                "errors": len(errors),
+                "capped": len(node_ids) > MAX_BATCH_SIZE,
+            },
+            default=str,
+        )
 
     @tool
     async def get_node_facts(node_id: str) -> str:
@@ -374,26 +391,31 @@ def create_query_tools(
         total_cost = sum(r.get("budget_cost", 0) for r in results)
         errors = [r for r in results if "error" in r]
 
-        return json.dumps({
-            "results": results,
-            "count": len(results),
-            "total_budget_cost": total_cost,
-            "errors": len(errors),
-            "capped": len(node_ids) > MAX_BATCH_SIZE,
-        }, default=str)
+        return json.dumps(
+            {
+                "results": results,
+                "count": len(results),
+                "total_budget_cost": total_cost,
+                "errors": len(errors),
+                "capped": len(node_ids) > MAX_BATCH_SIZE,
+            },
+            default=str,
+        )
 
     @tool
     async def get_budget() -> str:
         """Check remaining nav budget. FREE (no cost). Call this to plan
         your navigation strategy."""
         state = get_state()
-        return json.dumps({
-            "nav_budget": state.nav_budget,
-            "nav_used": state.nav_used,
-            "nav_remaining": state.nav_remaining,
-            "nodes_visited": len(state.visited_nodes),
-            "nodes_hidden": len(state.hidden_nodes),
-        })
+        return json.dumps(
+            {
+                "nav_budget": state.nav_budget,
+                "nav_used": state.nav_used,
+                "nav_remaining": state.nav_remaining,
+                "nodes_visited": len(state.visited_nodes),
+                "nodes_hidden": len(state.hidden_nodes),
+            }
+        )
 
     @tool
     async def hide_nodes(node_ids: list[str]) -> str:
@@ -408,14 +430,19 @@ def create_query_tools(
                 await ctx.emit("node_hidden", data={"id": nid})
                 hidden_count += 1
 
-        return json.dumps({
-            "hidden": hidden_count,
-            "total_hidden": len(state.hidden_nodes),
-        })
+        return json.dumps(
+            {
+                "hidden": hidden_count,
+                "total_hidden": len(state.hidden_nodes),
+            }
+        )
 
     return [  # type: ignore[list-item]
         search_graph,
-        read_node, read_nodes,
-        get_node_facts, get_node_facts_batch,
-        get_budget, hide_nodes,
+        read_node,
+        read_nodes,
+        get_node_facts,
+        get_node_facts_batch,
+        get_budget,
+        hide_nodes,
     ]

@@ -5,10 +5,11 @@ Revises: p4d5e6f7g8h9
 Create Date: 2026-03-03
 
 """
+
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.

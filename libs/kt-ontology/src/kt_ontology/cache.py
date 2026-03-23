@@ -44,9 +44,7 @@ class CachedOntologyProvider(OntologyProvider):
         normalized = _normalize_name(concept_name)
         return f"ontology:{self.provider_id}:{node_type}:{normalized}"
 
-    async def get_ancestry(
-        self, concept_name: str, node_type: str
-    ) -> AncestryChain | None:
+    async def get_ancestry(self, concept_name: str, node_type: str) -> AncestryChain | None:
         key = self._cache_key(concept_name, node_type)
 
         # Try cache first

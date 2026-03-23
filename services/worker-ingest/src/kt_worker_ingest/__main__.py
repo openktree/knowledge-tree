@@ -2,6 +2,7 @@
 
 Usage: python -m kt_worker_ingest
 """
+
 import logging
 
 from kt_hatchet.client import get_hatchet

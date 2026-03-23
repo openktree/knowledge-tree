@@ -73,14 +73,13 @@ class PoolEnricher:
         # Compare against write-db's record of linked facts (more reliable
         # than graph-db since sync may lag)
         existing_ids: set[str] = {str(fid) for fid in (wn.fact_ids or [])}
-        new_fact_ids: list[uuid.UUID] = [
-            fid for fid in seed_fact_ids if str(fid) not in existing_ids
-        ]
+        new_fact_ids: list[uuid.UUID] = [fid for fid in seed_fact_ids if str(fid) not in existing_ids]
 
         if not new_fact_ids:
             logger.info(
                 "enrich '%s': %d seed facts, all already linked",
-                node.concept, len(seed_fact_ids),
+                node.concept,
+                len(seed_fact_ids),
             )
             return EnrichResult(new_facts_linked=0, dimensions_regenerated=False)
 
@@ -89,7 +88,9 @@ class PoolEnricher:
 
         logger.info(
             "enrich '%s': %d existing facts, %d new from seed",
-            node.concept, len(existing_ids), len(new_facts),
+            node.concept,
+            len(existing_ids),
+            len(new_facts),
         )
 
         linked: list[Fact] = []

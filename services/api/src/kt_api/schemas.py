@@ -1128,6 +1128,3 @@ class ImportResponse(BaseModel):
     rejected_count: int = 0
     rejected_facts: list[RejectedFactInfo] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
-
-
-

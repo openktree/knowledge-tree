@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import sys
-from collections import defaultdict
 
 from datasets import (
     ACRONYM_PAIRS,
@@ -29,6 +28,7 @@ from datasets import (
     TYPO_PAIRS,
     SeedPair,
 )
+
 from kt_facts.processing.seed_heuristics import is_acronym_match, is_containment_mismatch
 
 
@@ -88,9 +88,7 @@ def test_containment_guard(pairs: list[SeedPair]) -> dict[str, int]:
         if pair.should_merge is None:
             continue  # Skip unknown pairs
 
-        is_blocked = is_containment_mismatch(
-            pair.name_a.lower(), pair.name_b.lower()
-        )
+        is_blocked = is_containment_mismatch(pair.name_a.lower(), pair.name_b.lower())
         block_str = "BLOCK" if is_blocked else "allow"
 
         if is_blocked and not pair.should_merge:
@@ -139,7 +137,11 @@ def print_coverage_matrix() -> None:
         contain_hits = sum(1 for p in pairs if is_containment_mismatch(p.name_a.lower(), p.name_b.lower()))
         neither = len(pairs) - acronym_hits - contain_hits
         # Some pairs may trigger both
-        both = sum(1 for p in pairs if is_acronym_match(p.name_a, p.name_b) and is_containment_mismatch(p.name_a.lower(), p.name_b.lower()))
+        both = sum(
+            1
+            for p in pairs
+            if is_acronym_match(p.name_a, p.name_b) and is_containment_mismatch(p.name_a.lower(), p.name_b.lower())
+        )
         neither += both  # adjust for double-counting
 
         print(f"{cat_name:<20} {len(pairs):>6} {acronym_hits:>9} {contain_hits:>9} {neither:>8}")

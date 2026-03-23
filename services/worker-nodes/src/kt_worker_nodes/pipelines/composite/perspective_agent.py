@@ -14,9 +14,8 @@ from typing import Annotated, Any, Sequence
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.utils import trim_messages
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel, Field
-
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
 
 from kt_agents_core.state import AgentContext
 from kt_worker_nodes.pipelines.composite.prompts import PERSPECTIVE_SYSTEM_PROMPT
@@ -136,9 +135,7 @@ def _build_perspective_graph(ctx: AgentContext) -> StateGraph:
             try:
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(tc["args"])
-                tool_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"], name=name)
-                )
+                tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
             except Exception as exc:
                 logger.exception("Error executing composite perspective tool %s", name)
                 tool_messages.append(
@@ -240,8 +237,7 @@ async def build_perspective_impl(
         f"{parent_section}"
         f"\n## Source Nodes\n"
         f"Read these nodes and their facts to document the perspective "
-        f"'{claim}'. Present it at its strongest with full evidence.\n\n"
-        + "\n".join(node_lines)
+        f"'{claim}'. Present it at its strongest with full evidence.\n\n" + "\n".join(node_lines)
     )
 
     system_content = PERSPECTIVE_SYSTEM_PROMPT + task_block
@@ -312,7 +308,9 @@ async def build_perspective_impl(
 
     except Exception:
         logger.exception("Error in composite perspective agent")
-        definition = "Error occurred during perspective documentation. Source nodes were available but documentation failed."
+        definition = (
+            "Error occurred during perspective documentation. Source nodes were available but documentation failed."
+        )
         all_facts = []
 
     return {"definition": definition, "facts_referenced": all_facts}

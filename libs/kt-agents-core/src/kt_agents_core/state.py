@@ -135,9 +135,7 @@ class AgentContext:
         The caller is responsible for committing/closing the child session.
         """
         if self.session_factory is None:
-            raise RuntimeError(
-                "Cannot create child context: no session_factory provided"
-            )
+            raise RuntimeError("Cannot create child context: no session_factory provided")
 
         from kt_graph.engine import GraphEngine
 

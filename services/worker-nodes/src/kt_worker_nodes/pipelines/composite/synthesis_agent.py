@@ -14,9 +14,8 @@ from typing import Annotated, Any, Sequence
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.utils import trim_messages
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel, Field
-
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
 
 from kt_agents_core.state import AgentContext
 from kt_worker_nodes.pipelines.composite.prompts import SYNTHESIS_SYSTEM_PROMPT
@@ -136,9 +135,7 @@ def _build_synthesis_graph(ctx: AgentContext) -> StateGraph:
             try:
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(tc["args"])
-                tool_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"], name=name)
-                )
+                tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
             except Exception as exc:
                 logger.exception("Error executing composite synthesis tool %s", name)
                 tool_messages.append(
@@ -240,8 +237,7 @@ async def build_synthesis_impl(
         f"{context_section}"
         f"\n## Source Nodes\n"
         f"Read these nodes and their facts, then synthesize a comprehensive "
-        f"definition for the composite concept '{concept}'.\n\n"
-        + "\n".join(node_lines)
+        f"definition for the composite concept '{concept}'.\n\n" + "\n".join(node_lines)
     )
 
     system_content = SYNTHESIS_SYSTEM_PROMPT + task_block

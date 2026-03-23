@@ -65,8 +65,16 @@ class WriteNodeRepository:
         }
 
         # Build update set: only non-None values (preserve existing data)
-        for field in ("parent_key", "source_concept_key", "definition", "definition_source",
-                      "attractor", "filter_id", "entity_subtype", "enrichment_status"):
+        for field in (
+            "parent_key",
+            "source_concept_key",
+            "definition",
+            "definition_source",
+            "attractor",
+            "filter_id",
+            "entity_subtype",
+            "enrichment_status",
+        ):
             if values[field] is not None:
                 update_set[field] = values[field]
         if metadata_ is not None:
@@ -149,9 +157,7 @@ class WriteNodeRepository:
         """Update a node's metadata JSON field."""
         import json
 
-        stmt = text(
-            r"UPDATE write_nodes SET metadata = :meta\:\:jsonb, updated_at = NOW() WHERE key = :key"
-        )
+        stmt = text(r"UPDATE write_nodes SET metadata = :meta\:\:jsonb, updated_at = NOW() WHERE key = :key")
         await self._session.execute(stmt, {"key": key, "meta": json.dumps(metadata_)})
 
     async def increment_update_count(self, node_key: str) -> None:
@@ -169,12 +175,8 @@ class WriteNodeRepository:
         """Delete a node and its counters by key. Returns True if deleted."""
         from sqlalchemy import delete as sa_delete
 
-        await self._session.execute(
-            sa_delete(WriteNodeCounter).where(WriteNodeCounter.node_key == node_key)
-        )
-        result = await self._session.execute(
-            sa_delete(WriteNode).where(WriteNode.key == node_key)
-        )
+        await self._session.execute(sa_delete(WriteNodeCounter).where(WriteNodeCounter.node_key == node_key))
+        result = await self._session.execute(sa_delete(WriteNode).where(WriteNode.key == node_key))
         return (result.rowcount or 0) > 0
 
     async def merge_fact_ids(self, target_key: str, source_fact_ids: list[str]) -> None:
@@ -194,11 +196,7 @@ class WriteNodeRepository:
 
     async def update_facts_at_last_build(self, node_key: str, count: int) -> None:
         """Update the facts_at_last_build counter for a node."""
-        stmt = text(
-            "UPDATE write_nodes "
-            "SET facts_at_last_build = :count, updated_at = NOW() "
-            "WHERE key = :key"
-        )
+        stmt = text("UPDATE write_nodes SET facts_at_last_build = :count, updated_at = NOW() WHERE key = :key")
         await self._session.execute(stmt, {"key": node_key, "count": count})
 
     async def search_by_trigram(

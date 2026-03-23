@@ -47,24 +47,28 @@ def partition_for_parallel(
         List of IngestPartition, each with its own budget slice.
     """
     if not index.entries:
-        return [IngestPartition(
-            partition_id=str(uuid.uuid4()),
-            index_range=(0, 0),
-            entries=[],
-            nav_budget=total_nav_budget,
-            total_facts_in_partition=0,
-        )]
+        return [
+            IngestPartition(
+                partition_id=str(uuid.uuid4()),
+                index_range=(0, 0),
+                entries=[],
+                nav_budget=total_nav_budget,
+                total_facts_in_partition=0,
+            )
+        ]
 
     total_tokens = index.total_tokens_approx
 
     if total_tokens <= threshold:
-        return [IngestPartition(
-            partition_id=str(uuid.uuid4()),
-            index_range=(0, len(index.entries)),
-            entries=list(index.entries),
-            nav_budget=total_nav_budget,
-            total_facts_in_partition=index.total_facts,
-        )]
+        return [
+            IngestPartition(
+                partition_id=str(uuid.uuid4()),
+                index_range=(0, len(index.entries)),
+                entries=list(index.entries),
+                nav_budget=total_nav_budget,
+                total_facts_in_partition=index.total_facts,
+            )
+        ]
 
     # Calculate target partition count
     n_partitions = max(2, total_tokens // threshold)
@@ -93,12 +97,14 @@ def partition_for_parallel(
 
         budget_assigned += partition_budget
 
-        partitions.append(IngestPartition(
-            partition_id=str(uuid.uuid4()),
-            index_range=(start, end),
-            entries=partition_entries,
-            nav_budget=partition_budget,
-            total_facts_in_partition=partition_facts,
-        ))
+        partitions.append(
+            IngestPartition(
+                partition_id=str(uuid.uuid4()),
+                index_range=(start, end),
+                entries=partition_entries,
+                nav_budget=partition_budget,
+                total_facts_in_partition=partition_facts,
+            )
+        )
 
     return partitions

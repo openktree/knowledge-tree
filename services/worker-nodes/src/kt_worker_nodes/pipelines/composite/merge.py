@@ -97,9 +97,7 @@ async def find_mergeable_composite(
 
         for candidate_node in similar_nodes:
             candidate_id = candidate_node.id
-            candidate_sources = await _get_source_node_ids_from_draws_from(
-                graph_engine, candidate_id
-            )
+            candidate_sources = await _get_source_node_ids_from_draws_from(graph_engine, candidate_id)
 
             # Skip nodes that don't have draws_from edges (not composites)
             if not candidate_sources:
@@ -108,7 +106,9 @@ async def find_mergeable_composite(
             jaccard = _jaccard_similarity(source_node_ids, candidate_sources)
             logger.debug(
                 "Merge candidate %s (%s): jaccard=%.3f with proposed sources",
-                candidate_id, candidate_node.concept, jaccard,
+                candidate_id,
+                candidate_node.concept,
+                jaccard,
             )
 
             if jaccard >= jaccard_threshold and jaccard > best_jaccard:
@@ -119,7 +119,9 @@ async def find_mergeable_composite(
         if best_candidate is not None:
             logger.info(
                 "Found mergeable composite %s (jaccard=%.3f) for concept '%s'",
-                best_candidate, best_jaccard, concept,
+                best_candidate,
+                best_jaccard,
+                concept,
             )
             return best_candidate
 
@@ -128,15 +130,15 @@ async def find_mergeable_composite(
         # are nearly identical
         if similar_nodes:
             top_node = similar_nodes[0]
-            top_sources = await _get_source_node_ids_from_draws_from(
-                graph_engine, top_node.id
-            )
+            top_sources = await _get_source_node_ids_from_draws_from(graph_engine, top_node.id)
             if top_sources:
                 # This node IS a composite — even if Jaccard is lower, the
                 # embedding match is strong enough
                 logger.info(
                     "Found embedding-similar composite %s (%s) for concept '%s'",
-                    top_node.id, top_node.concept, concept,
+                    top_node.id,
+                    top_node.concept,
+                    concept,
                 )
                 return str(top_node.id)
 
@@ -175,14 +177,13 @@ async def find_mergeable_composite(
     # Evaluate candidates by full Jaccard similarity
     for candidate_id_str, shared_sources in composite_candidates.items():
         candidate_uuid = uuid.UUID(candidate_id_str)
-        full_candidate_sources = await _get_source_node_ids_from_draws_from(
-            graph_engine, candidate_uuid
-        )
+        full_candidate_sources = await _get_source_node_ids_from_draws_from(graph_engine, candidate_uuid)
 
         jaccard = _jaccard_similarity(source_node_ids, full_candidate_sources)
         logger.debug(
             "Neighbor-discovered merge candidate %s: jaccard=%.3f",
-            candidate_id_str, jaccard,
+            candidate_id_str,
+            jaccard,
         )
 
         if jaccard >= jaccard_threshold and jaccard > best_jaccard:
@@ -192,7 +193,9 @@ async def find_mergeable_composite(
     if best_candidate is not None:
         logger.info(
             "Found mergeable composite %s (jaccard=%.3f) via neighbor discovery for concept '%s'",
-            best_candidate, best_jaccard, concept,
+            best_candidate,
+            best_jaccard,
+            concept,
         )
 
     return best_candidate

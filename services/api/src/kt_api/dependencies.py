@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends, HTTPException, status
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_agents_core.state import AgentContext, EventCallback

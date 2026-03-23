@@ -29,6 +29,8 @@ from typing import cast
 
 from hatchet_sdk import Context, DurableContext
 
+from kt_config.settings import get_settings
+from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import (
     AncestryOutput,
@@ -40,8 +42,6 @@ from kt_hatchet.models import (
     UpdateEdgesInput,
 )
 from kt_hatchet.pipeline import HatchetPipeline
-from kt_hatchet.client import get_hatchet
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,8 @@ async def create_node(input: BuildNodeInput, ctx: Context) -> dict:
 
     Returns ``{node_id, action, concept, node_type, explore_charged}``.
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -86,11 +86,14 @@ async def create_node(input: BuildNodeInput, ctx: Context) -> dict:
 
     ctx.log(f"create_node: concept={input.concept!r}, type={input.node_type}")
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "building",
-        "status": "started",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "building",
+            "status": "started",
+        },
+    )
 
     result = await HatchetPipeline(state, api_key=input.api_key).create(
         concept=input.concept,
@@ -101,11 +104,14 @@ async def create_node(input: BuildNodeInput, ctx: Context) -> dict:
         existing_node_id=input.existing_node_id,
     )
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "building",
-        "status": "completed",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "building",
+            "status": "completed",
+        },
+    )
 
     node_id = result.get("node_id")
     action = result.get("action", "unknown")
@@ -128,8 +134,8 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
 
     Returns ``DimensionsOutput`` with node_id and aggregated edge_ids.
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -150,11 +156,14 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
     ctx.log(f"generate_dimensions: node_id={node_id_str}")
 
     # ── Generate dimensions ──────────────────────────────────────
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "dimensions",
-        "status": "started",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "dimensions",
+            "status": "started",
+        },
+    )
 
     max_retries = 2
     dim_result: dict = {}
@@ -167,23 +176,23 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
                 ctx.log(f"generate_dimensions: attempt {attempt} failed, retrying...")
                 logger.warning(
                     "generate_dimensions: attempt %d failed for node %s, retrying",
-                    attempt, node_id_str, exc_info=True,
+                    attempt,
+                    node_id_str,
+                    exc_info=True,
                 )
             else:
                 ctx.log(f"generate_dimensions: ERROR — all {max_retries} attempts failed for node {node_id_str}")
                 logger.exception(
                     "generate_dimensions: all %d attempts failed for node %s",
-                    max_retries, node_id_str,
+                    max_retries,
+                    node_id_str,
                 )
 
     node_type: str = dim_result.get("node_type", "concept")
     dims_created: int = dim_result.get("dimensions_created", 0)
     fact_count: int = dim_result.get("fact_count", 0)
 
-    ctx.log(
-        f"generate_dimensions: dimensions_created={dims_created}, "
-        f"fact_count={fact_count}, node_type={node_type}"
-    )
+    ctx.log(f"generate_dimensions: dimensions_created={dims_created}, fact_count={fact_count}, node_type={node_type}")
 
     if fact_count > 0 and dims_created == 0:
         ctx.log(
@@ -191,11 +200,14 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
             f"but 0 dimensions were generated (LLM error or empty response)"
         )
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "dimensions",
-        "status": "completed",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "dimensions",
+            "status": "completed",
+        },
+    )
 
     # ── Fan out edge resolution tasks ────────────────────────────
     all_edge_ids: list[str] = []
@@ -207,45 +219,50 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
 
         ctx.log("generate_dimensions: spawning edge resolution task")
 
-        await emit("pipeline_phase", {
-            "scope_id": input.scope_id,
-            "phase": "edges",
-            "status": "started",
-        })
+        await emit(
+            "pipeline_phase",
+            {
+                "scope_id": input.scope_id,
+                "phase": "edges",
+                "status": "started",
+            },
+        )
 
         concept = create_result.get("concept", input.concept)
 
         # Single edge task — the candidate-based resolver handles both
         # same-type and cross-type edges in one pass.
-        edge_results = await edge_task.aio_run_many([
-            edge_task.create_bulk_run_item(
-                input=UpdateEdgesInput(
-                    node_id=node_id_str,
-                    edge_mode="candidates",
-                    concept=concept,
-                    node_type=node_type,
-                    scope_id=input.scope_id,
-                    message_id=input.message_id,
-                    conversation_id=input.conversation_id,
-                    api_key=input.api_key,
-                ),
-            )
-        ])
+        edge_results = await edge_task.aio_run_many(
+            [
+                edge_task.create_bulk_run_item(
+                    input=UpdateEdgesInput(
+                        node_id=node_id_str,
+                        edge_mode="candidates",
+                        concept=concept,
+                        node_type=node_type,
+                        scope_id=input.scope_id,
+                        message_id=input.message_id,
+                        conversation_id=input.conversation_id,
+                        api_key=input.api_key,
+                    ),
+                )
+            ]
+        )
 
         for result in edge_results:
             edge_out = EdgeOutput.model_validate(result)
             all_edge_ids.extend(edge_out.edge_ids)
 
-        await emit("pipeline_phase", {
-            "scope_id": input.scope_id,
-            "phase": "edges",
-            "status": "completed",
-        })
+        await emit(
+            "pipeline_phase",
+            {
+                "scope_id": input.scope_id,
+                "phase": "edges",
+                "status": "completed",
+            },
+        )
 
-    ctx.log(
-        f"generate_dimensions: done — "
-        f"{dims_created} dimensions, {len(all_edge_ids)} edges"
-    )
+    ctx.log(f"generate_dimensions: done — {dims_created} dimensions, {len(all_edge_ids)} edges")
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "dimensions")
 
@@ -268,8 +285,8 @@ async def generate_definition(input: BuildNodeInput, ctx: Context) -> dict:
     Runs in parallel with ``generate_dimensions``.  Terminal — no downstream
     tasks depend on the definition.
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -289,19 +306,25 @@ async def generate_definition(input: BuildNodeInput, ctx: Context) -> dict:
 
     ctx.log(f"generate_definition: node_id={node_id_str}")
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "definitions",
-        "status": "started",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "definitions",
+            "status": "started",
+        },
+    )
 
     result = await HatchetPipeline(state, api_key=input.api_key).definition(node_id_str)
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "definitions",
-        "status": "completed",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "definitions",
+            "status": "completed",
+        },
+    )
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "definition")
 
@@ -339,6 +362,7 @@ async def update_ancestry(input: BuildNodeInput, ctx: Context) -> dict:
 
     # Composite nodes have no ancestry/parents
     from kt_config.types import COMPOSITE_NODE_TYPES
+
     if node_type in COMPOSITE_NODE_TYPES:
         ctx.log(f"update_ancestry: skipping — {node_type} is composite, no ancestry")
         return AncestryOutput(node_id=node_id_str or "").model_dump()
@@ -355,11 +379,14 @@ async def update_ancestry(input: BuildNodeInput, ctx: Context) -> dict:
 
     ctx.log(f"update_ancestry: node_id={node_id_str}, type={node_type}")
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "ancestry",
-        "status": "started",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "ancestry",
+            "status": "started",
+        },
+    )
 
     result = await HatchetPipeline(state, api_key=input.api_key).ancestry(
         node_id=node_id_str,
@@ -367,11 +394,14 @@ async def update_ancestry(input: BuildNodeInput, ctx: Context) -> dict:
         node_type=node_type,
     )
 
-    await emit("pipeline_phase", {
-        "scope_id": input.scope_id,
-        "phase": "ancestry",
-        "status": "completed",
-    })
+    await emit(
+        "pipeline_phase",
+        {
+            "scope_id": input.scope_id,
+            "phase": "ancestry",
+            "status": "completed",
+        },
+    )
 
     # Stub nodes are already created and wired by the ancestry pipeline.
     # Log what was created.
@@ -400,7 +430,8 @@ async def update_ancestry(input: BuildNodeInput, ctx: Context) -> dict:
             except Exception:
                 logger.debug(
                     "update_ancestry: crystallization trigger failed for parent %s",
-                    parent_id_str, exc_info=True,
+                    parent_id_str,
+                    exc_info=True,
                 )
 
         asyncio.create_task(_fire_and_forget_crystallize())
@@ -420,6 +451,7 @@ async def update_ancestry(input: BuildNodeInput, ctx: Context) -> dict:
 # Standalone crystallization task
 # ══════════════════════════════════════════════════════════════
 
+
 @hatchet.task(
     name="crystallize_node",
     input_validator=CrystallizeInput,
@@ -438,15 +470,14 @@ async def crystallize_task(input: CrystallizeInput, ctx: Context) -> dict:
 
     result = await HatchetPipeline(state, api_key=input.api_key).crystallize(input.parent_node_id)
 
-    ctx.log(
-        f"crystallize_task: done — crystallized={result.get('crystallized', False)}"
-    )
+    ctx.log(f"crystallize_task: done — crystallized={result.get('crystallized', False)}")
     return result
 
 
 # ══════════════════════════════════════════════════════════════
 # Standalone edge resolution task
 # ══════════════════════════════════════════════════════════════
+
 
 @hatchet.task(
     name="edge_resolution",
@@ -463,13 +494,15 @@ async def edge_task(input: UpdateEdgesInput, ctx: Context) -> dict:
 
     Returns ``EdgeOutput`` with the created edge IDs.
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    ctx.log(f"edge_task: concept={input.concept}, node_id={input.node_id}, mode={input.edge_mode}, cross_type_pair={input.cross_type_pair}")
+    ctx.log(
+        f"edge_task: concept={input.concept}, node_id={input.node_id}, mode={input.edge_mode}, cross_type_pair={input.cross_type_pair}"
+    )
 
     result = await HatchetPipeline(state, api_key=input.api_key).edges(
         node_id=input.node_id,
@@ -495,6 +528,7 @@ async def edge_task(input: UpdateEdgesInput, ctx: Context) -> dict:
 # ══════════════════════════════════════════════════════════════
 # Recalculate workflow — full refresh for an existing node
 # ══════════════════════════════════════════════════════════════
+
 
 @hatchet.task(
     name="recalculate_node",
@@ -558,28 +592,30 @@ async def recalculate_task(input: RecalculateInput, ctx: Context) -> dict:
 
     # Phase 4: edges — single candidate-based resolution pass
     scope_id = f"recalculate-{nid[:8]}"
-    await edge_task.aio_run_many([
-        edge_task.create_bulk_run_item(
-            input=UpdateEdgesInput(
-                node_id=nid,
-                edge_mode="candidates",
-                concept=node_concept,
-                node_type=node_type_resolved,
-                scope_id=scope_id,
-                message_id=scope_id,
-                conversation_id=scope_id,
-                api_key=input.api_key,
-            ),
-        )
-    ])
-    ctx.log(
-        "recalculate: edge classification done, DB writes dispatched async"
+    await edge_task.aio_run_many(
+        [
+            edge_task.create_bulk_run_item(
+                input=UpdateEdgesInput(
+                    node_id=nid,
+                    edge_mode="candidates",
+                    concept=node_concept,
+                    node_type=node_type_resolved,
+                    scope_id=scope_id,
+                    message_id=scope_id,
+                    conversation_id=scope_id,
+                    api_key=input.api_key,
+                ),
+            )
+        ]
     )
+    ctx.log("recalculate: edge classification done, DB writes dispatched async")
 
     # Phase 4.5: refresh justifications on existing edges touching this node
     try:
         refresh_result = await pipeline.refresh_edge_justifications(
-            nid, node_concept, node_type_resolved,
+            nid,
+            node_concept,
+            node_type_resolved,
         )
         edges_refreshed = refresh_result.get("edges_refreshed", 0)
         if edges_refreshed:
@@ -587,7 +623,8 @@ async def recalculate_task(input: RecalculateInput, ctx: Context) -> dict:
     except Exception:
         logger.warning(
             "recalculate: edge justification refresh failed for %s",
-            nid, exc_info=True,
+            nid,
+            exc_info=True,
         )
 
     # Phase 5: ancestry (skip for stub nodes created by the ancestry pipeline)
@@ -612,9 +649,7 @@ async def recalculate_task(input: RecalculateInput, ctx: Context) -> dict:
     write_session = state.write_session_factory()
     try:
         write_node_repo = WriteNodeRepository(write_session)
-        await write_node_repo.increment_update_count(
-            write_node_repo.node_key(node_type_resolved, node_concept)
-        )
+        await write_node_repo.increment_update_count(write_node_repo.node_key(node_type_resolved, node_concept))
         await write_session.commit()
     finally:
         await write_session.close()

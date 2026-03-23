@@ -17,7 +17,6 @@ from kt_facts.author import (
     extract_author,
 )
 
-
 # ── PdfMetadataStrategy ────────────────────────────────────────────
 
 
@@ -282,11 +281,14 @@ class TestCleanPersonField:
         gateway = MagicMock()
         gateway.decomposition_model = "test-model"
         gateway.decomposition_thinking_level = None
-        gateway.generate_json = AsyncMock(return_value={
-            "person": "A. M. J. M. van der Heijden, S. J. M. M. van der Heijden",
-            "organization": "Nature",
-        })
+        gateway.generate_json = AsyncMock(
+            return_value={
+                "person": "A. M. J. M. van der Heijden, S. J. M. M. van der Heijden",
+                "organization": "Nature",
+            }
+        )
         import asyncio
+
         strategy = LlmHeaderStrategy(gateway)
         ctx = SourceContext(url="https://nature.com/article", header_text="Abstract...")
         result = asyncio.get_event_loop().run_until_complete(strategy.extract(ctx))
@@ -297,6 +299,7 @@ class TestCleanPersonField:
     def test_pdf_strategy_filters_hallucinated_names(self) -> None:
         """Integration: PDF metadata with hallucinated author names gets filtered."""
         import asyncio
+
         strategy = PdfMetadataStrategy()
         ctx = SourceContext(
             url="https://example.com/paper.pdf",

@@ -73,10 +73,7 @@ def _needs_recrystallization(
         return False
 
     # Count children updated after crystallization
-    changed = sum(
-        1 for child in children
-        if child.updated_at.replace(tzinfo=timezone.utc) > crystallized_at
-    )
+    changed = sum(1 for child in children if child.updated_at.replace(tzinfo=timezone.utc) > crystallized_at)
     ratio = changed / len(children)
 
     return ratio > child_change_ratio
@@ -120,9 +117,10 @@ class CrystallizationPipeline:
         # Check threshold
         if child_count < settings.crystallization_child_threshold:
             logger.debug(
-                "crystallize: node %s has %d children with definitions "
-                "(%d total, threshold %d) — skipping",
-                node.concept, child_count, len(all_children),
+                "crystallize: node %s has %d children with definitions (%d total, threshold %d) — skipping",
+                node.concept,
+                child_count,
+                len(all_children),
                 settings.crystallization_child_threshold,
             )
             return False
@@ -137,7 +135,8 @@ class CrystallizationPipeline:
                 return False
             logger.info(
                 "crystallize: re-crystallizing node %s (%d children changed)",
-                node.concept, child_count,
+                node.concept,
+                child_count,
             )
 
         # Perform crystallization
@@ -157,7 +156,9 @@ class CrystallizationPipeline:
 
         logger.info(
             "crystallize: crystallized node %s with %d children (%d chars)",
-            node.concept, child_count, len(definition),
+            node.concept,
+            child_count,
+            len(definition),
         )
         return True
 

@@ -1,9 +1,9 @@
 import httpx
 import pytest
 
+from kt_config.types import RawSearchResult
 from kt_providers.base import KnowledgeProvider
 from kt_providers.registry import ProviderRegistry
-from kt_config.types import RawSearchResult
 
 
 class MockProvider(KnowledgeProvider):
@@ -96,7 +96,9 @@ async def test_brave_retries_on_429(respx_mock) -> None:
     respx_mock.get(url).mock(
         side_effect=[
             httpx.Response(429, text="rate limited"),
-            httpx.Response(200, json={"web": {"results": [{"url": "https://x.com", "title": "X", "description": "d"}]}}),
+            httpx.Response(
+                200, json={"web": {"results": [{"url": "https://x.com", "title": "X", "description": "d"}]}}
+            ),
         ]
     )
 
@@ -122,8 +124,9 @@ async def test_brave_raises_after_max_retries(respx_mock) -> None:
 
     provider = BraveSearchProvider(api_key="test-key")
 
-    with patch("kt_providers.brave.asyncio.sleep", new_callable=AsyncMock) as mock_sleep, pytest.raises(
-        httpx.HTTPStatusError
+    with (
+        patch("kt_providers.brave.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        pytest.raises(httpx.HTTPStatusError),
     ):
         await provider.search("test", max_results=1)
 
@@ -222,8 +225,9 @@ async def test_serper_raises_after_max_retries(respx_mock) -> None:
 
     provider = SerperSearchProvider(api_key="test-key")
 
-    with patch("kt_providers.serper.asyncio.sleep", new_callable=AsyncMock) as mock_sleep, pytest.raises(
-        httpx.HTTPStatusError
+    with (
+        patch("kt_providers.serper.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        pytest.raises(httpx.HTTPStatusError),
     ):
         await provider.search("test", max_results=1)
 

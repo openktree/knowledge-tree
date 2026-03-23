@@ -90,7 +90,8 @@ class EdgeResolver:
                 if not facts:
                     logger.debug(
                         "resolve_from_candidates: no facts loaded for pair %s <-> %s",
-                        seed_key, other_seed_key,
+                        seed_key,
+                        other_seed_key,
                     )
                     continue
 
@@ -141,6 +142,7 @@ class EdgeResolver:
                     edge_id = str(edge.id)
                 else:
                     from kt_db.keys import make_edge_key, make_node_key
+
                     sk = make_node_key(node_type, concept)
                     tk = make_node_key(other_node_type, other_seed.name)
                     ek = make_edge_key(rel_type, sk, tk)
@@ -157,20 +159,26 @@ class EdgeResolver:
 
                 logger.info(
                     "resolve_from_candidates: created %s edge '%s' <-> '%s' (facts=%d, weight=%.2f)",
-                    rel_type, concept, other_seed.name, len(facts), weight,
+                    rel_type,
+                    concept,
+                    other_seed.name,
+                    len(facts),
+                    weight,
                 )
 
             except Exception:
                 logger.debug(
                     "resolve_from_candidates: error processing pair %s <-> %s",
-                    seed_key, other_seed_key,
+                    seed_key,
+                    other_seed_key,
                     exc_info=True,
                 )
 
         if edge_ids:
             logger.info(
                 "resolve_from_candidates: created %d edges for '%s'",
-                len(edge_ids), concept,
+                len(edge_ids),
+                concept,
             )
 
         return {"edges_created": len(edge_ids), "edge_ids": edge_ids}
@@ -220,9 +228,7 @@ class EdgeResolver:
 
                 # Check for accepted candidates with facts not yet in edge
                 a_key, b_key = sorted([source_seed.key, target_seed.key])
-                accepted_candidates = await seed_repo.get_candidates_for_seed(
-                    source_seed.key, status="accepted"
-                )
+                accepted_candidates = await seed_repo.get_candidates_for_seed(source_seed.key, status="accepted")
                 # Filter to only candidates for this specific pair
                 pair_fact_ids: list[str] = []
                 for cand in accepted_candidates:
@@ -285,16 +291,19 @@ class EdgeResolver:
 
                 refreshed += 1
                 logger.info(
-                    "refresh_existing_edges: refreshed edge '%s' <-> '%s' "
-                    "(+%d facts, total=%d, weight=%.2f)",
-                    edge.source_node_key, edge.target_node_key,
-                    len(new_fact_ids), len(facts), weight,
+                    "refresh_existing_edges: refreshed edge '%s' <-> '%s' (+%d facts, total=%d, weight=%.2f)",
+                    edge.source_node_key,
+                    edge.target_node_key,
+                    len(new_fact_ids),
+                    len(facts),
+                    weight,
                 )
 
             except Exception:
                 logger.debug(
                     "refresh_existing_edges: error processing edge %s",
-                    edge.key, exc_info=True,
+                    edge.key,
+                    exc_info=True,
                 )
 
         return {"edges_refreshed": refreshed}

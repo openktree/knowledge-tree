@@ -1,8 +1,8 @@
 import asyncio
 from typing import overload
 
-from kt_providers.base import KnowledgeProvider
 from kt_config.types import RawSearchResult
+from kt_providers.base import KnowledgeProvider
 
 
 class ProviderRegistry:
