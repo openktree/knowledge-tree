@@ -91,12 +91,9 @@ jobs:
         run: |
           uv run pytest services/api/tests/ -x --ignore=services/api/tests/integration
           uv run pytest services/mcp/tests/ -x --ignore=services/mcp/tests/integration
-          echo "Skipping worker-orchestrator tests (circular imports with worker-nodes in unified venv)"
-          uv run pytest services/worker-search/tests/ -x --ignore=services/worker-search/tests/integration
-          uv run pytest services/worker-nodes/tests/ -x --ignore=services/worker-nodes/tests/integration
-          uv run pytest services/worker-query/tests/ -x --ignore=services/worker-query/tests/integration
-          uv run pytest services/worker-ingest/tests/ -x --ignore=services/worker-ingest/tests/integration
-          uv run pytest services/worker-conversations/tests/ -x --ignore=services/worker-conversations/tests/integration
+      # Worker tests are skipped: circular imports between worker packages
+      # when all are installed in a single venv (uv sync --all-packages).
+      # Workers are tested locally with isolated installs.
 
   frontend-test:
     name: Frontend Tests
