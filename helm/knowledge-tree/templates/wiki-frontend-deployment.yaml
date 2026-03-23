@@ -31,10 +31,8 @@ spec:
               value: "0.0.0.0"
             - name: PORT
               value: {{ .Values.wikiFrontend.port | quote }}
-            {{- if .Values.wikiFrontend.env.PUBLIC_API_URL }}
-            - name: PUBLIC_API_URL
-              value: {{ .Values.wikiFrontend.env.PUBLIC_API_URL | quote }}
-            {{- end }}
+            - name: API_BASE_URL
+              value: "http://{{ include "knowledge-tree.fullname" . }}-api:{{ .Values.api.port }}"
           livenessProbe:
             httpGet:
               path: /
