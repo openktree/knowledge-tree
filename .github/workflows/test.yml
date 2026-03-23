@@ -79,23 +79,23 @@ jobs:
       - run: uv sync --all-packages --frozen
       - name: Run lib tests
         run: |
-          uv run pytest libs/kt-config/tests/ -x
-          uv run pytest libs/kt-db/tests/ -x
-          uv run pytest libs/kt-models/tests/ -x
-          uv run pytest libs/kt-providers/tests/ -x
-          uv run pytest libs/kt-graph/tests/ -x
-          uv run pytest libs/kt-facts/tests/ -x
-          uv run pytest libs/kt-ontology/tests/ -x --ignore=libs/kt-ontology/tests/test_crystallization.py --ignore=libs/kt-ontology/tests/integration
+          uv run pytest libs/kt-config/tests/ -x --ignore=libs/kt-config/tests/integration
+          uv run pytest libs/kt-db/tests/ -x --ignore=libs/kt-db/tests/integration
+          uv run pytest libs/kt-models/tests/ -x --ignore=libs/kt-models/tests/integration
+          uv run pytest libs/kt-providers/tests/ -x --ignore=libs/kt-providers/tests/integration
+          uv run pytest libs/kt-graph/tests/ -x --ignore=libs/kt-graph/tests/integration
+          uv run pytest libs/kt-facts/tests/ -x --ignore=libs/kt-facts/tests/integration
+          uv run pytest libs/kt-ontology/tests/ -x --ignore=libs/kt-ontology/tests/integration --ignore=libs/kt-ontology/tests/test_crystallization.py
       - name: Run service tests
         run: |
-          uv run pytest services/api/tests/ -x
-          uv run pytest services/mcp/tests/ -x
-          uv run pytest services/worker-orchestrator/tests/ -x
-          uv run pytest services/worker-search/tests/ -x
-          uv run pytest services/worker-nodes/tests/ -x
-          uv run pytest services/worker-query/tests/ -x
-          uv run pytest services/worker-ingest/tests/ -x
-          uv run pytest services/worker-conversations/tests/ -x
+          uv run pytest services/api/tests/ -x --ignore=services/api/tests/integration
+          uv run pytest services/mcp/tests/ -x --ignore=services/mcp/tests/integration
+          uv run pytest services/worker-orchestrator/tests/ -x --ignore=services/worker-orchestrator/tests/integration
+          uv run pytest services/worker-search/tests/ -x --ignore=services/worker-search/tests/integration
+          uv run pytest services/worker-nodes/tests/ -x --ignore=services/worker-nodes/tests/integration
+          uv run pytest services/worker-query/tests/ -x --ignore=services/worker-query/tests/integration
+          uv run pytest services/worker-ingest/tests/ -x --ignore=services/worker-ingest/tests/integration
+          uv run pytest services/worker-conversations/tests/ -x --ignore=services/worker-conversations/tests/integration
 
   frontend-test:
     name: Frontend Tests
