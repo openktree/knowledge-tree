@@ -2,44 +2,15 @@ name: Build & Push
 
 on:
   push:
-    branches: [main]
-
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+    tags: ["v*"]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/openktree/knowledge-tree
 
 jobs:
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      wiki-frontend: ${{ steps.filter.outputs.wiki-frontend }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            backend:
-              - 'libs/**'
-              - 'services/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            frontend:
-              - 'frontend/**'
-            wiki-frontend:
-              - 'wiki-frontend/**'
-
   backend-images:
     name: Build ${{ matrix.service }}
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,7 +40,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
           tags: |
-            type=sha,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
@@ -83,8 +55,6 @@ jobs:
 
   frontend-image:
     name: Build frontend
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -102,7 +72,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}/frontend
           tags: |
-            type=sha,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
@@ -116,8 +87,6 @@ jobs:
 
   wiki-frontend-image:
     name: Build wiki-frontend
-    needs: changes
-    if: needs.changes.outputs.wiki-frontend == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -135,7 +104,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}/wiki-frontend
           tags: |
-            type=sha,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:

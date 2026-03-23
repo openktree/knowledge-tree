@@ -19,6 +19,20 @@ dev-dependencies = [
     "ruff>=0.15.1",
 ]
 
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+commit_message = "chore(release): v{version}"
+tag_format = "v{version}"
+major_on_zero = false
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+
+[tool.semantic_release.remote]
+type = "github"
+token = { env = "GH_TOKEN" }
+
 [tool.ruff]
 target-version = "py312"
 line-length = 120
