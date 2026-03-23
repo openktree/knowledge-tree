@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-tree-workspace"
-version = "1.0.0"
+version = "0.1.0"
 description = "Knowledge Tree monorepo workspace"
 requires-python = ">=3.12"
 
@@ -25,6 +25,7 @@ branch = "main"
 commit_message = "chore(release): v{version}"
 tag_format = "v{version}"
 major_on_zero = false
+allow_zero_version = true
 
 [tool.semantic_release.changelog]
 changelog_file = "CHANGELOG.md"
