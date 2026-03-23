@@ -41,7 +41,9 @@ class HatchetPipeline:
 
     @asynccontextmanager
     async def _open_sessions(
-        self, *, write_only: bool = False,
+        self,
+        *,
+        write_only: bool = False,
     ) -> AsyncGenerator[tuple[Any, Any], None]:
         """Open graph-db session and optional write-db session.
 
@@ -156,7 +158,8 @@ class HatchetPipeline:
             await write_session.commit()
             logger.info(
                 "sync_seed_facts: linked %d seed facts to node '%s'",
-                linked, wn.concept,
+                linked,
+                wn.concept,
             )
 
         return seed_fact_ids
@@ -188,9 +191,9 @@ class HatchetPipeline:
         Returns a serializable dict: ``{node_id, action, concept, node_type,
         explore_charged}``.
         """
-        from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
         from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
         from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
+        from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
         task = CreateNodeTask(name=concept, node_type=node_type, seed_key=seed_key, entity_subtype=entity_subtype)
         orch_state = OrchestratorState(
@@ -201,8 +204,8 @@ class HatchetPipeline:
 
         if existing_node_id:
             # Caller already resolved this as an existing node — enrich directly
-            from kt_db.repositories.write_nodes import WriteNodeRepository
             from kt_db.models import Node
+            from kt_db.repositories.write_nodes import WriteNodeRepository
 
             nid = uuid.UUID(existing_node_id)
             async with self._open_sessions() as (session, write_session):
@@ -303,19 +306,26 @@ class HatchetPipeline:
                     node.embedding = embedding  # in-memory for pipeline use
                     # Upsert to Qdrant (embeddings no longer stored in graph-db)
                     await ctx.graph_engine.upsert_node_to_qdrant(
-                        node.id, embedding, node_type=node.node_type, concept=node.concept,
+                        node.id,
+                        embedding,
+                        node_type=node.node_type,
+                        concept=node.concept,
                     )
                     logger.info("enrich: generated missing embedding for node %s ('%s')", node_id, node.concept)
                 except Exception:
                     logger.warning(
                         "enrich: failed to generate embedding for node %s",
-                        node_id, exc_info=True,
+                        node_id,
+                        exc_info=True,
                     )
 
             has_embedding = node.embedding is not None
             logger.info(
                 "enrich: node %s ('%s') has_embedding=%s, embedding_service=%s",
-                node_id, node.concept, has_embedding, ctx.embedding_service is not None,
+                node_id,
+                node.concept,
+                has_embedding,
+                ctx.embedding_service is not None,
             )
 
             enricher = PoolEnricher(ctx)
@@ -379,7 +389,9 @@ class HatchetPipeline:
         elif dimensions_created == 0:
             logger.warning(
                 "dimensions: node %s ('%s') has %d facts but generated 0 dimensions",
-                node_id, node.concept, len(facts),
+                node_id,
+                node.concept,
+                len(facts),
             )
 
         return {
@@ -400,8 +412,8 @@ class HatchetPipeline:
         """
         from kt_db.models import Node
         from kt_db.repositories.write_nodes import WriteNodeRepository
-        from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
         from kt_ontology.crystallization import _is_crystallized
+        from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 
         nid = uuid.UUID(node_id)
 
@@ -411,11 +423,17 @@ class HatchetPipeline:
             ctx = await self._build_ctx(session, write_session=write_session)
 
             wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
-            node = Node(
-                id=nid, concept=wn.concept, node_type=wn.node_type,
-                definition=wn.definition,
-                metadata_=wn.metadata_,
-            ) if wn else None
+            node = (
+                Node(
+                    id=nid,
+                    concept=wn.concept,
+                    node_type=wn.node_type,
+                    definition=wn.definition,
+                    metadata_=wn.metadata_,
+                )
+                if wn
+                else None
+            )
             if node is None:
                 logger.warning("definition: node %s not found", node_id)
                 return {"node_id": node_id, "has_definition": False}
@@ -475,10 +493,10 @@ class HatchetPipeline:
 
         Returns ``{edge_ids, edges_created}``.
         """
-        from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
+        from kt_db.models import Node
         from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
         from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
-        from kt_db.models import Node
+        from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
         nid = uuid.UUID(node_id)
 
@@ -555,10 +573,10 @@ class HatchetPipeline:
 
         Returns ``{node_id, parent_id, nodes_created}``.
         """
+        from kt_config.types import COMPOSITE_NODE_TYPES, DEFAULT_PARENTS
         from kt_graph.engine import GraphEngine
         from kt_ontology.ancestry import AncestryPipeline
         from kt_ontology.registry import OntologyProviderRegistry
-        from kt_config.types import COMPOSITE_NODE_TYPES, DEFAULT_PARENTS
 
         nid = uuid.UUID(node_id)
 
@@ -568,9 +586,9 @@ class HatchetPipeline:
             return {"node_id": node_id, "parent_id": "", "nodes_created": []}
 
         # Get ontology registry from worker state (may not be set)
-        ontology_registry: OntologyProviderRegistry = getattr(
-            self._state, "ontology_registry", None
-        ) or OntologyProviderRegistry()
+        ontology_registry: OntologyProviderRegistry = (
+            getattr(self._state, "ontology_registry", None) or OntologyProviderRegistry()
+        )
 
         async with self._open_sessions() as (session, write_session):
             graph_engine = GraphEngine(
@@ -586,12 +604,14 @@ class HatchetPipeline:
             # Fetch definition and dimension snippets from write-db.
             if definition is None:
                 from kt_db.repositories.write_nodes import WriteNodeRepository
+
                 wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
                 if wn and wn.definition:
                     definition = wn.definition
 
-            from kt_db.repositories.write_dimensions import WriteDimensionRepository
             from kt_db.keys import make_node_key
+            from kt_db.repositories.write_dimensions import WriteDimensionRepository
+
             write_dim_repo = WriteDimensionRepository(write_session)
             wn_key = make_node_key(node_type, node_name)
             write_dims = await write_dim_repo.get_by_node_key(wn_key, limit=3)
@@ -629,8 +649,7 @@ class HatchetPipeline:
                 # Set parent on the original node (guard against self-reference)
                 if result.parent_id == nid:
                     logger.warning(
-                        "ancestry: pipeline returned self-referential parent for %s, "
-                        "falling back to default",
+                        "ancestry: pipeline returned self-referential parent for %s, falling back to default",
                         node_id,
                     )
                     default_parent = DEFAULT_PARENTS.get(node_type, DEFAULT_PARENTS["concept"])

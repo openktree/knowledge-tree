@@ -36,7 +36,6 @@ from kt_providers.fetcher import FileDataStore
 
 if TYPE_CHECKING:
     from kt_db.repositories.write_facts import WriteFactRepository
-    from kt_db.repositories.write_prohibited_chunks import WriteProhibitedChunkRepository
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +113,11 @@ class DecompositionPipeline:
         # Phase 1a: Extract from text sources in parallel
         text_extraction_tasks = [
             self.extract_text(
-                s.raw_content or "", concept, query_context,
-                source_url=s.uri, source_title=getattr(s, "title", None),
+                s.raw_content or "",
+                concept,
+                query_context,
+                source_url=s.uri,
+                source_title=getattr(s, "title", None),
             )
             for s in text_sources
         ]
@@ -161,6 +163,7 @@ class DecompositionPipeline:
         write_fact_repo: WriteFactRepository | None = None
         if write_session is not None:
             from kt_db.repositories.write_facts import WriteFactRepository as _WFR
+
             write_fact_repo = _WFR(write_session)
 
         # Phase 2: Store extracted facts sequentially
@@ -253,9 +256,14 @@ class DecompositionPipeline:
             try:
                 from kt_facts.processing.entity_extraction import extract_entities_from_facts
 
-                extracted_nodes = await extract_entities_from_facts(
-                    all_facts, self._gateway, scope=concept,
-                ) or []
+                extracted_nodes = (
+                    await extract_entities_from_facts(
+                        all_facts,
+                        self._gateway,
+                        scope=concept,
+                    )
+                    or []
+                )
             except Exception:
                 logger.exception("Entity extraction failed (non-fatal)")
 
@@ -270,20 +278,18 @@ class DecompositionPipeline:
                 from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
                 if qdrant_client is None:
-                    raise RuntimeError(
-                        "Qdrant client is required for seed extraction but was not provided"
-                    )
+                    raise RuntimeError("Qdrant client is required for seed extraction but was not provided")
                 if embedding_service is None:
-                    raise RuntimeError(
-                        "Embedding service is required for seed extraction but was not provided"
-                    )
+                    raise RuntimeError("Embedding service is required for seed extraction but was not provided")
 
                 write_seed_repo = WriteSeedRepository(write_session)
                 qdrant_seed_repo = QdrantSeedRepository(qdrant_client)
 
                 try:
                     _link_count, seed_keys = await store_seeds_from_extracted_nodes(
-                        extracted_nodes, all_facts, write_seed_repo,
+                        extracted_nodes,
+                        all_facts,
+                        write_seed_repo,
                         embedding_service=embedding_service,
                         qdrant_seed_repo=qdrant_seed_repo,
                     )
@@ -315,22 +321,26 @@ class DecompositionPipeline:
                         for name in author.person.split(","):
                             name = name.strip()
                             if name and _is_valid_entity_name(name):
-                                author_seeds_data.append({
-                                    "key": make_seed_key("entity", name),
-                                    "name": name,
-                                    "node_type": "entity",
-                                    "entity_subtype": "person",
-                                })
+                                author_seeds_data.append(
+                                    {
+                                        "key": make_seed_key("entity", name),
+                                        "name": name,
+                                        "node_type": "entity",
+                                        "entity_subtype": "person",
+                                    }
+                                )
                     if author.organization:
                         for name in author.organization.split(","):
                             name = name.strip()
                             if name and _is_valid_entity_name(name):
-                                author_seeds_data.append({
-                                    "key": make_seed_key("entity", name),
-                                    "name": name,
-                                    "node_type": "entity",
-                                    "entity_subtype": "organization",
-                                })
+                                author_seeds_data.append(
+                                    {
+                                        "key": make_seed_key("entity", name),
+                                        "name": name,
+                                        "node_type": "entity",
+                                        "entity_subtype": "organization",
+                                    }
+                                )
 
                 if author_seeds_data:
                     try:
@@ -363,8 +373,11 @@ class DecompositionPipeline:
         Pure LLM calls — no DB interaction. Safe to run concurrently.
         """
         return await self._text_extractor.extract(
-            content, concept, query_context,
-            source_url=source_url, source_title=source_title,
+            content,
+            concept,
+            query_context,
+            source_url=source_url,
+            source_title=source_title,
         )
 
     async def extract_image(
@@ -396,11 +409,15 @@ class DecompositionPipeline:
         write_fact_repo: WriteFactRepository | None = None
         if write_session is not None:
             from kt_db.repositories.write_facts import WriteFactRepository as _WFR
+
             write_fact_repo = _WFR(write_session)
 
         repo = FactRepository(session)
         return await _store_extracted_facts_impl(
-            extracted, source, repo, embedding_service,
+            extracted,
+            source,
+            repo,
+            embedding_service,
             qdrant_client=qdrant_client,
             write_fact_repo=write_fact_repo,
             source_uri=source.uri,
@@ -499,7 +516,9 @@ async def _store_extracted_facts_impl(
     # Batch dedup: one embed_batch() call for all facts in this source
     items = [(ef.content, ft) for ef, ft in zip(extracted, normalized_types)]
     dedup_results = await deduplicate_facts(
-        items, repo, embedding_service,
+        items,
+        repo,
+        embedding_service,
         qdrant_client=qdrant_client,
         write_fact_repo=write_fact_repo,
     )

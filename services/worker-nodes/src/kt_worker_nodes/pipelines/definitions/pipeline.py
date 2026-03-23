@@ -77,9 +77,7 @@ class DefinitionPipeline:
         dim_lines: list[str] = []
         for i, dim in enumerate(dims, 1):
             status = "[DEFINITIVE]" if dim.is_definitive else f"[DRAFT, {dim.fact_count} facts]"
-            dim_lines.append(
-                f"Dimension {i} ({dim.model_id}) {status}:\n{dim.content}"
-            )
+            dim_lines.append(f"Dimension {i} ({dim.model_id}) {status}:\n{dim.content}")
 
         dimensions_text = "\n\n---\n\n".join(dim_lines)
 
@@ -94,7 +92,8 @@ class DefinitionPipeline:
         thinking_level = ctx.model_gateway.definition_thinking_level
 
         try:
-            from kt_models.usage import set_usage_task, clear_usage_task
+            from kt_models.usage import clear_usage_task, set_usage_task
+
             set_usage_task("definitions")
             definition = await ctx.model_gateway.generate(
                 model_id=model_id,
@@ -173,9 +172,7 @@ class DefinitionPipeline:
                             status = "[DEFINITIVE]" if dim.is_definitive else f"[DRAFT, {dim.fact_count} facts]"
                             model_id = str(dim.model_id)
                             content = str(dim.content)
-                        dim_lines.append(
-                            f"Dimension {i} ({model_id}) {status}:\n{content}"
-                        )
+                        dim_lines.append(f"Dimension {i} ({model_id}) {status}:\n{content}")
                     dimensions_text = "\n\n---\n\n".join(dim_lines)
                     user_msg = (
                         f"Concept: {t.node.concept}\n\n"
@@ -185,7 +182,8 @@ class DefinitionPipeline:
                     )
                     model_id = ctx.model_gateway.definition_model
                     thinking_level = ctx.model_gateway.definition_thinking_level
-                    from kt_models.usage import set_usage_task, clear_usage_task
+                    from kt_models.usage import clear_usage_task, set_usage_task
+
                     set_usage_task("definitions")
                     definition = await ctx.model_gateway.generate(
                         model_id=model_id,
@@ -214,7 +212,9 @@ class DefinitionPipeline:
                 try:
                     await ctx.graph_engine.set_node_definition(t.node.id, definition)
                     logger.info("Generated definition for '%s' (%d chars)", t.node.concept, len(definition))
-                    await ctx.emit("activity_log", action=f"Synthesized definition for '{t.name}'", tool="build_pipeline")
+                    await ctx.emit(
+                        "activity_log", action=f"Synthesized definition for '{t.name}'", tool="build_pipeline"
+                    )
                     if len(node_details) < 10:
                         node_details.append({"name": t.name, "definition_chars": len(definition)})
                 except Exception:

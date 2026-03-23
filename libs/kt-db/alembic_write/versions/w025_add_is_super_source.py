@@ -5,8 +5,8 @@ Revises: w024
 Create Date: 2026-03-18
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "w025"
 down_revision = "w024"

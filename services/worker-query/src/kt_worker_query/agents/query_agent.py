@@ -119,14 +119,7 @@ class QueryAgentImpl(BaseAgent[QueryAgentState]):
         return None
 
     def on_llm_error(self, state: QueryAgentState) -> dict[str, Any]:
-        return {
-            "messages": [
-                AIMessage(
-                    content="I encountered an error processing your query. "
-                    "Please try again."
-                )
-            ]
-        }
+        return {"messages": [AIMessage(content="I encountered an error processing your query. Please try again.")]}
 
     def propagate_state(self, state: QueryAgentState) -> dict[str, Any]:
         return {

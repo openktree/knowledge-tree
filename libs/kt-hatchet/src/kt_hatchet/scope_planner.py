@@ -41,7 +41,10 @@ import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
+
+if TYPE_CHECKING:
+    from langchain_core.messages import ToolMessage
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool, tool
@@ -262,39 +265,44 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
                 for d in dims:
                     suggested.extend(d.suggested_concepts or [])
                     content = d.content[:300] + ("..." if len(d.content) > 300 else "")
-                    dim_summaries.append({
-                        "model_id": d.model_id,
-                        "content": content,
-                        "confidence": d.confidence,
-                    })
+                    dim_summaries.append(
+                        {
+                            "model_id": d.model_id,
+                            "content": content,
+                            "confidence": d.confidence,
+                        }
+                    )
 
                 edges = await ctx.graph_engine.get_edges(nid, direction="both")
                 connected: list[dict] = []
                 for e in edges[:6]:
-                    target_id = (
-                        e.target_node_id if e.source_node_id == nid else e.source_node_id
-                    )
+                    target_id = e.target_node_id if e.source_node_id == nid else e.source_node_id
                     target = await ctx.graph_engine.get_node(target_id)
                     if target:
-                        connected.append({
-                            "node_id": str(target.id),
-                            "concept": target.concept,
-                            "node_type": target.node_type,
-                            "edge_type": e.relationship_type,
-                            "weight": e.weight,
-                        })
+                        connected.append(
+                            {
+                                "node_id": str(target.id),
+                                "concept": target.concept,
+                                "node_type": target.node_type,
+                                "edge_type": e.relationship_type,
+                                "weight": e.weight,
+                            }
+                        )
 
                 facts = await ctx.graph_engine.get_node_facts(nid)
-                return json.dumps({
-                    "node_id": node_id,
-                    "concept": node.concept,
-                    "node_type": node.node_type,
-                    "definition": node.definition,
-                    "fact_count": len(facts),
-                    "suggested_concepts": list(dict.fromkeys(suggested))[:12],
-                    "dimensions": dim_summaries,
-                    "connected_nodes": connected,
-                }, default=str)
+                return json.dumps(
+                    {
+                        "node_id": node_id,
+                        "concept": node.concept,
+                        "node_type": node.node_type,
+                        "definition": node.definition,
+                        "fact_count": len(facts),
+                        "suggested_concepts": list(dict.fromkeys(suggested))[:12],
+                        "dimensions": dim_summaries,
+                        "connected_nodes": connected,
+                    },
+                    default=str,
+                )
 
             except Exception as exc:
                 logger.warning("read_node error %s: %s", node_id, exc, exc_info=True)
@@ -319,16 +327,18 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
 
             remaining_budget = state.explore_slice - state.explore_used
             if remaining_budget <= 0:
-                return json.dumps({
-                    "error": "explore_budget exhausted",
-                    "budget_used": state.explore_used,
-                    "budget_total": state.explore_slice,
-                    "hint": (
-                        f"You have 0 explore budget remaining (used {state.explore_used}/{state.explore_slice}). "
-                        f"Call add_to_plan with the concepts relevant to your scope, then call done. "
-                        f"The node builder will assemble facts from the entire knowledge pool."
-                    ),
-                })
+                return json.dumps(
+                    {
+                        "error": "explore_budget exhausted",
+                        "budget_used": state.explore_used,
+                        "budget_total": state.explore_slice,
+                        "hint": (
+                            f"You have 0 explore budget remaining (used {state.explore_used}/{state.explore_slice}). "
+                            f"Call add_to_plan with the concepts relevant to your scope, then call done. "
+                            f"The node builder will assemble facts from the entire knowledge pool."
+                        ),
+                    }
+                )
 
             proxy = _GatherState(
                 query=state.scope_description,
@@ -344,10 +354,12 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
                 return json.dumps(result, default=str)
             except Exception as exc:
                 logger.warning("gather_facts error %r: %s", search_queries, exc, exc_info=True)
-                return json.dumps({
-                    "error": str(exc),
-                    "remaining_explore_budget": state.explore_slice - state.explore_used,
-                })
+                return json.dumps(
+                    {
+                        "error": str(exc),
+                        "remaining_explore_budget": state.explore_slice - state.explore_used,
+                    }
+                )
 
         @tool
         async def add_to_plan(
@@ -371,10 +383,12 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
             state = self._get_state()
 
             if not node_plans:
-                return json.dumps({
-                    "error": "node_plans is required and cannot be empty.",
-                    "hint": "Include at least one node from the concepts you gathered facts for.",
-                })
+                return json.dumps(
+                    {
+                        "error": "node_plans is required and cannot be empty.",
+                        "hint": "Include at least one node from the concepts you gathered facts for.",
+                    }
+                )
 
             # Deduplicate against already-planned nodes
             existing_names = {n["name"].lower() for n in state.planned_nodes}
@@ -396,7 +410,9 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
                     "source_concept_id": e.source_concept_id.strip(),
                 }
                 for e in (perspective_plans or [])
-                if e.claim.strip() and e.antithesis.strip() and e.source_concept_id.strip()
+                if e.claim.strip()
+                and e.antithesis.strip()
+                and e.source_concept_id.strip()
                 and e.claim.strip().lower() not in existing_claims
             ]
 
@@ -440,9 +456,7 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
                     f"then call done."
                 )
             else:
-                response["hint"] = (
-                    f"{added} items added. Nav budget fully used. Call done to finalise."
-                )
+                response["hint"] = f"{added} items added. Nav budget fully used. Call done to finalise."
 
             return json.dumps(response)
 
@@ -456,14 +470,16 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
             state = self._get_state()
 
             if not state.planned_nodes:
-                return json.dumps({
-                    "error": "Cannot finish -- no nodes have been planned yet. "
-                    "You MUST call add_to_plan before done. The node builder will "
-                    "assemble facts from the entire knowledge pool (including previous queries), "
-                    "so add every concept you consider relevant. Example:\n\n"
-                    'add_to_plan(node_plans=[{"name": "your concept here", "node_type": "concept"}])\n\n'
-                    "Then call done() to finalise.",
-                })
+                return json.dumps(
+                    {
+                        "error": "Cannot finish -- no nodes have been planned yet. "
+                        "You MUST call add_to_plan before done. The node builder will "
+                        "assemble facts from the entire knowledge pool (including previous queries), "
+                        "so add every concept you consider relevant. Example:\n\n"
+                        'add_to_plan(node_plans=[{"name": "your concept here", "node_type": "concept"}])\n\n'
+                        "Then call done() to finalise.",
+                    }
+                )
 
             nav_remaining = state.nav_remaining
             explore_remaining = state.explore_remaining
@@ -484,11 +500,13 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
                 return hint
 
             state.phase = "done"
-            return json.dumps({
-                "status": "plan_finalised",
-                "total_nodes": len(state.planned_nodes),
-                "total_perspectives": len(state.planned_perspectives),
-            })
+            return json.dumps(
+                {
+                    "status": "plan_finalised",
+                    "total_nodes": len(state.planned_nodes),
+                    "total_perspectives": len(state.planned_perspectives),
+                }
+            )
 
         return [scout, search_graph, read_node, gather_facts, add_to_plan, done]  # type: ignore[list-item]
 
@@ -499,23 +517,24 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
         logger.info(
             "[scope_planner:%s] iter=%d | explore=%d/%d nav_remaining=%d/%d | "
             "planned=%d nodes + %d perspectives | facts=%d | phase=%s",
-            state.scope_description[:40], iteration,
-            state.explore_remaining, state.explore_slice,
-            state.nav_remaining, state.nav_slice,
-            len(state.planned_nodes), len(state.planned_perspectives),
-            state.gathered_fact_count, state.phase,
+            state.scope_description[:40],
+            iteration,
+            state.explore_remaining,
+            state.explore_slice,
+            state.nav_remaining,
+            state.nav_slice,
+            len(state.planned_nodes),
+            len(state.planned_perspectives),
+            state.gathered_fact_count,
+            state.phase,
         )
 
         # Hard stop: both budgets exhausted AND nodes already planned -> force done
-        if (
-            state.explore_remaining <= 0
-            and state.nav_remaining <= 0
-            and state.planned_nodes
-            and state.phase != "done"
-        ):
+        if state.explore_remaining <= 0 and state.nav_remaining <= 0 and state.planned_nodes and state.phase != "done":
             logger.info(
                 "[scope_planner:%s] Both budgets exhausted at iter=%d, forcing done",
-                state.scope_description[:40], iteration,
+                state.scope_description[:40],
+                iteration,
             )
             state.phase = "done"
             return {"phase": "done"}
@@ -541,7 +560,9 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
 
             logger.info(
                 "[scope_planner:%s] iter=%d tool=%s args=%s",
-                state.scope_description[:40], iteration, name,
+                state.scope_description[:40],
+                iteration,
+                name,
                 _compact_args(name, args),
             )
 
@@ -549,19 +570,22 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(args)
                 await self.ctx.session.commit()
-                tool_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"], name=name)
-                )
+                tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
                 logger.info(
                     "[scope_planner:%s] iter=%d tool=%s -> %s",
-                    state.scope_description[:40], iteration, name,
+                    state.scope_description[:40],
+                    iteration,
+                    name,
                     _compact_result(name, result),
                 )
             except Exception as exc:
                 logger.warning(
                     "[scope_planner:%s] iter=%d tool=%s -> ERROR: %s: %s",
-                    state.scope_description[:40], iteration, name,
-                    type(exc).__name__, exc,
+                    state.scope_description[:40],
+                    iteration,
+                    name,
+                    type(exc).__name__,
+                    exc,
                 )
                 logger.debug("Full traceback:", exc_info=True)
                 try:
@@ -580,9 +604,7 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
 
     MAX_NUDGES = 5
 
-    def post_llm_hook(
-        self, state: ScopePlannerState, response: Any
-    ) -> dict[str, Any] | None:
+    def post_llm_hook(self, state: ScopePlannerState, response: Any) -> dict[str, Any] | None:
         """Nudge if the LLM tries to finish without tool calls while work remains."""
         from langchain_core.messages import AIMessage
 
@@ -598,10 +620,10 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
         # No nodes planned -- must call add_to_plan
         if not state.planned_nodes:
             logger.info(
-                "[scope_planner:%s] LLM ended without tool calls, no nodes planned -- "
-                "nudging (%d/%d)",
+                "[scope_planner:%s] LLM ended without tool calls, no nodes planned -- nudging (%d/%d)",
                 state.scope_description[:40],
-                state.nudge_count + 1, self.MAX_NUDGES,
+                state.nudge_count + 1,
+                self.MAX_NUDGES,
             )
             return {
                 "messages": [
@@ -624,8 +646,10 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
         if state.planned_nodes and state.nav_remaining > 2:
             logger.info(
                 "[scope_planner:%s] LLM ended with %d nav remaining -- nudging (%d/%d)",
-                state.scope_description[:40], state.nav_remaining,
-                state.nudge_count + 1, self.MAX_NUDGES,
+                state.scope_description[:40],
+                state.nav_remaining,
+                state.nudge_count + 1,
+                self.MAX_NUDGES,
             )
             nudge = (
                 f"You still have {state.nav_remaining} nav slots remaining. "
@@ -707,7 +731,8 @@ async def run_scope_planner(
         )
     except Exception:
         logger.exception(
-            "ScopePlannerAgent: graph execution failed (scope=%r)", scope_description,
+            "ScopePlannerAgent: graph execution failed (scope=%r)",
+            scope_description,
         )
         final_state = initial_state
 
@@ -730,7 +755,7 @@ async def run_scope_planner(
             scope_description,
         )
         planned_nodes = [{"name": scope_description, "node_type": "concept"}]
-        for c in focus_concepts[:max(0, nav_slice - 1)]:
+        for c in focus_concepts[: max(0, nav_slice - 1)]:
             planned_nodes.append({"name": c, "node_type": "concept"})
 
     plan = ScopePlan(
@@ -741,10 +766,12 @@ async def run_scope_planner(
     )
 
     logger.info(
-        "ScopePlannerAgent done -- %d nodes, %d perspectives "
-        "(scope=%r, explore_used=%d/%d, facts=%d)",
-        len(plan.node_plans), len(plan.perspective_plans),
-        scope_description, explore_used, explore_slice,
+        "ScopePlannerAgent done -- %d nodes, %d perspectives (scope=%r, explore_used=%d/%d, facts=%d)",
+        len(plan.node_plans),
+        len(plan.perspective_plans),
+        scope_description,
+        explore_used,
+        explore_slice,
         gathered_fact_count,
     )
     return plan
@@ -809,7 +836,9 @@ def _compact_result(tool_name: str, result: str) -> str:
     if tool_name == "read_node":
         if "error" in data:
             return f"ERROR: {data['error']}"
-        return f"concept={data.get('concept')!r}, facts={data.get('fact_count')}, dims={len(data.get('dimensions', []))}"
+        return (
+            f"concept={data.get('concept')!r}, facts={data.get('fact_count')}, dims={len(data.get('dimensions', []))}"
+        )
     return repr(result[:120])
 
 
@@ -863,7 +892,8 @@ def resolve_perspective_source_ids(
             resolved.append({**plan, "source_concept_id": nid})
         else:
             logger.debug(
-                "resolve_perspective_source_ids: cannot resolve %r -- dropping", source,
+                "resolve_perspective_source_ids: cannot resolve %r -- dropping",
+                source,
             )
 
     return resolved

@@ -27,22 +27,21 @@ class ConversationRepository:
 
     async def get_by_id(self, conversation_id: uuid.UUID) -> Conversation | None:
         """Get a conversation by ID (without messages)."""
-        result = await self._session.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
-        )
+        result = await self._session.execute(select(Conversation).where(Conversation.id == conversation_id))
         return result.scalar_one_or_none()
 
     async def get_with_messages(self, conversation_id: uuid.UUID) -> Conversation | None:
         """Get a conversation with all messages eagerly loaded, ordered by turn_number."""
         result = await self._session.execute(
-            select(Conversation)
-            .options(selectinload(Conversation.messages))
-            .where(Conversation.id == conversation_id)
+            select(Conversation).options(selectinload(Conversation.messages)).where(Conversation.id == conversation_id)
         )
         return result.scalar_one_or_none()
 
     async def list_recent(
-        self, limit: int = 20, offset: int = 0, mode: str | None = None,
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        mode: str | None = None,
     ) -> list[Conversation]:
         """List conversations ordered by most recently updated.
 
@@ -107,9 +106,7 @@ class ConversationRepository:
 
     async def update_message(self, message_id: uuid.UUID, **kwargs: Any) -> None:
         """Update fields on a message."""
-        result = await self._session.execute(
-            select(ConversationMessage).where(ConversationMessage.id == message_id)
-        )
+        result = await self._session.execute(select(ConversationMessage).where(ConversationMessage.id == message_id))
         msg = result.scalar_one_or_none()
         if msg:
             for key, value in kwargs.items():
@@ -118,9 +115,7 @@ class ConversationRepository:
 
     async def get_message(self, message_id: uuid.UUID) -> ConversationMessage | None:
         """Get a single message by ID."""
-        result = await self._session.execute(
-            select(ConversationMessage).where(ConversationMessage.id == message_id)
-        )
+        result = await self._session.execute(select(ConversationMessage).where(ConversationMessage.id == message_id))
         return result.scalar_one_or_none()
 
     async def get_messages(self, conversation_id: uuid.UUID) -> list[ConversationMessage]:
@@ -137,8 +132,7 @@ class ConversationRepository:
     async def get_all_visited_nodes(self, conversation_id: uuid.UUID) -> list[str]:
         """Union of visited_nodes from all completed assistant messages."""
         result = await self._session.execute(
-            select(ConversationMessage.visited_nodes)
-            .where(
+            select(ConversationMessage.visited_nodes).where(
                 ConversationMessage.conversation_id == conversation_id,
                 ConversationMessage.role == "assistant",
                 ConversationMessage.status == "completed",
@@ -154,8 +148,7 @@ class ConversationRepository:
     async def get_all_created_nodes(self, conversation_id: uuid.UUID) -> list[str]:
         """Union of created_nodes from all completed assistant messages."""
         result = await self._session.execute(
-            select(ConversationMessage.created_nodes)
-            .where(
+            select(ConversationMessage.created_nodes).where(
                 ConversationMessage.conversation_id == conversation_id,
                 ConversationMessage.role == "assistant",
                 ConversationMessage.status == "completed",
@@ -186,8 +179,9 @@ class ConversationRepository:
     async def get_next_turn_number(self, conversation_id: uuid.UUID) -> int:
         """Get the next turn number for a conversation."""
         result = await self._session.execute(
-            select(func.coalesce(func.max(ConversationMessage.turn_number), -1))
-            .where(ConversationMessage.conversation_id == conversation_id)
+            select(func.coalesce(func.max(ConversationMessage.turn_number), -1)).where(
+                ConversationMessage.conversation_id == conversation_id
+            )
         )
         max_turn: int = result.scalar_one()
         return max_turn + 1
@@ -195,7 +189,6 @@ class ConversationRepository:
     async def get_message_count(self, conversation_id: uuid.UUID) -> int:
         """Count messages in a conversation."""
         result = await self._session.execute(
-            select(func.count(ConversationMessage.id))
-            .where(ConversationMessage.conversation_id == conversation_id)
+            select(func.count(ConversationMessage.id)).where(ConversationMessage.conversation_id == conversation_id)
         )
         return result.scalar_one()

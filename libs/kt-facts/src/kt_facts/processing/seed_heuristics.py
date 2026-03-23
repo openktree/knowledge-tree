@@ -13,21 +13,51 @@ from dataclasses import dataclass
 # ── Constants ────────────────────────────────────────────────────────────
 
 # Words that carry little distinguishing meaning — safe to ignore in diffs.
-STOPWORDS = frozenset({
-    "a", "an", "the", "of", "for", "in", "on", "to", "and", "or",
-    "at", "by", "is", "it", "its", "s", "as",
-})
+STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "for",
+        "in",
+        "on",
+        "to",
+        "and",
+        "or",
+        "at",
+        "by",
+        "is",
+        "it",
+        "its",
+        "s",
+        "as",
+    }
+)
 
 # Words to skip when extracting initials from an expanded name.
-ACRONYM_SKIP_WORDS = frozenset({
-    "of", "the", "and", "for", "in", "on", "to", "a", "an", "at", "by",
-})
+ACRONYM_SKIP_WORDS = frozenset(
+    {
+        "of",
+        "the",
+        "and",
+        "for",
+        "in",
+        "on",
+        "to",
+        "a",
+        "an",
+        "at",
+        "by",
+    }
+)
 
 # Pattern for tokens that look like dates or numbers — strong distinguishers.
 NUMBER_RE = re.compile(r"\d")
 
 
 # ── Data stubs ───────────────────────────────────────────────────────────
+
 
 @dataclass
 class SeedStub:
@@ -66,6 +96,7 @@ class QdrantMatchStub:
 
 
 # ── Pure heuristic functions ─────────────────────────────────────────────
+
 
 def is_distinguishing_word(word: str) -> bool:
     """Return True if *word* is a meaningful distinguishing token.
@@ -248,7 +279,7 @@ def edit_distance(a: str, b: str) -> int:
         for j, cb in enumerate(b):
             curr[j + 1] = min(
                 prev[j + 1] + 1,  # deletion
-                curr[j] + 1,      # insertion
+                curr[j] + 1,  # insertion
                 prev[j] + (0 if ca == cb else 1),  # substitution
             )
         prev = curr
@@ -378,6 +409,7 @@ def is_prefix_disambiguation_candidate(name_a: str, name_b: str) -> bool:
 
 # ── Utility functions (from seed_routing.py) ─────────────────────────────
 
+
 def compute_phonetic_code(name: str) -> str:
     """Compute double metaphone code for a name."""
     from metaphone import doublemetaphone
@@ -430,6 +462,7 @@ def text_search_route(
 
 # ── Trigram similarity ───────────────────────────────────────────────────
 
+
 def trigram_similarity(a: str, b: str) -> float:
     """Approximate PostgreSQL pg_trgm similarity. Returns 0.0-1.0."""
     a_lower = a.lower().strip()
@@ -449,6 +482,7 @@ def trigram_similarity(a: str, b: str) -> float:
 
 
 # ── Dedup decision logic ────────────────────────────────────────────────
+
 
 @dataclass
 class DedupSignals:

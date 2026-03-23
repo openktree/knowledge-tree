@@ -18,7 +18,6 @@ from kt_worker_nodes.prompts.crystallization import (
     build_crystallization_user_prompt,
 )
 
-
 # ── Helper factories ─────────────────────────────────────────────
 
 
@@ -110,10 +109,12 @@ class TestNeedsRecrystallization:
 
     def test_no_children_changed(self) -> None:
         crystallized_at = datetime.now(timezone.utc)
-        node = _make_node(metadata={
-            "ontology_stable": True,
-            "crystallized_at": crystallized_at.isoformat(),
-        })
+        node = _make_node(
+            metadata={
+                "ontology_stable": True,
+                "crystallized_at": crystallized_at.isoformat(),
+            }
+        )
         # Children updated BEFORE crystallization
         old_time = crystallized_at - timedelta(hours=1)
         children = [_make_child(updated_at=old_time) for _ in range(10)]
@@ -121,10 +122,12 @@ class TestNeedsRecrystallization:
 
     def test_all_children_changed(self) -> None:
         crystallized_at = datetime.now(timezone.utc) - timedelta(hours=2)
-        node = _make_node(metadata={
-            "ontology_stable": True,
-            "crystallized_at": crystallized_at.isoformat(),
-        })
+        node = _make_node(
+            metadata={
+                "ontology_stable": True,
+                "crystallized_at": crystallized_at.isoformat(),
+            }
+        )
         # Children updated AFTER crystallization
         new_time = datetime.now(timezone.utc)
         children = [_make_child(updated_at=new_time) for _ in range(10)]
@@ -133,10 +136,12 @@ class TestNeedsRecrystallization:
     def test_exactly_at_threshold(self) -> None:
         """50% changed exactly at threshold (> not >=)."""
         crystallized_at = datetime.now(timezone.utc) - timedelta(hours=2)
-        node = _make_node(metadata={
-            "ontology_stable": True,
-            "crystallized_at": crystallized_at.isoformat(),
-        })
+        node = _make_node(
+            metadata={
+                "ontology_stable": True,
+                "crystallized_at": crystallized_at.isoformat(),
+            }
+        )
         old_time = crystallized_at - timedelta(hours=1)
         new_time = datetime.now(timezone.utc)
         children = [_make_child(updated_at=new_time) for _ in range(5)]
@@ -147,10 +152,12 @@ class TestNeedsRecrystallization:
     def test_above_threshold(self) -> None:
         """51% changed — should trigger."""
         crystallized_at = datetime.now(timezone.utc) - timedelta(hours=2)
-        node = _make_node(metadata={
-            "ontology_stable": True,
-            "crystallized_at": crystallized_at.isoformat(),
-        })
+        node = _make_node(
+            metadata={
+                "ontology_stable": True,
+                "crystallized_at": crystallized_at.isoformat(),
+            }
+        )
         old_time = crystallized_at - timedelta(hours=1)
         new_time = datetime.now(timezone.utc)
         # 6 of 10 changed = 60% > 50%
@@ -159,18 +166,22 @@ class TestNeedsRecrystallization:
         assert _needs_recrystallization(node, children, child_change_ratio=0.5) is True
 
     def test_empty_children(self) -> None:
-        node = _make_node(metadata={
-            "ontology_stable": True,
-            "crystallized_at": datetime.now(timezone.utc).isoformat(),
-        })
+        node = _make_node(
+            metadata={
+                "ontology_stable": True,
+                "crystallized_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         assert _needs_recrystallization(node, []) is False
 
     def test_custom_ratio(self) -> None:
         crystallized_at = datetime.now(timezone.utc) - timedelta(hours=2)
-        node = _make_node(metadata={
-            "ontology_stable": True,
-            "crystallized_at": crystallized_at.isoformat(),
-        })
+        node = _make_node(
+            metadata={
+                "ontology_stable": True,
+                "crystallized_at": crystallized_at.isoformat(),
+            }
+        )
         new_time = datetime.now(timezone.utc)
         old_time = crystallized_at - timedelta(hours=1)
         # 3 of 10 changed = 30%, threshold 0.25
@@ -233,10 +244,7 @@ class TestBuildCrystallizationUserPrompt:
         assert "[perspective] Child2" in result
 
     def test_children_capped_at_50(self) -> None:
-        children = [
-            {"concept": f"Child{i}", "definition": f"Def{i}", "node_type": "concept"}
-            for i in range(60)
-        ]
+        children = [{"concept": f"Child{i}", "definition": f"Def{i}", "node_type": "concept"} for i in range(60)]
         result = build_crystallization_user_prompt(
             parent_concept="Test",
             parent_definition=None,

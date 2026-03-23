@@ -69,15 +69,11 @@ def upgrade() -> None:
     #    (preserving what concept they're about), then set parent_id to All Perspectives
     conn.execute(
         sa.text(
-            "UPDATE nodes SET source_concept_id = parent_id "
-            "WHERE node_type = 'perspective' AND parent_id IS NOT NULL"
+            "UPDATE nodes SET source_concept_id = parent_id WHERE node_type = 'perspective' AND parent_id IS NOT NULL"
         )
     )
     conn.execute(
-        sa.text(
-            "UPDATE nodes SET parent_id = :default_parent "
-            "WHERE node_type = 'perspective'"
-        ),
+        sa.text("UPDATE nodes SET parent_id = :default_parent WHERE node_type = 'perspective'"),
         {"default_parent": ALL_PERSPECTIVES_ID},
     )
 
@@ -98,22 +94,13 @@ def upgrade() -> None:
     )
 
     # 7. Convert edges: delete structural types
-    conn.execute(
-        sa.text("DELETE FROM edges WHERE relationship_type IN ('perspective_of', 'entity_of')")
-    )
+    conn.execute(sa.text("DELETE FROM edges WHERE relationship_type IN ('perspective_of', 'entity_of')"))
 
     # 8. Negate weight for contradicts edges
-    conn.execute(
-        sa.text(
-            "UPDATE edges SET weight = -weight "
-            "WHERE relationship_type = 'contradicts'"
-        )
-    )
+    conn.execute(sa.text("UPDATE edges SET weight = -weight WHERE relationship_type = 'contradicts'"))
 
     # 9. Convert all remaining edges to "related"
-    conn.execute(
-        sa.text("UPDATE edges SET relationship_type = 'related'")
-    )
+    conn.execute(sa.text("UPDATE edges SET relationship_type = 'related'"))
 
     # 10. Delete cross-type edges (edges between nodes of different types)
     conn.execute(

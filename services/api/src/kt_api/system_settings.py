@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.dependencies import get_db_session
 from kt_api.auth.tokens import require_admin
+from kt_api.dependencies import get_db_session
 from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.system_settings import SystemSettingsRepository

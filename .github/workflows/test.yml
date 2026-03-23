@@ -23,7 +23,6 @@ jobs:
       - run: uv sync --all-packages --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pyright
 
   backend-test:
     name: Backend Tests

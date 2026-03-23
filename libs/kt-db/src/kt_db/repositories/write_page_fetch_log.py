@@ -18,9 +18,7 @@ class WritePageFetchLogRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def check_urls_freshness(
-        self, urls: list[str], stale_days: int = 30
-    ) -> dict[str, bool]:
+    async def check_urls_freshness(self, urls: list[str], stale_days: int = 30) -> dict[str, bool]:
         """Batch check freshness for multiple URLs.
 
         Returns dict mapping URL -> True if fresh (should skip).
@@ -29,9 +27,7 @@ class WritePageFetchLogRepository:
             return {}
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=stale_days)
         result = await self._session.execute(
-            select(WritePageFetchLog.url, WritePageFetchLog.fetched_at).where(
-                WritePageFetchLog.url.in_(urls)
-            )
+            select(WritePageFetchLog.url, WritePageFetchLog.fetched_at).where(WritePageFetchLog.url.in_(urls))
         )
         rows = result.all()
         found = {row.url: row.fetched_at for row in rows}

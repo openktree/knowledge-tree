@@ -823,8 +823,7 @@ def build_ontology_architect_user_msg(
 
     if dimension_snippets:
         parts.append(
-            "Dimension analyses (from multi-model perspectives):\n"
-            + "\n".join(f"  - {s}" for s in dimension_snippets)
+            "Dimension analyses (from multi-model perspectives):\n" + "\n".join(f"  - {s}" for s in dimension_snippets)
         )
 
     if existing_ancestors:

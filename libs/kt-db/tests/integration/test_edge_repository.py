@@ -222,14 +222,20 @@ async def test_create_edge_with_justification(db_session):
     n2 = await node_repo.create(concept="justify_b_test")
 
     edge = await edge_repo.create(
-        n1.id, n2.id, "related", 0.8,
+        n1.id,
+        n2.id,
+        "related",
+        0.8,
         justification="Both mention the same underlying mechanism.",
     )
     assert edge.justification == "Both mention the same underlying mechanism."
 
     # Upsert updates justification
     edge2 = await edge_repo.create(
-        n1.id, n2.id, "related", 0.9,
+        n1.id,
+        n2.id,
+        "related",
+        0.9,
         justification="Updated: stronger link found.",
     )
     assert edge2.id == edge.id

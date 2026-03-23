@@ -73,10 +73,12 @@ async def test_fetch_multiple_urls():
     """Concurrent fetch of multiple URLs."""
     fetcher = ContentFetcher(timeout=15.0, max_concurrent=2)
     try:
-        results = await fetcher.fetch_urls([
-            "https://httpbin.org/html",
-            "https://httpbin.org/robots.txt",
-        ])
+        results = await fetcher.fetch_urls(
+            [
+                "https://httpbin.org/html",
+                "https://httpbin.org/robots.txt",
+            ]
+        )
         assert len(results) == 2
     finally:
         await fetcher.close()

@@ -13,10 +13,10 @@ from typing import cast
 
 from hatchet_sdk import Context
 
+from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import AutoBuildInput, AutoBuildOutput
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +85,18 @@ async def auto_build_graph(input: AutoBuildInput, ctx: Context) -> dict:
     )
 
     try:
-        await ctx.aio_put_stream(json.dumps({
-            "type": "auto_build_complete",
-            "nodes_promoted": nodes_promoted,
-            "nodes_absorbed": nodes_absorbed,
-            "edges_created": edges_created,
-            "nodes_recalculated": nodes_recalculated,
-            "nodes_enrichment_dispatched": nodes_enrichment_dispatched,
-        }))
+        await ctx.aio_put_stream(
+            json.dumps(
+                {
+                    "type": "auto_build_complete",
+                    "nodes_promoted": nodes_promoted,
+                    "nodes_absorbed": nodes_absorbed,
+                    "edges_created": edges_created,
+                    "nodes_recalculated": nodes_recalculated,
+                    "nodes_enrichment_dispatched": nodes_enrichment_dispatched,
+                }
+            )
+        )
     except Exception:
         pass
 
@@ -104,7 +108,7 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
 
     Returns (nodes_promoted, enrichment_dispatched).
     """
-    from kt_db.keys import make_node_key, key_to_uuid
+    from kt_db.keys import key_to_uuid, make_node_key
     from kt_db.repositories.write_nodes import WriteNodeRepository
     from kt_db.repositories.write_seeds import WriteSeedRepository
     from kt_models.embeddings import EmbeddingService
@@ -166,6 +170,7 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                 # Upsert to Qdrant if embedding available
                 if embedding is not None and state.qdrant_client is not None:
                     from kt_qdrant.repositories.nodes import QdrantNodeRepository
+
                     qdrant_repo = QdrantNodeRepository(state.qdrant_client)
                     await qdrant_repo.upsert(
                         node_id=node_uuid,
@@ -205,21 +210,23 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
 
     logger.info("Promoted %d seeds to stub nodes", promoted)
     try:
-        await ctx.aio_put_stream(json.dumps({
-            "type": "auto_build_progress",
-            "step": "promote",
-            "nodes_promoted": promoted,
-            "enrichment_dispatched": enrichment_dispatched,
-        }))
+        await ctx.aio_put_stream(
+            json.dumps(
+                {
+                    "type": "auto_build_progress",
+                    "step": "promote",
+                    "nodes_promoted": promoted,
+                    "enrichment_dispatched": enrichment_dispatched,
+                }
+            )
+        )
     except Exception:
         pass
 
     return promoted, enrichment_dispatched
 
 
-async def _absorb_merged_nodes(
-    state: WorkerState, settings: object, ctx: Context
-) -> int:
+async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Context) -> int:
     """Absorb nodes from merged seeds into the winner's node.
 
     When a seed is merged (loser), but had already been promoted to a node,
@@ -313,7 +320,9 @@ async def _absorb_merged_nodes(
                         continue
 
                     new_edge_key = make_edge_key(
-                        edge.relationship_type, winner_node_key, other_key,
+                        edge.relationship_type,
+                        winner_node_key,
+                        other_key,
                     )
                     old_edge_key = edge.key
 
@@ -353,11 +362,13 @@ async def _absorb_merged_nodes(
                 if state.qdrant_client is not None:
                     try:
                         from kt_qdrant.repositories.nodes import QdrantNodeRepository
+
                         qdrant_repo = QdrantNodeRepository(state.qdrant_client)
                         await qdrant_repo.delete(key_to_uuid(loser_node_key))
                     except Exception:
                         logger.debug(
-                            "Failed to delete Qdrant vector for %s", loser_node_key,
+                            "Failed to delete Qdrant vector for %s",
+                            loser_node_key,
                             exc_info=True,
                         )
 
@@ -367,36 +378,39 @@ async def _absorb_merged_nodes(
 
                 logger.info(
                     "Absorbed node '%s' into '%s'",
-                    loser_node_key, winner_node_key,
+                    loser_node_key,
+                    winner_node_key,
                 )
 
             except Exception:
                 logger.debug(
-                    "Error absorbing seed %s", loser_seed.key, exc_info=True,
+                    "Error absorbing seed %s",
+                    loser_seed.key,
+                    exc_info=True,
                 )
 
         await ws.commit()
 
     logger.info("Absorbed %d merged nodes", absorbed)
     try:
-        await ctx.aio_put_stream(json.dumps({
-            "type": "auto_build_progress",
-            "step": "absorb",
-            "nodes_absorbed": absorbed,
-        }))
+        await ctx.aio_put_stream(
+            json.dumps(
+                {
+                    "type": "auto_build_progress",
+                    "step": "absorb",
+                    "nodes_absorbed": absorbed,
+                }
+            )
+        )
     except Exception:
         pass
 
     return absorbed
 
 
-async def _create_cooccurrence_edges(
-    state: WorkerState, settings: object, ctx: Context
-) -> int:
+async def _create_cooccurrence_edges(state: WorkerState, settings: object, ctx: Context) -> int:
     """Create edges from seed co-occurrence data."""
-    from kt_db.keys import key_to_uuid
     from kt_db.repositories.write_edges import WriteEdgeRepository
-    from kt_db.repositories.write_nodes import WriteNodeRepository
     from kt_db.repositories.write_seeds import WriteSeedRepository
 
     min_shared = settings.graph_build_edge_min_shared_facts  # type: ignore[attr-defined]
@@ -409,7 +423,6 @@ async def _create_cooccurrence_edges(
     async with write_sf() as ws:
         seed_repo = WriteSeedRepository(ws)
         edge_repo = WriteEdgeRepository(ws)
-        node_repo = WriteNodeRepository(ws)
 
         pairs = await seed_repo.get_buildable_edge_pairs(min_shared)
         if not pairs:
@@ -456,27 +469,31 @@ async def _create_cooccurrence_edges(
             except Exception:
                 logger.debug(
                     "Error creating edge %s <-> %s",
-                    seed_key_a, seed_key_b, exc_info=True,
+                    seed_key_a,
+                    seed_key_b,
+                    exc_info=True,
                 )
 
         await ws.commit()
 
     logger.info("Created %d co-occurrence edges", created)
     try:
-        await ctx.aio_put_stream(json.dumps({
-            "type": "auto_build_progress",
-            "step": "edges",
-            "edges_created": created,
-        }))
+        await ctx.aio_put_stream(
+            json.dumps(
+                {
+                    "type": "auto_build_progress",
+                    "step": "edges",
+                    "edges_created": created,
+                }
+            )
+        )
     except Exception:
         pass
 
     return created
 
 
-async def _check_fact_stale_nodes(
-    state: WorkerState, settings: object, ctx: Context
-) -> int:
+async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Context) -> int:
     """Dispatch enrichment or recalculation for nodes with accumulated new facts.
 
     Stub/partial nodes → enrich_node_task (first-time enrichment).
@@ -516,14 +533,13 @@ async def _check_fact_stale_nodes(
                 node_key = entry["promoted_node_key"]
                 node_uuid = key_to_uuid(node_key)
 
-                await node_repo.update_facts_at_last_build(
-                    node_key, entry["fact_count"]
-                )
+                await node_repo.update_facts_at_last_build(node_key, entry["fact_count"])
                 dispatch_entries.append((node_key, str(node_uuid), entry))
             except Exception:
                 logger.debug(
                     "Error preparing dispatch for %s",
-                    entry.get("promoted_node_key"), exc_info=True,
+                    entry.get("promoted_node_key"),
+                    exc_info=True,
                 )
 
         await ws.commit()
@@ -540,7 +556,9 @@ async def _check_fact_stale_nodes(
                 )
                 logger.info(
                     "Dispatched enrichment for stale %s node '%s' (delta=%d)",
-                    enrichment_status, node_key, entry["delta"],
+                    enrichment_status,
+                    node_key,
+                    entry["delta"],
                 )
             else:
                 await _recalc.aio_run_no_wait(
@@ -548,27 +566,33 @@ async def _check_fact_stale_nodes(
                 )
                 logger.info(
                     "Dispatched recalculation for node '%s' (delta=%d, total_facts=%d)",
-                    node_key, entry["delta"], entry["fact_count"],
+                    node_key,
+                    entry["delta"],
+                    entry["fact_count"],
                 )
             return True
         except Exception:
             logger.debug(
-                "Error dispatching for %s", node_key, exc_info=True,
+                "Error dispatching for %s",
+                node_key,
+                exc_info=True,
             )
             return False
 
-    results = await asyncio.gather(
-        *(_dispatch_one(nk, nu, e) for nk, nu, e in dispatch_entries)
-    )
+    results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in dispatch_entries))
     dispatched = sum(1 for r in results if r)
 
     logger.info("Dispatched %d fact-stale node tasks", dispatched)
     try:
-        await ctx.aio_put_stream(json.dumps({
-            "type": "auto_build_progress",
-            "step": "recalculate",
-            "nodes_recalculated": dispatched,
-        }))
+        await ctx.aio_put_stream(
+            json.dumps(
+                {
+                    "type": "auto_build_progress",
+                    "step": "recalculate",
+                    "nodes_recalculated": dispatched,
+                }
+            )
+        )
     except Exception:
         pass
 

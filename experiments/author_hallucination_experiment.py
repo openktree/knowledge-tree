@@ -15,16 +15,15 @@ import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from kt_models.gateway import ModelGateway
 from kt_facts.author import (
-    LlmHeaderStrategy,
-    SourceContext,
     _LLM_SYSTEM_PROMPT,
+    SourceContext,
 )
 from kt_facts.processing.entity_extraction import _is_valid_entity_name
-
+from kt_models.gateway import ModelGateway
 
 # ── Current (hallucinating) prompt ──────────────────────────────────────
 
@@ -144,9 +143,9 @@ SOURCES = [
 
 
 def _sep(title: str) -> None:
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  {title}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 async def _run_extraction(
@@ -172,9 +171,7 @@ async def _run_extraction(
     header_text = ctx.header_text[:500] if ctx.header_text.strip() else "(no content available)"
 
     if ctx.html_metadata:
-        meta_lines = "\n".join(
-            f"  {k}: {v}" for k, v in ctx.html_metadata.items() if v
-        )
+        meta_lines = "\n".join(f"  {k}: {v}" for k, v in ctx.html_metadata.items() if v)
         user_msg = _LLM_USER_TEMPLATE_WITH_META.format(
             url=ctx.url,
             header=header_text,
@@ -276,33 +273,33 @@ async def main():
             # Control: we WANT author extraction to work
             if old_person:
                 old_correct_extractions += 1
-                print(f"  Old: CORRECT (extracted real author)")
+                print("  Old: CORRECT (extracted real author)")
             else:
-                print(f"  Old: MISSED (should have found author)")
+                print("  Old: MISSED (should have found author)")
             if new_person:
                 new_correct_extractions += 1
-                print(f"  New: CORRECT (extracted real author)")
+                print("  New: CORRECT (extracted real author)")
             else:
-                print(f"  New: MISSED (should have found author)")
+                print("  New: MISSED (should have found author)")
         else:
             # Hallucination source: we WANT null
             if old_person is None:
                 old_correct_nulls += 1
-                print(f"  Old: CORRECT NULL")
+                print("  Old: CORRECT NULL")
             elif old_has_halluc:
                 old_hallucinations += 1
-                print(f"  Old: HALLUCINATED (3+ initials detected)")
+                print("  Old: HALLUCINATED (3+ initials detected)")
             else:
-                print(f"  Old: RETURNED SOMETHING (may be wrong)")
+                print("  Old: RETURNED SOMETHING (may be wrong)")
 
             if new_person is None:
                 new_correct_nulls += 1
-                print(f"  New: CORRECT NULL")
+                print("  New: CORRECT NULL")
             elif new_has_halluc:
                 new_hallucinations += 1
-                print(f"  New: STILL HALLUCINATING")
+                print("  New: STILL HALLUCINATING")
             else:
-                print(f"  New: RETURNED SOMETHING (may be wrong)")
+                print("  New: RETURNED SOMETHING (may be wrong)")
 
         print()
 

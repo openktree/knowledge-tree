@@ -18,10 +18,10 @@ from typing import cast
 
 from hatchet_sdk import DurableContext
 
+from kt_config.settings import get_settings
+from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import QueryInput
-from kt_hatchet.client import get_hatchet
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +46,11 @@ async def handle_query(input: QueryInput, ctx: DurableContext) -> dict:
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
     from kt_db.repositories.conversations import ConversationRepository
-    from kt_worker_query.agents.query_worker import QueryWorker
     from kt_worker_conv.workflows.conversations import (
         _build_agent_context,
         _make_emit_callback,
     )
+    from kt_worker_query.agents.query_worker import QueryWorker
 
     ctx.log(f"Query starting: conv={input.conversation_id}")
 

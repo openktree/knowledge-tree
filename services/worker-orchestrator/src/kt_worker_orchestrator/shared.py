@@ -111,7 +111,13 @@ async def _plan_wave(
     )
 
     user_msg = build_wave_planner_user_msg(
-        query, wave, total_waves, wave_explore, wave_nav, briefings, scout_results,
+        query,
+        wave,
+        total_waves,
+        wave_explore,
+        wave_nav,
+        briefings,
+        scout_results,
     )
 
     last_exc: Exception | None = None
@@ -130,10 +136,11 @@ async def _plan_wave(
             if not raw_text.strip():
                 logger.warning(
                     "Wave planner returned empty response (attempt %d/%d)",
-                    attempt + 1, _WAVE_PLAN_MAX_RETRIES,
+                    attempt + 1,
+                    _WAVE_PLAN_MAX_RETRIES,
                 )
                 last_exc = WavePlanParseError("Empty response from wave planner LLM")
-                delay = _WAVE_PLAN_RETRY_DELAY * (2 ** attempt)
+                delay = _WAVE_PLAN_RETRY_DELAY * (2**attempt)
                 await asyncio.sleep(delay)
                 continue
 
@@ -143,20 +150,22 @@ async def _plan_wave(
             last_exc = exc
             logger.warning(
                 "Wave planner parse failed (attempt %d/%d): %s",
-                attempt + 1, _WAVE_PLAN_MAX_RETRIES, exc,
+                attempt + 1,
+                _WAVE_PLAN_MAX_RETRIES,
+                exc,
             )
-            delay = _WAVE_PLAN_RETRY_DELAY * (2 ** attempt)
+            delay = _WAVE_PLAN_RETRY_DELAY * (2**attempt)
             await asyncio.sleep(delay)
         except Exception as exc:
             last_exc = exc
             logger.warning(
                 "Wave planner LLM call failed (attempt %d/%d): %s",
-                attempt + 1, _WAVE_PLAN_MAX_RETRIES, exc,
+                attempt + 1,
+                _WAVE_PLAN_MAX_RETRIES,
+                exc,
             )
-            delay = _WAVE_PLAN_RETRY_DELAY * (2 ** attempt)
+            delay = _WAVE_PLAN_RETRY_DELAY * (2**attempt)
             await asyncio.sleep(delay)
 
     # All retries exhausted — fail the workflow
-    raise RuntimeError(
-        f"Wave planner failed after {_WAVE_PLAN_MAX_RETRIES} attempts: {last_exc}"
-    ) from last_exc
+    raise RuntimeError(f"Wave planner failed after {_WAVE_PLAN_MAX_RETRIES} attempts: {last_exc}") from last_exc

@@ -58,9 +58,7 @@ class WikidataOntologyProvider(OntologyProvider):
     def provider_id(self) -> str:
         return "wikidata"
 
-    async def get_ancestry(
-        self, concept_name: str, node_type: str
-    ) -> AncestryChain | None:
+    async def get_ancestry(self, concept_name: str, node_type: str) -> AncestryChain | None:
         if node_type == "entity":
             return None  # Entities have no ontological ancestry
 
@@ -96,9 +94,7 @@ class WikidataOntologyProvider(OntologyProvider):
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
-                response = await self._client.get(
-                    SPARQL_ENDPOINT, params=params
-                )
+                response = await self._client.get(SPARQL_ENDPOINT, params=params)
                 if response.status_code not in _RETRYABLE_STATUS_CODES:
                     response.raise_for_status()
                     data = response.json()
@@ -160,9 +156,7 @@ class WikidataOntologyProvider(OntologyProvider):
             try:
                 results = await self._sparql_query(query)
             except Exception:
-                logger.warning(
-                    "wikidata P279 walk failed at %s", current_qid, exc_info=True
-                )
+                logger.warning("wikidata P279 walk failed at %s", current_qid, exc_info=True)
                 break
 
             if not results:

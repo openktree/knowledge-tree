@@ -19,22 +19,20 @@ Requires: OPENROUTER_API_KEY in .env
 from __future__ import annotations
 
 import asyncio
-import json
-import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from kt_models.gateway import ModelGateway
 
-
 # ── Test data: 15 real facts from the DB ────────────────────────────────
 # Mix of facts that DO mention entities and ones that DON'T.
 # Ground truth entities are annotated per fact.
+
 
 @dataclass
 class TestFact:
@@ -47,57 +45,87 @@ class TestFact:
 
 
 TEST_FACTS = [
-    TestFact(1,
-        "Albert Einstein developed the theory of general relativity in 1915.",
-        ["Albert Einstein"], ["entity"]),
-    TestFact(2,
+    TestFact(1, "Albert Einstein developed the theory of general relativity in 1915.", ["Albert Einstein"], ["entity"]),
+    TestFact(
+        2,
         "NASA launched Apollo 11 in 1969, landing humans on the Moon for the first time.",
-        ["NASA", "Apollo 11"], ["entity", "event"]),
-    TestFact(3,
+        ["NASA", "Apollo 11"],
+        ["entity", "event"],
+    ),
+    TestFact(
+        3,
         "Randomized controlled trials are generally regarded as the gold standard of study designs to determine causality.",
-        [], []),
-    TestFact(4,
+        [],
+        [],
+    ),
+    TestFact(
+        4,
         "Adams KE, Cohen MH, Eisenberg D, and Jonsen AR authored 'Ethical considerations of complementary and alternative medical therapies in conventional medical settings', published in the Annals of Internal Medicine in 2002.",
-        ["Annals of Internal Medicine"], ["entity"]),
-    TestFact(5,
-        "The placebo effect is one of the most misunderstood phenomena in modern medicine.",
-        [], []),
-    TestFact(6,
+        ["Annals of Internal Medicine"],
+        ["entity"],
+    ),
+    TestFact(5, "The placebo effect is one of the most misunderstood phenomena in modern medicine.", [], []),
+    TestFact(
+        6,
         "The World Health Organization published the WHO Traditional Medicine Strategy 2014-2023 to support member states.",
-        ["World Health Organization"], ["entity"]),
-    TestFact(7,
-        "Acupuncture involves the insertion of thin needles through the skin at specific points on the body.",
-        [], []),
-    TestFact(8,
+        ["World Health Organization"],
+        ["entity"],
+    ),
+    TestFact(
+        7, "Acupuncture involves the insertion of thin needles through the skin at specific points on the body.", [], []
+    ),
+    TestFact(
+        8,
         "A study published in Nature found that placebo response rates varied significantly across psychiatric conditions.",
-        ["Nature"], ["entity"]),
-    TestFact(9,
+        ["Nature"],
+        ["entity"],
+    ),
+    TestFact(
+        9,
         "Chelation therapy is categorized as having medium risk and medium cost in the cost-risk assessment for CAM therapies.",
-        [], []),
-    TestFact(10,
+        [],
+        [],
+    ),
+    TestFact(
+        10,
         "Jennifer Doudna and Emmanuelle Charpentier developed the CRISPR-Cas9 gene editing technology.",
-        ["Jennifer Doudna", "Emmanuelle Charpentier"], ["entity", "entity"]),
-    TestFact(11,
+        ["Jennifer Doudna", "Emmanuelle Charpentier"],
+        ["entity", "entity"],
+    ),
+    TestFact(
+        11,
         "The 2008 financial crisis led to widespread reforms in banking regulation across the European Union.",
-        ["European Union", "2008 financial crisis"], ["entity", "event"]),
-    TestFact(12,
-        "Some medical treatments improve clinical outcomes but operate primarily through placebo responses.",
-        [], []),
-    TestFact(13,
+        ["European Union", "2008 financial crisis"],
+        ["entity", "event"],
+    ),
+    TestFact(
+        12, "Some medical treatments improve clinical outcomes but operate primarily through placebo responses.", [], []
+    ),
+    TestFact(
+        13,
         "Harvard University conducted a comprehensive study on integrative medicine approaches.",
-        ["Harvard University"], ["entity"]),
-    TestFact(14,
+        ["Harvard University"],
+        ["entity"],
+    ),
+    TestFact(
+        14,
         "Most modern osteopaths do not use manipulation as the primary method of treatment, instead relying on the same drugs and surgery used by medical doctors.",
-        [], []),
-    TestFact(15,
+        [],
+        [],
+    ),
+    TestFact(
+        15,
         "The T-cell receptor is a heterodimer composed of an alpha chain and a beta chain, each containing a constant region and a variable region.",
-        [], []),
+        [],
+        [],
+    ),
 ]
 
 
 @dataclass
 class ExtractionResult:
     """Result of an entity extraction experiment."""
+
     strategy_name: str
     # entity_name -> list of fact indices it was linked to
     entity_facts: dict[str, list[int]] = field(default_factory=dict)
@@ -110,7 +138,7 @@ class ExtractionResult:
 @dataclass
 class ScoreCard:
     strategy_name: str
-    true_positives: int = 0   # entity-fact link where entity IS in fact
+    true_positives: int = 0  # entity-fact link where entity IS in fact
     false_positives: int = 0  # entity-fact link where entity is NOT in fact
     false_negatives: int = 0  # entity IS in fact but not extracted
     total_entities: int = 0
@@ -370,6 +398,7 @@ async def strategy_batch_then_validate(gateway: ModelGateway) -> ExtractionResul
 
 # ── Strategy 4: Smaller batches (5 facts each) ─────────────────────────
 
+
 async def strategy_small_batches(gateway: ModelGateway) -> ExtractionResult:
     """Strategy 4: Small batches of 5 facts to reduce cross-contamination window."""
     result = ExtractionResult(strategy_name="4_small_batches")
@@ -378,7 +407,7 @@ async def strategy_small_batches(gateway: ModelGateway) -> ExtractionResult:
 
     batch_size = 5
     for i in range(0, len(TEST_FACTS), batch_size):
-        batch = TEST_FACTS[i:i + batch_size]
+        batch = TEST_FACTS[i : i + batch_size]
         lines = [f"{f.idx}. {f.content}" for f in batch]
         user_msg = CURRENT_USER.format(count=len(batch), fact_list="\n".join(lines))
 
@@ -450,6 +479,7 @@ async def strategy_strict_grounding(gateway: ModelGateway) -> ExtractionResult:
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
+
 def _parse_batch_result(
     raw: dict | None,
     strategy_name: str,
@@ -489,9 +519,9 @@ def _parse_batch_result(
 
 
 def _print_sep(title: str) -> None:
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  {title}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 async def main():
@@ -525,7 +555,9 @@ async def main():
                 if etype != "entity":
                     continue
                 fact_map = {f.idx: f for f in TEST_FACTS}
-                correct = sum(1 for i in indices if _is_entity_in_fact(ent_name, fact_map.get(i, TestFact(0, "", [], [])).content))
+                correct = sum(
+                    1 for i in indices if _is_entity_in_fact(ent_name, fact_map.get(i, TestFact(0, "", [], [])).content)
+                )
                 marker = "✓" if correct == len(indices) else f"✗ ({correct}/{len(indices)} correct)"
                 print(f"  [{etype}] {ent_name}: facts {indices} {marker}")
 
@@ -540,7 +572,9 @@ async def main():
     print(f"{'Strategy':<30} {'Prec':>6} {'Recall':>6} {'F1':>6} {'FP':>4} {'Calls':>5} {'Time':>6}")
     print("-" * 70)
     for card in scores:
-        print(f"{card.strategy_name:<30} {card.precision:>5.1%} {card.recall:>5.1%} {card.f1:>5.1%} {card.false_positives:>4} {card.llm_calls:>5} {card.elapsed_seconds:>5.1f}s")
+        print(
+            f"{card.strategy_name:<30} {card.precision:>5.1%} {card.recall:>5.1%} {card.f1:>5.1%} {card.false_positives:>4} {card.llm_calls:>5} {card.elapsed_seconds:>5.1f}s"
+        )
 
     # Recommend best
     best = max(scores, key=lambda c: (c.f1, -c.llm_calls)) if scores else None

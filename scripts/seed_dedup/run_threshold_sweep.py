@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import asyncio
 
-import numpy as np
-
 from datasets import ALL_PAIRS
 from utils import cosine_similarity, embed_pairs
 
@@ -62,7 +60,9 @@ async def main() -> None:
             best_f1 = f1
             best_thresh = thresh
 
-        print(f"{thresh:>10.2f}  {tp:>4}  {fp:>4}  {fn:>4}  {tn:>4}  {precision:>6.3f}  {recall:>6.3f}  {f1:>6.3f}{marker}")
+        print(
+            f"{thresh:>10.2f}  {tp:>4}  {fp:>4}  {fn:>4}  {tn:>4}  {precision:>6.3f}  {recall:>6.3f}  {f1:>6.3f}{marker}"
+        )
 
     print(f"\nBest zero-FP threshold: {best_thresh:.2f} (F1={best_f1:.3f})")
 
@@ -76,14 +76,8 @@ async def main() -> None:
 
     for floor_int in range(60, 86):
         floor = floor_int / 100.0
-        in_gap = sum(
-            1 for score, should_merge in labeled
-            if should_merge and floor <= score < best_thresh
-        )
-        below = sum(
-            1 for score, should_merge in labeled
-            if should_merge and score < floor
-        )
+        in_gap = sum(1 for score, should_merge in labeled if should_merge and floor <= score < best_thresh)
+        below = sum(1 for score, should_merge in labeled if should_merge and score < floor)
         print(f"{floor:>10.2f}  {in_gap:>6}  {below:>6}")
 
 

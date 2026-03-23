@@ -52,7 +52,13 @@ DIFFERENT_ENTITY_PAIRS: list[SeedPair] = [
     # Political parties
     SeedPair("Republican Party", "Democratic Party", False, "different_entity", "opposing parties"),
     # Courts
-    SeedPair("Supreme Court of the United States", "Supreme Court of Canada", False, "different_entity", "same institution different country"),
+    SeedPair(
+        "Supreme Court of the United States",
+        "Supreme Court of Canada",
+        False,
+        "different_entity",
+        "same institution different country",
+    ),
     # Media
     SeedPair("New York Times", "New York Post", False, "different_entity", "same city different paper"),
     SeedPair("BBC", "CNN", False, "different_entity", "both news networks"),
@@ -126,7 +132,9 @@ PERSON_VARIANT_PAIRS: list[SeedPair] = [
     # Negative: different people
     SeedPair("John F. Kennedy", "Robert F. Kennedy", False, "person_variant", "brothers"),
     SeedPair("George H.W. Bush", "Jeb Bush", False, "person_variant", "father and son"),
-    SeedPair("Martin Luther King Jr.", "Martin Luther", False, "person_variant", "civil rights leader vs Protestant reformer"),
+    SeedPair(
+        "Martin Luther King Jr.", "Martin Luther", False, "person_variant", "civil rights leader vs Protestant reformer"
+    ),
     SeedPair("John Adams", "John Quincy Adams", False, "person_variant", "father and son presidents"),
     SeedPair("Franklin Roosevelt", "Theodore Roosevelt", False, "person_variant", "different Roosevelt presidents"),
     SeedPair("Bill Clinton", "Hillary Clinton", False, "person_variant", "husband and wife"),
@@ -214,7 +222,13 @@ CONCEPT_SYNONYM_PAIRS: list[SeedPair] = [
 CONTAINMENT_PAIRS: list[SeedPair] = [
     SeedPair("Jeffrey Epstein", "Jeffrey Epstein's Lawyer", False, "containment", "possessive extension"),
     SeedPair("Mars", "Mars Rover", False, "containment", "noun extension"),
-    SeedPair("House Oversight Committee", "Democrats on the House Oversight Committee", False, "containment", "qualifier prefix"),
+    SeedPair(
+        "House Oversight Committee",
+        "Democrats on the House Oversight Committee",
+        False,
+        "containment",
+        "qualifier prefix",
+    ),
     SeedPair("Giuffre", "Virginia Roberts Giuffre", False, "containment", "last name vs full name — different context"),
     SeedPair("Python", "Python Programming Language", False, "containment", "ambiguous base word"),
     SeedPair("Apple", "Apple Inc.", None, "containment", "company vs fruit — context dependent"),
@@ -228,7 +242,13 @@ SUBTLE_PAIRS: list[SeedPair] = [
     SeedPair("United Kingdom", "United States", False, "subtle", "both start with United"),
     SeedPair("North Korea", "South Korea", False, "subtle", "opposite halves"),
     SeedPair("European Union", "African Union", False, "subtle", "same structure different continent"),
-    SeedPair("2006 arrest of Jeffrey Epstein", "July 6 2019 arrest of Jeffrey Epstein", False, "subtle", "different dates same event type"),
+    SeedPair(
+        "2006 arrest of Jeffrey Epstein",
+        "July 6 2019 arrest of Jeffrey Epstein",
+        False,
+        "subtle",
+        "different dates same event type",
+    ),
 ]
 
 # ── Negative battery: cross-category false-positive traps ───────────────
@@ -239,7 +259,13 @@ NEGATIVE_BATTERY_PAIRS: list[SeedPair] = [
     SeedPair("General Motors", "General Electric", False, "negative_battery", "shared 'General'"),
     SeedPair("American Airlines", "American Express", False, "negative_battery", "shared 'American'"),
     SeedPair("National Guard", "National Geographic", False, "negative_battery", "shared 'National'"),
-    SeedPair("International Court of Justice", "International Monetary Fund", False, "negative_battery", "shared 'International'"),
+    SeedPair(
+        "International Court of Justice",
+        "International Monetary Fund",
+        False,
+        "negative_battery",
+        "shared 'International'",
+    ),
     # Similar sounding but different
     SeedPair("Iran", "Iraq", False, "negative_battery", "similar-sounding countries"),
     SeedPair("Austria", "Australia", False, "negative_battery", "commonly confused countries"),
@@ -269,7 +295,13 @@ NEGATIVE_BATTERY_PAIRS: list[SeedPair] = [
     SeedPair("nuclear energy", "nuclear weapons", False, "negative_battery", "different nuclear applications"),
     SeedPair("space station", "space shuttle", False, "negative_battery", "different spacecraft"),
     SeedPair("climate change", "regime change", False, "negative_battery", "different kinds of 'change'"),
-    SeedPair("artificial intelligence", "emotional intelligence", False, "negative_battery", "different kinds of 'intelligence'"),
+    SeedPair(
+        "artificial intelligence",
+        "emotional intelligence",
+        False,
+        "negative_battery",
+        "different kinds of 'intelligence'",
+    ),
 ]
 
 
@@ -277,13 +309,25 @@ NEGATIVE_BATTERY_PAIRS: list[SeedPair] = [
 
 EMBEDDING_AMBIGUITY_PAIRS: list[SeedPair] = [
     # Different concepts with high embedding similarity
-    SeedPair("light-dependent reactions", "light-independent reactions",
-             False, "embedding_ambiguity", "opposing photosynthesis phases"),
-    SeedPair("light-dependent reactions", "light-dependent reactions of photosynthesis",
-             True, "embedding_ambiguity", "same concept, more specific"),
+    SeedPair(
+        "light-dependent reactions",
+        "light-independent reactions",
+        False,
+        "embedding_ambiguity",
+        "opposing photosynthesis phases",
+    ),
+    SeedPair(
+        "light-dependent reactions",
+        "light-dependent reactions of photosynthesis",
+        True,
+        "embedding_ambiguity",
+        "same concept, more specific",
+    ),
     SeedPair("oxidation", "reduction", False, "embedding_ambiguity", "opposing chemical processes"),
     SeedPair("anabolism", "catabolism", False, "embedding_ambiguity", "opposing metabolic processes"),
-    SeedPair("endothermic reaction", "exothermic reaction", False, "embedding_ambiguity", "opposing thermodynamic types"),
+    SeedPair(
+        "endothermic reaction", "exothermic reaction", False, "embedding_ambiguity", "opposing thermodynamic types"
+    ),
     SeedPair("transcription", "translation", False, "embedding_ambiguity", "different gene expression steps"),
     SeedPair("mitosis", "meiosis", False, "embedding_ambiguity", "different cell division types"),
     SeedPair("supply", "demand", False, "embedding_ambiguity", "opposing economic forces"),

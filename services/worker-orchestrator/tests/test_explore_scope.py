@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState, SubExplorerState
 from kt_agents_core.state import AgentContext
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState, SubExplorerState
 
 pytestmark = pytest.mark.asyncio
 
@@ -95,21 +94,21 @@ async def test_explore_scope_impl_budget_deducted_upfront() -> None:
     orch_state = _make_orchestrator_state(explore_budget=10, nav_budget=20)
 
     # Mock the sub-explorer graph to do nothing (immediate finish)
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
         # Return state with 2 of 4 explore used
-        mock_compiled.ainvoke = AsyncMock(return_value={
-            "summary": "Explored the scope",
-            "created_nodes": ["n1"],
-            "created_edges": [],
-            "visited_nodes": ["n1"],
-            "explore_used": 2,
-            "gathered_fact_count": 5,
-            "phase": "done",
-        })
+        mock_compiled.ainvoke = AsyncMock(
+            return_value={
+                "summary": "Explored the scope",
+                "created_nodes": ["n1"],
+                "created_edges": [],
+                "visited_nodes": ["n1"],
+                "explore_used": 2,
+                "gathered_fact_count": 5,
+                "phase": "done",
+            }
+        )
         mock_graph.compile = MagicMock(return_value=mock_compiled)
         mock_build.return_value = mock_graph
 
@@ -146,20 +145,20 @@ async def test_explore_scope_impl_propagates_nodes_and_edges() -> None:
     ctx = _make_ctx()
     orch_state = _make_orchestrator_state(explore_budget=5, nav_budget=10)
 
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
-        mock_compiled.ainvoke = AsyncMock(return_value={
-            "summary": "Built nodes",
-            "created_nodes": ["node-a", "node-b"],
-            "created_edges": ["edge-1"],
-            "visited_nodes": ["node-a", "node-b", "node-c"],
-            "explore_used": 2,
-            "gathered_fact_count": 10,
-            "phase": "done",
-        })
+        mock_compiled.ainvoke = AsyncMock(
+            return_value={
+                "summary": "Built nodes",
+                "created_nodes": ["node-a", "node-b"],
+                "created_edges": ["edge-1"],
+                "visited_nodes": ["node-a", "node-b", "node-c"],
+                "explore_used": 2,
+                "gathered_fact_count": 10,
+                "phase": "done",
+            }
+        )
         mock_graph.compile = MagicMock(return_value=mock_compiled)
         mock_build.return_value = mock_graph
 
@@ -181,20 +180,20 @@ async def test_explore_scope_impl_summary_accumulation() -> None:
     ctx = _make_ctx()
     orch_state = _make_orchestrator_state(explore_budget=10, nav_budget=10)
 
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
-        mock_compiled.ainvoke = AsyncMock(return_value={
-            "summary": "Scope A findings",
-            "created_nodes": ["n1"],
-            "created_edges": [],
-            "visited_nodes": ["n1"],
-            "explore_used": 3,
-            "gathered_fact_count": 5,
-            "phase": "done",
-        })
+        mock_compiled.ainvoke = AsyncMock(
+            return_value={
+                "summary": "Scope A findings",
+                "created_nodes": ["n1"],
+                "created_edges": [],
+                "visited_nodes": ["n1"],
+                "explore_used": 3,
+                "gathered_fact_count": 5,
+                "phase": "done",
+            }
+        )
         mock_graph.compile = MagicMock(return_value=mock_compiled)
         mock_build.return_value = mock_graph
 
@@ -212,9 +211,7 @@ async def test_explore_scope_impl_error_handling() -> None:
     ctx = _make_ctx()
     orch_state = _make_orchestrator_state(explore_budget=5, nav_budget=5)
 
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
         mock_compiled.ainvoke = AsyncMock(side_effect=RuntimeError("LLM failure"))
@@ -249,20 +246,20 @@ async def test_explore_scope_impl_no_duplicate_nodes() -> None:
     orch_state = _make_orchestrator_state(explore_budget=5, nav_budget=10)
     orch_state.visited_nodes.append("existing-node")
 
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
-        mock_compiled.ainvoke = AsyncMock(return_value={
-            "summary": "Done",
-            "created_nodes": [],
-            "created_edges": [],
-            "visited_nodes": ["existing-node", "new-node"],
-            "explore_used": 1,
-            "gathered_fact_count": 0,
-            "phase": "done",
-        })
+        mock_compiled.ainvoke = AsyncMock(
+            return_value={
+                "summary": "Done",
+                "created_nodes": [],
+                "created_edges": [],
+                "visited_nodes": ["existing-node", "new-node"],
+                "explore_used": 1,
+                "gathered_fact_count": 0,
+                "phase": "done",
+            }
+        )
         mock_graph.compile = MagicMock(return_value=mock_compiled)
         mock_build.return_value = mock_graph
 
@@ -337,20 +334,20 @@ async def test_explore_scope_commits_child_session() -> None:
 
     orch_state = _make_orchestrator_state(explore_budget=10, nav_budget=20)
 
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
-        mock_compiled.ainvoke = AsyncMock(return_value={
-            "summary": "Done",
-            "created_nodes": ["n1"],
-            "created_edges": [],
-            "visited_nodes": ["n1"],
-            "explore_used": 2,
-            "gathered_fact_count": 3,
-            "phase": "done",
-        })
+        mock_compiled.ainvoke = AsyncMock(
+            return_value={
+                "summary": "Done",
+                "created_nodes": ["n1"],
+                "created_edges": [],
+                "visited_nodes": ["n1"],
+                "explore_used": 2,
+                "gathered_fact_count": 3,
+                "phase": "done",
+            }
+        )
         mock_graph.compile = MagicMock(return_value=mock_compiled)
         mock_build.return_value = mock_graph
 
@@ -384,9 +381,7 @@ async def test_explore_scope_closes_child_on_error() -> None:
 
     orch_state = _make_orchestrator_state(explore_budget=10, nav_budget=20)
 
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
         mock_compiled.ainvoke = AsyncMock(side_effect=RuntimeError("LLM failure"))
@@ -406,20 +401,20 @@ async def test_explore_scope_falls_back_without_factory() -> None:
     ctx = _make_ctx()  # no session_factory
     orch_state = _make_orchestrator_state(explore_budget=5, nav_budget=10)
 
-    with patch(
-        "kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph"
-    ) as mock_build:
+    with patch("kt_worker_orchestrator.agents.tools.explore_scope.build_sub_explorer_graph") as mock_build:
         mock_graph = MagicMock()
         mock_compiled = MagicMock()
-        mock_compiled.ainvoke = AsyncMock(return_value={
-            "summary": "Done without factory",
-            "created_nodes": [],
-            "created_edges": [],
-            "visited_nodes": [],
-            "explore_used": 1,
-            "gathered_fact_count": 2,
-            "phase": "done",
-        })
+        mock_compiled.ainvoke = AsyncMock(
+            return_value={
+                "summary": "Done without factory",
+                "created_nodes": [],
+                "created_edges": [],
+                "visited_nodes": [],
+                "explore_used": 1,
+                "gathered_fact_count": 2,
+                "phase": "done",
+            }
+        )
         mock_graph.compile = MagicMock(return_value=mock_compiled)
         mock_build.return_value = mock_graph
 

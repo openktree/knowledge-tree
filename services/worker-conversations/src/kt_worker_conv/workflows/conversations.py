@@ -22,13 +22,13 @@ from typing import Any, cast
 
 from hatchet_sdk import Context, DurableContext
 
+from kt_config.settings import get_settings
+from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import (
     FollowUpInput,
     ResynthesizeInput,
 )
-from kt_hatchet.client import get_hatchet
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +244,7 @@ async def handle_follow_up(input: FollowUpInput, ctx: DurableContext) -> dict:
 # Resynthesize task — standalone (not durable, short-running)
 # ======================================================================
 
+
 @hatchet.task(
     name="resynthesize",
     input_validator=ResynthesizeInput,
@@ -265,9 +266,9 @@ async def resynthesize_task(input: ResynthesizeInput, ctx: Context) -> dict:
         except Exception:
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
+    from kt_db.repositories.conversations import ConversationRepository
     from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
     from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
-    from kt_db.repositories.conversations import ConversationRepository
 
     ctx.log(f"Resynthesize starting: conv={input.conversation_id}, msg={input.message_id}")
 
@@ -285,7 +286,9 @@ async def resynthesize_task(input: ResynthesizeInput, ctx: Context) -> dict:
 
     try:
         async with _open_sessions(worker_state) as (session, write_session):
-            agent_ctx = await _build_agent_context(worker_state, session, write_session=write_session, api_key=input.api_key)
+            agent_ctx = await _build_agent_context(
+                worker_state, session, write_session=write_session, api_key=input.api_key
+            )
 
             # Build minimal state with original visited nodes and zero budgets
             orch_state = OrchestratorState(

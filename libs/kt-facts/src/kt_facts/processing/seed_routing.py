@@ -64,8 +64,14 @@ async def route_seed(
     if seed is None:
         # Not found — check phonetic matches for typo detection
         return await _phonetic_route(
-            name, node_type, key, fact_content,
-            write_seed_repo, embedding_service, qdrant_seed_repo, model_gateway,
+            name,
+            node_type,
+            key,
+            fact_content,
+            write_seed_repo,
+            embedding_service,
+            qdrant_seed_repo,
+            model_gateway,
         )
 
     # Follow merge chain if needed
@@ -81,8 +87,13 @@ async def route_seed(
 
     # Resolve through pipes iteratively (handles active, ambiguous, etc.)
     return await _resolve_through_pipes(
-        key, seed, fact_content,
-        write_seed_repo, embedding_service, qdrant_seed_repo, model_gateway,
+        key,
+        seed,
+        fact_content,
+        write_seed_repo,
+        embedding_service,
+        qdrant_seed_repo,
+        model_gateway,
     )
 
 
@@ -105,8 +116,12 @@ async def _resolve_through_pipes(
         if status != "ambiguous":
             return current_key
         routed = await _route_through_pipe(
-            current_key, fact_content, write_seed_repo,
-            embedding_service, qdrant_seed_repo, model_gateway,
+            current_key,
+            fact_content,
+            write_seed_repo,
+            embedding_service,
+            qdrant_seed_repo,
+            model_gateway,
         )
         if not routed or routed == current_key:
             return current_key
@@ -166,7 +181,10 @@ async def _route_through_pipe(
         # Text search failed → LLM fallback
         if model_gateway is not None:
             return await _llm_select_child(
-                fact_content, [], routes, model_gateway,
+                fact_content,
+                [],
+                routes,
+                model_gateway,
             )
         return routes[0].child_seed_key
 
@@ -202,14 +220,19 @@ async def _route_through_pipe(
                 and model_gateway is not None
             ):
                 return await _llm_select_child(
-                    fact_content, child_matches[:2], routes, model_gateway,
+                    fact_content,
+                    child_matches[:2],
+                    routes,
+                    model_gateway,
                 )
             return best.seed_key
 
         # Below threshold — route to best match anyway with warning
         logger.warning(
             "Routing to best child '%s' for parent '%s' with low score %.3f",
-            best.seed_key, parent_key, best.score,
+            best.seed_key,
+            parent_key,
+            best.score,
         )
         return best.seed_key
 
@@ -242,9 +265,9 @@ async def _llm_select_child(
             items.append(r.child_seed_key)
 
     prompt = (
-        f"Given this fact:\n\"{fact_content[:500]}\"\n\n"
+        f'Given this fact:\n"{fact_content[:500]}"\n\n'
         f"Which entity does it refer to?\n" + "\n".join(options) + "\n\n"
-        f"Respond with JSON: {{\"choice\": <number>}}"
+        'Respond with JSON: {"choice": <number>}'
     )
 
     try:
@@ -284,7 +307,9 @@ async def _phonetic_route(
 
     try:
         phonetic_matches = await write_seed_repo.find_by_phonetic(
-            phonetic_code, node_type, limit=5,
+            phonetic_code,
+            node_type,
+            limit=5,
         )
         for candidate in phonetic_matches:
             if candidate.key == original_key:
@@ -293,7 +318,9 @@ async def _phonetic_route(
             # Require trigram confirmation for phonetic matches
             try:
                 similar_seeds = await write_seed_repo.find_similar_seeds(
-                    name, node_type, limit=1,
+                    name,
+                    node_type,
+                    limit=1,
                     threshold=settings.seed_phonetic_trigram_threshold,
                 )
                 trigram_confirmed = any(s.key == candidate.key for s in similar_seeds)
@@ -305,8 +332,13 @@ async def _phonetic_route(
 
             if candidate.status == "ambiguous":
                 return await _resolve_through_pipes(
-                    candidate.key, candidate, fact_content,
-                    write_seed_repo, embedding_service, qdrant_seed_repo, model_gateway,
+                    candidate.key,
+                    candidate,
+                    fact_content,
+                    write_seed_repo,
+                    embedding_service,
+                    qdrant_seed_repo,
+                    model_gateway,
                 )
 
             if candidate.status in ("active", "promoted"):
@@ -353,7 +385,10 @@ async def maybe_re_embed_seed(
         aliases = meta.get("aliases", [])
 
         context_text = build_seed_context(
-            seed.name, seed.node_type, top_facts=top_facts, aliases=aliases,
+            seed.name,
+            seed.node_type,
+            top_facts=top_facts,
+            aliases=aliases,
         )
         new_hash = compute_context_hash(context_text)
 
@@ -371,7 +406,8 @@ async def maybe_re_embed_seed(
         await write_seed_repo.update_context_hash(seed_key, new_hash)
         logger.info(
             "Re-embedded seed '%s' at fact_count=%d with contextual embedding",
-            seed_key, fact_count,
+            seed_key,
+            fact_count,
         )
     except Exception:
         logger.debug("Re-embed failed for seed '%s'", seed_key, exc_info=True)
@@ -419,7 +455,10 @@ async def batch_re_embed_seeds(
             aliases = meta.get("aliases", [])
 
             context_text = build_seed_context(
-                seed.name, seed.node_type, top_facts=top_facts, aliases=aliases,
+                seed.name,
+                seed.node_type,
+                top_facts=top_facts,
+                aliases=aliases,
             )
             new_hash = compute_context_hash(context_text)
 
@@ -447,13 +486,15 @@ async def batch_re_embed_seeds(
     for (seed, context_text), embedding in zip(to_embed, embeddings):
         if embedding is None:
             continue
-        qdrant_batch.append({
-            "seed_key": seed.key,
-            "embedding": embedding,
-            "name": seed.name,
-            "node_type": seed.node_type,
-            "context_text": context_text,
-        })
+        qdrant_batch.append(
+            {
+                "seed_key": seed.key,
+                "embedding": embedding,
+                "name": seed.name,
+                "node_type": seed.node_type,
+                "context_text": context_text,
+            }
+        )
 
     if qdrant_batch:
         try:

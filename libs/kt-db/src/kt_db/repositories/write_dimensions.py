@@ -97,9 +97,7 @@ class WriteDimensionRepository:
         """Delete a dimension by key. Returns True if deleted."""
         from sqlalchemy import delete as sa_delete
 
-        result = await self._session.execute(
-            sa_delete(WriteDimension).where(WriteDimension.key == dim_key)
-        )
+        result = await self._session.execute(sa_delete(WriteDimension).where(WriteDimension.key == dim_key))
         return (result.rowcount or 0) > 0
 
     async def delete_convergence_report(self, node_key: str) -> bool:
@@ -122,10 +120,6 @@ class WriteDimensionRepository:
 
     async def get_by_node_key(self, node_key: str, limit: int = 10) -> list[WriteDimension]:
         """Return dimensions for a node by its write-db key."""
-        stmt = (
-            select(WriteDimension)
-            .where(WriteDimension.node_key == node_key)
-            .limit(limit)
-        )
+        stmt = select(WriteDimension).where(WriteDimension.node_key == node_key).limit(limit)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

@@ -55,14 +55,13 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 )
 async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> dict:
     """Decompose a single raw source into provenance-tracked facts."""
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
     from kt_db.repositories.write_sources import WriteSourceRepository
-    from kt_facts.author import AuthorInfo
     from kt_facts.pipeline import DecompositionPipeline, _store_extracted_facts_impl
     from kt_models.embeddings import EmbeddingService
     from kt_models.gateway import ModelGateway
@@ -90,14 +89,18 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
                 "decompose_source: source %s not found or empty",
                 input.raw_source_id,
             )
-            await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "decomposition")
+            await flush_usage_to_db(
+                state.write_session_factory, input.conversation_id, input.message_id, "decomposition"
+            )
             return DecomposeSourceOutput().model_dump()
 
         # Safety net: skip super sources that slipped past the gathering filter
         # (unless force=True, e.g. manual reingest)
         if getattr(source, "is_super_source", False) and not input.force:
             logger.info("decompose_source: skipping super source %s", input.raw_source_id)
-            await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "decomposition")
+            await flush_usage_to_db(
+                state.write_session_factory, input.conversation_id, input.message_id, "decomposition"
+            )
             return DecomposeSourceOutput().model_dump()
 
         # Snapshot source attributes before any session issues
@@ -108,7 +111,8 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
         src_provider = getattr(source, "provider_id", None) or ""
 
         # Phase 1a: Extract facts from text (pure LLM, no DB)
-        from kt_models.usage import set_usage_task, clear_usage_task
+        from kt_models.usage import clear_usage_task, set_usage_task
+
         set_usage_task("decomposition")
         extracted = await pipeline.extract_text(
             src_content,
@@ -127,7 +131,9 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
             author_org = author.organization
         except Exception:
             logger.debug(
-                "Author extraction failed for %s", src_uri, exc_info=True,
+                "Author extraction failed for %s",
+                src_uri,
+                exc_info=True,
             )
         finally:
             clear_usage_task()
@@ -161,7 +167,8 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
             await write_session.commit()
     except Exception:
         logger.exception(
-            "decompose_source: failed for %s", input.raw_source_id,
+            "decompose_source: failed for %s",
+            input.raw_source_id,
         )
         try:
             await write_session.rollback()
@@ -186,7 +193,6 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
     ).model_dump()
 
 
-
 # ---------------------------------------------------------------------------
 # entity_extraction_task: facts → entities + seeds
 # ---------------------------------------------------------------------------
@@ -200,8 +206,8 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
 )
 async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> dict:
     """Extract entities from facts and create seeds in write-db."""
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -216,7 +222,9 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
     embedding_service = cast(EmbeddingService, state.embedding_service)
 
     if not input.fact_ids:
-        await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "entity_extraction")
+        await flush_usage_to_db(
+            state.write_session_factory, input.conversation_id, input.message_id, "entity_extraction"
+        )
         return EntityExtractionOutput().model_dump()
 
     # Load facts from write-db by IDs
@@ -227,15 +235,23 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
         write_facts = await write_fact_repo.get_by_ids(fact_uuids)
 
         if not write_facts:
-            await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "entity_extraction")
+            await flush_usage_to_db(
+                state.write_session_factory, input.conversation_id, input.message_id, "entity_extraction"
+            )
             return EntityExtractionOutput().model_dump()
 
         # Extract entities via LLM
-        from kt_models.usage import set_usage_task, clear_usage_task
+        from kt_models.usage import clear_usage_task, set_usage_task
+
         set_usage_task("entity_extraction")
-        extracted_nodes = await extract_entities_from_facts(
-            write_facts, model_gateway, scope=input.concept,
-        ) or []
+        extracted_nodes = (
+            await extract_entities_from_facts(
+                write_facts,
+                model_gateway,
+                scope=input.concept,
+            )
+            or []
+        )
         clear_usage_task()
 
         # Store seeds from extracted nodes
@@ -247,11 +263,10 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
 
             # Build Qdrant seed repo — required for embedding dedup
             if state.qdrant_client is None:
-                raise RuntimeError(
-                    "Qdrant client is required for seed extraction but was not available on WorkerState"
-                )
+                raise RuntimeError("Qdrant client is required for seed extraction but was not available on WorkerState")
 
             from kt_qdrant.repositories.seeds import QdrantSeedRepository
+
             qdrant_seed_repo = QdrantSeedRepository(state.qdrant_client)
 
             try:
@@ -274,12 +289,14 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
         # Serialize extracted_nodes for output
         serializable_nodes: list[dict[str, Any]] = []
         for node in extracted_nodes:
-            serializable_nodes.append({
-                "name": node.get("name", ""),
-                "node_type": node.get("node_type", "concept"),
-                "entity_subtype": node.get("entity_subtype"),
-                "fact_indices": node.get("fact_indices", []),
-            })
+            serializable_nodes.append(
+                {
+                    "name": node.get("name", ""),
+                    "node_type": node.get("node_type", "concept"),
+                    "entity_subtype": node.get("entity_subtype"),
+                    "fact_indices": node.get("fact_indices", []),
+                }
+            )
 
         logger.info(
             "entity_extraction completed: facts=%d entities=%d seeds=%d",
@@ -288,7 +305,9 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
             len(seed_keys),
         )
 
-        await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "entity_extraction")
+        await flush_usage_to_db(
+            state.write_session_factory, input.conversation_id, input.message_id, "entity_extraction"
+        )
 
         return EntityExtractionOutput(
             extracted_nodes=serializable_nodes,
@@ -315,8 +334,8 @@ decompose_sources_wf = hatchet.workflow(
 )
 async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
     """Fan out per-source decomposition, then run entity extraction."""
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -327,7 +346,9 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
     text_source_ids = [sid for sid in input.raw_source_ids if sid not in image_set]
 
     if not text_source_ids:
-        await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "decompose_sources")
+        await flush_usage_to_db(
+            state.write_session_factory, input.conversation_id, input.message_id, "decompose_sources"
+        )
         return DecomposeSourcesOutput().model_dump()
 
     # Fan out decompose_source_task per text source
@@ -357,10 +378,12 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
         total_fact_count += output.fact_count
         all_fact_ids.extend(output.fact_ids)
         if output.author_person or output.author_org:
-            source_authors.append({
-                "author_person": output.author_person,
-                "author_org": output.author_org,
-            })
+            source_authors.append(
+                {
+                    "author_person": output.author_person,
+                    "author_org": output.author_org,
+                }
+            )
 
     # Run entity extraction if we have facts
     extracted_nodes: list[dict[str, Any]] = []
@@ -369,10 +392,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
     if all_fact_ids:
         # Split into chunks of ≤1000 facts to run extraction tasks in parallel
         chunk_size = 1000
-        fact_chunks = [
-            all_fact_ids[i : i + chunk_size]
-            for i in range(0, len(all_fact_ids), chunk_size)
-        ]
+        fact_chunks = [all_fact_ids[i : i + chunk_size] for i in range(0, len(all_fact_ids), chunk_size)]
 
         if len(fact_chunks) == 1:
             # Single chunk — dispatch directly
@@ -392,7 +412,9 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
             # Multiple chunks — fan out in parallel
             logger.info(
                 "Splitting entity extraction: %d facts → %d chunks of ≤%d",
-                len(all_fact_ids), len(fact_chunks), chunk_size,
+                len(all_fact_ids),
+                len(fact_chunks),
+                chunk_size,
             )
             bulk_items = [
                 entity_extraction_task.create_bulk_run_item(
@@ -504,6 +526,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
         new_hash = WriteSourceRepository.compute_hash(new_content)
 
         from sqlalchemy import update as sa_update
+
         from kt_db.write_models import WriteRawSource
 
         values: dict[str, object] = {
@@ -515,9 +538,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
             values["content_type"] = result.content_type
 
         await write_session.execute(
-            sa_update(WriteRawSource)
-            .where(WriteRawSource.id == uuid.UUID(input.raw_source_id))
-            .values(**values)
+            sa_update(WriteRawSource).where(WriteRawSource.id == uuid.UUID(input.raw_source_id)).values(**values)
         )
         await write_session.commit()
         content_updated = True

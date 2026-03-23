@@ -36,7 +36,6 @@ async def test_create_with_metadata(db_session):
     assert fact.metadata_ == {"source": "astronomy"}
 
 
-
 async def test_get_facts_by_type(db_session):
     repo = FactRepository(db_session)
     await repo.create(content="Fact type test: formula", fact_type="formula")
@@ -127,8 +126,8 @@ async def test_delete_fact(db_session):
 
 
 async def test_get_facts_by_node_with_sources(db_session):
-    from kt_db.repositories.sources import SourceRepository
     from kt_config.types import RawSearchResult
+    from kt_db.repositories.sources import SourceRepository
 
     repo = FactRepository(db_session)
 
@@ -168,8 +167,8 @@ async def test_get_facts_by_node_with_sources(db_session):
 
 
 async def test_get_by_id_with_sources(db_session):
-    from kt_db.repositories.sources import SourceRepository
     from kt_config.types import RawSearchResult
+    from kt_db.repositories.sources import SourceRepository
 
     repo = FactRepository(db_session)
 
@@ -199,8 +198,8 @@ async def test_get_by_id_with_sources_not_found(db_session):
 
 
 async def test_create_fact_source(db_session):
-    from kt_db.repositories.sources import SourceRepository
     from kt_config.types import RawSearchResult
+    from kt_db.repositories.sources import SourceRepository
 
     # Create a raw source
     source_repo = SourceRepository(db_session)
@@ -231,8 +230,8 @@ async def test_create_fact_source(db_session):
 
 
 async def test_create_fact_source_duplicate_is_idempotent(db_session):
-    from kt_db.repositories.sources import SourceRepository
     from kt_config.types import RawSearchResult
+    from kt_db.repositories.sources import SourceRepository
 
     source_repo = SourceRepository(db_session)
     search_result = RawSearchResult(

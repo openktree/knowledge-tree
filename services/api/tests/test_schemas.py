@@ -47,7 +47,11 @@ def test_send_message_request_defaults():
 def test_conversation_message_response_minimal():
     now = datetime.now(UTC)
     resp = ConversationMessageResponse(
-        id="m1", turn_number=0, role="user", content="Hello", created_at=now,
+        id="m1",
+        turn_number=0,
+        role="user",
+        content="Hello",
+        created_at=now,
     )
     assert resp.id == "m1"
     assert resp.role == "user"

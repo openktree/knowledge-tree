@@ -9,17 +9,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.dependencies import get_db_session
+# Assembled in __init__.py
+from kt_api.auth._fastapi_users import fastapi_users
 from kt_api.auth.backend import auth_backend
 from kt_api.auth.oauth import get_google_oauth_client
 from kt_api.auth.schemas import UserCreate, UserRead, UserUpdate
 from kt_api.auth.tokens import ApiTokenRepository, generate_token, require_auth
+from kt_api.dependencies import get_db_session
 from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.system_settings import SystemSettingsRepository
-
-# Assembled in __init__.py
-from kt_api.auth._fastapi_users import fastapi_users
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -155,9 +154,7 @@ async def set_api_key(
     encrypted = encrypt_api_key(body.api_key.strip())
     from sqlalchemy import update
 
-    await session.execute(
-        update(User).where(User.id == user.id).values(encrypted_openrouter_key=encrypted)
-    )
+    await session.execute(update(User).where(User.id == user.id).values(encrypted_openrouter_key=encrypted))
     await session.commit()
     return ApiKeyStatusResponse(has_key=True)
 
@@ -170,9 +167,7 @@ async def remove_api_key(
     """Remove the user's stored OpenRouter API key."""
     from sqlalchemy import update
 
-    await session.execute(
-        update(User).where(User.id == user.id).values(encrypted_openrouter_key=None)
-    )
+    await session.execute(update(User).where(User.id == user.id).values(encrypted_openrouter_key=None))
     await session.commit()
     return ApiKeyStatusResponse(has_key=False)
 

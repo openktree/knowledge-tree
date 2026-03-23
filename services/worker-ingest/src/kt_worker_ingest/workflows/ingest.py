@@ -18,6 +18,8 @@ from typing import Any, cast
 
 from hatchet_sdk import DurableContext
 
+from kt_config.settings import get_settings
+from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import (
     IngestBuildInput,
@@ -29,8 +31,6 @@ from kt_hatchet.models import (
     ProposedNode,
     ProposedPerspective,
 )
-from kt_hatchet.client import get_hatchet
-from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +81,8 @@ async def _build_agent_context(
     from kt_graph.engine import GraphEngine
 
     if api_key:
-        from kt_models.gateway import ModelGateway
         from kt_models.embeddings import EmbeddingService
+        from kt_models.gateway import ModelGateway
 
         model_gateway = ModelGateway(api_key=api_key)
         embedding_service = EmbeddingService(api_key=api_key)
@@ -144,8 +144,8 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
     Phase 2: Decompose selected chunks into facts
     Phase 3: Run the ingest agent for node building
     """
-    from kt_models.usage import start_usage_tracking
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     worker_state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -159,12 +159,12 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
     emit_cb = _make_emit_callback(emit)
 
     from kt_db.repositories.conversations import ConversationRepository
+    from kt_worker_ingest.agents.ingest_worker import IngestWorker
     from kt_worker_ingest.ingest.pipeline import (
         build_chunk_list,
         decompose_all_sources,
         process_ingest_sources,
     )
-    from kt_worker_ingest.agents.ingest_worker import IngestWorker
 
     ctx.log(f"Ingest confirm starting: conv={input.conversation_id}")
 
@@ -373,7 +373,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
         try:
             async with worker_state.session_factory() as session:
                 agent_ctx = await _build_agent_context(
-                    worker_state, session, emit_event=emit_cb,
+                    worker_state,
+                    session,
+                    emit_event=emit_cb,
                     api_key=input.api_key,
                 )
                 content_index = await build_content_index(
@@ -408,10 +410,12 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             from hatchet_sdk import TriggerWorkflowOptions
 
             all_titles = [e.title for e in content_index.entries] if content_index else []  # type: ignore[union-attr]
-            child_meta = TriggerWorkflowOptions(additional_metadata={
-                "message_id": input.message_id,
-                "conversation_id": input.conversation_id,
-            })
+            child_meta = TriggerWorkflowOptions(
+                additional_metadata={
+                    "message_id": input.message_id,
+                    "conversation_id": input.conversation_id,
+                }
+            )
 
             bulk_items = []
             for partition in partitions:
@@ -433,10 +437,13 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                     )
                 )
 
-            await emit("activity_log", {
-                "action": f"Splitting across {len(partitions)} parallel agents",
-                "tool": "ingest",
-            })
+            await emit(
+                "activity_log",
+                {
+                    "action": f"Splitting across {len(partitions)} parallel agents",
+                    "tool": "ingest",
+                },
+            )
 
             try:
                 results = await ingest_partition_wf.aio_run_many(bulk_items)
@@ -451,7 +458,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             partition_summaries: list[str] = []
 
             for raw_result in results:
-                task_data = raw_result.get("run_ingest_partition", raw_result) if isinstance(raw_result, dict) else raw_result
+                task_data = (
+                    raw_result.get("run_ingest_partition", raw_result) if isinstance(raw_result, dict) else raw_result
+                )
                 out = IngestPartitionOutput.model_validate(task_data)
                 all_created_nodes.extend(out.created_node_ids)
                 all_created_edges.extend(out.created_edge_ids)
@@ -550,10 +559,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                     waves_completed=1,
                     nav_budget=input.nav_budget,
                     nav_used=ingest_nav_used,
-                    scope_summaries=[
-                        f"Ingestion: {ingest_nodes_created} nodes, "
-                        f"{ingest_edges_created} edges"
-                    ],
+                    scope_summaries=[f"Ingestion: {ingest_nodes_created} nodes, {ingest_edges_created} edges"],
                     total_prompt_tokens=0,
                     total_completion_tokens=0,
                     total_cost_usd=0.0,
@@ -565,7 +571,8 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
         except Exception:
             logger.warning(
                 "Failed to persist ingest research report for message %s",
-                input.message_id, exc_info=True,
+                input.message_id,
+                exc_info=True,
             )
 
     except Exception as e:
@@ -612,14 +619,12 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
 
     emit_cb = _make_emit_callback(emit)
 
-    from kt_db.repositories.conversations import ConversationRepository
+    from kt_worker_ingest.agents.ingest_worker import IngestWorker
     from kt_worker_ingest.ingest.content_index import ContentIndex, IndexEntry, backfill_fact_counts
     from kt_worker_ingest.ingest.pipeline import (
-        DecompositionSummary,
         reconstruct_decomp_summary,
         reconstruct_processed_sources,
     )
-    from kt_worker_ingest.agents.ingest_worker import IngestWorker
 
     ctx.log(
         f"Partition {input.partition_id[:8]} starting: "
@@ -633,13 +638,15 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
     # We build a lightweight ContentIndex with all titles for TOC context
     entries: list[IndexEntry] = []
     for i, title in enumerate(input.all_titles):
-        entries.append(IndexEntry(
-            idx=i,
-            title=title,
-            summary="",  # Summaries loaded on-demand via get_summary
-            char_count=0,
-            source_name="",
-        ))
+        entries.append(
+            IndexEntry(
+                idx=i,
+                title=title,
+                summary="",  # Summaries loaded on-demand via get_summary
+                char_count=0,
+                source_name="",
+            )
+        )
 
     content_index = ContentIndex(entries=entries)
     backfill_fact_counts(
@@ -658,7 +665,9 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
     # Run the ingest agent scoped to this partition
     async with _open_sessions(worker_state) as (session, write_session):
         agent_ctx = await _build_agent_context(
-            worker_state, session, emit_event=emit_cb,
+            worker_state,
+            session,
+            emit_event=emit_cb,
             write_session=write_session,
         )
 
@@ -695,6 +704,7 @@ ingest_decompose_wf = hatchet.workflow(
     name="ingest_decompose",
     input_validator=IngestDecomposeInput,
 )
+
 
 @ingest_decompose_wf.durable_task(execution_timeout=timedelta(hours=6), schedule_timeout=_schedule_timeout)
 async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> dict:
@@ -734,20 +744,28 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
     try:
         # ── Phase 1: Process sources (idempotent) ────────────────
-        await emit("pipeline_scope_start", {
-            "scope_id": "ingest-processing",
-            "scope_name": "Processing Sources",
-        })
+        await emit(
+            "pipeline_scope_start",
+            {
+                "scope_id": "ingest-processing",
+                "scope_name": "Processing Sources",
+            },
+        )
 
         async with _open_sessions(worker_state) as (session, write_session):
             agent_ctx = await _build_agent_context(
-                worker_state, session, emit_event=emit_cb,
+                worker_state,
+                session,
+                emit_event=emit_cb,
                 write_session=write_session,
                 api_key=input.api_key,
             )
             processed = await process_ingest_sources(
-                conv_uuid, agent_ctx.session, agent_ctx.file_data_store,
-                emit=emit_cb, write_session=write_session,
+                conv_uuid,
+                agent_ctx.session,
+                agent_ctx.file_data_store,
+                emit=emit_cb,
+                write_session=write_session,
             )
             await write_session.commit()
             await agent_ctx.session.commit()
@@ -779,19 +797,28 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         ctx.refresh_timeout("4h")
 
         # ── Phase 2: Decompose into facts ────────────────────────
-        await emit("pipeline_scope_start", {
-            "scope_id": "ingest-decomposition",
-            "scope_name": "Decomposing Facts",
-        })
+        await emit(
+            "pipeline_scope_start",
+            {
+                "scope_id": "ingest-decomposition",
+                "scope_name": "Decomposing Facts",
+            },
+        )
         await emit("phase_change", {"phase": "decomposing"})
 
         async with _open_sessions(worker_state) as (session, write_session):
             agent_ctx = await _build_agent_context(
-                worker_state, session, emit_event=emit_cb, write_session=write_session,
+                worker_state,
+                session,
+                emit_event=emit_cb,
+                write_session=write_session,
                 api_key=input.api_key,
             )
             decomp_summary = await decompose_all_sources(
-                processed, agent_ctx, emit=emit_cb, chunk_selection=chunk_selection,
+                processed,
+                agent_ctx,
+                emit=emit_cb,
+                chunk_selection=chunk_selection,
             )
             await write_session.commit()
             await agent_ctx.session.commit()
@@ -805,20 +832,23 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         ctx.refresh_timeout("2h")
 
         # ── Phase 3: Extract nodes from facts ────────────────────
-        await emit("pipeline_scope_start", {
-            "scope_id": "ingest-extraction",
-            "scope_name": "Extracting Nodes",
-        })
+        await emit(
+            "pipeline_scope_start",
+            {
+                "scope_id": "ingest-extraction",
+                "scope_name": "Extracting Nodes",
+            },
+        )
         await emit("phase_change", {"phase": "extracting"})
 
         # Load all facts for this conversation from graph-db
-        from kt_worker_ingest.ingest.pipeline import reconstruct_decomp_summary
         from kt_facts.processing.entity_extraction import extract_entities_from_facts
 
         async with worker_state.session_factory() as session:
             # Get facts via the same pattern as reconstruct_decomp_summary
-            from kt_db.models import Fact, FactSource, IngestSource
             from sqlalchemy import select as sa_select
+
+            from kt_db.models import Fact, FactSource, IngestSource
 
             src_result = await session.execute(
                 sa_select(IngestSource.raw_source_id).where(
@@ -871,10 +901,13 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         ctx.refresh_timeout("1h")
 
         # ── Phase 4: Filter generic nodes ────────────────────────
-        await emit("pipeline_scope_start", {
-            "scope_id": "ingest-filtering",
-            "scope_name": "Filtering & Prioritizing",
-        })
+        await emit(
+            "pipeline_scope_start",
+            {
+                "scope_id": "ingest-filtering",
+                "scope_name": "Filtering & Prioritizing",
+            },
+        )
         await emit("phase_change", {"phase": "filtering"})
 
         if extracted_nodes:
@@ -882,11 +915,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
             async with worker_state.session_factory() as session:
                 agent_ctx = await _build_agent_context(worker_state, session, emit_event=emit_cb, api_key=input.api_key)
-                scope_desc = (
-                    decomp_summary.key_topics[0]
-                    if decomp_summary.key_topics
-                    else "document content"
-                )
+                scope_desc = decomp_summary.key_topics[0] if decomp_summary.key_topics else "document content"
                 filtered_nodes = await _filter_nodes(agent_ctx, extracted_nodes, scope_desc)
         else:
             filtered_nodes = []
@@ -911,8 +940,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             content_summary = "\n".join(summary_parts)
 
             generic_query = (
-                "Extract and prioritize the main entities, concepts, events, "
-                "and facts from the source material"
+                "Extract and prioritize the main entities, concepts, events, and facts from the source material"
             )
 
             async with worker_state.session_factory() as session:
@@ -929,7 +957,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         ctx.log(f"Prioritized {len(prioritized)} nodes")
 
         # ── Build proposals from deduplicated seeds ─────────────
-        from kt_db.keys import make_seed_key, key_to_uuid
+        from kt_db.keys import key_to_uuid, make_seed_key
         from kt_db.repositories.write_seeds import WriteSeedRepository
 
         # Map prioritized node → seed key, preserving priority/perspectives
@@ -978,28 +1006,32 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             fact_count = seed.fact_count if seed else 0
             aliases = (seed.metadata_ or {}).get("aliases", []) if seed else []
 
-            proposed_nodes.append(ProposedNode(
-                name=name,
-                node_type=node_type,
-                entity_subtype=entity_subtype,
-                priority=pri.get("priority", 5),
-                selected=pri.get("selected", True),
-                seed_key=sk,
-                existing_node_id=existing_id,
-                fact_count=fact_count,
-                aliases=aliases,
-                perspectives=[
-                    ProposedPerspective(claim=p["claim"], antithesis=p["antithesis"])
-                    for p in pri.get("perspectives", [])
-                    if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
-                ],
-            ))
+            proposed_nodes.append(
+                ProposedNode(
+                    name=name,
+                    node_type=node_type,
+                    entity_subtype=entity_subtype,
+                    priority=pri.get("priority", 5),
+                    selected=pri.get("selected", True),
+                    seed_key=sk,
+                    existing_node_id=existing_id,
+                    fact_count=fact_count,
+                    aliases=aliases,
+                    perspectives=[
+                        ProposedPerspective(claim=p["claim"], antithesis=p["antithesis"])
+                        for p in pri.get("perspectives", [])
+                        if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
+                    ],
+                )
+            )
 
         output = IngestDecomposeOutput(
             fact_count=decomp_summary.total_facts,
             source_count=len(processed),
             proposed_nodes=proposed_nodes,
-            content_summary=decomp_summary.source_summaries[0].get("name", "") if decomp_summary.source_summaries else "",
+            content_summary=decomp_summary.source_summaries[0].get("name", "")
+            if decomp_summary.source_summaries
+            else "",
             key_topics=decomp_summary.key_topics[:20],
             fact_type_counts=decomp_summary.fact_type_counts,
         )
@@ -1049,10 +1081,10 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
 
     Follows the same pattern as bottom_up_build_wf.
     """
-    from kt_models.usage import start_usage_tracking
-    from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_hatchet.models import BuildNodeInput
     from kt_hatchet.scope_planner import resolve_perspective_source_ids
+    from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -1069,34 +1101,44 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
     # Mark as running
     async with state.session_factory() as session:
         from kt_db.repositories.conversations import ConversationRepository
+
         repo = ConversationRepository(session)
         await repo.update_message(msg_uuid, status="running")
         await session.commit()
 
     ctx.log(f"Starting ingest build (Phase 2): {len(input.selected_nodes)} nodes")
 
-    await emit("pipeline_scope_start", {
-        "scope_id": "build",
-        "scope_name": f"Building {len(input.selected_nodes)} nodes",
-        "task_run_id": ctx.step_run_id,
-        "mode": "ingest_build",
-    })
+    await emit(
+        "pipeline_scope_start",
+        {
+            "scope_id": "build",
+            "scope_name": f"Building {len(input.selected_nodes)} nodes",
+            "task_run_id": ctx.step_run_id,
+            "mode": "ingest_build",
+        },
+    )
 
     try:
         # ── Phase: Create nodes via node_pipeline_wf ─────────────
         from hatchet_sdk import TriggerWorkflowOptions
+
         from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
 
-        await emit("pipeline_phase", {
-            "scope_id": "build",
-            "phase": "creating",
-            "event": "start",
-        })
+        await emit(
+            "pipeline_phase",
+            {
+                "scope_id": "build",
+                "phase": "creating",
+                "event": "start",
+            },
+        )
 
-        node_meta = TriggerWorkflowOptions(additional_metadata={
-            "message_id": input.message_id,
-            "conversation_id": input.conversation_id,
-        })
+        node_meta = TriggerWorkflowOptions(
+            additional_metadata={
+                "message_id": input.message_id,
+                "conversation_id": input.conversation_id,
+            }
+        )
 
         from kt_db.keys import make_seed_key as _make_seed_key
 
@@ -1134,48 +1176,61 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
             node_id = create_data.get("node_id")
             if node_id:
                 created_node_ids.append(node_id)
-                built_nodes.append({
-                    "node_id": node_id,
-                    "concept": create_data.get("concept", ""),
-                    "node_type": create_data.get("node_type", "concept"),
-                })
+                built_nodes.append(
+                    {
+                        "node_id": node_id,
+                        "concept": create_data.get("concept", ""),
+                        "node_type": create_data.get("node_type", "concept"),
+                    }
+                )
             created_edge_ids.extend(dim_data.get("edge_ids", []))
 
-        await emit("pipeline_phase", {
-            "scope_id": "build",
-            "phase": "creating",
-            "event": "end",
-        })
+        await emit(
+            "pipeline_phase",
+            {
+                "scope_id": "build",
+                "phase": "creating",
+                "event": "end",
+            },
+        )
 
         ctx.log(f"Created {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
 
         if created_node_ids:
-            await emit("graph_update", {
-                "node_ids": created_node_ids,
-                "edge_ids": created_edge_ids,
-                "wave": 0,
-            })
+            await emit(
+                "graph_update",
+                {
+                    "node_ids": created_node_ids,
+                    "edge_ids": created_edge_ids,
+                    "wave": 0,
+                },
+            )
 
         # ── Phase: Build perspectives ────────────────────────────
         perspective_plans: list[dict[str, Any]] = []
         for node in input.selected_nodes:
             if node.perspectives:
                 for persp in node.perspectives:
-                    perspective_plans.append({
-                        "claim": persp.claim,
-                        "antithesis": persp.antithesis,
-                        "source_concept_id": node.name,
-                    })
+                    perspective_plans.append(
+                        {
+                            "claim": persp.claim,
+                            "antithesis": persp.antithesis,
+                            "source_concept_id": node.name,
+                        }
+                    )
 
         perspective_node_count = 0
         if perspective_plans and built_nodes:
             perspective_plans = resolve_perspective_source_ids(perspective_plans, built_nodes)
 
-            await emit("pipeline_phase", {
-                "scope_id": "build",
-                "phase": "perspectives",
-                "event": "start",
-            })
+            await emit(
+                "pipeline_phase",
+                {
+                    "scope_id": "build",
+                    "phase": "perspectives",
+                    "event": "start",
+                },
+            )
 
             ctx.log(f"Building {len(perspective_plans)} perspective pairs")
 
@@ -1234,11 +1289,14 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
                 except Exception:
                     logger.exception("Ingest build: composite perspective build failed")
 
-            await emit("pipeline_phase", {
-                "scope_id": "build",
-                "phase": "perspectives",
-                "event": "end",
-            })
+            await emit(
+                "pipeline_phase",
+                {
+                    "scope_id": "build",
+                    "phase": "perspectives",
+                    "event": "end",
+                },
+            )
 
             ctx.log(f"Built {perspective_node_count} perspective nodes")
 
@@ -1285,6 +1343,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
         # ── Update message with results ──────────────────────────
         async with state.session_factory() as session:
             from kt_db.repositories.conversations import ConversationRepository
+
             repo = ConversationRepository(session)
             await repo.update_message(
                 msg_uuid,
@@ -1297,15 +1356,19 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
             )
             await session.commit()
 
-        await emit("pipeline_scope_end", {
-            "scope_id": "build",
-            "node_count": len(created_node_ids),
-        })
+        await emit(
+            "pipeline_scope_end",
+            {
+                "scope_id": "build",
+                "node_count": len(created_node_ids),
+            },
+        )
 
     except Exception as e:
         logger.exception("Ingest build failed: conv=%s", input.conversation_id)
         async with state.session_factory() as session:
             from kt_db.repositories.conversations import ConversationRepository
+
             repo = ConversationRepository(session)
             await repo.update_message(msg_uuid, status="failed", error=str(e))
             await session.commit()
@@ -1313,15 +1376,15 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
         await emit("done", {})
         raise
 
-    await emit("done", {
-        "created_node_ids": created_node_ids,
-        "created_edge_ids": created_edge_ids,
-        "phase": "build",
-    })
-
-    ctx.log(
-        f"Ingest build complete: {len(created_node_ids)} nodes, "
-        f"{len(created_edge_ids)} edges"
+    await emit(
+        "done",
+        {
+            "created_node_ids": created_node_ids,
+            "created_edge_ids": created_edge_ids,
+            "phase": "build",
+        },
     )
+
+    ctx.log(f"Ingest build complete: {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
 
     return {}

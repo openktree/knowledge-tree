@@ -60,7 +60,6 @@ ROUTING_CASES: list[RoutingCase] = [
         category="active",
         notes="Promoted seed — still direct return",
     ),
-
     # ── Merge chain following ────────────────────────────────
     RoutingCase(
         name="single_merge_hop",
@@ -106,7 +105,6 @@ ROUTING_CASES: list[RoutingCase] = [
         category="merge_chain",
         notes="Merge chain leads to ambiguous seed → text search routes to correct child",
     ),
-
     # ── Single-level disambiguation (text ambiguity) ─────────
     RoutingCase(
         name="text_ambiguity_single_child",
@@ -142,7 +140,6 @@ ROUTING_CASES: list[RoutingCase] = [
         category="disambiguation",
         notes="Embedding ambiguity resolved by text search",
     ),
-
     # ── Cascading pipe resolution ────────────────────────────
     RoutingCase(
         name="two_level_cascade",
@@ -207,7 +204,6 @@ ROUTING_CASES: list[RoutingCase] = [
         category="cascade",
         notes="Stops at first active child, doesn't cascade further",
     ),
-
     # ── Not found → new seed ─────────────────────────────────
     RoutingCase(
         name="not_found_returns_original",
@@ -218,7 +214,6 @@ ROUTING_CASES: list[RoutingCase] = [
         category="not_found",
         notes="No existing seed → returns generated key",
     ),
-
     # ── Ambiguous with no routes → stuck at parent ───────────
     RoutingCase(
         name="ambiguous_no_routes_stays",

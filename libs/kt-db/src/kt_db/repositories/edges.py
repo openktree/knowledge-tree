@@ -7,8 +7,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from kt_db.models import Edge, EdgeFact, Fact, Node, _utcnow
 from kt_config.types import canonicalize_edge_ids
+from kt_db.models import Edge, EdgeFact, Fact, Node, _utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -90,15 +90,12 @@ class EdgeRepository:
         if not candidate_ids:
             return set()
         cutoff = _utcnow() - timedelta(days=staleness_days)
-        stmt = (
-            select(Edge)
-            .where(
-                Edge.updated_at >= cutoff,
-                or_(
-                    and_(Edge.source_node_id == node_id, Edge.target_node_id.in_(candidate_ids)),
-                    and_(Edge.target_node_id == node_id, Edge.source_node_id.in_(candidate_ids)),
-                ),
-            )
+        stmt = select(Edge).where(
+            Edge.updated_at >= cutoff,
+            or_(
+                and_(Edge.source_node_id == node_id, Edge.target_node_id.in_(candidate_ids)),
+                and_(Edge.target_node_id == node_id, Edge.source_node_id.in_(candidate_ids)),
+            ),
         )
         result = await self._session.execute(stmt)
         recent: set[uuid.UUID] = set()
@@ -108,7 +105,9 @@ class EdgeRepository:
         return recent
 
     async def get_edge_for_pair(
-        self, node_a: uuid.UUID, node_b: uuid.UUID,
+        self,
+        node_a: uuid.UUID,
+        node_b: uuid.UUID,
     ) -> Edge | None:
         """Find the strongest edge between two nodes (canonical ordering)."""
         lo, hi = (node_a, node_b) if node_a < node_b else (node_b, node_a)
@@ -145,7 +144,9 @@ class EdgeRepository:
         duplicates are impossible.
         """
         source_node_id, target_node_id = canonicalize_edge_ids(
-            source_node_id, target_node_id, relationship_type,
+            source_node_id,
+            target_node_id,
+            relationship_type,
         )
 
         now = _utcnow()
@@ -329,4 +330,3 @@ class EdgeRepository:
         if count:
             await self._session.flush()
         return count
-

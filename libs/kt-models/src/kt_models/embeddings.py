@@ -76,7 +76,10 @@ class EmbeddingService:
         raise last_err  # type: ignore[misc]
 
     async def embed_batch(
-        self, texts: list[str], *, chunk_size: int | None = None,
+        self,
+        texts: list[str],
+        *,
+        chunk_size: int | None = None,
     ) -> list[list[float]]:
         """Generate embeddings for multiple texts.
 

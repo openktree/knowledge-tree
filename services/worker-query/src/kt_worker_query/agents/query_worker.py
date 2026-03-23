@@ -8,16 +8,16 @@ from typing import Any, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
+from kt_agents_core.results import AgentResult, build_subgraph, extract_final_state
+from kt_agents_core.state import ConversationState
+from kt_agents_core.worker_base import BaseWorker
 from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
+from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
 from kt_worker_query.agents.query_agent import (
     QUERY_AGENT_SYSTEM_PROMPT,
     QueryAgentImpl,
 )
 from kt_worker_query.agents.query_agent_state import QueryAgentState
-from kt_agents_core.results import AgentResult, build_subgraph, extract_final_state
-from kt_agents_core.state import ConversationState
-from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
-from kt_agents_core.worker_base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,8 @@ class QueryWorker(BaseWorker):
 
         # Extract navigation results
         fs = extract_final_state(
-            final_state, state,
+            final_state,
+            state,
             ["messages", "visited_nodes", "hidden_nodes", "nav_used"],
         )
         msgs = cast(Sequence[BaseMessage], fs["messages"])
@@ -134,7 +135,8 @@ class QueryWorker(BaseWorker):
             try:
                 retry_result = await compiled.ainvoke(retry_state, config=config)
                 rfs = extract_final_state(
-                    retry_result, retry_state,
+                    retry_result,
+                    retry_state,
                     ["messages", "visited_nodes", "hidden_nodes", "nav_used"],
                 )
                 visited = rfs["visited_nodes"]
@@ -173,9 +175,7 @@ class QueryWorker(BaseWorker):
                     )
 
                 result = await synthesize_answer_impl(ctx, synth_state)
-                answer = synth_state.answer or str(
-                    result.get("answer", "") if isinstance(result, dict) else ""
-                )
+                answer = synth_state.answer or str(result.get("answer", "") if isinstance(result, dict) else "")
             except Exception:
                 logger.exception("Error in query synthesis — falling back to agent response")
                 # Fall back to extracting from last AIMessage

@@ -110,6 +110,7 @@ async def test_fetch_url_pdf_content():
 
     # Create a real small PDF
     import pymupdf  # type: ignore[import-untyped]
+
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 72), "This is extracted PDF content that should be long enough to pass the minimum.")

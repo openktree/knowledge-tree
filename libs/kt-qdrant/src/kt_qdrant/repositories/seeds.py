@@ -114,11 +114,13 @@ class QdrantSeedRepository:
                 payload["context_text"] = p["context_text"]
 
             point_id = str(key_to_uuid(p["seed_key"]))
-            qdrant_points.append(PointStruct(
-                id=point_id,
-                vector=p["embedding"],
-                payload=payload,
-            ))
+            qdrant_points.append(
+                PointStruct(
+                    id=point_id,
+                    vector=p["embedding"],
+                    payload=payload,
+                )
+            )
 
         for i in range(0, len(qdrant_points), chunk_size):
             chunk = qdrant_points[i : i + chunk_size]
@@ -138,9 +140,7 @@ class QdrantSeedRepository:
         """Find seeds with similar name embeddings."""
         query_filter = None
         if node_type is not None:
-            query_filter = Filter(
-                must=[FieldCondition(key="node_type", match=MatchValue(value=node_type))]
-            )
+            query_filter = Filter(must=[FieldCondition(key="node_type", match=MatchValue(value=node_type))])
 
         results = await self._client.query_points(
             collection_name=SEEDS_COLLECTION,

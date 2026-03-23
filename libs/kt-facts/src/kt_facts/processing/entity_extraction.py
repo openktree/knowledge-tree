@@ -66,7 +66,7 @@ def _is_valid_entity_name(name: str) -> bool:
             count = 0
             pos = 0
             while pos <= len(normalized) - pattern_len:
-                if normalized[pos:pos + pattern_len] == pattern:
+                if normalized[pos : pos + pattern_len] == pattern:
                     count += 1
                     pos += pattern_len
                 else:
@@ -95,6 +95,7 @@ class _EntitySubtype(str, Enum):
 
 class _FactEntity(BaseModel):
     """An entity/concept/event extracted from a single fact."""
+
     name: str = Field(description="Canonical full name")
     node_type: _NodeType = Field(description="Classification of the node")
     entity_subtype: _EntitySubtype | None = Field(
@@ -109,11 +110,13 @@ class _FactEntity(BaseModel):
 
 class _PerFactExtractionResult(BaseModel):
     """Maps each fact number (as string key) to extracted entities."""
+
     facts: dict[str, list[_FactEntity]]
 
 
 _EXTRACTION_SCHEMA = json.dumps(
-    _PerFactExtractionResult.model_json_schema(), indent=2,
+    _PerFactExtractionResult.model_json_schema(),
+    indent=2,
 )
 
 _NODE_EXTRACTION_SYSTEM = """\
@@ -240,11 +243,13 @@ async def extract_entities_from_facts(
     # Resolve batch size + concurrency from settings if not provided
     if batch_size is None:
         from kt_config.settings import get_settings
+
         _settings = get_settings()
         batch_size = _settings.entity_extraction_batch_size
         max_concurrent = _settings.entity_extraction_concurrency
     else:
         from kt_config.settings import get_settings
+
         max_concurrent = get_settings().entity_extraction_concurrency
 
     # Split into batches
@@ -254,7 +259,10 @@ async def extract_entities_from_facts(
 
     logger.info(
         "Node extraction: %d facts → %d batches of ≤%d (concurrency=%d)",
-        len(facts), len(batches), batch_size, max_concurrent,
+        len(facts),
+        len(batches),
+        batch_size,
+        max_concurrent,
     )
 
     # Run batches with bounded concurrency to avoid rate limits
@@ -265,20 +273,22 @@ async def extract_entities_from_facts(
     async def _limited(batch: list, offset: int) -> list[dict[str, Any]] | None:
         async with sem:
             result = await _extract_entity_batch(
-                batch, offset=offset, gateway=gateway, scope=scope,
+                batch,
+                offset=offset,
+                gateway=gateway,
+                scope=scope,
             )
             nonlocal completed
             completed += 1
             logger.info(
                 "Entity extraction batch %d/%d done (%d facts)",
-                completed, len(batches), len(batch),
+                completed,
+                len(batches),
+                len(batch),
             )
             return result
 
-    tasks = [
-        _limited(batch, offset=i * batch_size)
-        for i, batch in enumerate(batches)
-    ]
+    tasks = [_limited(batch, offset=i * batch_size) for i, batch in enumerate(batches)]
     batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Merge results across batches, deduplicating by normalised name
@@ -346,7 +356,9 @@ async def _extract_entity_batch(
     except Exception:
         logger.warning(
             "Failed to extract nodes from fact batch (offset=%d, size=%d)",
-            offset, len(batch), exc_info=True,
+            offset,
+            len(batch),
+            exc_info=True,
         )
         return None
 
@@ -365,8 +377,7 @@ def _parse_per_fact_result(
     facts_data = result.get("facts")
     if not isinstance(facts_data, dict):
         logger.warning(
-            "LLM did not return expected per-fact format (got keys: %s); "
-            "discarding batch",
+            "LLM did not return expected per-fact format (got keys: %s); discarding batch",
             list(result.keys()),
         )
         return None
@@ -416,11 +427,7 @@ def _parse_per_fact_result(
                     "name": name,
                     "node_type": node_type,
                     "fact_indices": [fact_idx],
-                    "aliases": [
-                        a.strip()
-                        for a in entry.get("aliases", [])
-                        if isinstance(a, str) and a.strip()
-                    ],
+                    "aliases": [a.strip() for a in entry.get("aliases", []) if isinstance(a, str) and a.strip()],
                 }
                 if node_type == "entity":
                     subtype = entry.get("entity_subtype", "other")

@@ -70,9 +70,25 @@ def _close_truncated_json(text: str, open_ch: str, close_ch: str) -> str:
     # Strip trailing incomplete string value (unclosed quote)
     # Look for last complete JSON value boundary
     stripped = text.rstrip()
-    if stripped and stripped[-1] not in (close_ch, "}", "]", '"', "0", "1", "2",
-                                         "3", "4", "5", "6", "7", "8", "9",
-                                         "true"[-1], "false"[-1], "null"[-1]):
+    if stripped and stripped[-1] not in (
+        close_ch,
+        "}",
+        "]",
+        '"',
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "true"[-1],
+        "false"[-1],
+        "null"[-1],
+    ):
         # Likely mid-value — backtrack to last comma, closing bracket, or colon
         for i in range(len(stripped) - 1, -1, -1):
             if stripped[i] in (",", open_ch, "{", "["):
@@ -165,10 +181,7 @@ def _format_usage(response: Any, max_tokens: int) -> str:
     completion_tokens = getattr(usage, "completion_tokens", None)
     if prompt_tokens is None and completion_tokens is None:
         return ""
-    return (
-        f" [tokens: prompt={prompt_tokens}, completion={completion_tokens}, "
-        f"max={max_tokens}]"
-    )
+    return f" [tokens: prompt={prompt_tokens}, completion={completion_tokens}, max={max_tokens}]"
 
 
 class ModelGateway:
@@ -182,20 +195,14 @@ class ModelGateway:
         self._api_key = api_key or settings.openrouter_api_key
         self.default_model: str = settings.default_model
         self.decomposition_model: str = settings.decomposition_model or settings.default_model
-        self.entity_extraction_model: str = (
-            settings.entity_extraction_model or self.decomposition_model
-        )
+        self.entity_extraction_model: str = settings.entity_extraction_model or self.decomposition_model
         self.file_decomposition_model: str = settings.file_decomposition_model or settings.default_model
         self.synthesis_model: str = settings.synthesis_model or settings.default_model
         self.dimension_model: str = settings.dimension_model or settings.default_model
         self.chat_model: str = settings.chat_model or settings.default_model
         self.orchestrator_model: str = settings.orchestrator_model or settings.default_model
-        self.scope_model: str = (
-            settings.scope_model or self.orchestrator_model
-        )
-        self.agent_select_model: str = (
-            settings.agent_select_model or self.orchestrator_model
-        )
+        self.scope_model: str = settings.scope_model or self.orchestrator_model
+        self.agent_select_model: str = settings.agent_select_model or self.orchestrator_model
         self.prioritization_model: str = settings.prioritization_model or settings.default_model
         self.parent_selection_model: str = settings.parent_selection_model or settings.default_model
         self.definition_model: str = settings.definition_model or settings.default_model
@@ -214,9 +221,7 @@ class ModelGateway:
         self.dimension_thinking_level: str = settings.dimension_thinking_level or _default_tl
         self.chat_thinking_level: str = settings.chat_thinking_level or _default_tl
         self.orchestrator_thinking_level: str = settings.orchestrator_thinking_level or _default_tl
-        self.scope_thinking_level: str = (
-            settings.scope_thinking_level or self.orchestrator_thinking_level
-        )
+        self.scope_thinking_level: str = settings.scope_thinking_level or self.orchestrator_thinking_level
         self.agent_select_thinking_level: str = settings.agent_select_thinking_level or self.orchestrator_thinking_level
         self.parent_selection_thinking_level: str = settings.parent_selection_thinking_level or _default_tl
         self.definition_thinking_level: str = settings.definition_thinking_level or _default_tl
@@ -254,11 +259,12 @@ class ModelGateway:
                 model = kwargs.get("model", "?")
                 logger.warning(
                     "LLM call to %s timed out after %ds (attempt %d/%d)",
-                    model, timeout, attempt + 1, max_retries,
+                    model,
+                    timeout,
+                    attempt + 1,
+                    max_retries,
                 )
-                last_exc = TimeoutError(
-                    f"LLM call to {model} timed out after {timeout}s"
-                )
+                last_exc = TimeoutError(f"LLM call to {model} timed out after {timeout}s")
                 delay = _BASE_DELAY * (2**attempt)
                 await asyncio.sleep(delay)
             except Exception as e:
@@ -352,7 +358,8 @@ class ModelGateway:
             except json.JSONDecodeError:
                 logger.warning(
                     "Failed to parse tool call arguments from %s: %.200s",
-                    model_id, fn.arguments,
+                    model_id,
+                    fn.arguments,
                 )
                 continue
             results.append({"name": fn.name, "arguments": args})
@@ -465,9 +472,10 @@ class ModelGateway:
                 try:
                     result = json.loads(cleaned)  # type: ignore[no-any-return]
                     logger.info(
-                        "JSON cleanup recovered response from %s "
-                        "(raw=%d chars, cleaned=%d chars)",
-                        model_id, len(raw_text), len(cleaned),
+                        "JSON cleanup recovered response from %s (raw=%d chars, cleaned=%d chars)",
+                        model_id,
+                        len(raw_text),
+                        len(cleaned),
                     )
                     return result
                 except json.JSONDecodeError:
@@ -478,16 +486,22 @@ class ModelGateway:
 
             # Always dump full response at DEBUG level for troubleshooting
             logger.debug(
-                "JSON parse failure (attempt %d/%d) from %s "
-                "(%d chars, finish_reason=%s, cause=%s)%s:\n%s",
-                attempt + 1, 1 + _JSON_PARSE_MAX_RETRIES,
-                model_id, len(raw_text), finish_reason, cause,
-                usage_str, raw_text,
+                "JSON parse failure (attempt %d/%d) from %s (%d chars, finish_reason=%s, cause=%s)%s:\n%s",
+                attempt + 1,
+                1 + _JSON_PARSE_MAX_RETRIES,
+                model_id,
+                len(raw_text),
+                finish_reason,
+                cause,
+                usage_str,
+                raw_text,
             )
             if cleaned != raw_text:
                 logger.debug(
                     "Cleaned response (attempt %d, %d chars):\n%s",
-                    attempt + 1, len(cleaned), cleaned,
+                    attempt + 1,
+                    len(cleaned),
+                    cleaned,
                 )
 
             # Detect transient upstream truncation: content exists but
@@ -495,16 +509,11 @@ class ModelGateway:
             usage = getattr(response, "usage", None)
             prompt_tok = getattr(usage, "prompt_tokens", None) if usage else None
             completion_tok = getattr(usage, "completion_tokens", None) if usage else None
-            is_transient = (
-                raw_text
-                and prompt_tok == 0
-                and completion_tok == 0
-            )
+            is_transient = raw_text and prompt_tok == 0 and completion_tok == 0
 
             if is_last_attempt:
                 logger.warning(
-                    "Failed to parse JSON from %s after %d attempt(s) "
-                    "(last cause: %s)%s. Preview: %.200s",
+                    "Failed to parse JSON from %s after %d attempt(s) (last cause: %s)%s. Preview: %.200s",
                     model_id,
                     attempt + 1,
                     cause,
@@ -516,21 +525,22 @@ class ModelGateway:
             # Exponential backoff — longer for transient upstream issues
             if is_transient:
                 delay = min(
-                    _JSON_RETRY_BASE_DELAY * (2 ** attempt),
+                    _JSON_RETRY_BASE_DELAY * (2**attempt),
                     _JSON_RETRY_MAX_DELAY,
                 )
                 logger.info(
-                    "Transient upstream error from %s (0 tokens reported), "
-                    "backing off %.1fs before retry %d/%d",
-                    model_id, delay, attempt + 1, _JSON_PARSE_MAX_RETRIES,
+                    "Transient upstream error from %s (0 tokens reported), backing off %.1fs before retry %d/%d",
+                    model_id,
+                    delay,
+                    attempt + 1,
+                    _JSON_PARSE_MAX_RETRIES,
                 )
                 await asyncio.sleep(delay)
 
             if is_transient:
                 # Upstream glitch — retry same request, no message modification
                 logger.warning(
-                    "JSON parse retry %d/%d for %s — cause: transient_upstream "
-                    "(0 tokens, %d chars received)%s",
+                    "JSON parse retry %d/%d for %s — cause: transient_upstream (0 tokens, %d chars received)%s",
                     attempt + 1,
                     _JSON_PARSE_MAX_RETRIES,
                     model_id,
@@ -612,8 +622,11 @@ class ModelGateway:
         async def _call(mid: str) -> tuple[str, str]:
             try:
                 result = await self.generate(
-                    mid, messages, system_prompt,
-                    temperature=temperature, max_tokens=max_tokens,
+                    mid,
+                    messages,
+                    system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                     reasoning_effort=reasoning_effort,
                 )
                 return (mid, result)

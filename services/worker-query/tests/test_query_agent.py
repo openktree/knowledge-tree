@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from kt_worker_query.agents.query_agent_state import QueryAgentState
 from kt_agents_core.state import AgentContext
+from kt_worker_query.agents.query_agent_state import QueryAgentState
 from kt_worker_query.agents.tools.query_tools import (
     create_query_tools,
     lightweight_get_node_facts,
@@ -134,16 +134,12 @@ class TestQueryAgentState:
         assert state.nav_remaining == 0
 
     def test_has_visited_this_turn(self) -> None:
-        state = QueryAgentState(
-            query="test", nav_budget=10, visited_nodes=["abc"]
-        )
+        state = QueryAgentState(query="test", nav_budget=10, visited_nodes=["abc"])
         assert state.has_visited("abc") is True
         assert state.has_visited("xyz") is False
 
     def test_has_visited_prior_turn(self) -> None:
-        state = QueryAgentState(
-            query="test", nav_budget=10, prior_visited_nodes=["prior-id"]
-        )
+        state = QueryAgentState(query="test", nav_budget=10, prior_visited_nodes=["prior-id"])
         assert state.has_visited("prior-id") is True
         assert state.has_visited("other") is False
 

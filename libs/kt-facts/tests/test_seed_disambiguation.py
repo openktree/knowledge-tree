@@ -122,10 +122,12 @@ class TestLlmDisambiguate:
         facts = _make_facts(5)
         gateway = MagicMock()
         gateway.default_model = "test-model"
-        gateway.generate_json = AsyncMock(return_value={
-            "is_ambiguous": False,
-            "groups": [{"label": "Mars (planet)", "fact_numbers": [1, 2, 3, 4, 5]}],
-        })
+        gateway.generate_json = AsyncMock(
+            return_value={
+                "is_ambiguous": False,
+                "groups": [{"label": "Mars (planet)", "fact_numbers": [1, 2, 3, 4, 5]}],
+            }
+        )
 
         result = await _llm_disambiguate("Mars", "entity", facts, gateway)
         assert result is None
@@ -134,13 +136,15 @@ class TestLlmDisambiguate:
         facts = _make_facts(6)
         gateway = MagicMock()
         gateway.default_model = "test-model"
-        gateway.generate_json = AsyncMock(return_value={
-            "is_ambiguous": True,
-            "groups": [
-                {"label": "Mars (planet)", "fact_numbers": [1, 2, 3]},
-                {"label": "Mars (Roman god)", "fact_numbers": [4, 5, 6]},
-            ],
-        })
+        gateway.generate_json = AsyncMock(
+            return_value={
+                "is_ambiguous": True,
+                "groups": [
+                    {"label": "Mars (planet)", "fact_numbers": [1, 2, 3]},
+                    {"label": "Mars (Roman god)", "fact_numbers": [4, 5, 6]},
+                ],
+            }
+        )
 
         result = await _llm_disambiguate("Mars", "entity", facts, gateway)
         assert result is not None
@@ -173,7 +177,12 @@ class TestExecuteSplit:
         ]
 
         result = await _execute_split(
-            "entity:mars", "Mars", "entity", clusters, repo, "test reason",
+            "entity:mars",
+            "Mars",
+            "entity",
+            clusters,
+            repo,
+            "test reason",
         )
 
         assert len(result) == 2

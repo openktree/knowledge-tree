@@ -1,5 +1,6 @@
 import logging
 import uuid
+
 from sqlalchemy import func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,13 +80,15 @@ class FactRepository:
         from sqlalchemy import delete
 
         stmt = delete(NodeFact).where(
-            NodeFact.node_id == node_id, NodeFact.fact_id == fact_id,
+            NodeFact.node_id == node_id,
+            NodeFact.fact_id == fact_id,
         )
         result = await self._session.execute(stmt)
         return result.rowcount > 0  # type: ignore[union-attr]
 
     async def get_fact_ids_for_nodes(
-        self, node_ids: list[uuid.UUID],
+        self,
+        node_ids: list[uuid.UUID],
     ) -> dict[uuid.UUID, set[uuid.UUID]]:
         """Return {node_id: set(fact_id)} for the given nodes in a single query."""
         if not node_ids:
@@ -257,20 +260,14 @@ class FactRepository:
             values["author_person"] = author_person
         if author_org is not None:
             values["author_org"] = author_org
-        stmt = (
-            pg_insert(FactSource)
-            .values(**values)
-            .on_conflict_do_nothing(constraint="uq_fact_source")
-        )
+        stmt = pg_insert(FactSource).values(**values).on_conflict_do_nothing(constraint="uq_fact_source")
         result = await self._session.execute(stmt)
         if result.rowcount == 0:  # type: ignore[union-attr]
             logger.debug("Fact-source link already exists: fact=%s source=%s", fact_id, raw_source_id)
             return None
         # Increment the cached fact_count on the RawSource
         await self._session.execute(
-            update(RawSource)
-            .where(RawSource.id == raw_source_id)
-            .values(fact_count=RawSource.fact_count + 1)
+            update(RawSource).where(RawSource.id == raw_source_id).values(fact_count=RawSource.fact_count + 1)
         )
         return FactSource(
             id=new_id,
@@ -314,9 +311,7 @@ class FactRepository:
         Returns list of (Fact, stance) tuples where stance may be None.
         """
         stmt = (
-            select(Fact, NodeFact.stance)
-            .join(NodeFact, Fact.id == NodeFact.fact_id)
-            .where(NodeFact.node_id == node_id)
+            select(Fact, NodeFact.stance).join(NodeFact, Fact.id == NodeFact.fact_id).where(NodeFact.node_id == node_id)
         )
         result = await self._session.execute(stmt)
         return [(row[0], row[1]) for row in result.all()]
@@ -336,11 +331,7 @@ class FactRepository:
             sorted by evidence fact count descending.
         """
         # Subquery: fact IDs linked to the source node
-        source_facts = (
-            select(NodeFact.fact_id)
-            .where(NodeFact.node_id == node_id)
-            .subquery()
-        )
+        source_facts = select(NodeFact.fact_id).where(NodeFact.node_id == node_id).subquery()
 
         # Find other nodes sharing those facts, grouped
         stmt = (
@@ -360,10 +351,7 @@ class FactRepository:
             .limit(limit)
         )
         result = await self._session.execute(stmt)
-        return [
-            (row[0], row[1], list(row[2]))
-            for row in result.all()
-        ]
+        return [(row[0], row[1], list(row[2])) for row in result.all()]
 
     async def search_fact_pool_trigram(
         self,
@@ -403,11 +391,7 @@ class FactRepository:
             sorted by evidence fact count descending.
         """
         # Subquery: fact IDs already linked to the source node
-        source_facts = (
-            select(NodeFact.fact_id)
-            .where(NodeFact.node_id == source_node_id)
-            .subquery()
-        )
+        source_facts = select(NodeFact.fact_id).where(NodeFact.node_id == source_node_id).subquery()
 
         stmt = (
             select(
@@ -429,10 +413,7 @@ class FactRepository:
         )
 
         result = await self._session.execute(stmt)
-        return [
-            (row[0], row[1], list(row[2]))
-            for row in result.all()
-        ]
+        return [(row[0], row[1], list(row[2])) for row in result.all()]
 
     # -- Fact rejection tracking -----------------------------------------
 
@@ -479,11 +460,7 @@ class FactRepository:
 
         Uses plainto_tsquery for word-boundary matching.
         """
-        rejected_subq = (
-            select(NodeFactRejection.fact_id)
-            .where(NodeFactRejection.node_id == node_id)
-            .subquery()
-        )
+        rejected_subq = select(NodeFactRejection.fact_id).where(NodeFactRejection.node_id == node_id).subquery()
         ts_query = func.plainto_tsquery("english", query)
         stmt = (
             select(Fact)
@@ -575,11 +552,7 @@ class FactRepository:
             load_sources: Eagerly load sources (default True). Set False
                 when caller will batch-load sources separately.
         """
-        stmt = (
-            select(Fact)
-            .join(NodeFact, Fact.id == NodeFact.fact_id)
-            .where(NodeFact.node_id == node_id)
-        )
+        stmt = select(Fact).join(NodeFact, Fact.id == NodeFact.fact_id).where(NodeFact.node_id == node_id)
 
         # Intersect with a second node's facts via EXISTS (avoids materializing full ID set)
         if source_node_id is not None:
@@ -612,7 +585,8 @@ class FactRepository:
         return list(result.scalars().unique().all())
 
     async def get_first_sources_for_facts(
-        self, fact_ids: list[uuid.UUID],
+        self,
+        fact_ids: list[uuid.UUID],
     ) -> dict[uuid.UUID, tuple[FactSource, RawSource]]:
         """Batch-load the first FactSource + RawSource for each fact.
 

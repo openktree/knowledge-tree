@@ -40,9 +40,7 @@ async def _insert_seed(repo: WriteSeedRepository, name: str, node_type: str = "e
 
 async def _raw_similarity(session, a: str, b: str) -> float:
     """Query raw SELECT similarity(a, b) from PostgreSQL."""
-    result = await session.execute(
-        text("SELECT similarity(:a, :b)"), {"a": a, "b": b}
-    )
+    result = await session.execute(text("SELECT similarity(:a, :b)"), {"a": a, "b": b})
     return float(result.scalar())
 
 
@@ -200,7 +198,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "The Miami Herald Newspaper", "entity", repo,
+            incoming_key,
+            "The Miami Herald Newspaper",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )
@@ -217,7 +218,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "McDonalds Corporation", "entity", repo,
+            incoming_key,
+            "McDonalds Corporation",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )
@@ -229,9 +233,7 @@ class TestDeduplicateSeedIntegration:
 
         repo = WriteSeedRepository(write_db_session)
         existing_key = await _insert_seed(repo, "U.S. Attorney for Southern District of New York", "entity")
-        incoming_key = await _insert_seed(
-            repo, "U.S. Attorney's Office for Southern District of Florida", "entity"
-        )
+        incoming_key = await _insert_seed(repo, "U.S. Attorney's Office for Southern District of Florida", "entity")
         await write_db_session.flush()
 
         result = await deduplicate_seed(
@@ -273,7 +275,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "Jeffrey Epstein's Lawyer", "entity", repo,
+            incoming_key,
+            "Jeffrey Epstein's Lawyer",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )
@@ -289,7 +294,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "Bank of England", "entity", repo,
+            incoming_key,
+            "Bank of England",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )
@@ -305,7 +313,10 @@ class TestDeduplicateSeedIntegration:
         await write_db_session.flush()
 
         result = await deduplicate_seed(
-            incoming_key, "University of Michigan", "entity", repo,
+            incoming_key,
+            "University of Michigan",
+            "entity",
+            repo,
             embedding_service=_mock_embedding_service(),
             qdrant_seed_repo=_mock_qdrant_repo(),
         )

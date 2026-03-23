@@ -25,8 +25,8 @@ class IngestState(BaseModel):
     source_summaries: list[dict[str, Any]] = Field(default_factory=list)
 
     # Budgets — unified node budget
-    nav_budget: int = 50   # max nodes to create + read
-    nav_used: int = 0      # nodes created + nodes read
+    nav_budget: int = 50  # max nodes to create + read
+    nav_used: int = 0  # nodes created + nodes read
 
     # Tracking (compatible with OrchestratorState)
     gathered_fact_count: int = 0

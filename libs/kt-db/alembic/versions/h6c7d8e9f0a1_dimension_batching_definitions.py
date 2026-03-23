@@ -11,8 +11,8 @@ Revises: g5b6c7d8e9f0
 Create Date: 2026-02-26
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "h6c7d8e9f0a1"
@@ -34,7 +34,9 @@ def upgrade() -> None:
     # -- DimensionFact join table --
     op.create_table(
         "dimension_facts",
-        sa.Column("dimension_id", UUID(as_uuid=True), sa.ForeignKey("dimensions.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "dimension_id", UUID(as_uuid=True), sa.ForeignKey("dimensions.id", ondelete="CASCADE"), primary_key=True
+        ),
         sa.Column("fact_id", UUID(as_uuid=True), sa.ForeignKey("facts.id", ondelete="CASCADE"), primary_key=True),
         sa.Column("linked_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
         sa.UniqueConstraint("dimension_id", "fact_id", name="uq_dimension_fact"),

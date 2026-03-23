@@ -1,13 +1,12 @@
 import asyncio
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
-
-from kt_db.write_models import WriteBase
 from kt_config.settings import get_settings
+from kt_db.write_models import WriteBase
 
 config = context.config
 

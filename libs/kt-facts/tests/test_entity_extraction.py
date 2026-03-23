@@ -25,18 +25,20 @@ async def test_extract_entities_valid_response() -> None:
 
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "Albert Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-                {"name": "general relativity", "node_type": "concept", "aliases": []},
-            ],
-            "2": [
-                {"name": "NASA", "node_type": "entity", "entity_subtype": "organization", "aliases": []},
-                {"name": "Apollo 11 launch", "node_type": "event", "aliases": []},
-            ],
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {"name": "Albert Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []},
+                    {"name": "general relativity", "node_type": "concept", "aliases": []},
+                ],
+                "2": [
+                    {"name": "NASA", "node_type": "entity", "entity_subtype": "organization", "aliases": []},
+                    {"name": "Apollo 11 launch", "node_type": "event", "aliases": []},
+                ],
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway, scope="physics history")
     assert result is not None
@@ -57,13 +59,15 @@ async def test_extract_entities_normalizes_invalid_type() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "test node", "node_type": "invalid_type", "aliases": []},
-            ]
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {"name": "test node", "node_type": "invalid_type", "aliases": []},
+                ]
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -76,17 +80,19 @@ async def test_extract_entities_skips_invalid_entries() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "valid node", "node_type": "concept", "aliases": []},
-                {"name": "", "node_type": "concept", "aliases": []},  # empty name
-                {"node_type": "entity"},  # missing name
-                "not a dict",  # invalid type
-                {"name": "another valid", "node_type": "entity", "entity_subtype": "other", "aliases": []},
-            ]
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {"name": "valid node", "node_type": "concept", "aliases": []},
+                    {"name": "", "node_type": "concept", "aliases": []},  # empty name
+                    {"node_type": "entity"},  # missing name
+                    "not a dict",  # invalid type
+                    {"name": "another valid", "node_type": "entity", "entity_subtype": "other", "aliases": []},
+                ]
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -134,14 +140,16 @@ async def test_extract_entities_entity_subtype() -> None:
     facts = [MagicMock(fact_type="claim", content="test")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "facts": {
-            "1": [
-                {"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []},
-                {"name": "NASA", "node_type": "entity", "entity_subtype": "organization", "aliases": []},
-            ]
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "facts": {
+                "1": [
+                    {"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []},
+                    {"name": "NASA", "node_type": "entity", "entity_subtype": "organization", "aliases": []},
+                ]
+            }
         }
-    })
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -154,10 +162,7 @@ async def test_extract_entities_entity_subtype() -> None:
 @pytest.mark.asyncio
 async def test_extract_entities_batching() -> None:
     """With batch_size=2 and 3 facts, should make 2 batches."""
-    facts = [
-        MagicMock(fact_type="claim", content=f"fact {i}")
-        for i in range(3)
-    ]
+    facts = [MagicMock(fact_type="claim", content=f"fact {i}") for i in range(3)]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
 
@@ -184,10 +189,7 @@ async def test_extract_entities_batching() -> None:
 @pytest.mark.asyncio
 async def test_extract_entities_merges_fact_indices_across_batches() -> None:
     """Same node in different batches should have merged fact_indices."""
-    facts = [
-        MagicMock(fact_type="claim", content=f"fact {i}")
-        for i in range(4)
-    ]
+    facts = [MagicMock(fact_type="claim", content=f"fact {i}") for i in range(4)]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
 
@@ -198,15 +200,19 @@ async def test_extract_entities_merges_fact_indices_across_batches() -> None:
         call_count += 1
         if call_count == 1:
             # Batch 1: facts 1-2
-            return {"facts": {
-                "1": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
-                "2": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
-            }}
+            return {
+                "facts": {
+                    "1": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
+                    "2": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
+                }
+            }
         # Batch 2: facts 3-4
-        return {"facts": {
-            "3": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
-            "4": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
-        }}
+        return {
+            "facts": {
+                "3": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
+                "4": [{"name": "Einstein", "node_type": "entity", "entity_subtype": "person", "aliases": []}],
+            }
+        }
 
     gateway.generate_json = AsyncMock(side_effect=mock_generate)
 

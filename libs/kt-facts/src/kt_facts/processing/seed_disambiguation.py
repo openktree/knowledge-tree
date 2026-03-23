@@ -21,7 +21,6 @@ from kt_db.keys import make_seed_key
 
 if TYPE_CHECKING:
     from kt_db.repositories.write_seeds import WriteSeedRepository
-    from kt_db.write_models import WriteFact
     from kt_models.embeddings import EmbeddingService
     from kt_models.gateway import ModelGateway
     from kt_qdrant.repositories.seeds import QdrantSeedRepository
@@ -65,17 +64,24 @@ async def check_disambiguation(
     # Layer 1: Heuristic clustering
     if embedding_service is not None:
         clusters = await _heuristic_cluster(
-            facts, embedding_service, settings.seed_disambiguation_cluster_threshold,
+            facts,
+            embedding_service,
+            settings.seed_disambiguation_cluster_threshold,
         )
         if clusters is not None and len(clusters) > 1:
             # Clear separation — auto-split
             logger.info(
                 "Heuristic split for seed '%s': %d clusters detected",
-                seed_key, len(clusters),
+                seed_key,
+                len(clusters),
             )
             return await _execute_split(
-                seed_key, seed.name, seed.node_type, clusters,
-                write_seed_repo, "heuristic clustering",
+                seed_key,
+                seed.name,
+                seed.node_type,
+                clusters,
+                write_seed_repo,
+                "heuristic clustering",
                 embedding_service=embedding_service,
                 qdrant_seed_repo=qdrant_seed_repo,
             )
@@ -86,7 +92,10 @@ async def check_disambiguation(
         if clusters is not None and len(clusters) > 1:
             # Moderate ambiguity — ask LLM
             llm_result = await _llm_disambiguate(
-                seed.name, seed.node_type, facts, model_gateway,
+                seed.name,
+                seed.node_type,
+                facts,
+                model_gateway,
             )
             if llm_result is not None and isinstance(llm_result, dict):
                 clusters_out = llm_result["clusters"]
@@ -94,11 +103,16 @@ async def check_disambiguation(
                 if len(clusters_out) > 1:
                     logger.info(
                         "LLM split for seed '%s': %d groups identified",
-                        seed_key, len(clusters_out),
+                        seed_key,
+                        len(clusters_out),
                     )
                     return await _execute_split(
-                        seed_key, seed.name, seed.node_type, clusters_out,
-                        write_seed_repo, "LLM disambiguation",
+                        seed_key,
+                        seed.name,
+                        seed.node_type,
+                        clusters_out,
+                        write_seed_repo,
+                        "LLM disambiguation",
                         labels=labels,
                         embedding_service=embedding_service,
                         qdrant_seed_repo=qdrant_seed_repo,
@@ -204,11 +218,11 @@ async def _llm_disambiguate(
             f"(type: {node_type}). Determine whether these facts refer to ONE entity/concept "
             f"or MULTIPLE distinct entities/concepts with the same name.\n\n"
             f"Facts:\n" + "\n".join(fact_lines) + "\n\n"
-            f"Respond with JSON:\n"
-            f'{{"is_ambiguous": true/false, "groups": [{{"label": "disambiguation label", "fact_numbers": [1, 2, ...]}}]}}\n\n'
-            f"If all facts refer to one entity, set is_ambiguous=false and put all fact numbers in one group.\n"
-            f"If facts refer to multiple entities, set is_ambiguous=true and create a group for each distinct entity "
-            f'with a descriptive label that disambiguates it (e.g., "Mars (planet)", "Mars (Roman god)").'
+            "Respond with JSON:\n"
+            '{"is_ambiguous": true/false, "groups": [{"label": "disambiguation label", "fact_numbers": [1, 2, ...]}]}\n\n'
+            "If all facts refer to one entity, set is_ambiguous=false and put all fact numbers in one group.\n"
+            "If facts refer to multiple entities, set is_ambiguous=true and create a group for each distinct entity "
+            'with a descriptive label that disambiguates it (e.g., "Mars (planet)", "Mars (Roman god)").'
         )
 
         result = await model_gateway.generate_json(
@@ -282,12 +296,14 @@ async def _execute_split(
         new_key = make_seed_key(node_type, disambiguated_name)
         cluster_fact_ids = [f["id"] for f in cluster]
 
-        new_seeds.append({
-            "key": new_key,
-            "name": disambiguated_name,
-            "node_type": node_type,
-            "label": label,
-        })
+        new_seeds.append(
+            {
+                "key": new_key,
+                "name": disambiguated_name,
+                "node_type": node_type,
+                "label": label,
+            }
+        )
         fact_assignments[new_key] = cluster_fact_ids
 
     await write_seed_repo.split_seed(

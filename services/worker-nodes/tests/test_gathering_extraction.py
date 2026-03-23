@@ -9,7 +9,6 @@ import pytest
 from kt_facts.processing.entity_extraction import extract_entities_from_facts
 from kt_worker_nodes.pipelines.gathering.pipeline import GatherFactsPipeline
 
-
 # ── extract_entities_from_facts tests ─────────────────────────────
 
 
@@ -29,14 +28,16 @@ async def test_extract_nodes_valid_response() -> None:
 
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "nodes": [
-            {"name": "Albert Einstein", "node_type": "entity", "fact_indices": [1]},
-            {"name": "general relativity", "node_type": "concept", "fact_indices": [1]},
-            {"name": "NASA", "node_type": "entity", "fact_indices": [2]},
-            {"name": "Apollo 11 launch", "node_type": "event", "fact_indices": [2]},
-        ]
-    })
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "nodes": [
+                {"name": "Albert Einstein", "node_type": "entity", "fact_indices": [1]},
+                {"name": "general relativity", "node_type": "concept", "fact_indices": [1]},
+                {"name": "NASA", "node_type": "entity", "fact_indices": [2]},
+                {"name": "Apollo 11 launch", "node_type": "event", "fact_indices": [2]},
+            ]
+        }
+    )
 
     result = await extract_entities_from_facts(facts, gateway, scope="physics history")
     assert result is not None
@@ -52,11 +53,13 @@ async def test_extract_nodes_normalizes_invalid_type() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "nodes": [
-            {"name": "test node", "node_type": "invalid_type", "fact_indices": [1]},
-        ]
-    })
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "nodes": [
+                {"name": "test node", "node_type": "invalid_type", "fact_indices": [1]},
+            ]
+        }
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -69,15 +72,17 @@ async def test_extract_nodes_skips_invalid_entries() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
     gateway = MagicMock()
     gateway.decomposition_model = "test-model"
-    gateway.generate_json = AsyncMock(return_value={
-        "nodes": [
-            {"name": "valid node", "node_type": "concept"},
-            {"name": "", "node_type": "concept"},  # empty name
-            {"node_type": "entity"},  # missing name
-            "not a dict",  # invalid type
-            {"name": "another valid", "node_type": "entity"},
-        ]
-    })
+    gateway.generate_json = AsyncMock(
+        return_value={
+            "nodes": [
+                {"name": "valid node", "node_type": "concept"},
+                {"name": "", "node_type": "concept"},  # empty name
+                {"node_type": "entity"},  # missing name
+                "not a dict",  # invalid type
+                {"name": "another valid", "node_type": "entity"},
+            ]
+        }
+    )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
@@ -128,7 +133,10 @@ async def test_gather_extraction_mode_includes_extracted_nodes() -> None:
     ctx = MagicMock()
     ctx.provider_registry = MagicMock()
     from kt_config.types import RawSearchResult
-    search_results = {"query1": [RawSearchResult(title="r1", uri="http://r1.com", raw_content="c1", provider_id="test")]}
+
+    search_results = {
+        "query1": [RawSearchResult(title="r1", uri="http://r1.com", raw_content="c1", provider_id="test")]
+    }
     ctx.provider_registry.search_all = AsyncMock(return_value=search_results)
     ctx.session = MagicMock()
     ctx.session.commit = AsyncMock()
@@ -173,23 +181,29 @@ async def test_gather_extraction_mode_includes_extracted_nodes() -> None:
     mock_source.provider_metadata = None
     mock_source.content_type = None
 
-    with patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline._summarize_gathered_facts",
-        new_callable=AsyncMock,
-        return_value=None,
-    ), patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch",
-        new_callable=AsyncMock,
-        return_value=[mock_source],
-    ), patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.WritePageFetchLogRepository",
-        return_value=mock_page_log,
-    ), patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.get_settings",
-        return_value=mock_settings,
-    ), patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.DecompositionPipeline",
-    ) as mock_decomp_cls:
+    with (
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline._summarize_gathered_facts",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch",
+            new_callable=AsyncMock,
+            return_value=[mock_source],
+        ),
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.WritePageFetchLogRepository",
+            return_value=mock_page_log,
+        ),
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.get_settings",
+            return_value=mock_settings,
+        ),
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.DecompositionPipeline",
+        ) as mock_decomp_cls,
+    ):
         mock_decomp = MagicMock()
         mock_decomp.decompose = AsyncMock(return_value=mock_decomp_result)
         mock_decomp_cls.return_value = mock_decomp
@@ -208,9 +222,12 @@ async def test_gather_extraction_mode_includes_extracted_nodes() -> None:
 async def test_gather_default_mode_calls_summary_not_extraction() -> None:
     """Default mode: summary enabled, extraction not surfaced."""
     from kt_config.types import RawSearchResult
+
     ctx = MagicMock()
     ctx.provider_registry = MagicMock()
-    search_results = {"query1": [RawSearchResult(title="r1", uri="http://r1.com", raw_content="c1", provider_id="test")]}
+    search_results = {
+        "query1": [RawSearchResult(title="r1", uri="http://r1.com", raw_content="c1", provider_id="test")]
+    }
     ctx.provider_registry.search_all = AsyncMock(return_value=search_results)
     ctx.session = MagicMock()
     ctx.session.commit = AsyncMock()
@@ -254,23 +271,29 @@ async def test_gather_default_mode_calls_summary_not_extraction() -> None:
     mock_source.provider_metadata = None
     mock_source.content_type = None
 
-    with patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline._summarize_gathered_facts",
-        new_callable=AsyncMock,
-        return_value={"content_summary": "test"},
-    ) as mock_summarize, patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch",
-        new_callable=AsyncMock,
-        return_value=[mock_source],
-    ), patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.WritePageFetchLogRepository",
-        return_value=mock_page_log,
-    ), patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.get_settings",
-        return_value=mock_settings,
-    ), patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.DecompositionPipeline",
-    ) as mock_decomp_cls:
+    with (
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline._summarize_gathered_facts",
+            new_callable=AsyncMock,
+            return_value={"content_summary": "test"},
+        ) as mock_summarize,
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch",
+            new_callable=AsyncMock,
+            return_value=[mock_source],
+        ),
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.WritePageFetchLogRepository",
+            return_value=mock_page_log,
+        ),
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.get_settings",
+            return_value=mock_settings,
+        ),
+        patch(
+            "kt_worker_nodes.pipelines.gathering.pipeline.DecompositionPipeline",
+        ) as mock_decomp_cls,
+    ):
         mock_decomp = MagicMock()
         mock_decomp.decompose = AsyncMock(return_value=mock_decomp_result)
         mock_decomp_cls.return_value = mock_decomp

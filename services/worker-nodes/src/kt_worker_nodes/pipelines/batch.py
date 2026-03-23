@@ -16,13 +16,13 @@ import logging
 from typing import Any
 
 from kt_agents_core.state import AgentContext
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
 from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
 from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
 from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
 from kt_worker_nodes.pipelines.parent.pipeline import ParentSelectionPipeline
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,9 @@ class BatchPipeline:
         tracker = self._ctx.pipeline_tracker
 
         # Phase 1: Classify + Gather Facts
-        await self._ctx.emit("activity_log", action=f"Pipeline: classifying & gathering facts for {active} nodes", tool="build_pipeline")
+        await self._ctx.emit(
+            "activity_log", action=f"Pipeline: classifying & gathering facts for {active} nodes", tool="build_pipeline"
+        )
         if scope_name:
             await self._ctx.emit("scope_phase", data={"scope": scope_name, "phase": "classifying"})
         if tracker and scope_name:
@@ -72,7 +74,9 @@ class BatchPipeline:
         # Phase 1.5: Enrich Nodes (pool search, fact linking, dimension regen)
         enrich_count = sum(1 for t in tasks if t.action == "enrich" and not t.result)
         if enrich_count > 0:
-            await self._ctx.emit("activity_log", action=f"Pipeline: enriching {enrich_count} existing nodes", tool="build_pipeline")
+            await self._ctx.emit(
+                "activity_log", action=f"Pipeline: enriching {enrich_count} existing nodes", tool="build_pipeline"
+            )
             if scope_name:
                 await self._ctx.emit("scope_phase", data={"scope": scope_name, "phase": "enriching"})
             if tracker and scope_name:
@@ -81,7 +85,8 @@ class BatchPipeline:
             if tracker and scope_name:
                 await tracker.end_phase(scope_name, "enriching")
                 await tracker.log_phase_outcome(
-                    scope_name, "enriching",
+                    scope_name,
+                    "enriching",
                     node_count=enrich_metrics.get("node_count", 0),
                     metrics=enrich_metrics,
                 )
@@ -94,7 +99,8 @@ class BatchPipeline:
             gathered_fact_count = sum(len(t.pool_facts) for t in tasks)
             await tracker.end_phase(scope_name, "gathering")
             await tracker.log_phase_outcome(
-                scope_name, "gathering",
+                scope_name,
+                "gathering",
                 fact_count=gathered_fact_count,
                 metrics=gathering_metrics,
             )
@@ -109,7 +115,8 @@ class BatchPipeline:
             created_node_count = sum(1 for t in tasks if t.node is not None and t.action == "create")
             await tracker.end_phase(scope_name, "building")
             await tracker.log_phase_outcome(
-                scope_name, "building",
+                scope_name,
+                "building",
                 node_count=created_node_count,
                 metrics=building_metrics,
             )

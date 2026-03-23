@@ -10,8 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.dependencies import get_db_session
 from kt_api.auth.tokens import require_admin
+from kt_api.dependencies import get_db_session
 from kt_db.models import User
 
 router = APIRouter(prefix="/api/v1/members", tags=["members"])
@@ -37,9 +37,7 @@ async def list_members(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[MemberResponse]:
     """List all users (admin only)."""
-    result = await session.execute(
-        select(User).order_by(User.created_at)
-    )
+    result = await session.execute(select(User).order_by(User.created_at))
     users = result.unique().scalars().all()
     return [
         MemberResponse(
@@ -76,9 +74,7 @@ async def update_member_role(
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    await session.execute(
-        update(User).where(User.id == target_uuid).values(is_superuser=body.is_superuser)
-    )
+    await session.execute(update(User).where(User.id == target_uuid).values(is_superuser=body.is_superuser))
     await session.commit()
 
     # Re-fetch to return updated state

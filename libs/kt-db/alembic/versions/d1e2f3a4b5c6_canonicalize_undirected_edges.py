@@ -5,14 +5,14 @@ Revises: feadccdd885a
 Create Date: 2026-02-20 12:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
-revision: str = 'd1e2f3a4b5c6'
-down_revision: Union[str, Sequence[str], None] = 'feadccdd885a'
+revision: str = "d1e2f3a4b5c6"
+down_revision: Union[str, Sequence[str], None] = "feadccdd885a"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -4,9 +4,9 @@ import logging
 import uuid
 from typing import TYPE_CHECKING
 
+from kt_config.types import COMPOUND_FACT_TYPES
 from kt_db.repositories.facts import FactRepository
 from kt_models.embeddings import EmbeddingService
-from kt_config.types import COMPOUND_FACT_TYPES
 
 if TYPE_CHECKING:
     from kt_db.repositories.write_facts import WriteFactRepository
@@ -73,9 +73,12 @@ async def deduplicate_facts(
     qdrant_fact_repo = None
     if qdrant_client is not None:
         from kt_qdrant.repositories.facts import QdrantFactRepository
+
         qdrant_fact_repo = QdrantFactRepository(qdrant_client)
     else:
-        logger.error("deduplicate_facts: Qdrant client not provided — deduplication will be skipped, all facts treated as new")
+        logger.error(
+            "deduplicate_facts: Qdrant client not provided — deduplication will be skipped, all facts treated as new"
+        )
 
     # Phase 1 — resolve embeddings (pre-computed or batch embed)
     embeddings: list[list[float] | None]
@@ -107,7 +110,8 @@ async def deduplicate_facts(
             # Qdrant dedup — required for embedding-based deduplication
             if qdrant_fact_repo is not None:
                 qdrant_results = await qdrant_fact_repo.find_most_similar(
-                    embedding, score_threshold=threshold,
+                    embedding,
+                    score_threshold=threshold,
                 )
                 if qdrant_results is not None:
                     results.append((qdrant_results.fact_id, False))

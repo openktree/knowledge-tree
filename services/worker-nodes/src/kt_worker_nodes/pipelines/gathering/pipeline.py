@@ -11,7 +11,6 @@ import logging
 import uuid
 from typing import Any
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_agents_core.state import AgentContext
 from kt_config.settings import get_settings
 from kt_db.models import Fact
@@ -21,6 +20,7 @@ from kt_facts.author import AuthorInfo, SourceContext, build_author_chain, extra
 from kt_facts.pipeline import DecompositionPipeline
 from kt_models.gateway import ModelGateway
 from kt_providers.search_and_fetch import filter_fresh_urls, store_and_fetch
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclasses.dataclass(frozen=True)
 class _SourceSnapshot:
     """Detached snapshot of source attributes for use after session expires."""
+
     uri: str
     raw_content: str | None
     provider_metadata: dict[str, Any] | None
@@ -196,12 +197,15 @@ class GatherFactsPipeline:
                         varied = _vary_query(query, search_round)
                         try:
                             round_results = await ctx.provider_registry.search_all(
-                                varied, max_results=10,
+                                varied,
+                                max_results=10,
                             )
                         except Exception:
                             logger.debug(
                                 "Extra search round %d failed for '%s'",
-                                search_round, query, exc_info=True,
+                                search_round,
+                                query,
+                                exc_info=True,
                             )
                             break
 
@@ -214,7 +218,9 @@ class GatherFactsPipeline:
 
                     # Filter via PageFetchLog (skip recently processed)
                     fresh_results, _skipped = await filter_fresh_urls(
-                        fresh_results, page_log, settings.page_stale_days,
+                        fresh_results,
+                        page_log,
+                        settings.page_stale_days,
                     )
                     if not fresh_results:
                         continue  # all stale, try next round
@@ -223,15 +229,14 @@ class GatherFactsPipeline:
                     for r in fresh_results:
                         if r.uri and not any(s["url"] == r.uri for s in all_source_urls):
                             all_source_urls.append({"url": r.uri, "title": r.title})
-                    source_titles_by_query.setdefault(query, []).extend(
-                        r.title for r in fresh_results
-                    )
+                    source_titles_by_query.setdefault(query, []).extend(r.title for r in fresh_results)
 
                     # Fetch full text — request enough to meet remaining target
                     remaining = target - fetched_count
                     fetch_limit = min(len(fresh_results), remaining + 3)  # overshoot for failures
                     raw_sources = await store_and_fetch(
-                        fresh_results[:fetch_limit], ctx,
+                        fresh_results[:fetch_limit],
+                        ctx,
                         max_fetch_urls=fetch_limit,
                         write_session=write_session,
                     )
@@ -239,13 +244,15 @@ class GatherFactsPipeline:
                     # Filter out super sources (deferred to user-initiated ingestion)
                     for s in raw_sources:
                         if getattr(s, "is_super_source", False):
-                            all_super_sources.append({
-                                "raw_source_id": str(s.id),
-                                "uri": s.uri,
-                                "title": s.title,
-                                "estimated_tokens": len(s.raw_content or "") // 4,
-                                "content_type": s.content_type,
-                            })
+                            all_super_sources.append(
+                                {
+                                    "raw_source_id": str(s.id),
+                                    "uri": s.uri,
+                                    "title": s.title,
+                                    "estimated_tokens": len(s.raw_content or "") // 4,
+                                    "content_type": s.content_type,
+                                }
+                            )
                             continue
 
                         # Count successful full-text fetches toward target
@@ -268,7 +275,10 @@ class GatherFactsPipeline:
                     if search_round > 1:
                         logger.info(
                             "gather_facts: round %d for '%s' — %d/%d fetched",
-                            search_round, query, fetched_count, target,
+                            search_round,
+                            query,
+                            fetched_count,
+                            target,
                         )
 
                 # Build decomposition input from all accumulated text sources
@@ -301,16 +311,21 @@ class GatherFactsPipeline:
                 text_coros.append((i, decompose_sources_wf.aio_run(plan.text_input)))
             if plan.image_sources:
                 img_pipeline = DecompositionPipeline(ctx.model_gateway)
-                image_coros.append((i, img_pipeline.decompose(
-                    plan.image_sources,
-                    plan.query,
-                    ctx.session,
-                    ctx.embedding_service,
-                    query_context=state.query,
-                    file_data_store=ctx.file_data_store,
-                    qdrant_client=ctx.qdrant_client,
-                    write_session=ctx.graph_engine._write_session,
-                )))
+                image_coros.append(
+                    (
+                        i,
+                        img_pipeline.decompose(
+                            plan.image_sources,
+                            plan.query,
+                            ctx.session,
+                            ctx.embedding_service,
+                            query_context=state.query,
+                            file_data_store=ctx.file_data_store,
+                            qdrant_client=ctx.qdrant_client,
+                            write_session=ctx.graph_engine._write_session,
+                        ),
+                    )
+                )
 
         # Run all text decompositions concurrently
         text_results: dict[int, DecomposeSourcesOutput] = {}
@@ -323,15 +338,13 @@ class GatherFactsPipeline:
                 if isinstance(result, BaseException):
                     logger.exception(
                         "Decompose workflow failed for query '%s': %s",
-                        query_plans[plan_idx].query, result,
+                        query_plans[plan_idx].query,
+                        result,
                     )
                 else:
                     # Workflow results are wrapped as {"task_name": output_dict};
                     # unwrap by task name before validation.
-                    task_data = (
-                        result.get("decompose_sources", result)
-                        if isinstance(result, dict) else result
-                    )
+                    task_data = result.get("decompose_sources", result) if isinstance(result, dict) else result
                     text_results[plan_idx] = DecomposeSourcesOutput.model_validate(task_data)
 
         # Run all image decompositions concurrently
@@ -345,7 +358,8 @@ class GatherFactsPipeline:
                 if isinstance(result, BaseException):
                     logger.exception(
                         "Image decomposition failed for query '%s': %s",
-                        query_plans[plan_idx].query, result,
+                        query_plans[plan_idx].query,
+                        result,
                     )
                 else:
                     image_results[plan_idx] = result
@@ -382,8 +396,7 @@ class GatherFactsPipeline:
                 state.explore_used -= 1
                 queries_executed -= 1
                 logger.info(
-                    "gather_facts: refunded explore_budget for query %r "
-                    "(decomposition produced 0 facts)",
+                    "gather_facts: refunded explore_budget for query %r (decomposition produced 0 facts)",
                     plan.query,
                 )
 
@@ -395,7 +408,7 @@ class GatherFactsPipeline:
 
                 unique_keys = list(dict.fromkeys(all_seed_keys))
                 batch_size = 10
-                batches = [unique_keys[i:i + batch_size] for i in range(0, len(unique_keys), batch_size)]
+                batches = [unique_keys[i : i + batch_size] for i in range(0, len(unique_keys), batch_size)]
                 scope_id = getattr(state, "scope_id", "") or ""
                 bulk_items = [
                     seed_dedup_task.create_bulk_run_item(
@@ -406,7 +419,8 @@ class GatherFactsPipeline:
                 await seed_dedup_task.aio_run_many(bulk_items)
                 logger.info(
                     "gather_facts: dispatched %d seed dedup tasks (%d seeds)",
-                    len(batches), len(unique_keys),
+                    len(batches),
+                    len(unique_keys),
                 )
             except Exception:
                 logger.debug("Seed dedup dispatch failed (non-fatal)", exc_info=True)
@@ -428,10 +442,13 @@ class GatherFactsPipeline:
             scope = getattr(state, "scope_description", None) or getattr(state, "query", "")
 
             if enable_summary:
-                from kt_models.usage import set_usage_task, clear_usage_task
+                from kt_models.usage import clear_usage_task, set_usage_task
+
                 set_usage_task("gather_summary")
                 summary = await _summarize_gathered_facts(
-                    all_gathered_facts, ctx.model_gateway, scope=scope,
+                    all_gathered_facts,
+                    ctx.model_gateway,
+                    scope=scope,
                 )
                 clear_usage_task()
                 if summary:
@@ -443,7 +460,8 @@ class GatherFactsPipeline:
 
                 # Extract source-level authors and merge as entity suggestions
                 source_author_map = await _extract_all_source_authors(
-                    all_source_snapshots, ctx.model_gateway,
+                    all_source_snapshots,
+                    ctx.model_gateway,
                 )
                 if source_author_map:
                     result["source_authors"] = {
@@ -452,11 +470,13 @@ class GatherFactsPipeline:
                         if a.person or a.organization
                     }
                     author_entities = authors_to_entity_suggestions(
-                        source_author_map, all_gathered_facts,
+                        source_author_map,
+                        all_gathered_facts,
                     )
                     if author_entities:
                         extracted = merge_extracted_nodes(
-                            extracted or [], author_entities,
+                            extracted or [],
+                            author_entities,
                         )
 
                 if extracted:
@@ -597,21 +617,25 @@ def authors_to_entity_suggestions(
 
     suggestions: list[dict[str, Any]] = []
     for name in sorted(person_names):
-        suggestions.append({
-            "name": name,
-            "node_type": "entity",
-            "entity_subtype": "person",
-            "fact_indices": all_indices,
-            "from_author_extraction": True,
-        })
+        suggestions.append(
+            {
+                "name": name,
+                "node_type": "entity",
+                "entity_subtype": "person",
+                "fact_indices": all_indices,
+                "from_author_extraction": True,
+            }
+        )
     for name in sorted(org_names):
-        suggestions.append({
-            "name": name,
-            "node_type": "entity",
-            "entity_subtype": "organization",
-            "fact_indices": all_indices,
-            "from_author_extraction": True,
-        })
+        suggestions.append(
+            {
+                "name": name,
+                "node_type": "entity",
+                "entity_subtype": "organization",
+                "fact_indices": all_indices,
+                "from_author_extraction": True,
+            }
+        )
     return suggestions
 
 

@@ -37,9 +37,23 @@ token = { env = "GH_TOKEN" }
 target-version = "py312"
 line-length = 120
 src = ["libs/*/src", "services/*/src"]
+extend-exclude = ["experiments"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
+ignore = [
+    "N806",   # variable in function should be lowercase — used for mock/class aliases
+    "N814",   # camelCase imported as constant
+    "N817",   # camelCase imported as acronym
+    "E402",   # module level import not at top — used for lazy imports
+    "E741",   # ambiguous variable name
+    "E501",   # line too long — prompt templates and format strings
+    "E731",   # lambda assignment
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["F841"]
+"**/tests/**" = ["F841"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

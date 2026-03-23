@@ -7,7 +7,6 @@ import pytest
 
 from kt_qdrant.repositories.nodes import (
     NODES_COLLECTION,
-    NodeSearchResult,
     QdrantNodeRepository,
 )
 

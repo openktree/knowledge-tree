@@ -46,40 +46,55 @@ class TestExtractSourceNames:
         assert _extract_source_names(fact) == ""  # type: ignore[arg-type]
 
     def test_who_from_attribution(self):
-        fact = _make_fact("Some claim", sources=[
-            _make_source(attribution="who: BBC News; where: bbc.co.uk"),
-        ])
+        fact = _make_fact(
+            "Some claim",
+            sources=[
+                _make_source(attribution="who: BBC News; where: bbc.co.uk"),
+            ],
+        )
         result = _extract_source_names(fact)  # type: ignore[arg-type]
         assert result == " (BBC News)"
 
     def test_fallback_to_raw_source_title(self):
-        fact = _make_fact("Some claim", sources=[
-            _make_source(attribution="where: example.com", title="New York Times"),
-        ])
+        fact = _make_fact(
+            "Some claim",
+            sources=[
+                _make_source(attribution="where: example.com", title="New York Times"),
+            ],
+        )
         result = _extract_source_names(fact)  # type: ignore[arg-type]
         assert result == " (New York Times)"
 
     def test_multiple_sources_deduped(self):
-        fact = _make_fact("Some claim", sources=[
-            _make_source(attribution="who: WHO"),
-            _make_source(attribution="who: who"),  # duplicate, different case
-            _make_source(attribution="who: IPCC"),
-        ])
+        fact = _make_fact(
+            "Some claim",
+            sources=[
+                _make_source(attribution="who: WHO"),
+                _make_source(attribution="who: who"),  # duplicate, different case
+                _make_source(attribution="who: IPCC"),
+            ],
+        )
         result = _extract_source_names(fact)  # type: ignore[arg-type]
         assert result == " (WHO; IPCC)"
 
     def test_mixed_attribution_and_title(self):
-        fact = _make_fact("Some claim", sources=[
-            _make_source(attribution="who: Reuters"),
-            _make_source(title="The Guardian"),
-        ])
+        fact = _make_fact(
+            "Some claim",
+            sources=[
+                _make_source(attribution="who: Reuters"),
+                _make_source(title="The Guardian"),
+            ],
+        )
         result = _extract_source_names(fact)  # type: ignore[arg-type]
         assert result == " (Reuters; The Guardian)"
 
     def test_no_attribution_no_title(self):
-        fact = _make_fact("Some claim", sources=[
-            _make_source(attribution=None, title=None),
-        ])
+        fact = _make_fact(
+            "Some claim",
+            sources=[
+                _make_source(attribution=None, title=None),
+            ],
+        )
         result = _extract_source_names(fact)  # type: ignore[arg-type]
         assert result == ""
 
@@ -115,18 +130,28 @@ class TestFormatFact:
 
     def test_atomic_fact_with_sources(self):
         fact_id = uuid.UUID("00000000-0000-0000-0000-000000000002")
-        fact = _make_fact("Climate change is real", "claim", sources=[
-            _make_source(attribution="who: IPCC"),
-        ], fact_id=fact_id)
+        fact = _make_fact(
+            "Climate change is real",
+            "claim",
+            sources=[
+                _make_source(attribution="who: IPCC"),
+            ],
+            fact_id=fact_id,
+        )
         result = _format_fact(1, fact)  # type: ignore[arg-type]
         assert "  1. [claim] Climate change is real (IPCC)" in result
         assert "{fact:" + str(fact_id) in result
 
     def test_compound_fact_with_sources(self):
         fact_id = uuid.UUID("00000000-0000-0000-0000-000000000003")
-        fact = _make_fact("Step 1: do this\nStep 2: do that", "procedure", sources=[
-            _make_source(attribution="who: NASA"),
-        ], fact_id=fact_id)
+        fact = _make_fact(
+            "Step 1: do this\nStep 2: do that",
+            "procedure",
+            sources=[
+                _make_source(attribution="who: NASA"),
+            ],
+            fact_id=fact_id,
+        )
         result = _format_fact(1, fact)  # type: ignore[arg-type]
         assert "(NASA)" in result
         assert "{fact:" + str(fact_id) in result
@@ -171,9 +196,13 @@ class TestBuildFactPrompt:
     def test_prompt_includes_source_attribution(self):
         node = _make_node("climate")
         facts = [
-            _make_fact("Temperatures are rising", "claim", sources=[
-                _make_source(attribution="who: NOAA"),
-            ]),
+            _make_fact(
+                "Temperatures are rising",
+                "claim",
+                sources=[
+                    _make_source(attribution="who: NOAA"),
+                ],
+            ),
         ]
         prompt = _build_fact_prompt(node, facts)  # type: ignore[arg-type]
         assert "(NOAA)" in prompt
@@ -217,22 +246,26 @@ class TestParseDimensionResponse:
         assert result["relevant_facts"] == []
 
     def test_relevant_facts_parsed(self):
-        response = json.dumps({
-            "content": "Analysis",
-            "confidence": 0.8,
-            "suggested_concepts": [],
-            "relevant_facts": [1, 3, 5],
-        })
+        response = json.dumps(
+            {
+                "content": "Analysis",
+                "confidence": 0.8,
+                "suggested_concepts": [],
+                "relevant_facts": [1, 3, 5],
+            }
+        )
         result = _parse_dimension_response(response, "test-model")
         assert result["relevant_facts"] == [1, 3, 5]
 
     def test_relevant_facts_ignores_bad_values(self):
-        response = json.dumps({
-            "content": "Analysis",
-            "confidence": 0.8,
-            "suggested_concepts": [],
-            "relevant_facts": [1, "bad", None, 3],
-        })
+        response = json.dumps(
+            {
+                "content": "Analysis",
+                "confidence": 0.8,
+                "suggested_concepts": [],
+                "relevant_facts": [1, "bad", None, 3],
+            }
+        )
         result = _parse_dimension_response(response, "test-model")
         assert result["relevant_facts"] == [1, 3]
 
@@ -251,8 +284,17 @@ class TestGenerateDimensions:
         mock_gateway = AsyncMock()
         mock_gateway.generate_parallel = AsyncMock(
             return_value={
-                "model-a": json.dumps({"content": "Analysis A", "confidence": 0.8, "suggested_concepts": ["h2o"], "relevant_facts": [1]}),
-                "model-b": json.dumps({"content": "Analysis B", "confidence": 0.7, "suggested_concepts": ["oxygen"], "relevant_facts": [1]}),
+                "model-a": json.dumps(
+                    {"content": "Analysis A", "confidence": 0.8, "suggested_concepts": ["h2o"], "relevant_facts": [1]}
+                ),
+                "model-b": json.dumps(
+                    {
+                        "content": "Analysis B",
+                        "confidence": 0.7,
+                        "suggested_concepts": ["oxygen"],
+                        "relevant_facts": [1],
+                    }
+                ),
             }
         )
 

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from kt_providers.fetcher import FetchResult
-from kt_providers.search_and_fetch import search_and_store, store_and_fetch, filter_fresh_urls
 from kt_config.types import RawSearchResult
+from kt_providers.fetcher import FetchResult
+from kt_providers.search_and_fetch import filter_fresh_urls, search_and_store
 
 
 def _make_search_result(uri: str = "https://example.com", title: str = "Test") -> RawSearchResult:
@@ -97,7 +97,9 @@ async def test_search_and_store_no_fetcher():
 
         mock_repo_cls = MagicMock(return_value=mock_repo_instance)
         mp.setattr("kt_providers.search_and_fetch.WriteSourceRepository", mock_repo_cls)
-        mp.setattr("kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log()))
+        mp.setattr(
+            "kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log())
+        )
         mp.setattr("kt_providers.search_and_fetch.get_settings", lambda: _mock_settings())
 
         raw_sources = await search_and_store("test query", ctx)
@@ -110,9 +112,11 @@ async def test_search_and_store_with_fetcher_updates_content():
     """With content_fetcher, full-text content is fetched and sources are updated."""
     fetcher = MagicMock()
     full_text = "x" * 200
-    fetcher.fetch_urls = AsyncMock(return_value=[
-        FetchResult(uri="https://a.com", content=full_text),
-    ])
+    fetcher.fetch_urls = AsyncMock(
+        return_value=[
+            FetchResult(uri="https://a.com", content=full_text),
+        ]
+    )
 
     ctx = _make_ctx(content_fetcher=fetcher)
     results = [_make_search_result("https://a.com")]
@@ -127,7 +131,9 @@ async def test_search_and_store_with_fetcher_updates_content():
 
         mock_repo_cls = MagicMock(return_value=mock_repo_instance)
         mp.setattr("kt_providers.search_and_fetch.WriteSourceRepository", mock_repo_cls)
-        mp.setattr("kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log()))
+        mp.setattr(
+            "kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log())
+        )
         mp.setattr("kt_providers.search_and_fetch.get_settings", lambda: _mock_settings())
 
         raw_sources = await search_and_store("test query", ctx)
@@ -143,9 +149,11 @@ async def test_search_and_store_with_fetcher_updates_content():
 async def test_search_and_store_fetch_failure_keeps_snippet():
     """When full-text fetch fails, the original snippet is preserved."""
     fetcher = MagicMock()
-    fetcher.fetch_urls = AsyncMock(return_value=[
-        FetchResult(uri="https://a.com", error="Timeout"),
-    ])
+    fetcher.fetch_urls = AsyncMock(
+        return_value=[
+            FetchResult(uri="https://a.com", error="Timeout"),
+        ]
+    )
 
     ctx = _make_ctx(content_fetcher=fetcher)
     results = [_make_search_result("https://a.com")]
@@ -161,7 +169,9 @@ async def test_search_and_store_fetch_failure_keeps_snippet():
 
         mock_repo_cls = MagicMock(return_value=mock_repo_instance)
         mp.setattr("kt_providers.search_and_fetch.WriteSourceRepository", mock_repo_cls)
-        mp.setattr("kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log()))
+        mp.setattr(
+            "kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log())
+        )
         mp.setattr("kt_providers.search_and_fetch.get_settings", lambda: _mock_settings())
 
         raw_sources = await search_and_store("test query", ctx)
@@ -190,7 +200,9 @@ async def test_search_and_store_skips_already_full_text():
 
         mock_repo_cls = MagicMock(return_value=mock_repo_instance)
         mp.setattr("kt_providers.search_and_fetch.WriteSourceRepository", mock_repo_cls)
-        mp.setattr("kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log()))
+        mp.setattr(
+            "kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log())
+        )
         mp.setattr("kt_providers.search_and_fetch.get_settings", lambda: _mock_settings())
 
         raw_sources = await search_and_store("test query", ctx)
@@ -205,10 +217,12 @@ async def test_search_and_store_respects_max_fetch_urls():
     """Only max_fetch_urls sources are fetched even if more are available."""
     fetcher = MagicMock()
     full_text = "x" * 200
-    fetcher.fetch_urls = AsyncMock(return_value=[
-        FetchResult(uri="https://a.com", content=full_text),
-        FetchResult(uri="https://b.com", content=full_text),
-    ])
+    fetcher.fetch_urls = AsyncMock(
+        return_value=[
+            FetchResult(uri="https://a.com", content=full_text),
+            FetchResult(uri="https://b.com", content=full_text),
+        ]
+    )
 
     ctx = _make_ctx(content_fetcher=fetcher)
     results = [
@@ -226,14 +240,14 @@ async def test_search_and_store_respects_max_fetch_urls():
 
     with pytest.MonkeyPatch.context() as mp:
         mock_repo_instance = MagicMock()
-        mock_repo_instance.create_or_get = AsyncMock(
-            side_effect=sources
-        )
+        mock_repo_instance.create_or_get = AsyncMock(side_effect=sources)
         mock_repo_instance.update_content = AsyncMock(return_value=True)
 
         mock_repo_cls = MagicMock(return_value=mock_repo_instance)
         mp.setattr("kt_providers.search_and_fetch.WriteSourceRepository", mock_repo_cls)
-        mp.setattr("kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log()))
+        mp.setattr(
+            "kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log())
+        )
         mp.setattr("kt_providers.search_and_fetch.get_settings", lambda: _mock_settings())
 
         raw_sources = await search_and_store("test query", ctx, max_fetch_urls=2)
@@ -253,7 +267,9 @@ async def test_search_and_store_empty_results():
     with pytest.MonkeyPatch.context() as mp:
         mock_repo_cls = MagicMock()
         mp.setattr("kt_providers.search_and_fetch.WriteSourceRepository", mock_repo_cls)
-        mp.setattr("kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log()))
+        mp.setattr(
+            "kt_providers.search_and_fetch.WritePageFetchLogRepository", MagicMock(return_value=_mock_page_log())
+        )
         mp.setattr("kt_providers.search_and_fetch.get_settings", lambda: _mock_settings())
 
         raw_sources = await search_and_store("test query", ctx)

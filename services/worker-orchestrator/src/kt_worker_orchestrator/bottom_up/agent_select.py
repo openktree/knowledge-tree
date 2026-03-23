@@ -149,9 +149,7 @@ async def _process_batch(
         node_lines = []
         for i, node in enumerate(batch):
             global_idx = start + i
-            node_lines.append(
-                f"[{global_idx}] {node.name} ({node.node_type}) — priority {node.priority}"
-            )
+            node_lines.append(f"[{global_idx}] {node.name} ({node.node_type}) — priority {node.priority}")
         node_list = "\n".join(node_lines)
 
         user_msg = _USER_PROMPT.format(
@@ -177,7 +175,8 @@ async def _process_batch(
 
             logger.info(
                 "Agent select batch %d: LLM returned %d tool calls",
-                batch_idx + 1, len(tool_calls),
+                batch_idx + 1,
+                len(tool_calls),
             )
 
             if not tool_calls:
@@ -197,12 +196,15 @@ async def _process_batch(
 
             logger.info(
                 "Agent select batch %d: %d edits, %d selections parsed",
-                batch_idx + 1, len(result.edits), len(result.selections),
+                batch_idx + 1,
+                len(result.edits),
+                len(result.selections),
             )
 
         except Exception:
             logger.warning(
-                "Agent select batch %d failed, skipping", batch_idx + 1,
+                "Agent select batch %d failed, skipping",
+                batch_idx + 1,
                 exc_info=True,
             )
             result.error = True
@@ -293,8 +295,7 @@ async def agent_select_nodes(
         # Apply selections (capped at remaining budget)
         remaining = max_select - selected_count
         valid_selections = [
-            idx for idx in result.selections
-            if result.start <= idx < result.end and not nodes[idx].selected
+            idx for idx in result.selections if result.start <= idx < result.end and not nodes[idx].selected
         ]
         for idx in valid_selections[:remaining]:
             nodes[idx].selected = True
@@ -302,9 +303,11 @@ async def agent_select_nodes(
 
         logger.info(
             "Agent select batch %d/%d: selected %d nodes (total: %d/%d)",
-            result.batch_idx + 1, total_batches,
+            result.batch_idx + 1,
+            total_batches,
             len(valid_selections[:remaining]),
-            selected_count, max_select,
+            selected_count,
+            max_select,
         )
 
     return nodes

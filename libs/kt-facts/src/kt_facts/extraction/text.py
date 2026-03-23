@@ -74,11 +74,13 @@ class TextExtractor(FactExtractor):
         for idx, result in enumerate(chunk_results):
             if isinstance(result, BaseException):
                 if _is_safety_error(result):  # type: ignore[arg-type]
-                    self._prohibited_chunks.append(ProhibitedChunk(
-                        chunk_text=chunks[idx],
-                        model_id=self._gateway.decomposition_model,
-                        error_message=str(result),
-                    ))
+                    self._prohibited_chunks.append(
+                        ProhibitedChunk(
+                            chunk_text=chunks[idx],
+                            model_id=self._gateway.decomposition_model,
+                            error_message=str(result),
+                        )
+                    )
                 else:
                     logger.exception("Error extracting from chunk: %s", result)
                 continue
@@ -112,10 +114,7 @@ class TextExtractor(FactExtractor):
             return parse_extraction_result(data)
         except Exception as exc:
             fallback_model = self._gateway.default_model
-            if (
-                _is_safety_error(exc)
-                and fallback_model != primary_model
-            ):
+            if _is_safety_error(exc) and fallback_model != primary_model:
                 logger.warning(
                     "Safety filter on %s, retrying with fallback %s",
                     primary_model,
@@ -129,19 +128,23 @@ class TextExtractor(FactExtractor):
                     return parse_extraction_result(data)
                 except Exception as fallback_exc:
                     logger.exception("Fallback model %s also failed", fallback_model)
-                    self._prohibited_chunks.append(ProhibitedChunk(
+                    self._prohibited_chunks.append(
+                        ProhibitedChunk(
+                            chunk_text=chunk,
+                            model_id=primary_model,
+                            error_message=str(exc),
+                            fallback_model_id=fallback_model,
+                            fallback_error=str(fallback_exc),
+                        )
+                    )
+                    return []
+            if _is_safety_error(exc):
+                self._prohibited_chunks.append(
+                    ProhibitedChunk(
                         chunk_text=chunk,
                         model_id=primary_model,
                         error_message=str(exc),
-                        fallback_model_id=fallback_model,
-                        fallback_error=str(fallback_exc),
-                    ))
-                    return []
-            if _is_safety_error(exc):
-                self._prohibited_chunks.append(ProhibitedChunk(
-                    chunk_text=chunk,
-                    model_id=primary_model,
-                    error_message=str(exc),
-                ))
+                    )
+                )
             logger.exception("Error in LLM extraction call")
             return []

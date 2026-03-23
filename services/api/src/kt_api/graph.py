@@ -52,6 +52,7 @@ async def get_subgraph(
 ) -> SubgraphResponse:
     """Get a subgraph containing the specified nodes and edges between them."""
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+
     def _parse_node_id(nid: str) -> uuid.UUID:
         try:
             return uuid.UUID(nid)
@@ -71,10 +72,7 @@ async def get_subgraph(
     nodes_by_id = {n.id: n for n in nodes}
     # Resolve parent concepts: parents in the subgraph are already loaded;
     # for parents outside the subgraph, fall back to a batch query.
-    parent_ids_outside = [
-        n.parent_id for n in nodes
-        if n.parent_id is not None and n.parent_id not in nodes_by_id
-    ]
+    parent_ids_outside = [n.parent_id for n in nodes if n.parent_id is not None and n.parent_id not in nodes_by_id]
     outside_parent_map: dict[uuid.UUID, str] = {}
     if parent_ids_outside:
         unique_pids = list(set(parent_ids_outside))
@@ -156,7 +154,10 @@ async def get_paths(
         raise HTTPException(status_code=404, detail=f"Target node not found: {target}")
 
     raw_paths = await engine.find_shortest_paths(
-        source_uuid, target_uuid, max_depth=max_depth, limit=limit,
+        source_uuid,
+        target_uuid,
+        max_depth=max_depth,
+        limit=limit,
     )
 
     # Collect all unique node IDs to bulk-fetch concepts

@@ -18,12 +18,12 @@ from kt_db.models import Fact
 # cross-type edges.  Each (source, target) pair runs as an independent
 # discover + classify + apply cycle.
 CROSS_TYPE_TARGETS: dict[str, list[str]] = {
-    "entity":      ["event", "concept", "location"],
-    "event":       ["entity", "concept", "location"],
-    "concept":     ["entity", "event", "location"],
-    "location":    ["entity", "event", "concept"],
+    "entity": ["event", "concept", "location"],
+    "event": ["entity", "concept", "location"],
+    "concept": ["entity", "event", "location"],
+    "location": ["entity", "event", "concept"],
     "perspective": [],
-    "synthesis":   [],
+    "synthesis": [],
 }
 
 CROSS_TYPE_EDGE_TYPE = "cross_type"

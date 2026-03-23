@@ -5,9 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-
-from kt_db.keys import make_seed_key
-from kt_facts.processing.seed_extraction import store_seeds_from_extracted_nodes
 from seed_fixtures import (
     make_embedding_service_mock,
     make_fact_stub,
@@ -15,13 +12,18 @@ from seed_fixtures import (
     make_seed_repo_mock,
 )
 
+from kt_db.keys import make_seed_key
+from kt_facts.processing.seed_extraction import store_seeds_from_extracted_nodes
+
 
 @pytest.mark.asyncio
 class TestStoreSeedsFromExtractedNodes:
     async def test_empty_input(self) -> None:
         repo = make_seed_repo_mock()
         count, seed_keys = await store_seeds_from_extracted_nodes(
-            [], [], repo,
+            [],
+            [],
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -32,7 +34,9 @@ class TestStoreSeedsFromExtractedNodes:
         repo = make_seed_repo_mock()
         facts = [make_fact_stub()]
         count, seed_keys = await store_seeds_from_extracted_nodes(
-            [], facts, repo,
+            [],
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -47,7 +51,9 @@ class TestStoreSeedsFromExtractedNodes:
             {"name": "Albert Einstein", "node_type": "entity", "entity_subtype": "person", "fact_indices": [1]},
         ]
         count, seed_keys = await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -69,10 +75,17 @@ class TestStoreSeedsFromExtractedNodes:
         facts = [make_fact_stub("Einstein worked at Princeton")]
         extracted = [
             {"name": "Albert Einstein", "node_type": "entity", "entity_subtype": "person", "fact_indices": [1]},
-            {"name": "Princeton University", "node_type": "entity", "entity_subtype": "organization", "fact_indices": [1]},
+            {
+                "name": "Princeton University",
+                "node_type": "entity",
+                "entity_subtype": "organization",
+                "fact_indices": [1],
+            },
         ]
         count, seed_keys = await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -96,7 +109,9 @@ class TestStoreSeedsFromExtractedNodes:
             {"name": "quantum mechanics", "node_type": "concept", "fact_indices": [1]},
         ]
         await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -113,7 +128,9 @@ class TestStoreSeedsFromExtractedNodes:
             {"name": "Test", "node_type": "concept", "fact_indices": [0, 1, 2, -1]},
         ]
         count, seed_keys = await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -131,7 +148,9 @@ class TestStoreSeedsFromExtractedNodes:
             {"name": "Bohr", "node_type": "entity", "fact_indices": [2]},
         ]
         count, seed_keys = await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -148,7 +167,9 @@ class TestStoreSeedsFromExtractedNodes:
             {"name": "Valid", "node_type": "concept", "fact_indices": [1]},
         ]
         count, seed_keys = await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -171,7 +192,9 @@ class TestStoreSeedsFromExtractedNodes:
             },
         ]
         await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
@@ -190,7 +213,9 @@ class TestStoreSeedsFromExtractedNodes:
             {"name": "quantum mechanics", "node_type": "concept", "fact_indices": [1]},
         ]
         await store_seeds_from_extracted_nodes(
-            extracted, facts, repo,
+            extracted,
+            facts,
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )

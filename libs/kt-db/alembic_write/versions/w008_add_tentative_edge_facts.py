@@ -5,9 +5,9 @@ Revises: w007
 Create Date: 2026-03-11
 """
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from alembic import op
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 
 revision = "w008"
 down_revision = "w007"

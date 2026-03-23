@@ -15,10 +15,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.messages.utils import trim_messages
 from langgraph.graph import END, StateGraph
 
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 from kt_agents_core.state import AgentContext, ConversationState, SynthesisState
-from kt_db.models import Fact
 from kt_config.types import COMPOUND_FACT_TYPES
+from kt_db.models import Fact
+from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -465,8 +465,7 @@ def build_synthesis_graph(ctx: AgentContext) -> StateGraph:
         for dim in dimensions:
             definitive_tag = " [DEFINITIVE]" if dim.is_definitive else ""
             lines.append(
-                f"\n## {dim.model_id}{definitive_tag} "
-                f"(confidence={dim.confidence:.2f}, facts={dim.fact_count})"
+                f"\n## {dim.model_id}{definitive_tag} (confidence={dim.confidence:.2f}, facts={dim.fact_count})"
             )
             lines.append(dim.content)
 
@@ -537,8 +536,7 @@ def build_synthesis_graph(ctx: AgentContext) -> StateGraph:
             logger.exception("Error in synthesis agent LLM call")
             # Set an error answer so it's visible instead of silently ending
             return {
-                "answer": "Synthesis failed: the LLM call encountered an error. "
-                "Check logs for details.",
+                "answer": "Synthesis failed: the LLM call encountered an error. Check logs for details.",
                 "phase": "done",
             }
         return {"messages": [response]}
@@ -557,9 +555,7 @@ def build_synthesis_graph(ctx: AgentContext) -> StateGraph:
             try:
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(tc["args"])
-                tool_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"], name=name)
-                )
+                tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
             except Exception as exc:
                 logger.exception("Error executing synthesis tool %s", name)
                 tool_messages.append(
@@ -637,9 +633,7 @@ async def synthesize_answer_impl(
     # must be available for synthesis even if state propagation lost them
     # from visited_nodes (e.g. sub-explorer timeouts or LangGraph state
     # copy issues).
-    created_not_visited = [
-        nid for nid in state.created_nodes if nid not in all_nodes
-    ]
+    created_not_visited = [nid for nid in state.created_nodes if nid not in all_nodes]
     if created_not_visited:
         logger.info(
             "Synthesis: adding %d created_nodes not in visited_nodes",
@@ -658,7 +652,8 @@ async def synthesize_answer_impl(
     if not all_nodes:
         logger.warning(
             "No nodes available for synthesis (visited_nodes=%d, created_nodes=%d)",
-            len(state.visited_nodes), len(state.created_nodes),
+            len(state.visited_nodes),
+            len(state.created_nodes),
         )
         state.answer = "No nodes were created or visited during exploration. Unable to provide an answer."
         state.phase = "synthesizing"
@@ -689,11 +684,13 @@ async def synthesize_answer_impl(
         if node_type == "perspective":
             source_id = str(node.source_concept_id) if node.source_concept_id else "unknown"
             facts = await ctx.graph_engine.get_node_facts(node.id)
-            perspective_nodes.append({
-                **entry,
-                "source_concept_id": source_id,
-                "fact_count": str(len(facts)),
-            })
+            perspective_nodes.append(
+                {
+                    **entry,
+                    "source_concept_id": source_id,
+                    "fact_count": str(len(facts)),
+                }
+            )
         elif node_type == "concept":
             facts = await ctx.graph_engine.get_node_facts(node.id)
             concept_nodes.append({**entry, "fact_count": str(len(facts))})
@@ -703,11 +700,16 @@ async def synthesize_answer_impl(
     if missing_count:
         logger.warning(
             "Synthesis: %d/%d nodes missing from DB. %d nodes loaded successfully.",
-            missing_count, len(all_nodes), len(node_list),
+            missing_count,
+            len(all_nodes),
+            len(node_list),
         )
     logger.info(
         "Synthesis node list: %d concept, %d perspective, %d other (from %d visited)",
-        len(concept_nodes), len(perspective_nodes), len(other_nodes), len(all_nodes),
+        len(concept_nodes),
+        len(perspective_nodes),
+        len(other_nodes),
+        len(all_nodes),
     )
 
     # Build structured node list for synthesis
@@ -715,14 +717,12 @@ async def synthesize_answer_impl(
     if concept_nodes:
         node_sections.append("## Core Concepts")
         for i, n in enumerate(concept_nodes, 1):
-            node_sections.append(
-                f"{i}. {n['node_id']} — {n['concept']} [concept] — {n['fact_count']} facts"
-            )
+            node_sections.append(f"{i}. {n['node_id']} — {n['concept']} [concept] — {n['fact_count']} facts")
     if perspective_nodes:
         node_sections.append("\n## Perspectives")
         for i, n in enumerate(perspective_nodes, 1):
             node_sections.append(
-                f"{i}. {n['node_id']} — \"{n['concept']}\" [perspective]\n"
+                f'{i}. {n["node_id"]} — "{n["concept"]}" [perspective]\n'
                 f"   Source concept: {n['source_concept_id']}\n"
                 f"   {n['fact_count']} facts"
             )
@@ -731,9 +731,11 @@ async def synthesize_answer_impl(
         for i, n in enumerate(other_nodes, 1):
             node_sections.append(f"{i}. {n['node_id']} — {n['concept']}")
 
-    node_lines = node_sections if node_sections else [
-        f"{i + 1}. {n['node_id']} — {n['concept']}" for i, n in enumerate(node_list)
-    ]
+    node_lines = (
+        node_sections
+        if node_sections
+        else [f"{i + 1}. {n['node_id']} — {n['concept']}" for i, n in enumerate(node_list)]
+    )
 
     # Add conversation context if this is a follow-up turn
     conversation_context = ""
@@ -767,13 +769,14 @@ async def synthesize_answer_impl(
         f"## Question\n{state.query}\n\n"
         f"## Available Nodes\n"
         f"Use get_node_facts to retrieve facts from the nodes most relevant to the question. "
-        f"You do NOT need to query every node — focus on the most relevant ones.\n\n"
-        + "\n".join(node_lines)
+        f"You do NOT need to query every node — focus on the most relevant ones.\n\n" + "\n".join(node_lines)
     )
 
     logger.info(
         "Synthesis task_block: query=%r, node_count=%d, node_lines=%d",
-        state.query, len(node_list), len(node_lines),
+        state.query,
+        len(node_list),
+        len(node_lines),
     )
 
     system_content = SYNTHESIS_SYSTEM_PROMPT + task_block
