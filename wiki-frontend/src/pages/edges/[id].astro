@@ -1,0 +1,19 @@
+---
+/**
+ * Single edge redirect — fetches the edge to find its source/target,
+ * then redirects to the pair view at /edges?source=X&target=Y.
+ */
+import { getEdge } from "../../lib/api.js";
+
+const { id } = Astro.params as { id: string };
+
+try {
+  const { source_node_id, target_node_id } = await getEdge(id);
+  return Astro.redirect(`/edges?source=${source_node_id}&target=${target_node_id}`);
+} catch {
+  // Fall through to 404
+}
+---
+
+<meta http-equiv="refresh" content="0;url=/edges" />
+<p>Edge not found. <a href="/">Return home</a></p>

@@ -1,0 +1,55 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-mcp
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "mcp") | nindent 4 }}
+spec:
+  replicas: {{ .Values.mcp.replicas }}
+  selector:
+    matchLabels:
+      {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "mcp") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "mcp") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-graph-db
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z {{ include "knowledge-tree.graphDbHost" . }} 5432; do echo "waiting for graph-db..."; sleep 2; done']
+      containers:
+        - name: mcp
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.mcp.image "defaultName" "kt-mcp") }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.mcp.port }}
+              protocol: TCP
+          env:
+            {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "knowledge-tree.configVolumeMount" . | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.mcp.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.mcp.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.mcp.resources | nindent 12 }}
+      volumes:
+        {{- include "knowledge-tree.configVolume" . | nindent 8 }}
+{{- end }}

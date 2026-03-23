@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-worker-sync
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "worker-sync") | nindent 4 }}
+spec:
+  replicas: {{ .Values.workers.sync.replicas }}  # MUST be 1 — watermark-based, single-threaded
+  strategy:
+    type: Recreate  # Ensure only one instance runs at a time
+  selector:
+    matchLabels:
+      {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "worker-sync") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "worker-sync") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- include "knowledge-tree.initWaitContainers" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.workers.sync.image "defaultName" "kt-worker-sync") }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "knowledge-tree.configVolumeMount" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.workers.sync.resources | nindent 12 }}
+      volumes:
+        {{- include "knowledge-tree.configVolume" . | nindent 8 }}

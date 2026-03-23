@@ -1,0 +1,25 @@
+[project]
+name = "kt-providers"
+version = "0.1.0"
+description = "Knowledge Tree search providers and content fetcher"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-config",
+    "httpx>=0.28.1",
+    "trafilatura>=2.0.0",
+    "pydantic>=2.12.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-config = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_providers"]

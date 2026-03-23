@@ -1,0 +1,31 @@
+{{- if and .Values.mcp.enabled .Values.mcp.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-mcp
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "mcp") | nindent 4 }}
+  {{- with .Values.mcp.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.mcp.ingress.className }}
+  ingressClassName: {{ .Values.mcp.ingress.className }}
+  {{- end }}
+  {{- if .Values.mcp.ingress.tls }}
+  tls:
+    {{- toYaml .Values.mcp.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.mcp.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "knowledge-tree.fullname" . }}-mcp
+                port:
+                  number: {{ .Values.mcp.port }}
+{{- end }}

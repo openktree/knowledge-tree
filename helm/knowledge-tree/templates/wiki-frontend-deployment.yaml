@@ -1,0 +1,52 @@
+{{- if .Values.wikiFrontend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-wiki-frontend
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "wiki-frontend") | nindent 4 }}
+spec:
+  replicas: {{ .Values.wikiFrontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "wiki-frontend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "wiki-frontend") | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: wiki-frontend
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.wikiFrontend.image "defaultName" "kt-wiki-frontend") }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.wikiFrontend.port }}
+              protocol: TCP
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ .Values.wikiFrontend.port | quote }}
+            {{- if .Values.wikiFrontend.env.PUBLIC_API_URL }}
+            - name: PUBLIC_API_URL
+              value: {{ .Values.wikiFrontend.env.PUBLIC_API_URL | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.wikiFrontend.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.wikiFrontend.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.wikiFrontend.resources | nindent 12 }}
+{{- end }}

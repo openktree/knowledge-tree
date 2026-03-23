@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-hatchet
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "hatchet") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "hatchet") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "hatchet") | nindent 8 }}
+    spec:
+      initContainers:
+        - name: wait-for-hatchet-db
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z {{ include "knowledge-tree.hatchetDbHost" . }} 5432; do echo "waiting for hatchet-db..."; sleep 2; done']
+      containers:
+        - name: hatchet
+          image: {{ .Values.hatchet.image }}
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+            - containerPort: 7070
+              name: grpc
+              protocol: TCP
+          env:
+            - name: HATCHET_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "knowledge-tree.secretName" . }}
+                  key: hatchet-db-password
+            - name: DATABASE_URL
+              value: "postgresql://hatchet:$(HATCHET_DB_PASSWORD)@{{ include "knowledge-tree.hatchetDbHost" . }}:5432/hatchet?sslmode=disable"
+            - name: SERVER_AUTH_COOKIE_DOMAIN
+              value: {{ .Values.hatchet.cookieDomain | quote }}
+            - name: SERVER_AUTH_COOKIE_INSECURE
+              value: "t"
+            - name: SERVER_GRPC_BIND_ADDRESS
+              value: "0.0.0.0"
+            - name: SERVER_GRPC_PORT
+              value: "7070"
+            - name: SERVER_GRPC_BROADCAST_ADDRESS
+              value: {{ default (printf "%s-hatchet:7070" (include "knowledge-tree.fullname" .)) .Values.hatchet.grpcBroadcastAddress | quote }}
+            - name: SERVER_GRPC_INSECURE
+              value: "t"
+            - name: SERVER_GRPC_MAX_MSG_SIZE
+              value: "16777216"
+            - name: SERVER_URL
+              value: {{ default (printf "http://%s-hatchet:8080" (include "knowledge-tree.fullname" .)) .Values.hatchet.serverUrl | quote }}
+            - name: SERVER_AUTH_SET_EMAIL_VERIFIED
+              value: "t"
+            - name: SERVER_FLUSH_PERIOD_MILLISECONDS
+              value: "250"
+          livenessProbe:
+            httpGet:
+              path: /api/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.hatchet.resources | nindent 12 }}

@@ -1,0 +1,32 @@
+[project]
+name = "kt-worker-all"
+version = "0.1.0"
+description = "Knowledge Tree all-in-one worker (dev mode)"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-hatchet",
+    "kt-worker-orchestrator",
+    "kt-worker-search",
+    "kt-worker-nodes",
+    "kt-worker-query",
+    "kt-worker-ingest",
+    "kt-worker-conversations",
+    "kt-worker-sync",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-hatchet = { workspace = true }
+kt-worker-orchestrator = { workspace = true }
+kt-worker-search = { workspace = true }
+kt-worker-nodes = { workspace = true }
+kt-worker-query = { workspace = true }
+kt-worker-ingest = { workspace = true }
+kt-worker-conversations = { workspace = true }
+kt-worker-sync = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_worker_all"]

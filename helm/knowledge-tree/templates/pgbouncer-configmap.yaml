@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "knowledge-tree.pgbouncerName" . }}
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "pgbouncer") | nindent 4 }}
+data:
+  pgbouncer.ini: |
+    [databases]
+    knowledge_tree_write = host={{ include "knowledge-tree.writeDbHost" . }} port=5432 dbname=knowledge_tree_write
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 5432
+    auth_type = plain
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = {{ .Values.pgbouncer.poolMode }}
+    max_client_conn = {{ .Values.pgbouncer.maxClientConn }}
+    default_pool_size = {{ .Values.pgbouncer.defaultPoolSize }}
+    min_pool_size = {{ .Values.pgbouncer.minPoolSize }}
+    reserve_pool_size = {{ .Values.pgbouncer.reservePoolSize }}
+    reserve_pool_timeout = {{ .Values.pgbouncer.reservePoolTimeout }}
+    server_reset_query = DISCARD ALL
+    ignore_startup_parameters = extra_float_digits
+  userlist.txt: |
+    "kt" "{{ .Values.secrets.writeDbPassword }}"

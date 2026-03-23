@@ -1,0 +1,324 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    command: postgres -c max_connections=100
+    environment:
+      POSTGRES_DB: knowledge_tree
+      POSTGRES_USER: kt
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kt -d knowledge_tree"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-write:
+    image: postgres:16-alpine
+    command: postgres -c max_connections=400 -c work_mem=32MB -c shared_buffers=256MB
+    shm_size: 512m
+    environment:
+      POSTGRES_DB: knowledge_tree_write
+      POSTGRES_USER: kt
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5435:5432"
+    volumes:
+      - pgdata_write:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kt -d knowledge_tree_write"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer-write:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASE_URL: "postgres://kt:localdev@postgres-write:5432/knowledge_tree_write"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      MIN_POOL_SIZE: "10"
+      RESERVE_POOL_SIZE: "10"
+      RESERVE_POOL_TIMEOUT: "3"
+      SERVER_RESET_QUERY: "DISCARD ALL"
+      IGNORE_STARTUP_PARAMETERS: "extra_float_digits"
+      AUTH_TYPE: plain
+    ports:
+      - "5434:5432"
+    depends_on:
+      postgres-write:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "kt"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.17
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hatchet-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hatchet
+      POSTGRES_USER: hatchet
+      POSTGRES_PASSWORD: hatchet
+    ports:
+      - "5433:5432"
+    volumes:
+      - hatchet_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hatchet -d hatchet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hatchet:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.79.22
+    depends_on:
+      hatchet-db:
+        condition: service_healthy
+    ports:
+      - "8888:8888"
+      - "8080:8080"
+      - "7077:7070"
+    environment:
+      DATABASE_URL: "postgresql://hatchet:hatchet@hatchet-db:5432/hatchet?sslmode=disable"
+      SERVER_AUTH_COOKIE_DOMAIN: localhost
+      SERVER_AUTH_COOKIE_INSECURE: "t"
+      SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
+      SERVER_GRPC_PORT: "7070"
+      SERVER_GRPC_BROADCAST_ADDRESS: "127.0.0.1:7077"
+      SERVER_GRPC_INSECURE: "t"
+      SERVER_GRPC_MAX_MSG_SIZE: "16777216"
+      SERVER_URL: "http://localhost:8080"
+      SERVER_AUTH_SET_EMAIL_VERIFIED: "t"
+      SERVER_FLUSH_PERIOD_MILLISECONDS: "250"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── Application Services ──────────────────────────────────────────
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+
+  worker-orchestrator:
+    build:
+      context: .
+      dockerfile: services/worker-orchestrator/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  worker-search:
+    build:
+      context: .
+      dockerfile: services/worker-search/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  worker-nodes:
+    build:
+      context: .
+      dockerfile: services/worker-nodes/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  worker-query:
+    build:
+      context: .
+      dockerfile: services/worker-query/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  worker-ingest:
+    build:
+      context: .
+      dockerfile: services/worker-ingest/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  worker-conversations:
+    build:
+      context: .
+      dockerfile: services/worker-conversations/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  mcp:
+    build:
+      context: .
+      dockerfile: services/mcp/Dockerfile
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  worker-sync:
+    build:
+      context: .
+      dockerfile: services/worker-sync/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer-write:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+volumes:
+  pgdata:
+  pgdata_write:
+  redisdata:
+  qdrantdata:
+  hatchet_pgdata:

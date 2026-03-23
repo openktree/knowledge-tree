@@ -1,0 +1,19 @@
+# Start dev server on :4321
+dev:
+    pnpm dev
+
+# Build for production
+build:
+    pnpm build
+
+# Preview production build
+preview:
+    pnpm preview
+
+# Type-check with @astrojs/check
+check:
+    pnpm astro check
+
+# Install dependencies
+install:
+    pnpm install

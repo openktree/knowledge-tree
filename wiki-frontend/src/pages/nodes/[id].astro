@@ -1,0 +1,704 @@
+---
+import WikiLayout from "../../layouts/WikiLayout.astro";
+import FactsSection from "../../components/FactsSection.astro";
+import {
+  getNode,
+  getSubgraph,
+  getNodeFacts,
+  getNodeDimensions,
+  getNodeChildren,
+  nodeHref,
+} from "../../lib/api.js";
+import { parseJustification, parseRichText, parseMarkdownBlocks } from "../../lib/justification.js";
+import type {
+  NodeResponse,
+  EdgeResponse,
+  FactResponse,
+  DimensionResponse,
+  SubgraphResponse,
+} from "../../types/index.js";
+
+const { id } = Astro.params as { id: string };
+
+let node: NodeResponse | null = null;
+let subgraph: SubgraphResponse | null = null;
+let facts: FactResponse[] = [];
+let dimensions: DimensionResponse[] = [];
+let children: NodeResponse[] = [];
+let error: string | null = null;
+
+try {
+  [node, subgraph, facts, dimensions, children] = await Promise.all([
+    getNode(id),
+    getSubgraph(id),
+    getNodeFacts(id),
+    getNodeDimensions(id),
+    getNodeChildren(id),
+  ]);
+} catch (e) {
+  error = e instanceof Error ? e.message : String(e);
+}
+
+// Build neighbor map from subgraph
+interface Neighbor {
+  node: NodeResponse;
+  edges: EdgeResponse[];
+}
+
+const perspectives: Neighbor[] = [];
+const entities: Neighbor[] = [];
+const related: Neighbor[] = [];  // concept + event
+let antithesis: NodeResponse | null = null;
+
+// Use the node's actual UUID for edge matching (id param may be a URL key)
+const nodeUuid: string = node?.id ?? id;
+
+if (node && subgraph) {
+  const nodeMap = new Map<string, NodeResponse>(
+    subgraph.nodes.map((n) => [n.id, n])
+  );
+  // Deduplicate by neighbor ID — collect all edges per neighbor
+  // Only include edges where this node is an actual endpoint
+  const neighborEdges = new Map<string, EdgeResponse[]>();
+  for (const edge of subgraph.edges) {
+    const isSource = edge.source_node_id === nodeUuid;
+    const isTarget = edge.target_node_id === nodeUuid;
+    if (!isSource && !isTarget) continue; // skip edges between two neighbors
+    const neighborId = isSource ? edge.target_node_id : edge.source_node_id;
+    if (neighborId === nodeUuid) continue;
+    if (!nodeMap.has(neighborId)) continue;
+    const list = neighborEdges.get(neighborId) ?? [];
+    list.push(edge);
+    neighborEdges.set(neighborId, list);
+  }
+
+  for (const [neighborId, edges] of neighborEdges) {
+    const neighbor = nodeMap.get(neighborId)!;
+    const entry: Neighbor = { node: neighbor, edges };
+    // Track antithesis via dialectic_pair_id metadata or negative-weight related edge
+    const pairId = node.metadata?.dialectic_pair_id as string | undefined;
+    if (
+      (pairId && neighborId === pairId) ||
+      (neighbor.node_type === "perspective" && edges.some((e) => e.relationship_type === "related" && e.weight < 0))
+    ) {
+      antithesis = neighbor;
+    }
+    if (neighbor.node_type === "perspective") {
+      perspectives.push(entry);
+    } else if (neighbor.node_type === "entity") {
+      entities.push(entry);
+    } else {
+      related.push(entry);
+    }
+  }
+
+  const typeOrder: Record<string, number> = { concept: 0, event: 1 };
+  related.sort((a, b) => {
+    // Sort by node type group first
+    const typeOrd = (typeOrder[a.node.node_type] ?? 99) - (typeOrder[b.node.node_type] ?? 99);
+    if (typeOrd !== 0) return typeOrd;
+    // Then by relationship type
+    const relA = a.edges[0]?.relationship_type ?? "";
+    const relB = b.edges[0]?.relationship_type ?? "";
+    if (relA !== relB) return relA.localeCompare(relB);
+    // Then by fact count descending
+    return neighborFactCount(b.edges) - neighborFactCount(a.edges);
+  });
+}
+
+function neighborFactCount(edges: EdgeResponse[]): number {
+  return edges.reduce((sum, e) => sum + (e.supporting_fact_ids?.length ?? 0), 0);
+}
+
+function sortByTypeAndFacts(list: Neighbor[]): void {
+  list.sort((a, b) => {
+    // Group by relationship type first
+    const typeA = a.edges[0]?.relationship_type ?? "";
+    const typeB = b.edges[0]?.relationship_type ?? "";
+    if (typeA !== typeB) return typeA.localeCompare(typeB);
+    // Then by fact count descending (most supported first)
+    return neighborFactCount(b.edges) - neighborFactCount(a.edges);
+  });
+}
+
+sortByTypeAndFacts(perspectives);
+sortByTypeAndFacts(entities);
+
+// Fact lookup map for showing supporting facts when no justification exists
+const factMap = new Map<string, FactResponse>(facts.map(f => [f.id, f]));
+
+function edgeSupportingFacts(edges: EdgeResponse[]): FactResponse[] {
+  const ids = new Set(edges.flatMap(e => e.supporting_fact_ids ?? []));
+  return [...ids].map(fid => factMap.get(fid)).filter((f): f is FactResponse => !!f);
+}
+
+// Collect unique node types among related neighbors, with counts
+const relNodeTypeCount = new Map<string, number>();
+for (const { node: n } of related) {
+  relNodeTypeCount.set(n.node_type, (relNodeTypeCount.get(n.node_type) ?? 0) + 1);
+}
+const uniqueRelNodeTypes = Array.from(relNodeTypeCount.entries())
+  .sort((a, b) => b[1] - a[1])
+  .map(([type]) => type);
+
+function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: string; cls: string } {
+  if (neighborType !== "perspective") return { label: "", cls: "" };
+  return { label: "perspective of", cls: "stance-supports" };
+}
+---
+
+<WikiLayout title={node?.concept ?? "Node not found"}>
+  {error && <div class="error-banner">{error}</div>}
+
+  {
+    node && (
+      <>
+        <div class="node-grid">
+          {/* ── Main column ── */}
+          <div class="node-main">
+            <div class="node-meta">
+              <span class={`type-badge ${node.node_type}`}>{node.node_type}</span>
+              {node.parent_concept && (
+                <span>
+                  ↳{" "}
+                  {node.parent_id ? (
+                    <a href={`/nodes/${node.parent_key}`}>{node.parent_concept}</a>
+                  ) : (
+                    node.parent_concept
+                  )}
+                </span>
+              )}
+            </div>
+            <h1 class="node-title" title={node.concept}>{node.concept}</h1>
+
+            {/* ── Also known as (aliases + merged concepts) ── */}
+            {(() => {
+              const aliases = (node.metadata?.aliases as string[] | undefined) ?? [];
+              const mergedFrom = (node.metadata?.merged_from as string[] | undefined) ?? [];
+              const allNames = [...new Set([...aliases, ...mergedFrom])];
+              return allNames.length > 0 ? (
+                <p class="also-known-as">
+                  Also known as: {allNames.join(", ")}
+                </p>
+              ) : null;
+            })()}
+
+            {/* ── Disambiguation notice ── */}
+            {(() => {
+              const amb = node.metadata?.seed_ambiguity as {
+                is_disambiguated?: boolean;
+                ambiguity_type?: string;
+                parent_name?: string;
+                sibling_names?: string[];
+              } | undefined;
+              if (!amb?.is_disambiguated) return null;
+              return (
+                <div class="disambiguation-notice">
+                  <span class="disambiguation-icon" aria-hidden="true">⑂</span>
+                  <div>
+                    <strong>Disambiguated{amb.parent_name ? ` from "${amb.parent_name}"` : ""}</strong>
+                    {amb.sibling_names && amb.sibling_names.length > 0 && (
+                      <span class="disambiguation-siblings">
+                        {" "}— this term can also refer to: {amb.sibling_names.join(", ")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {node.definition ? (
+              <>
+                <span class={`definition-source-tag ${node.definition_source === "crystallized" ? "crystallized" : "synthesized"}`}>
+                  {node.definition_source === "crystallized"
+                    ? `crystallized from ${children.length} sub-concept${children.length !== 1 ? "s" : ""}`
+                    : node.node_type === "perspective"
+                      ? "synthesized from nodes"
+                      : "synthesized from dimensions"}
+                </span>
+                {node.node_type === "perspective" ? (
+                  <div class="perspective-definition">
+                    {parseMarkdownBlocks(node.definition).map((block) =>
+                      block.kind === "heading" ? (
+                        block.level === 1 ? <h2 class="perspective-h1">{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</h2> :
+                        block.level === 2 ? <h3 class="perspective-h2">{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</h3> :
+                        <h4 class="perspective-h3">{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</h4>
+                      ) : (
+                        <p class="perspective-paragraph">{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</p>
+                      )
+                    )}
+                  </div>
+                ) : (
+                  <p class="node-definition">
+                    {parseRichText(node.definition).map((s) =>
+                      s.kind === "text" ? s.text :
+                      s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                      <a href={s.href}>{s.text}</a>
+                    )}
+                  </p>
+                )}
+              </>
+            ) : dimensions.length > 0 ? (
+              <>
+                <span class="definition-source-tag dimension">
+                  from single model dimension
+                </span>
+                <p class="no-definition-notice">
+                  No definition has been generated yet — showing the first model analysis as a summary.
+                </p>
+                <p class="node-definition">
+                  {parseRichText(dimensions[0].content).map((s) =>
+                    s.kind === "text" ? s.text :
+                    s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                    <a href={s.href}>{s.text}</a>
+                  )}
+                </p>
+              </>
+            ) : null}
+
+            {dimensions.length > 0 && (
+              <details class="dimensions-details">
+                <summary class="dimensions-summary">
+                  Model Perspectives <span class="dimensions-count">({dimensions.length})</span>
+                </summary>
+                <div class="dimensions-list">
+                  {dimensions.map((dim) => (
+                    <div class="dimension-card">
+                      <div class="dimension-card-header">
+                        <span>{dim.model_id}</span>
+                        <span>
+                          {dim.is_definitive && (
+                            <span class="definitive-tag">definitive</span>
+                          )}
+                          {Math.round(dim.confidence * 100)}% confidence
+                        </span>
+                      </div>
+                      <div class="dimension-card-body">
+                        {parseRichText(dim.content).map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+
+          {/* ── Sidebar ── */}
+          <aside class="node-sidebar" id="node-sidebar">
+            <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Collapse sidebar sections">
+              <span class="sidebar-collapse-icon">▸</span> Collapse all
+            </button>
+            {node.parent_id && node.parent_concept && (
+              <div class="sidebar-box">
+                <div class="sidebar-box-header sidebar-box-toggle">Parent <span class="sidebar-toggle-icon">▾</span></div>
+                <ul class="sidebar-box-list">
+                  <li class="relation-row">
+                    <a href={`/nodes/${node.parent_key}`} class="relation-row-main" title={node.parent_concept}>{node.parent_concept}</a>
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {antithesis && (
+              <div class="sidebar-box">
+                <div class="sidebar-box-header sidebar-box-header--antithesis sidebar-box-toggle">Antithesis <span class="sidebar-toggle-icon">▾</span></div>
+                <ul class="sidebar-box-list">
+                  <li class="relation-row">
+                    <a href={nodeHref(antithesis)} class="relation-row-main" title={antithesis.concept}>{antithesis.concept}</a>
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {perspectives.length > 0 && (
+              <div class="sidebar-box">
+                <div class="sidebar-box-header sidebar-box-toggle">
+                  Perspectives ({perspectives.length}) <span class="sidebar-toggle-icon">▾</span>
+                </div>
+                {perspectives.length > 5 && (
+                  <input type="search" class="sidebar-search" data-sidebar-search placeholder="Filter perspectives..." autocomplete="off" />
+                )}
+                <ul class="sidebar-box-list">
+                  {perspectives.map(({ node: n, edges }) => {
+                    const { label, cls } = stanceLabel(edges, n.node_type);
+                    const justifications = edges.filter(e => e.justification);
+                    const factCount = neighborFactCount(edges);
+                    const supportingFacts = edgeSupportingFacts(edges);
+                    const dialogId = `rel-${n.id}`;
+                    return (
+                      <li class="relation-row" data-search-text={n.concept.toLowerCase()}>
+                        <div class="relation-row-main" title={n.concept}>
+                          {label && <span class={`stance-label ${cls}`}>{label}</span>}
+                          <a href={nodeHref(n)}>{n.concept}</a>
+                        </div>
+                        {(justifications.length > 0 || supportingFacts.length > 0) && (
+                          <>
+                            <button class="relation-btn" data-dialog={dialogId}>
+                              relation{factCount > 0 && <span class="relation-btn-count">{factCount}</span>}
+                            </button>
+                            <dialog id={dialogId} class="relation-dialog">
+                              <div class="relation-dialog-inner">
+                                <h3 class="relation-dialog-title">{n.concept}</h3>
+                                {justifications.length > 0 ? (
+                                  justifications.map((e, i) => {
+                                    const edgeFactCount = e.supporting_fact_ids?.length ?? 0;
+                                    const segs = parseJustification(e.justification);
+                                    return (
+                                      <p class="relation-dialog-text">
+                                        {justifications.length > 1 && <strong>[{i + 1}] </strong>}
+                                        {segs.map((s) => s.kind === "text" ? s.text : <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a>)}
+                                        {edgeFactCount > 0 && <span class="relation-dialog-fact-count"> — {edgeFactCount} supporting fact{edgeFactCount !== 1 ? "s" : ""}</span>}
+                                      </p>
+                                    );
+                                  })
+                                ) : (
+                                  <>
+                                    <p class="relation-dialog-pending">Justification not yet generated — showing supporting facts</p>
+                                    <ul class="relation-dialog-facts">
+                                      {supportingFacts.map((f) => (
+                                        <li class="relation-dialog-fact-item">
+                                          <a href={`/facts/${f.id}`}>{f.content}</a>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                )}
+                                <div class="relation-dialog-footer">
+                                  <a class="relation-dialog-detail-link" href={`/edges?source=${nodeUuid}&target=${n.id}`}>view all edge details</a>
+                                  <button class="relation-dialog-close" data-close>Close</button>
+                                </div>
+                              </div>
+                            </dialog>
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {entities.length > 0 && (
+              <div class="sidebar-box">
+                <div class="sidebar-box-header sidebar-box-toggle">
+                  Entities ({entities.length}) <span class="sidebar-toggle-icon">▾</span>
+                </div>
+                {entities.length > 5 && (
+                  <input type="search" class="sidebar-search" data-sidebar-search placeholder="Filter entities..." autocomplete="off" />
+                )}
+                <ul class="sidebar-box-list">
+                  {entities.map(({ node: n, edges }) => {
+                    const justifications = edges.filter(e => e.justification);
+                    const factCount = neighborFactCount(edges);
+                    const supportingFacts = edgeSupportingFacts(edges);
+                    const dialogId = `rel-${n.id}`;
+                    return (
+                      <li class="relation-row" data-search-text={n.concept.toLowerCase()}>
+                        <a href={nodeHref(n)} class="relation-row-main" title={n.concept}>{n.concept}</a>
+                        {(justifications.length > 0 || supportingFacts.length > 0) && (
+                          <>
+                            <button class="relation-btn" data-dialog={dialogId}>
+                              relation{factCount > 0 && <span class="relation-btn-count">{factCount}</span>}
+                            </button>
+                            <dialog id={dialogId} class="relation-dialog">
+                              <div class="relation-dialog-inner">
+                                <h3 class="relation-dialog-title">{n.concept}</h3>
+                                {justifications.length > 0 ? (
+                                  justifications.map((e, i) => {
+                                    const edgeFactCount = e.supporting_fact_ids?.length ?? 0;
+                                    const segs = parseJustification(e.justification);
+                                    return (
+                                      <p class="relation-dialog-text">
+                                        {justifications.length > 1 && <strong>[{i + 1}] </strong>}
+                                        {segs.map((s) => s.kind === "text" ? s.text : <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a>)}
+                                        {edgeFactCount > 0 && <span class="relation-dialog-fact-count"> — {edgeFactCount} supporting fact{edgeFactCount !== 1 ? "s" : ""}</span>}
+                                      </p>
+                                    );
+                                  })
+                                ) : (
+                                  <>
+                                    <p class="relation-dialog-pending">Justification not yet generated — showing supporting facts</p>
+                                    <ul class="relation-dialog-facts">
+                                      {supportingFacts.map((f) => (
+                                        <li class="relation-dialog-fact-item">
+                                          <a href={`/facts/${f.id}`}>{f.content}</a>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                )}
+                                <div class="relation-dialog-footer">
+                                  <a class="relation-dialog-detail-link" href={`/edges?source=${nodeUuid}&target=${n.id}`}>view all edge details</a>
+                                  <button class="relation-dialog-close" data-close>Close</button>
+                                </div>
+                              </div>
+                            </dialog>
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </aside>
+
+          {/* ── Related concepts (full width) ── */}
+          {related.length > 0 && (
+            <div class="related-section">
+              <h2 class="section-heading">
+                Related (<span id="related-visible-count">{related.length}</span>)
+              </h2>
+              {related.length > 5 && (
+                <input type="search" class="section-search" data-grid-search="related-grid" placeholder="Filter related..." autocomplete="off" />
+              )}
+              {uniqueRelNodeTypes.length > 1 && (
+                <div class="rel-type-filters" id="rel-type-filters">
+                  <span class="facts-domains-label">Type</span>
+                  {uniqueRelNodeTypes.map((nt) => (
+                    <button class={`type-badge type-badge--clickable ${nt}`} data-node-type={nt}>
+                      {nt}
+                      <span class="domain-count">{relNodeTypeCount.get(nt)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div class="related-grid" id="related-grid">
+                {related.map(({ node: n, edges }) => {
+                  const justifications = edges.filter(e => e.justification);
+                  const factCount = neighborFactCount(edges);
+                  const supportingFacts = edgeSupportingFacts(edges);
+                  const dialogId = `rel-${n.id}`;
+                  return (
+                    <div class="related-card" data-search-text={n.concept.toLowerCase()} data-node-type={n.node_type}>
+                      <div class="related-card-top">
+                        <span class={`type-badge ${n.node_type}`}>{n.node_type}</span>
+                        {factCount > 0 && <span class="related-card-fact-count">{factCount} fact{factCount !== 1 ? "s" : ""}</span>}
+                      </div>
+                      <a class="related-card-name" href={nodeHref(n)}>{n.concept}</a>
+                      <div class="related-card-actions">
+                        <a class="related-card-btn" href={nodeHref(n)}>open</a>
+                        {(justifications.length > 0 || supportingFacts.length > 0) && (
+                          <>
+                            <button class="related-card-btn" data-dialog={dialogId}>
+                              relation{factCount > 0 && <span class="relation-btn-count">{factCount}</span>}
+                            </button>
+                            <dialog id={dialogId} class="relation-dialog">
+                              <div class="relation-dialog-inner">
+                                <h3 class="relation-dialog-title">{n.concept}</h3>
+                                {justifications.length > 0 ? (
+                                  justifications.map((e, i) => {
+                                    const edgeFactCount = e.supporting_fact_ids?.length ?? 0;
+                                    const segs = parseJustification(e.justification);
+                                    return (
+                                      <p class="relation-dialog-text">
+                                        {justifications.length > 1 && <strong>[{i + 1}] </strong>}
+                                        {segs.map((s) => s.kind === "text" ? s.text : <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a>)}
+                                        {edgeFactCount > 0 && <span class="relation-dialog-fact-count"> — {edgeFactCount} supporting fact{edgeFactCount !== 1 ? "s" : ""}</span>}
+                                      </p>
+                                    );
+                                  })
+                                ) : (
+                                  <>
+                                    <p class="relation-dialog-pending">Justification not yet generated — showing supporting facts</p>
+                                    <ul class="relation-dialog-facts">
+                                      {supportingFacts.map((f) => (
+                                        <li class="relation-dialog-fact-item">
+                                          <a href={`/facts/${f.id}`}>{f.content}</a>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                )}
+                                <div class="relation-dialog-footer">
+                                  <a class="relation-dialog-detail-link" href={`/edges?source=${nodeUuid}&target=${n.id}`}>view all edge details</a>
+                                  <button class="relation-dialog-close" data-close>Close</button>
+                                </div>
+                              </div>
+                            </dialog>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Children (full width) ── */}
+          {children.length > 0 && (
+            <div class="related-section">
+              <h2 class="section-heading">
+                Children ({children.length})
+              </h2>
+              <div class="related-grid">
+                {children.map((child) => (
+                  <div class="related-card">
+                    <div class="related-card-top">
+                      <span class={`type-badge ${child.node_type}`}>{child.node_type}</span>
+                    </div>
+                    <a class="related-card-name" href={nodeHref(child)}>{child.concept}</a>
+                    <div class="related-card-actions">
+                      <a class="related-card-btn" href={nodeHref(child)}>open</a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Facts (full width, grouped by source) ── */}
+          {facts.length > 0 && (
+            <FactsSection facts={facts} />
+          )}
+        </div>
+      </>
+    )
+  }
+
+  <script>
+    document.querySelectorAll<HTMLButtonElement>("[data-dialog]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const dialog = document.getElementById(btn.dataset.dialog!) as HTMLDialogElement | null;
+        dialog?.showModal();
+      });
+    });
+    document.querySelectorAll<HTMLDialogElement>("dialog.relation-dialog").forEach((dialog) => {
+      // Close on backdrop click
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog) dialog.close();
+      });
+      // Close button
+      dialog.querySelector("[data-close]")?.addEventListener("click", () => dialog.close());
+    });
+
+    // Individual section collapse toggle
+    document.querySelectorAll<HTMLElement>(".sidebar-box-toggle").forEach((header) => {
+      header.style.cursor = "pointer";
+      header.addEventListener("click", () => {
+        const box = header.closest(".sidebar-box");
+        if (box) box.classList.toggle("sidebar-box--collapsed");
+      });
+    });
+
+    // Sidebar collapse-all / expand-all toggle
+    const collapseBtn = document.getElementById("sidebar-collapse-btn") as HTMLButtonElement | null;
+    const sidebar = document.getElementById("node-sidebar") as HTMLElement | null;
+    if (collapseBtn && sidebar) {
+      let collapsed = false;
+      collapseBtn.addEventListener("click", () => {
+        collapsed = !collapsed;
+        sidebar.querySelectorAll(".sidebar-box").forEach((box) => {
+          box.classList.toggle("sidebar-box--collapsed", collapsed);
+        });
+        collapseBtn.innerHTML = collapsed
+          ? '<span class="sidebar-collapse-icon">▸</span> Expand all'
+          : '<span class="sidebar-collapse-icon">▸</span> Collapse all';
+      });
+    }
+
+    // ── Sidebar list search (perspectives, entities) ──
+    document.querySelectorAll<HTMLInputElement>("[data-sidebar-search]").forEach((input) => {
+      const box = input.closest(".sidebar-box");
+      if (!box) return;
+      const list = box.querySelector(".sidebar-box-list");
+      if (!list) return;
+
+      input.addEventListener("input", () => {
+        const q = input.value.toLowerCase().trim();
+        list.querySelectorAll<HTMLLIElement>("[data-search-text]").forEach((li) => {
+          const text = li.dataset.searchText ?? "";
+          li.style.display = !q || text.includes(q) ? "" : "none";
+        });
+      });
+    });
+
+    // ── Grid search (related nodes) — skip related-grid as it has its own combined handler ──
+    document.querySelectorAll<HTMLInputElement>("[data-grid-search]").forEach((input) => {
+      const gridId = input.dataset.gridSearch!;
+      if (gridId === "related-grid") return; // handled by relationship type filter below
+      const grid = document.getElementById(gridId);
+      if (!grid) return;
+
+      input.addEventListener("input", () => {
+        const q = input.value.toLowerCase().trim();
+        grid.querySelectorAll<HTMLElement>("[data-search-text]").forEach((card) => {
+          const text = card.dataset.searchText ?? "";
+          card.style.display = !q || text.includes(q) ? "" : "none";
+        });
+      });
+    });
+
+    // ── Node type filter (Related section) ──
+    let activeNodeType: string | null = null;
+    const relatedGrid = document.getElementById("related-grid");
+    const relatedVisibleCount = document.getElementById("related-visible-count");
+    const relGridSearch = document.querySelector<HTMLInputElement>('[data-grid-search="related-grid"]');
+
+    function applyRelatedFilters() {
+      if (!relatedGrid) return;
+      const query = (relGridSearch?.value ?? "").toLowerCase().trim();
+      let visible = 0;
+      relatedGrid.querySelectorAll<HTMLElement>(".related-card").forEach((card) => {
+        const text = card.dataset.searchText ?? "";
+        const nodeType = card.dataset.nodeType ?? "";
+        const matchesSearch = !query || text.includes(query);
+        const matchesType = !activeNodeType || nodeType === activeNodeType;
+        const show = matchesSearch && matchesType;
+        card.style.display = show ? "" : "none";
+        if (show) visible++;
+      });
+      if (relatedVisibleCount) relatedVisibleCount.textContent = String(visible);
+    }
+
+    // Override the grid search handler for related to also respect node type filter
+    if (relGridSearch) {
+      relGridSearch.addEventListener("input", () => applyRelatedFilters());
+    }
+
+    document.querySelectorAll<HTMLButtonElement>(".type-badge--clickable").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const nt = btn.dataset.nodeType ?? "";
+        if (activeNodeType === nt) {
+          activeNodeType = null;
+          btn.classList.remove("type-badge--active");
+        } else {
+          document.querySelectorAll(".type-badge--active").forEach((el) =>
+            el.classList.remove("type-badge--active")
+          );
+          activeNodeType = nt;
+          btn.classList.add("type-badge--active");
+        }
+        applyRelatedFilters();
+      });
+    });
+
+  </script>
+
+  {
+    !error && !node && (
+      <p class="empty-state">Node not found.</p>
+    )
+  }
+</WikiLayout>

@@ -1,0 +1,197 @@
+# Knowledge Tree Configuration
+# =============================
+# Priority: environment variables > .env file > this YAML > Python defaults
+#
+# Every setting belongs to a section. Keys within each section are short names
+# scoped to that section (e.g. orchestrator.model, edges.min_weight).
+# Env vars still use the flat name (e.g. ORCHESTRATOR_MODEL).
+# Secrets (API keys, JWT, OAuth) belong in .env, not here.
+
+
+# =============================================================================
+# Infrastructure — databases, vector search, cache, sync, logging
+# =============================================================================
+infrastructure:
+  # database_url: "postgresql+asyncpg://kt:localdev@localhost:5432/knowledge_tree"
+  # db_pool_size: 10
+  # db_max_overflow: 20
+  # db_pool_timeout: 30
+
+  # write_database_url: "postgresql+asyncpg://kt:localdev@localhost:5434/knowledge_tree_write"
+  # write_db_pool_size: 30
+  # write_db_max_overflow: 60
+  # write_db_pool_timeout: 60
+
+  # qdrant_url: "http://localhost:6333"
+  # redis_url: "redis://localhost:6379/0"
+
+  # sync_interval_seconds: 5
+  # sync_batch_size: 100
+  # pipeline_concurrency: 10
+
+  # log_level: "INFO"
+
+
+# =============================================================================
+# Auth — JWT, OAuth (prefer .env for secrets)
+# =============================================================================
+# auth:
+#   jwt_secret_key: "change-me-in-production"
+#   access_token_expire_minutes: 30
+#   refresh_token_expire_days: 30
+#   skip_auth: false
+#   google_oauth_client_id: ""
+#   google_oauth_client_secret: ""
+
+
+# =============================================================================
+# API keys — prefer .env for secrets
+# =============================================================================
+# api_keys:
+#   openrouter: ""
+#   brave: ""
+#   serper: ""
+#   openai: ""
+
+
+# =============================================================================
+# Models — default LLM and global model settings
+# =============================================================================
+models:
+  default: "openrouter/x-ai/grok-4.1-fast"
+  # default_thinking_level: ""
+  # enable_secondary_models: false
+
+
+# =============================================================================
+# Embeddings — model, dimensions, batching
+# =============================================================================
+# embeddings:
+#   model: "openrouter/openai/text-embedding-3-large"
+#   dimensions: 3072
+#   timeout: 120
+#   batch_chunk_size: 32
+
+
+# =============================================================================
+# Search — providers, full-text fetch, page dedup
+# =============================================================================
+search:
+#   provider: "serper"            # "serper", "brave", or "all"
+#   enable_full_text_fetch: true
+#   full_text_fetch_max_urls: 3
+#   full_text_fetch_timeout: 15.0
+#   page_stale_days: 30
+#   page_fetch_max_extra_pages: 3
+  full_text_fetch_per_budget_point: 5
+
+
+# =============================================================================
+# Orchestrator — budgets, waves, timeouts, semantic expansion
+# =============================================================================
+orchestrator:
+  model: "openrouter/google/gemini-3-flash-preview"
+  # model: "openrouter/minimax/minimax-m2.5:nitro"
+  # thinking_level: "low"
+  scope_model: "openrouter/minimax/minimax-m2.5:nitro"              # model for scope planning / sub-explorer agents (default: orchestrator model)
+  scope_thinking_level: "low"
+
+  # nav_budget: 200
+  # explore_budget: 20
+  # wave_count: 2
+
+  # enable_semantic_expansion: true
+  # semantic_expansion_max_terms: 15
+  # semantic_expansion_fact_threshold: 0.4
+
+  # inactivity_timeout_seconds: 300
+  # scope_timeout_seconds: 3600
+  # hatchet_execution_timeout_minutes: 180
+  # hatchet_schedule_timeout_minutes: 60  # max queue wait before task is cancelled
+  # use_hatchet: true
+
+
+# =============================================================================
+# Decomposition — fact extraction, dedup, content limits
+# =============================================================================
+decomposition:
+  # model: "openrouter/qwen/qwen3-32b:nitro"]
+  # model: "openrouter/x-ai/grok-4.1-fast"
+  model: "openrouter/google/gemini-3.1-flash-lite-preview"
+  thinking_level: "low"
+  entity_extraction_model: "openrouter/google/gemini-3.1-flash-lite-preview"
+  # entity_extraction_model: "openrouter/xiaomi/mimo-v2-flash"
+  entity_extraction_thinking_level: medium
+  entity_extraction_batch_size: 40
+  entity_extraction_concurrency: 10
+  # file_model: ""
+  # file_thinking_level: ""
+
+  # fact_pool_threshold: 0.40
+  # max_content_tokens: 500
+  # stale_after_days: 30
+  # llm_call_timeout_seconds: 180
+
+
+# =============================================================================
+# Synthesis — answer generation from navigated nodes
+# =============================================================================
+synthesis:
+  model: "openrouter/minimax/minimax-m2.7:nitro"
+#   thinking_level: ""
+#   chat_model: ""
+#   chat_thinking_level: ""
+#   query_agent_model: ""
+
+
+# =============================================================================
+# Node pipeline — dimensions, definitions
+# =============================================================================
+node_pipeline:
+  dimension_fact_limit: 100
+  dimension_saturation_ratio: 0.9
+#   dimension_model: ""
+#   dimension_thinking_level: ""
+#   dimension_pool_multiplier: 2
+#   definition_model: ""
+#   definition_thinking_level: ""
+
+
+# =============================================================================
+# Edges — resolution, classification, thresholds, parent selection
+# =============================================================================
+edges:
+  resolution_model: "openrouter/x-ai/grok-4.1-fast"
+#   resolution_thinking_level: ""
+#   relation_dedup_threshold: 0.15
+#   staleness_days: 30
+#   classification_batch_size: 5
+#   facts_per_type_cap: 20
+#   facts_per_candidate_cap: 40
+#   parent_selection_model: ""
+#   parent_selection_thinking_level: ""
+
+
+# =============================================================================
+# Ontology — ancestry, crystallization, Wikidata
+# =============================================================================
+# ontology:
+#   model: "openrouter/x-ai/grok-4.1-fast"
+#   cache_ttl: 604800
+#   enable_ancestry: true
+#   similarity_threshold: 0.85
+#   wikidata_user_agent: "KnowledgeTree/1.0 (carlosgomezsoza@gmail.com)"
+#   crystallization_child_threshold: 10
+#   crystallization_child_change_ratio: 0.5
+#   crystallization_model: ""
+#   crystallization_thinking_level: ""
+
+
+# =============================================================================
+# Ingest — file/link upload and processing
+# =============================================================================
+# ingest:
+#   upload_dir: "uploads"
+#   max_file_size_mb: 50
+#   short_content_threshold: 32000
+#   import_cleanup_batch_size: 20

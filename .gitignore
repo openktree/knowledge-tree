@@ -1,0 +1,53 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.pytest_cache/
+
+# uv
+backend/.venv/
+
+# Node / Frontend
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Claude Code
+.claude/
+
+# MCP client config (contains bearer tokens)
+mcp.json
+.mcp.json
+.mcp/
+
+# Kubernetes
+kubeconfig-*
+infra/*/kubeconfig-*

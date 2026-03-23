@@ -1,0 +1,39 @@
+Knowledge Tree has been deployed!
+
+Prerequisites (must be installed before this chart):
+  - CloudNativePG operator (v1.25+)
+    Install: helm install cnpg cloudnative-pg/cloudnative-pg --namespace cnpg-system --create-namespace
+
+{{- if .Values.api.ingress.enabled }}
+API:       https://{{ .Values.api.ingress.host }}
+{{- else }}
+API:       kubectl port-forward svc/{{ include "knowledge-tree.fullname" . }}-api {{ .Values.api.port }}:{{ .Values.api.port }}
+{{- end }}
+
+{{- if .Values.frontend.ingress.enabled }}
+Frontend:  https://{{ .Values.frontend.ingress.host }}
+{{- else }}
+Frontend:  kubectl port-forward svc/{{ include "knowledge-tree.fullname" . }}-frontend {{ .Values.frontend.port }}:{{ .Values.frontend.port }}
+{{- end }}
+
+{{- if and .Values.wikiFrontend.enabled .Values.wikiFrontend.ingress.enabled }}
+Wiki:      https://{{ .Values.wikiFrontend.ingress.host }}
+{{- end }}
+
+Hatchet UI: kubectl port-forward svc/{{ include "knowledge-tree.fullname" . }}-hatchet 8080:8080
+            Then open http://localhost:8080
+
+{{- if and .Values.hatchet.tokenJob.enabled (not .Values.secrets.hatchetClientToken) }}
+
+Hatchet token: Auto-generated via post-install hook.
+  The token job waits for Hatchet, generates a token, patches the Secret,
+  and restarts worker deployments. Check progress:
+    kubectl get jobs -l app.kubernetes.io/component=hatchet-token-job
+{{- else if .Values.secrets.hatchetClientToken }}
+
+Hatchet token: Provided via secrets.hatchetClientToken
+{{- end }}
+
+To check status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl get clusters.postgresql.cnpg.io

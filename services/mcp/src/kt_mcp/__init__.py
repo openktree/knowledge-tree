@@ -1,0 +1,1 @@
+"""Knowledge Tree MCP server."""

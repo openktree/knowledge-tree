@@ -1,0 +1,9 @@
+dependencies:
+- name: cloudnative-pg
+  repository: https://cloudnative-pg.github.io/charts
+  version: 0.23.0
+- name: qdrant
+  repository: https://qdrant.github.io/qdrant-helm/
+  version: 1.17.0
+digest: sha256:a1a85b030e938a46c444f7669915cc97b823d7a968d4ee781aa5140a481a8912
+generated: "2026-03-16T11:39:14.309180377-06:00"

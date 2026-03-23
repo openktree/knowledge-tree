@@ -1,0 +1,16 @@
+{{- if .Values.wikiFrontend.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-wiki-frontend
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "wiki-frontend") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.wikiFrontend.port }}
+      targetPort: {{ .Values.wikiFrontend.port }}
+      protocol: TCP
+  selector:
+    {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "wiki-frontend") | nindent 4 }}
+{{- end }}

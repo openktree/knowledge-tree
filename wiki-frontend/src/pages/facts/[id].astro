@@ -1,0 +1,127 @@
+---
+import WikiLayout from "../../layouts/WikiLayout.astro";
+import { getFact, getFactNodes, nodeHref } from "../../lib/api.js";
+import type { FactResponse, FactNodeInfo } from "../../types/index.js";
+
+const { id } = Astro.params as { id: string };
+
+function extractDomain(uri: string): string | null {
+  try { return new URL(uri).hostname; } catch { return null; }
+}
+
+interface AuthorEntry {
+  person: string | null;
+  org: string | null;
+  sourceUri: string;
+  sourceTitle: string | null;
+}
+
+function collectAuthors(fact: FactResponse): AuthorEntry[] {
+  const entries: AuthorEntry[] = [];
+  const seen = new Set<string>();
+  for (const src of fact.sources) {
+    if (!src.author_person && !src.author_org) continue;
+    const key = `${src.author_person ?? ""}::${src.author_org ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({
+      person: src.author_person,
+      org: src.author_org,
+      sourceUri: src.uri,
+      sourceTitle: src.title,
+    });
+  }
+  return entries;
+}
+
+let fact: FactResponse | null = null;
+let nodes: FactNodeInfo[] = [];
+let error: string | null = null;
+
+try {
+  [fact, nodes] = await Promise.all([getFact(id), getFactNodes(id)]);
+} catch (e) {
+  error = e instanceof Error ? e.message : String(e);
+}
+---
+
+<WikiLayout title={fact ? `Fact — ${fact.fact_type}` : "Fact not found"}>
+  {error && <div class="error-banner">{error}</div>}
+
+  {fact && (
+    <div class="fact-page">
+      <div class="fact-page-header">
+        <span class="fact-type-badge">{fact.fact_type}</span>
+        {fact.stance && <span class="fact-stance">{fact.stance}</span>}
+      </div>
+
+      <blockquote class="fact-page-content">
+        {fact.content}
+      </blockquote>
+
+      {fact.sources.length > 0 && (
+        <section class="fact-page-section">
+          <h2 class="section-heading">Authors</h2>
+          {collectAuthors(fact).length === 0 && (
+            <p class="fact-author-na">No author data available for this fact.</p>
+          )}
+          <ul class="fact-page-authors">
+            {collectAuthors(fact).map((a) => (
+              <li class="fact-author-entry">
+                <div class="fact-author-fields">
+                  <span class="fact-author-label">Person:</span>
+                  <span class={a.person ? "fact-author-person" : "fact-author-na"}>{a.person ?? "Not available"}</span>
+                  <span class="fact-author-label">Organization:</span>
+                  <span class={a.org ? "fact-author-org" : "fact-author-na"}>{a.org ?? "Not available"}</span>
+                </div>
+                <a class="fact-author-source-link" href={a.sourceUri} target="_blank" rel="noopener noreferrer">
+                  {a.sourceTitle ?? extractDomain(a.sourceUri) ?? a.sourceUri}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {fact.sources.length > 0 && (
+        <section class="fact-page-section">
+          <h2 class="section-heading">Sources</h2>
+          <ul class="fact-page-sources">
+            {fact.sources.map((src) => (
+              <li>
+                <a href={src.uri} target="_blank" rel="noopener noreferrer">
+                  {src.title ?? src.uri}
+                </a>
+                {extractDomain(src.uri) && (
+                  <span class="source-domain">{extractDomain(src.uri)}</span>
+                )}
+                {(src.author_person || src.author_org) && (
+                  <span class="fact-source-author">
+                    {[src.author_person, src.author_org].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+                <span class="fact-source-provider">via {src.provider_id}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {nodes.length > 0 && (
+        <section class="fact-page-section">
+          <h2 class="section-heading">Referenced by nodes ({nodes.length})</h2>
+          <ul class="fact-page-nodes">
+            {nodes.map((n) => (
+              <li>
+                <a href={nodeHref({ id: n.node_id, node_type: n.node_type, concept: n.concept })}>{n.concept}</a>
+                <span class={`type-badge ${n.node_type}`}>{n.node_type}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )}
+
+  {!error && !fact && <p class="empty-state">Fact not found.</p>}
+</WikiLayout>

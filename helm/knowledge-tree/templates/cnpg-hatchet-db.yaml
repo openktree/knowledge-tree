@@ -1,0 +1,40 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "knowledge-tree.hatchetDbName" . }}
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "hatchet-db") | nindent 4 }}
+spec:
+  instances: {{ .Values.hatchetDb.instances }}
+  imageName: {{ .Values.hatchetDb.image }}
+
+  postgresql:
+    parameters:
+      max_connections: {{ .Values.hatchetDb.postgresql.max_connections | quote }}
+
+  bootstrap:
+    initdb:
+      database: hatchet
+      owner: hatchet
+      secret:
+        name: {{ include "knowledge-tree.hatchetDbName" . }}-credentials
+
+  storage:
+    size: {{ .Values.hatchetDb.storage.size }}
+    {{- if .Values.hatchetDb.storage.storageClass }}
+    storageClass: {{ .Values.hatchetDb.storage.storageClass }}
+    {{- end }}
+
+  resources:
+    {{- toYaml .Values.hatchetDb.resources | nindent 4 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "knowledge-tree.hatchetDbName" . }}-credentials
+  labels:
+    {{- include "knowledge-tree.labels" . | nindent 4 }}
+type: kubernetes.io/basic-auth
+stringData:
+  username: hatchet
+  password: {{ .Values.secrets.hatchetDbPassword | quote }}

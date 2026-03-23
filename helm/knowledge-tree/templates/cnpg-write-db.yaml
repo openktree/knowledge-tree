@@ -1,0 +1,40 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "knowledge-tree.writeDbName" . }}
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "write-db") | nindent 4 }}
+spec:
+  instances: {{ .Values.writeDb.instances }}
+  imageName: {{ .Values.writeDb.image }}
+
+  postgresql:
+    parameters:
+      max_connections: {{ .Values.writeDb.postgresql.max_connections | quote }}
+
+  bootstrap:
+    initdb:
+      database: knowledge_tree_write
+      owner: kt
+      secret:
+        name: {{ include "knowledge-tree.writeDbName" . }}-credentials
+
+  storage:
+    size: {{ .Values.writeDb.storage.size }}
+    {{- if .Values.writeDb.storage.storageClass }}
+    storageClass: {{ .Values.writeDb.storage.storageClass }}
+    {{- end }}
+
+  resources:
+    {{- toYaml .Values.writeDb.resources | nindent 4 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "knowledge-tree.writeDbName" . }}-credentials
+  labels:
+    {{- include "knowledge-tree.labels" . | nindent 4 }}
+type: kubernetes.io/basic-auth
+stringData:
+  username: kt
+  password: {{ .Values.secrets.writeDbPassword | quote }}

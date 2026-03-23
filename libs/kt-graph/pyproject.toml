@@ -1,0 +1,26 @@
+[project]
+name = "kt-graph"
+version = "0.1.0"
+description = "Knowledge Tree graph engine, convergence, and splitting"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-db",
+    "kt-models",
+    "kt-qdrant",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-db = { workspace = true }
+kt-models = { workspace = true }
+kt-qdrant = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_graph"]

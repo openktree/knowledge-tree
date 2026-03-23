@@ -1,0 +1,193 @@
+"""Agent state and context types."""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Awaitable, Callable, Sequence
+from typing import TYPE_CHECKING, Annotated, Any
+
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from kt_graph.engine import GraphEngine
+    from kt_models.embeddings import EmbeddingService
+    from kt_models.gateway import ModelGateway
+    from kt_providers.fetcher import ContentFetcher, FileDataStore
+    from kt_providers.registry import ProviderRegistry
+
+logger = logging.getLogger(__name__)
+
+# Callback signature: async def callback(event_type: str, **data) -> None
+EventCallback = Callable[..., Awaitable[None]]
+
+
+class SynthesisState(BaseModel):
+    """State for the Synthesis sub-agent."""
+
+    query: str
+    node_list: list[dict[str, str]] = Field(default_factory=list)  # [{"node_id": "...", "concept": "..."}, ...]
+    facts_retrieved: dict[str, list[str]] = Field(default_factory=dict)
+    answer: str = ""
+    phase: str = "synthesizing"  # "synthesizing" | "done"
+    messages: Annotated[Sequence[BaseMessage], add_messages] = Field(default_factory=list)
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
+class ConversationState(BaseModel):
+    """State for the Conversation Agent -- follow-up turns in a conversation."""
+
+    query: str  # The follow-up question
+    original_query: str = ""  # The initial question that started the conversation
+    prior_answer: str = ""  # Most recent completed answer
+    prior_visited_nodes: list[str] = Field(default_factory=list)  # All node IDs visited in prior turns
+    conversation_summary: str = ""  # Brief summary for context window management
+
+    nav_budget: int = 20
+    explore_budget: int = 2
+    explore_used: int = 0
+    nav_used: int = 0
+
+    # Structural compatibility with OrchestratorState (used by shared tools)
+    gathered_fact_count: int = 0
+    existing_concepts: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
+    existing_perspectives: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
+    sub_explorer_summaries: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
+
+    visited_nodes: list[str] = Field(default_factory=list)
+    created_nodes: list[str] = Field(default_factory=list)
+    created_edges: list[str] = Field(default_factory=list)
+    exploration_path: list[str] = Field(default_factory=list)
+    context_summary: str = ""
+    phase: str = "exploring"
+    answer: str = ""
+    messages: Annotated[Sequence[BaseMessage], add_messages] = Field(default_factory=list)
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @property
+    def explore_remaining(self) -> int:
+        """How many explore budget units remain."""
+        return max(0, self.explore_budget - self.explore_used)
+
+    def has_visited(self, node_id: str) -> bool:
+        """Check if a node has been visited in this turn OR prior turns."""
+        return node_id in self.visited_nodes or node_id in self.prior_visited_nodes
+
+    @property
+    def all_visited_nodes(self) -> list[str]:
+        """Union of nodes visited in this turn and prior turns."""
+        return list(set(self.visited_nodes) | set(self.prior_visited_nodes))
+
+
+class AgentContext:
+    """Dependencies injected into agent tools."""
+
+    def __init__(
+        self,
+        graph_engine: GraphEngine,
+        provider_registry: ProviderRegistry,
+        model_gateway: ModelGateway,
+        embedding_service: EmbeddingService | None,
+        session: AsyncSession | None,
+        emit_event: EventCallback | None = None,
+        content_fetcher: ContentFetcher | None = None,
+        session_factory: async_sessionmaker[AsyncSession] | None = None,
+        file_data_store: FileDataStore | None = None,
+        parent: AgentContext | None = None,
+        pipeline_tracker: Any | None = None,
+        write_session_factory: async_sessionmaker[AsyncSession] | None = None,
+        qdrant_client: object | None = None,
+    ) -> None:
+        self.graph_engine = graph_engine
+        self.provider_registry = provider_registry
+        self.model_gateway = model_gateway
+        self.embedding_service = embedding_service
+        self.session = session
+        self._emit_event = emit_event
+        self.content_fetcher = content_fetcher
+        self.session_factory = session_factory
+        self.write_session_factory = write_session_factory
+        self.qdrant_client = qdrant_client
+        self.last_activity_at: float = time.monotonic()
+        self._parent = parent
+        self.pipeline_tracker: Any | None = pipeline_tracker
+
+        if file_data_store is None:
+            from kt_providers.fetcher import FileDataStore as _FDS
+
+            file_data_store = _FDS()
+        self.file_data_store: FileDataStore = file_data_store
+
+    def create_child_context(self) -> AgentContext:
+        """Create a child AgentContext with its own database session.
+
+        The child gets a new session (and GraphEngine) from the session factory
+        while sharing stateless services (model_gateway, provider_registry,
+        embedding_service, content_fetcher, emit_event).
+
+        Raises RuntimeError if no session_factory was provided (e.g. in tests).
+        The caller is responsible for committing/closing the child session.
+        """
+        if self.session_factory is None:
+            raise RuntimeError(
+                "Cannot create child context: no session_factory provided"
+            )
+
+        from kt_graph.engine import GraphEngine
+
+        child_session = self.session_factory()
+
+        # Open a write session if factory is available
+        child_write_session = None
+        if self.write_session_factory is not None:
+            child_write_session = self.write_session_factory()
+
+        child_graph_engine = GraphEngine(
+            child_session,
+            self.embedding_service,
+            write_session=child_write_session,
+            qdrant_client=self.qdrant_client,
+        )
+
+        return AgentContext(
+            graph_engine=child_graph_engine,
+            provider_registry=self.provider_registry,
+            model_gateway=self.model_gateway,
+            embedding_service=self.embedding_service,
+            session=child_session,
+            emit_event=self._emit_event,
+            content_fetcher=self.content_fetcher,
+            session_factory=self.session_factory,
+            file_data_store=self.file_data_store,
+            parent=self,
+            pipeline_tracker=self.pipeline_tracker,
+            write_session_factory=self.write_session_factory,
+            qdrant_client=self.qdrant_client,
+        )
+
+    async def emit(self, event_type: str, **data: Any) -> None:
+        """Fire-and-forget event emission. No-op when no callback is set.
+
+        Also propagates ``last_activity_at`` up the parent chain so that
+        watchdog timers on ancestor contexts see activity from child
+        contexts (e.g. sub-explorer pipelines).
+        """
+        now = time.monotonic()
+        self.last_activity_at = now
+        # Propagate heartbeat up the parent chain
+        parent = self._parent
+        while parent is not None:
+            parent.last_activity_at = now
+            parent = parent._parent
+        if self._emit_event is None:
+            return
+        try:
+            await self._emit_event(event_type, **data)
+        except Exception:
+            logger.warning("Failed to emit event %s", event_type, exc_info=True)
