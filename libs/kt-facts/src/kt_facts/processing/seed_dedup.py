@@ -133,12 +133,27 @@ async def deduplicate_seed(
                 diff_words and words_incoming != words_candidate and all(w in STOPWORDS for w in diff_words)
             )
 
-            if name_lower == candidate_name_lower or name_lower in aliases_lower or is_acronym or is_stopword_only:
+            # Punctuation-only difference: names match after stripping punctuation
+            # e.g. "McDonald's Corporation" vs "McDonalds Corporation"
+            import re as _re
+
+            name_nopunct = _re.sub(r"[^\w\s]", "", name_lower)
+            candidate_nopunct = _re.sub(r"[^\w\s]", "", candidate_name_lower)
+            is_punctuation_only = name_lower != candidate_name_lower and name_nopunct == candidate_nopunct
+
+            if (
+                name_lower == candidate_name_lower
+                or name_lower in aliases_lower
+                or is_acronym
+                or is_stopword_only
+                or is_punctuation_only
+            ):
                 # Containment guard — skip for acronym matches since acronyms
                 # are inherently much shorter than their expansions
                 if (
                     not is_acronym
                     and not is_stopword_only
+                    and not is_punctuation_only
                     and _is_containment_mismatch(name_lower, candidate_name_lower)
                 ):
                     logger.debug(
@@ -152,6 +167,8 @@ async def deduplicate_seed(
                     if is_acronym and name_lower != candidate_name_lower and name_lower not in aliases_lower
                     else "stopword variant"
                     if is_stopword_only
+                    else "punctuation variant"
+                    if is_punctuation_only
                     else "alias match"
                 )
                 alias_candidates.append(_MergeCandidate(candidate.key, candidate.name, reason))
