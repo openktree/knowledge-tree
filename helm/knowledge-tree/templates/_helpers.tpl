@@ -140,13 +140,13 @@ Outputs a list of env var definitions.
 - name: GRAPH_DB_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ include "knowledge-tree.secretName" . }}
-      key: graph-db-password
+      name: {{ default (printf "%s-credentials" (include "knowledge-tree.graphDbName" .)) .Values.graphDb.credentialsSecret }}
+      key: password
 - name: WRITE_DB_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ include "knowledge-tree.secretName" . }}
-      key: write-db-password
+      name: {{ default (printf "%s-credentials" (include "knowledge-tree.writeDbName" .)) .Values.writeDb.credentialsSecret }}
+      key: password
 - name: HATCHET_CLIENT_TOKEN
   valueFrom:
     secretKeyRef:
