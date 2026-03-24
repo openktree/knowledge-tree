@@ -37,13 +37,13 @@ spec:
             - -c
             - |
               set -e
-              echo "Creating pgvector extension (requires superuser)..."
+              echo "Creating extensions (requires superuser)..."
               PGPASSWORD="$POSTGRES_PASSWORD" psql \
                 -h {{ include "knowledge-tree.graphDbHost" . }} \
                 -U postgres \
                 -d knowledge_tree \
-                -c "CREATE EXTENSION IF NOT EXISTS vector;"
-              echo "Extension created"
+                -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+              echo "Extensions created"
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
@@ -78,7 +78,6 @@ spec:
                 secretKeyRef:
                   name: {{ default (printf "%s-credentials" (include "knowledge-tree.writeDbName" .)) .Values.writeDb.credentialsSecret }}
                   key: password
-            # Migrations connect directly to CNPG (not PgBouncer) for DDL
             - name: DATABASE_URL
               value: "postgresql+asyncpg://kt:$(GRAPH_DB_PASSWORD)@{{ include "knowledge-tree.graphDbHost" . }}:5432/knowledge_tree"
             - name: WRITE_DATABASE_URL
