@@ -13,101 +13,6 @@ permissions:
   pull-requests: read
 
 jobs:
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      backend-matrix: ${{ steps.build-matrix.outputs.matrix }}
-      has-backend: ${{ steps.build-matrix.outputs.has-backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            kt-config:
-              - 'libs/kt-config/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            kt-db:
-              - 'libs/kt-db/**'
-              - 'libs/kt-config/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            kt-models:
-              - 'libs/kt-models/**'
-              - 'libs/kt-config/**'
-              - 'libs/kt-db/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            kt-providers:
-              - 'libs/kt-providers/**'
-              - 'libs/kt-config/**'
-              - 'libs/kt-agents-core/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            kt-graph:
-              - 'libs/kt-graph/**'
-              - 'libs/kt-db/**'
-              - 'libs/kt-models/**'
-              - 'libs/kt-config/**'
-              - 'libs/kt-qdrant/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            kt-facts:
-              - 'libs/kt-facts/**'
-              - 'libs/kt-db/**'
-              - 'libs/kt-models/**'
-              - 'libs/kt-providers/**'
-              - 'libs/kt-config/**'
-              - 'libs/kt-agents-core/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            kt-ontology:
-              - 'libs/kt-ontology/**'
-              - 'libs/kt-db/**'
-              - 'libs/kt-graph/**'
-              - 'libs/kt-models/**'
-              - 'libs/kt-config/**'
-              - 'libs/kt-qdrant/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            api:
-              - 'services/api/**'
-              - 'libs/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            mcp:
-              - 'services/mcp/**'
-              - 'libs/kt-db/**'
-              - 'libs/kt-config/**'
-              - 'libs/kt-graph/**'
-              - 'libs/kt-qdrant/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            frontend:
-              - 'frontend/**'
-      - name: Build test matrix from changed packages
-        id: build-matrix
-        run: |
-          MATRIX="[]"
-          add() { MATRIX=$(echo "$MATRIX" | jq --arg n "$1" --arg p "$2" '. + [{"name": $n, "path": $p}]'); }
-
-          [ "${{ steps.filter.outputs.kt-config }}" = "true" ]   && add "kt-config"   "libs/kt-config"
-          [ "${{ steps.filter.outputs.kt-db }}" = "true" ]       && add "kt-db"        "libs/kt-db"
-          [ "${{ steps.filter.outputs.kt-models }}" = "true" ]   && add "kt-models"    "libs/kt-models"
-          [ "${{ steps.filter.outputs.kt-providers }}" = "true" ] && add "kt-providers" "libs/kt-providers"
-          [ "${{ steps.filter.outputs.kt-graph }}" = "true" ]    && add "kt-graph"     "libs/kt-graph"
-          [ "${{ steps.filter.outputs.kt-facts }}" = "true" ]    && add "kt-facts"     "libs/kt-facts"
-          [ "${{ steps.filter.outputs.kt-ontology }}" = "true" ] && add "kt-ontology"  "libs/kt-ontology"
-          [ "${{ steps.filter.outputs.api }}" = "true" ]         && add "api"           "services/api"
-          [ "${{ steps.filter.outputs.mcp }}" = "true" ]         && add "mcp"           "services/mcp"
-
-          echo "matrix={\"suite\":$(echo "$MATRIX" | jq -c '.')}" >> "$GITHUB_OUTPUT"
-          echo "has-backend=$([ "$(echo "$MATRIX" | jq 'length')" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "Changed suites: $(echo "$MATRIX" | jq -r '[.[].name] | join(", ")')"
-
   backend-lint:
     name: Backend Lint
     runs-on: ubuntu-latest
@@ -120,17 +25,25 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-packages --frozen
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
 
   backend-test:
     name: Test ${{ matrix.suite.name }}
-    needs: changes
-    if: needs.changes.outputs.has-backend == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.backend-matrix) }}
+      matrix:
+        suite:
+          - { name: kt-config, path: libs/kt-config }
+          - { name: kt-db, path: libs/kt-db }
+          - { name: kt-models, path: libs/kt-models }
+          - { name: kt-providers, path: libs/kt-providers }
+          - { name: kt-graph, path: libs/kt-graph }
+          - { name: kt-facts, path: libs/kt-facts }
+          - { name: kt-ontology, path: libs/kt-ontology }
+          - { name: api, path: services/api }
+          - { name: mcp, path: services/mcp }
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -184,14 +97,12 @@ jobs:
       - run: uv sync --all-packages --frozen
       - name: Run tests
         run: >-
-          uv run pytest ${{ matrix.suite.path }}/tests/ -x -n auto
+          uv run --frozen pytest ${{ matrix.suite.path }}/tests/ -x -n auto
           --ignore=${{ matrix.suite.path }}/tests/integration
           ${{ matrix.suite.name == 'kt-ontology' && '--ignore=libs/kt-ontology/tests/test_crystallization.py' || '' }}
 
   frontend-test:
     name: Frontend Tests
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
