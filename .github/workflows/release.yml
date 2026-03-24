@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.github/workflows/test.yml'
+      - '.github/workflows/build.yml'
+      - 'CLAUDE.md'
+      - 'LICENSE'
 
 concurrency:
   group: release

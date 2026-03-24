@@ -1,0 +1,89 @@
+name: Detect Changes Since Last Tag
+description: >
+  Compares HEAD against the previous git tag to determine which services
+  have changed. Outputs a JSON build matrix of changed services and a
+  JSON list of unchanged services for re-tagging.
+
+inputs:
+  services:
+    description: >
+      JSON array of {service, image} objects for backend services.
+    required: true
+  shared-paths:
+    description: >
+      Space-separated paths that, if changed, mark ALL backend services as changed.
+    required: false
+    default: "libs/ pyproject.toml uv.lock"
+
+outputs:
+  build-matrix:
+    description: "JSON matrix of changed services (for docker/build-push-action)"
+    value: ${{ steps.detect.outputs.build-matrix }}
+  retag-list:
+    description: "JSON array of unchanged {service, image} objects (for crane re-tag)"
+    value: ${{ steps.detect.outputs.retag-list }}
+  has-changes:
+    description: "'true' if at least one service changed"
+    value: ${{ steps.detect.outputs.has-changes }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect changes since last tag
+      id: detect
+      shell: bash
+      run: |
+        PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1)
+
+        if [ -z "$PREV_TAG" ]; then
+          echo "No previous tag found — marking all services as changed"
+          echo "build-matrix=${{ inputs.services }}" >> "$GITHUB_OUTPUT"
+          echo "retag-list=[]" >> "$GITHUB_OUTPUT"
+          echo "has-changes=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "Comparing $PREV_TAG..HEAD"
+
+        # Check if shared paths changed (affects all backend services)
+        SHARED_CHANGED=false
+        for p in ${{ inputs.shared-paths }}; do
+          if [ -n "$(git diff --name-only "$PREV_TAG" HEAD -- "$p")" ]; then
+            SHARED_CHANGED=true
+            break
+          fi
+        done
+
+        SERVICES='${{ inputs.services }}'
+        BUILD_MATRIX="[]"
+        RETAG_LIST="[]"
+
+        echo "$SERVICES" | jq -c '.[]' | while read -r entry; do
+          svc=$(echo "$entry" | jq -r '.service')
+
+          if [ "$SHARED_CHANGED" = "true" ] || \
+             [ -n "$(git diff --name-only "$PREV_TAG" HEAD -- "services/$svc/" 2>/dev/null)" ] || \
+             [ -n "$(git diff --name-only "$PREV_TAG" HEAD -- "$svc/" 2>/dev/null)" ]; then
+            BUILD_MATRIX=$(echo "$BUILD_MATRIX" | jq --argjson e "$entry" '. + [$e]')
+          else
+            RETAG_LIST=$(echo "$RETAG_LIST" | jq --argjson e "$entry" '. + [$e]')
+          fi
+
+          # Write back after each iteration (last write wins)
+          echo "build-matrix=$(echo "$BUILD_MATRIX" | jq -c '.')" > /tmp/gha_outputs
+          echo "retag-list=$(echo "$RETAG_LIST" | jq -c '.')" >> /tmp/gha_outputs
+        done
+
+        # Read final values (pipe creates subshell so we need the temp file)
+        if [ -f /tmp/gha_outputs ]; then
+          cat /tmp/gha_outputs >> "$GITHUB_OUTPUT"
+        else
+          echo "build-matrix=[]" >> "$GITHUB_OUTPUT"
+          echo "retag-list=$SERVICES" >> "$GITHUB_OUTPUT"
+        fi
+
+        BUILD_COUNT=$(grep 'build-matrix=' "$GITHUB_OUTPUT" | tail -1 | sed 's/build-matrix=//' | jq 'length')
+        echo "has-changes=$([ "$BUILD_COUNT" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+        echo "Services to build: $BUILD_COUNT"
+        echo "Services to re-tag: $(grep 'retag-list=' "$GITHUB_OUTPUT" | tail -1 | sed 's/retag-list=//' | jq 'length')"

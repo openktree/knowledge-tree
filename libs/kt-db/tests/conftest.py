@@ -35,6 +35,8 @@ async def engine(settings, schema_name) -> AsyncGenerator[AsyncEngine, None]:
     setup_eng = create_async_engine(base_url, echo=False)
     async with setup_eng.begin() as conn:
         await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}"))
+        # Advisory lock prevents xdist workers from racing on CREATE EXTENSION
+        await conn.execute(text("SELECT pg_advisory_xact_lock(hashtext('create_extensions'))"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     await setup_eng.dispose()
@@ -78,6 +80,7 @@ async def write_engine(settings, write_schema_name) -> AsyncGenerator[AsyncEngin
     setup_eng = create_async_engine(base_url, echo=False)
     async with setup_eng.begin() as conn:
         await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {write_schema_name}"))
+        await conn.execute(text("SELECT pg_advisory_xact_lock(hashtext('create_extensions'))"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     await setup_eng.dispose()
 
