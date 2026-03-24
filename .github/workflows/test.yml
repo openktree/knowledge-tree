@@ -8,6 +8,10 @@ concurrency:
   group: test-${{ github.head_ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   changes:
     name: Detect Changes
@@ -21,7 +25,6 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          base: ${{ github.event.pull_request.base.ref }}
           filters: |
             kt-config:
               - 'libs/kt-config/**'
