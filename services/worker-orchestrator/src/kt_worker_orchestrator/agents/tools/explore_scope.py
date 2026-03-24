@@ -26,11 +26,7 @@ from pydantic import BaseModel, Field
 from kt_agents_core.base import BaseAgent, approx_tokens
 from kt_agents_core.state import AgentContext, PipelineState
 from kt_config.settings import get_settings
-from kt_worker_nodes.agents.tools.build_node import build_nodes_impl
-from kt_worker_nodes.agents.tools.read_node import read_node_impl
-from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
 from kt_worker_orchestrator.agents.orchestrator_state import SubExplorerState
-from kt_worker_query.agents.tools.query_tools import DEFAULT_SEARCH_LIMIT, lightweight_search_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -407,6 +403,8 @@ def create_sub_explorer_tools(
     async def gather_facts(search_queries: list[str]) -> str:
         """Gather facts from external sources into the fact pool.
         Each query costs 1 explore_budget."""
+        from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
+
         state = get_state()
         result = await GatherFactsPipeline(ctx).gather(search_queries, state)  # type: ignore[arg-type]
         return json.dumps(result, default=str)
@@ -416,6 +414,8 @@ def create_sub_explorer_tools(
         """Batch build multiple nodes (up to 10). Mix concepts and entities.
         Each entry must have "name" (the node label) and "node_type" ("concept" or "entity")."""
         state = get_state()
+
+        from kt_worker_nodes.agents.tools.build_node import build_nodes_impl
 
         # Convert Pydantic models to dicts for the impl function
         node_dicts = [n.model_dump() for n in nodes]
@@ -481,15 +481,19 @@ def create_sub_explorer_tools(
     @tool
     async def read_node(node_id: str) -> str:
         """Read a node's dimensions and edges. Costs 1 nav_budget if unvisited, free if already visited."""
+        from kt_worker_nodes.agents.tools.read_node import read_node_impl
+
         result = await read_node_impl(node_id, ctx, get_state())  # type: ignore[arg-type]
         return json.dumps(result, default=str)
 
     @tool
-    async def search_graph(queries: list[str], limit: int = DEFAULT_SEARCH_LIMIT) -> str:
+    async def search_graph(queries: list[str], limit: int = 20) -> str:
         """Search the existing knowledge graph by text and embedding similarity.
         Graph-only — no external API calls. Returns node summaries with concept,
         type, fact_count, richness. FREE (no budget cost).
         Default 20 results per query; pass limit (up to 100) for more."""
+        from kt_worker_query.agents.tools.query_tools import lightweight_search_nodes
+
         result = await lightweight_search_nodes(queries, ctx, limit=limit)
         return json.dumps(result, default=str)
 

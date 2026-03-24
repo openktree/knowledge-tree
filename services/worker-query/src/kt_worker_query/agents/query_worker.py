@@ -11,7 +11,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from kt_agents_core.results import AgentResult, build_subgraph, extract_final_state
 from kt_agents_core.state import ConversationState, PipelineState
 from kt_agents_core.worker_base import BaseWorker
-from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
 from kt_worker_query.agents.query_agent import (
     QUERY_AGENT_SYSTEM_PROMPT,
     QueryAgentImpl,
@@ -172,6 +171,8 @@ class QueryWorker(BaseWorker):
                         visited_nodes=list(visited),
                         created_nodes=[],
                     )
+
+                from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
 
                 result = await synthesize_answer_impl(ctx, synth_state)
                 answer = synth_state.answer or str(result.get("answer", "") if isinstance(result, dict) else "")
