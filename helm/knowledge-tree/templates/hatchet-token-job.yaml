@@ -20,7 +20,7 @@ spec:
       volumes:
         - name: hatchet-config
           persistentVolumeClaim:
-            claimName: {{ include "knowledge-tree.fullname" . }}-hatchet-config
+            claimName: config-{{ include "knowledge-tree.fullname" . }}-hatchet-0
       initContainers:
         - name: wait-for-hatchet
           image: busybox:1.36
