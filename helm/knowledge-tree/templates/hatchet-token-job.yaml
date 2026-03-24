@@ -17,6 +17,13 @@ spec:
     spec:
       serviceAccountName: {{ include "knowledge-tree.fullname" . }}-hatchet-token
       restartPolicy: OnFailure
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "hatchet") | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
       volumes:
         - name: hatchet-config
           persistentVolumeClaim:
