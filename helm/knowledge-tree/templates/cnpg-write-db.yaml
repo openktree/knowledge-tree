@@ -4,6 +4,8 @@ metadata:
   name: {{ include "knowledge-tree.writeDbName" . }}
   labels:
     {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "write-db") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   instances: {{ .Values.writeDb.instances }}
   imageName: {{ .Values.writeDb.image }}
