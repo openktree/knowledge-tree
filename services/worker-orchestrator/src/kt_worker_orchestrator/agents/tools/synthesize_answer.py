@@ -15,10 +15,9 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.messages.utils import trim_messages
 from langgraph.graph import END, StateGraph
 
-from kt_agents_core.state import AgentContext, ConversationState, SynthesisState
+from kt_agents_core.state import AgentContext, ConversationState, PipelineState, SynthesisState
 from kt_config.types import COMPOUND_FACT_TYPES
 from kt_db.models import Fact
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -603,7 +602,7 @@ def build_synthesis_graph(ctx: AgentContext) -> StateGraph:
 
 async def synthesize_answer_impl(
     ctx: AgentContext,
-    state: ConversationState | OrchestratorState,
+    state: ConversationState | PipelineState,
 ) -> dict[str, object]:
     """Generate final answer from navigated nodes using a LangGraph sub-agent.
 

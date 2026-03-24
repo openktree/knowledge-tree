@@ -24,12 +24,12 @@ from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 from kt_agents_core.base import BaseAgent, approx_tokens
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_config.settings import get_settings
 from kt_worker_nodes.agents.tools.build_node import build_nodes_impl
 from kt_worker_nodes.agents.tools.read_node import read_node_impl
 from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState, SubExplorerState
+from kt_worker_orchestrator.agents.orchestrator_state import SubExplorerState
 from kt_worker_query.agents.tools.query_tools import DEFAULT_SEARCH_LIMIT, lightweight_search_nodes
 
 logger = logging.getLogger(__name__)
@@ -400,7 +400,7 @@ def create_sub_explorer_tools(
     """Create tools for a sub-explorer agent.
 
     Wraps existing _impl functions with the SubExplorerState (which is
-    structurally compatible with OrchestratorState).
+    structurally compatible with PipelineState).
     """
 
     @tool
@@ -1057,7 +1057,7 @@ async def explore_scope_impl(
     explore_budget: int,
     nav_budget: int,
     ctx: AgentContext,
-    orchestrator_state: OrchestratorState,
+    orchestrator_state: PipelineState,
     tool_factory: Callable[[AgentContext, Callable[[], SubExplorerState]], list[BaseTool]] | None = None,
 ) -> dict[str, Any]:
     """Launch a sub-explorer agent for a focused scope.

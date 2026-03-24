@@ -14,10 +14,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_worker_nodes.pipelines.batch import BatchPipeline
 from kt_worker_nodes.pipelines.building.unified import UnifiedNodeBuilder
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ async def build_node_impl(
     name: str,
     node_type: str,
     ctx: AgentContext,
-    state: OrchestratorState,
+    state: PipelineState,
 ) -> dict[str, Any]:
     """Build a single node via the unified builder.
 
@@ -53,7 +52,7 @@ async def build_node_impl(
 async def build_nodes_impl(
     nodes: list[dict[str, str]],
     ctx: AgentContext,
-    state: OrchestratorState,
+    state: PipelineState,
     scope_name: str = "",
 ) -> dict[str, Any]:
     """Batch build multiple nodes using the phased pipeline.

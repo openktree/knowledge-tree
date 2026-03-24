@@ -11,7 +11,7 @@ import logging
 import uuid
 from typing import Any
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_config.settings import get_settings
 from kt_db.models import Fact
 from kt_db.repositories.write_page_fetch_log import WritePageFetchLogRepository
@@ -20,7 +20,6 @@ from kt_facts.author import AuthorInfo, SourceContext, build_author_chain, extra
 from kt_facts.pipeline import DecompositionPipeline
 from kt_models.gateway import ModelGateway
 from kt_providers.search_and_fetch import filter_fresh_urls, store_and_fetch
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +92,7 @@ class GatherFactsPipeline:
     async def gather(
         self,
         search_queries: list[str],
-        state: OrchestratorState,
+        state: PipelineState,
         *,
         enable_summary: bool = True,
         enable_extraction: bool = False,

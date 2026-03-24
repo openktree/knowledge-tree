@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Any
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_config.settings import get_settings
 from kt_db.models import Fact
 from kt_facts.pipeline import DecompositionPipeline
@@ -22,7 +22,6 @@ from kt_worker_nodes.pipelines.building.helpers import (
 )
 from kt_worker_nodes.pipelines.nodes.enrichment import PoolEnricher
 from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ class NodeCreationPipeline:
     async def classify_and_gather_batch(
         self,
         tasks: list[CreateNodeTask],
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> dict[str, Any]:
         """Batch embed all names, classify each task, gather facts if needed.
 
@@ -139,7 +138,7 @@ class NodeCreationPipeline:
     async def _classify_task(
         self,
         task: CreateNodeTask,
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> None:
         """Classify a single task: check for existing node, search fact pool."""
         ctx = self._ctx
@@ -298,7 +297,7 @@ class NodeCreationPipeline:
     async def enrich_batch(
         self,
         tasks: list[CreateNodeTask],
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> dict[str, Any]:
         """Run enrichment on tasks classified as 'enrich'.
 
@@ -375,7 +374,7 @@ class NodeCreationPipeline:
     async def create_batch(
         self,
         tasks: list[CreateNodeTask],
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> dict[str, Any]:
         """Create nodes in the DB and link facts. Then commit so all nodes exist.
 
@@ -449,7 +448,7 @@ class NodeCreationPipeline:
     async def _handle_refresh(
         self,
         t: CreateNodeTask,
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> None:
         """Handle stale concept refresh."""
         ctx = self._ctx
@@ -619,7 +618,7 @@ class NodeCreationPipeline:
     async def _handle_create(
         self,
         t: CreateNodeTask,
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> None:
         """Create a new node and link facts."""
         ctx = self._ctx
@@ -737,7 +736,7 @@ class NodeCreationPipeline:
         self,
         node: Any,
         name: str,
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> None:
         """Refresh a stale node: search, decompose, relink, delete old dims.
 
@@ -772,7 +771,7 @@ class NodeCreationPipeline:
     async def dedup_on_refresh(
         self,
         node: Any,
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> None:
         """Merge near-duplicate nodes after refresh."""
         await dedup_on_refresh(node, self._ctx, state)

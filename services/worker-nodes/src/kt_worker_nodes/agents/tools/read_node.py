@@ -13,9 +13,8 @@ import logging
 import uuid
 from typing import Any
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_worker_nodes.pipelines.enrichment import PoolEnricher
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ MAX_BATCH_SIZE = 10
 async def read_node_impl(
     node_id: str,
     ctx: AgentContext,
-    state: OrchestratorState,
+    state: PipelineState,
 ) -> dict[str, Any]:
     """Read a node's dimensions, edges, and structural info.
 
@@ -197,7 +196,7 @@ async def read_node_impl(
 async def read_nodes_impl(
     node_ids: list[str],
     ctx: AgentContext,
-    state: OrchestratorState,
+    state: PipelineState,
 ) -> dict[str, Any]:
     """Batch read multiple nodes.
 
