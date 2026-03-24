@@ -1,4 +1,4 @@
-Knowledge Tree has been deployed!
+Knowledge Tree has been successfully deployed!
 
 Prerequisites (must be installed before this chart):
   - CloudNativePG operator (v1.25+)
