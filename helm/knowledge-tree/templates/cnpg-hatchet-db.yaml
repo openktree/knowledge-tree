@@ -4,6 +4,8 @@ metadata:
   name: {{ include "knowledge-tree.hatchetDbName" . }}
   labels:
     {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "hatchet-db") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   instances: {{ .Values.hatchetDb.instances }}
   imageName: {{ .Values.hatchetDb.image }}
