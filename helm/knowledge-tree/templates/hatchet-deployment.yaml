@@ -82,3 +82,10 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.hatchet.resources | nindent 12 }}
+          volumeMounts:
+            - name: hatchet-config
+              mountPath: /config
+      volumes:
+        - name: hatchet-config
+          persistentVolumeClaim:
+            claimName: {{ include "knowledge-tree.fullname" . }}-hatchet-config

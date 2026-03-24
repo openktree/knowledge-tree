@@ -142,6 +142,9 @@ hatchet:
   cookieDomain: "localhost"  # required by Hatchet — set to your domain
   serverUrl: ""  # auto-derived if empty
   grpcBroadcastAddress: ""  # auto-derived if empty
+  configStorage:
+    size: 100Mi
+    storageClass: ""
   resources:
     requests:
       memory: 512Mi
