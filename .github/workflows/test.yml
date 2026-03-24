@@ -13,15 +13,8 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      kt-config: ${{ steps.filter.outputs.kt-config }}
-      kt-db: ${{ steps.filter.outputs.kt-db }}
-      kt-models: ${{ steps.filter.outputs.kt-models }}
-      kt-providers: ${{ steps.filter.outputs.kt-providers }}
-      kt-graph: ${{ steps.filter.outputs.kt-graph }}
-      kt-facts: ${{ steps.filter.outputs.kt-facts }}
-      kt-ontology: ${{ steps.filter.outputs.kt-ontology }}
-      api: ${{ steps.filter.outputs.api }}
-      mcp: ${{ steps.filter.outputs.mcp }}
+      backend-matrix: ${{ steps.build-matrix.outputs.matrix }}
+      has-backend: ${{ steps.build-matrix.outputs.has-backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +84,25 @@ jobs:
               - 'uv.lock'
             frontend:
               - 'frontend/**'
+      - name: Build test matrix from changed packages
+        id: build-matrix
+        run: |
+          MATRIX="[]"
+          add() { MATRIX=$(echo "$MATRIX" | jq --arg n "$1" --arg p "$2" '. + [{"name": $n, "path": $p}]'); }
+
+          [ "${{ steps.filter.outputs.kt-config }}" = "true" ]   && add "kt-config"   "libs/kt-config"
+          [ "${{ steps.filter.outputs.kt-db }}" = "true" ]       && add "kt-db"        "libs/kt-db"
+          [ "${{ steps.filter.outputs.kt-models }}" = "true" ]   && add "kt-models"    "libs/kt-models"
+          [ "${{ steps.filter.outputs.kt-providers }}" = "true" ] && add "kt-providers" "libs/kt-providers"
+          [ "${{ steps.filter.outputs.kt-graph }}" = "true" ]    && add "kt-graph"     "libs/kt-graph"
+          [ "${{ steps.filter.outputs.kt-facts }}" = "true" ]    && add "kt-facts"     "libs/kt-facts"
+          [ "${{ steps.filter.outputs.kt-ontology }}" = "true" ] && add "kt-ontology"  "libs/kt-ontology"
+          [ "${{ steps.filter.outputs.api }}" = "true" ]         && add "api"           "services/api"
+          [ "${{ steps.filter.outputs.mcp }}" = "true" ]         && add "mcp"           "services/mcp"
+
+          echo "matrix={\"suite\":$(echo "$MATRIX" | jq -c '.')}" >> "$GITHUB_OUTPUT"
+          echo "has-backend=$([ "$(echo "$MATRIX" | jq 'length')" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "Changed suites: $(echo "$MATRIX" | jq -r '[.[].name] | join(", ")')"
 
   backend-lint:
     name: Backend Lint
@@ -110,22 +122,11 @@ jobs:
   backend-test:
     name: Test ${{ matrix.suite.name }}
     needs: changes
-    if: >-
-      needs.changes.outputs[matrix.suite.filter] == 'true'
+    if: needs.changes.outputs.has-backend == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        suite:
-          - { name: kt-config, path: libs/kt-config, filter: kt-config }
-          - { name: kt-db, path: libs/kt-db, filter: kt-db }
-          - { name: kt-models, path: libs/kt-models, filter: kt-models }
-          - { name: kt-providers, path: libs/kt-providers, filter: kt-providers }
-          - { name: kt-graph, path: libs/kt-graph, filter: kt-graph }
-          - { name: kt-facts, path: libs/kt-facts, filter: kt-facts }
-          - { name: kt-ontology, path: libs/kt-ontology, filter: kt-ontology }
-          - { name: api, path: services/api, filter: api }
-          - { name: mcp, path: services/mcp, filter: mcp }
+      matrix: ${{ fromJSON(needs.changes.outputs.backend-matrix) }}
     services:
       postgres:
         image: pgvector/pgvector:pg16

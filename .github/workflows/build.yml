@@ -13,62 +13,56 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      api: ${{ steps.filter.outputs.api }}
-      mcp: ${{ steps.filter.outputs.mcp }}
-      worker-orchestrator: ${{ steps.filter.outputs.worker-orchestrator }}
-      worker-search: ${{ steps.filter.outputs.worker-search }}
-      worker-nodes: ${{ steps.filter.outputs.worker-nodes }}
-      worker-query: ${{ steps.filter.outputs.worker-query }}
-      worker-ingest: ${{ steps.filter.outputs.worker-ingest }}
-      worker-conversations: ${{ steps.filter.outputs.worker-conversations }}
-      worker-sync: ${{ steps.filter.outputs.worker-sync }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      wiki-frontend: ${{ steps.filter.outputs.wiki-frontend }}
+      backend-matrix: ${{ steps.detect.outputs.build-matrix }}
+      backend-retag: ${{ steps.detect.outputs.retag-list }}
+      has-backend: ${{ steps.detect.outputs.has-changes }}
+      frontend: ${{ steps.frontend.outputs.changed }}
+      wiki-frontend: ${{ steps.wiki.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Detect changes since last tag
-        id: filter
+      - name: Detect backend changes
+        id: detect
+        uses: ./.github/actions/detect-tag-changes
+        with:
+          services: >-
+            [
+              {"service": "api",                   "image": "openktree-api"},
+              {"service": "mcp",                   "image": "openktree-mcp"},
+              {"service": "worker-orchestrator",   "image": "openktree-worker-orchestrator"},
+              {"service": "worker-search",         "image": "openktree-worker-search"},
+              {"service": "worker-nodes",          "image": "openktree-worker-nodes"},
+              {"service": "worker-query",          "image": "openktree-worker-query"},
+              {"service": "worker-ingest",         "image": "openktree-worker-ingest"},
+              {"service": "worker-conversations",  "image": "openktree-worker-conversations"},
+              {"service": "worker-sync",           "image": "openktree-worker-sync"}
+            ]
+      - name: Detect frontend changes
+        id: frontend
         run: |
           PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1)
           if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found — building all images"
-            for svc in api mcp worker-orchestrator worker-search worker-nodes \
-                       worker-query worker-ingest worker-conversations worker-sync \
-                       frontend wiki-frontend; do
-              echo "$svc=true" >> "$GITHUB_OUTPUT"
-            done
-            exit 0
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- frontend/ helm/knowledge-tree/frontend/)
+            echo "changed=$([ -n "$CHANGES" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Detect wiki-frontend changes
+        id: wiki
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- wiki-frontend/ helm/knowledge-tree/wiki-frontend/)
+            echo "changed=$([ -n "$CHANGES" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "Comparing $PREV_TAG..HEAD"
-
-          # Backend services depend on libs/ + root pyproject/lockfile
-          SHARED_CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- libs/ pyproject.toml uv.lock)
-
-          for svc in api mcp worker-orchestrator worker-search worker-nodes \
-                     worker-query worker-ingest worker-conversations worker-sync; do
-            SVC_CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- "services/$svc/")
-            if [ -n "$SVC_CHANGES" ] || [ -n "$SHARED_CHANGES" ]; then
-              echo "$svc=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "$svc=false" >> "$GITHUB_OUTPUT"
-            fi
-          done
-
-          # Frontend
-          FE_CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- frontend/ helm/knowledge-tree/frontend/)
-          echo "frontend=$([ -n "$FE_CHANGES" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-          # Wiki frontend
-          WIKI_CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- wiki-frontend/ helm/knowledge-tree/wiki-frontend/)
-          echo "wiki-frontend=$([ -n "$WIKI_CHANGES" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
   backend-images:
-    name: Build ${{ matrix.image }}
+    name: Build ${{ matrix.service }}
     needs: changes
-    if: needs.changes.outputs[matrix.service] == 'true'
+    if: needs.changes.outputs.has-backend == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -76,25 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - service: api
-            image: openktree-api
-          - service: mcp
-            image: openktree-mcp
-          - service: worker-orchestrator
-            image: openktree-worker-orchestrator
-          - service: worker-search
-            image: openktree-worker-search
-          - service: worker-nodes
-            image: openktree-worker-nodes
-          - service: worker-query
-            image: openktree-worker-query
-          - service: worker-ingest
-            image: openktree-worker-ingest
-          - service: worker-conversations
-            image: openktree-worker-conversations
-          - service: worker-sync
-            image: openktree-worker-sync
+        include: ${{ fromJSON(needs.changes.outputs.backend-matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
@@ -158,7 +134,7 @@ jobs:
   wiki-frontend-image:
     name: Build openktree-wiki-frontend
     needs: changes
-    if: needs.changes.outputs['wiki-frontend'] == 'true'
+    if: needs.changes.outputs.wiki-frontend == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -197,9 +173,6 @@ jobs:
     permissions:
       packages: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -209,27 +182,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: imjasonh/setup-crane@v0.4
-      - name: Re-tag unchanged images
+      - name: Re-tag unchanged backend images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RETAG_LIST: ${{ needs.changes.outputs.backend-retag }}
+        run: |
+          echo "$RETAG_LIST" | jq -c '.[]' | while read -r entry; do
+            IMAGE="${{ env.IMAGE_PREFIX }}/$(echo "$entry" | jq -r '.image')"
+            echo "Re-tagging $IMAGE:latest → $VERSION"
+            crane tag "$IMAGE:latest" "$VERSION" || echo "Warning: failed to re-tag $IMAGE"
+            crane tag "$IMAGE:latest" "${VERSION%.*}" || true
+          done
+      - name: Re-tag frontend if unchanged
+        if: needs.changes.outputs.frontend != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          retag() {
-            local image="$1"
-            echo "Re-tagging $image:latest → $VERSION"
-            crane tag "$image:latest" "$VERSION" || echo "Warning: failed to re-tag $image (may not have a previous image)"
-            crane tag "$image:latest" "${VERSION%.*}" || true
-          }
-
-          [ "${{ needs.changes.outputs.api }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-api"
-          [ "${{ needs.changes.outputs.mcp }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-mcp"
-          [ "${{ needs.changes.outputs.worker-orchestrator }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-worker-orchestrator"
-          [ "${{ needs.changes.outputs.worker-search }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-worker-search"
-          [ "${{ needs.changes.outputs.worker-nodes }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-worker-nodes"
-          [ "${{ needs.changes.outputs.worker-query }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-worker-query"
-          [ "${{ needs.changes.outputs.worker-ingest }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-worker-ingest"
-          [ "${{ needs.changes.outputs.worker-conversations }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-worker-conversations"
-          [ "${{ needs.changes.outputs.worker-sync }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-worker-sync"
-          [ "${{ needs.changes.outputs.frontend }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-frontend"
-          [ "${{ needs.changes.outputs['wiki-frontend'] }}" != "true" ] && retag "${{ env.IMAGE_PREFIX }}/openktree-wiki-frontend"
-
-          echo "Done"
+          IMAGE="${{ env.IMAGE_PREFIX }}/openktree-frontend"
+          echo "Re-tagging $IMAGE:latest → $VERSION"
+          crane tag "$IMAGE:latest" "$VERSION" || echo "Warning: failed to re-tag $IMAGE"
+          crane tag "$IMAGE:latest" "${VERSION%.*}" || true
+      - name: Re-tag wiki-frontend if unchanged
+        if: needs.changes.outputs.wiki-frontend != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          IMAGE="${{ env.IMAGE_PREFIX }}/openktree-wiki-frontend"
+          echo "Re-tagging $IMAGE:latest → $VERSION"
+          crane tag "$IMAGE:latest" "$VERSION" || echo "Warning: failed to re-tag $IMAGE"
+          crane tag "$IMAGE:latest" "${VERSION%.*}" || true
