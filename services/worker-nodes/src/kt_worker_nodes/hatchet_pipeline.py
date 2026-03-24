@@ -22,6 +22,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
+from kt_agents_core.state import PipelineState
 from kt_hatchet.lifespan import WorkerState
 
 logger = logging.getLogger(__name__)

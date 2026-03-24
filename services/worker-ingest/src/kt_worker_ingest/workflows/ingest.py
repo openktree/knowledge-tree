@@ -1082,8 +1082,8 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
     Follows the same pattern as bottom_up_build_wf.
     """
     from kt_hatchet.models import BuildNodeInput
-    from kt_hatchet.utils import resolve_perspective_source_ids
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_hatchet.utils import resolve_perspective_source_ids
     from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
