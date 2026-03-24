@@ -1,10 +1,11 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "knowledge-tree.fullname" . }}-hatchet
   labels:
     {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "hatchet") | nindent 4 }}
 spec:
+  serviceName: {{ include "knowledge-tree.fullname" . }}-hatchet
   replicas: 1
   selector:
     matchLabels:
@@ -82,3 +83,18 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.hatchet.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+  volumeClaimTemplates:
+    - metadata:
+        name: config
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.hatchet.configStorage.size }}
+        {{- if .Values.hatchet.configStorage.storageClass }}
+        storageClassName: {{ .Values.hatchet.configStorage.storageClass }}
+        {{- end }}

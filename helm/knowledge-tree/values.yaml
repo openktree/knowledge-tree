@@ -23,16 +23,18 @@ secrets:
   braveKey: ""
   serperKey: ""
 
-  jwtSecretKey: "change-me-in-production"
+  # Auto-generated if empty (preserved across upgrades via lookup)
+  jwtSecretKey: ""
+
   googleOauthClientId: ""
   googleOauthClientSecret: ""
 
   # Leave empty to auto-generate via token job
   hatchetClientToken: ""
 
-  # Hatchet admin credentials (used for initial seed)
-  hatchetAdminEmail: "admin@example.com"
-  hatchetAdminPassword: "Admin123!!"
+  # Auto-generated if empty (preserved across upgrades via lookup)
+  hatchetAdminEmail: ""
+  hatchetAdminPassword: ""
 
 # =============================================================================
 # CloudNativePG Databases
@@ -142,6 +144,9 @@ hatchet:
   cookieDomain: "localhost"  # required by Hatchet — set to your domain
   serverUrl: ""  # auto-derived if empty
   grpcBroadcastAddress: ""  # auto-derived if empty
+  configStorage:
+    size: 100Mi
+    storageClass: ""
   resources:
     requests:
       memory: 512Mi

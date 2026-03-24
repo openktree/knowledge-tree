@@ -17,6 +17,10 @@ spec:
     spec:
       serviceAccountName: {{ include "knowledge-tree.fullname" . }}-hatchet-token
       restartPolicy: OnFailure
+      volumes:
+        - name: hatchet-config
+          persistentVolumeClaim:
+            claimName: config-{{ include "knowledge-tree.fullname" . }}-hatchet-0
       initContainers:
         - name: wait-for-hatchet
           image: busybox:1.36
@@ -110,4 +114,8 @@ spec:
                   key: password
             - name: DATABASE_URL
               value: "postgresql://hatchet:$(HATCHET_DB_PASSWORD)@{{ include "knowledge-tree.hatchetDbHost" . }}:5432/hatchet?sslmode=disable"
+          volumeMounts:
+            - name: hatchet-config
+              mountPath: /config
+              readOnly: true
 {{- end }}
