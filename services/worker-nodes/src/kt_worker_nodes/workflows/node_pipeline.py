@@ -41,7 +41,7 @@ from kt_hatchet.models import (
     RecalculateInput,
     UpdateEdgesInput,
 )
-from kt_hatchet.pipeline import HatchetPipeline
+from kt_worker_nodes.hatchet_pipeline import HatchetPipeline
 
 logger = logging.getLogger(__name__)
 

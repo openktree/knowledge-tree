@@ -10,10 +10,9 @@ import logging
 import uuid
 from typing import Any
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_config.settings import get_settings
 from kt_db.models import Fact
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 # ── Utilities ────────────────────────────────────────────────────────
 
 
-async def emit_budget(ctx: AgentContext, state: OrchestratorState) -> None:
+async def emit_budget(ctx: AgentContext, state: PipelineState) -> None:
     """Emit a budget update event."""
     data: dict[str, object] = {
         "nav_remaining": max(0, state.nav_budget - state.nav_used),
@@ -93,7 +92,7 @@ async def collect_suggested_concepts(node_id: uuid.UUID, ctx: AgentContext) -> l
 async def dedup_on_refresh(
     node: Any,
     ctx: AgentContext,
-    state: OrchestratorState,
+    state: PipelineState,
     *,
     prefer_existing: bool = False,
 ) -> Any | None:

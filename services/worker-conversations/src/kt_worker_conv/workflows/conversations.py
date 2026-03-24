@@ -255,7 +255,7 @@ async def resynthesize_task(input: ResynthesizeInput, ctx: Context) -> dict:
     """Re-run synthesis on an existing message without re-exploring.
 
     Loads visited_nodes from the ConversationMessage, builds a minimal
-    OrchestratorState with zero budgets, and calls synthesize_answer_impl.
+    PipelineState with zero budgets, and calls synthesize_answer_impl.
     Only the message content and status are updated.
     """
     worker_state = cast(WorkerState, ctx.lifespan)
@@ -266,9 +266,9 @@ async def resynthesize_task(input: ResynthesizeInput, ctx: Context) -> dict:
         except Exception:
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
+    from kt_agents_core.state import PipelineState
+    from kt_agents_core.synthesis import synthesize_answer_impl
     from kt_db.repositories.conversations import ConversationRepository
-    from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
-    from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
 
     ctx.log(f"Resynthesize starting: conv={input.conversation_id}, msg={input.message_id}")
 
@@ -291,7 +291,7 @@ async def resynthesize_task(input: ResynthesizeInput, ctx: Context) -> dict:
             )
 
             # Build minimal state with original visited nodes and zero budgets
-            orch_state = OrchestratorState(
+            orch_state = PipelineState(
                 query=input.query,
                 nav_budget=0,
                 explore_budget=0,

@@ -15,14 +15,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
 from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
 from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
 from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
 from kt_worker_nodes.pipelines.parent.pipeline import ParentSelectionPipeline
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ class BatchPipeline:
     async def build_batch(
         self,
         entries: list[dict[str, str]],
-        state: OrchestratorState,
+        state: PipelineState,
         scope_name: str = "",
     ) -> dict[str, Any]:
         """Run the phased build pipeline for a batch of nodes.
@@ -195,7 +194,7 @@ class BatchPipeline:
     @staticmethod
     def _build_results(
         tasks: list[CreateNodeTask],
-        state: OrchestratorState,
+        state: PipelineState,
         original_count: int,
     ) -> dict[str, Any]:
         """Build the final return value from processed tasks."""

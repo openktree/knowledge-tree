@@ -21,47 +21,13 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.messages.utils import trim_messages
 from langchain_core.tools import BaseTool, tool
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel, Field
 
 from kt_agents_core.base import BaseAgent, approx_tokens
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, NodeEntry, PerspectiveEntry, PipelineState
 from kt_config.settings import get_settings
-from kt_worker_nodes.agents.tools.build_node import build_nodes_impl
-from kt_worker_nodes.agents.tools.read_node import read_node_impl
-from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState, SubExplorerState
-from kt_worker_query.agents.tools.query_tools import DEFAULT_SEARCH_LIMIT, lightweight_search_nodes
+from kt_worker_orchestrator.agents.orchestrator_state import SubExplorerState
 
 logger = logging.getLogger(__name__)
-
-
-# ── Pydantic schemas for tool inputs ─────────────────────────────
-
-
-class NodeEntry(BaseModel):
-    """A node to build."""
-
-    name: str = Field(description="Node name or label, e.g. 'quantum entanglement' or 'Albert Einstein'")
-    node_type: str = Field(
-        default="concept",
-        description=(
-            "One of: 'concept' (abstract topic/idea), 'entity' (person or organization), "
-            "'event' (temporal occurrence), 'location' (physical place)"
-        ),
-    )
-
-
-class PerspectiveEntry(BaseModel):
-    """A perspective to build as a thesis/antithesis pair."""
-
-    claim: str = Field(
-        description="Full propositional sentence (the thesis), e.g. 'Vaccines have a strong safety profile'"
-    )
-    source_concept_id: str = Field(description="UUID of the concept node this perspective is about")
-    antithesis: str | None = Field(
-        default=None,
-        description="Opposing claim (the antithesis). When provided, BOTH thesis and antithesis nodes are created as a dialectic pair.",
-    )
 
 
 # ── Sub-explorer system prompt ─────────────────────────────────────
@@ -400,13 +366,15 @@ def create_sub_explorer_tools(
     """Create tools for a sub-explorer agent.
 
     Wraps existing _impl functions with the SubExplorerState (which is
-    structurally compatible with OrchestratorState).
+    structurally compatible with PipelineState).
     """
 
     @tool
     async def gather_facts(search_queries: list[str]) -> str:
         """Gather facts from external sources into the fact pool.
         Each query costs 1 explore_budget."""
+        from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
+
         state = get_state()
         result = await GatherFactsPipeline(ctx).gather(search_queries, state)  # type: ignore[arg-type]
         return json.dumps(result, default=str)
@@ -416,6 +384,8 @@ def create_sub_explorer_tools(
         """Batch build multiple nodes (up to 10). Mix concepts and entities.
         Each entry must have "name" (the node label) and "node_type" ("concept" or "entity")."""
         state = get_state()
+
+        from kt_worker_nodes.agents.tools.build_node import build_nodes_impl
 
         # Convert Pydantic models to dicts for the impl function
         node_dicts = [n.model_dump() for n in nodes]
@@ -481,15 +451,19 @@ def create_sub_explorer_tools(
     @tool
     async def read_node(node_id: str) -> str:
         """Read a node's dimensions and edges. Costs 1 nav_budget if unvisited, free if already visited."""
+        from kt_worker_nodes.agents.tools.read_node import read_node_impl
+
         result = await read_node_impl(node_id, ctx, get_state())  # type: ignore[arg-type]
         return json.dumps(result, default=str)
 
     @tool
-    async def search_graph(queries: list[str], limit: int = DEFAULT_SEARCH_LIMIT) -> str:
+    async def search_graph(queries: list[str], limit: int = 20) -> str:
         """Search the existing knowledge graph by text and embedding similarity.
         Graph-only — no external API calls. Returns node summaries with concept,
         type, fact_count, richness. FREE (no budget cost).
         Default 20 results per query; pass limit (up to 100) for more."""
+        from kt_worker_query.agents.tools.query_tools import lightweight_search_nodes
+
         result = await lightweight_search_nodes(queries, ctx, limit=limit)
         return json.dumps(result, default=str)
 
@@ -1057,7 +1031,7 @@ async def explore_scope_impl(
     explore_budget: int,
     nav_budget: int,
     ctx: AgentContext,
-    orchestrator_state: OrchestratorState,
+    orchestrator_state: PipelineState,
     tool_factory: Callable[[AgentContext, Callable[[], SubExplorerState]], list[BaseTool]] | None = None,
 ) -> dict[str, Any]:
     """Launch a sub-explorer agent for a focused scope.

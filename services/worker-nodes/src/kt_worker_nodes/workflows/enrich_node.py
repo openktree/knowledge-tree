@@ -19,7 +19,7 @@ from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import EnrichEdgeInput, EnrichEdgeOutput, EnrichNodeInput, EnrichNodeOutput
-from kt_hatchet.pipeline import HatchetPipeline
+from kt_worker_nodes.hatchet_pipeline import HatchetPipeline
 
 logger = logging.getLogger(__name__)
 

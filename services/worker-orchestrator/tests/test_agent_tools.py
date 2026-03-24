@@ -7,8 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_agents_core.state import AgentContext
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_worker_orchestrator.agents.tools.synthesize_answer import _extract_text_content, synthesize_answer_impl
 
 pytestmark = pytest.mark.asyncio
@@ -85,11 +84,11 @@ def _make_ctx() -> AgentContext:
     )
 
 
-def _make_orchestrator_state(**kwargs: object) -> OrchestratorState:
-    """Create an OrchestratorState with defaults."""
+def _make_orchestrator_state(**kwargs: object) -> PipelineState:
+    """Create an PipelineState with defaults."""
     defaults: dict[str, object] = {"query": "test query", "nav_budget": 10, "explore_budget": 5}
     defaults.update(kwargs)
-    return OrchestratorState(**defaults)  # type: ignore[arg-type]
+    return PipelineState(**defaults)  # type: ignore[arg-type]
 
 
 # ── _extract_text_content tests ────────────────────────────────────

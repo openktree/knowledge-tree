@@ -6,8 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_agents_core.state import AgentContext
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState, SubExplorerState
+from kt_agents_core.state import AgentContext, PipelineState, SubExplorerState
 
 pytestmark = pytest.mark.asyncio
 
@@ -36,11 +35,11 @@ def _make_ctx() -> AgentContext:
     )
 
 
-def _make_orchestrator_state(**kwargs: object) -> OrchestratorState:
-    """Create an OrchestratorState with defaults."""
+def _make_orchestrator_state(**kwargs: object) -> PipelineState:
+    """Create an PipelineState with defaults."""
     defaults: dict[str, object] = {"query": "test query", "nav_budget": 10, "explore_budget": 5}
     defaults.update(kwargs)
-    return OrchestratorState(**defaults)  # type: ignore[arg-type]
+    return PipelineState(**defaults)  # type: ignore[arg-type]
 
 
 # ── SubExplorerState tests ─────────────────────────────────────────
@@ -73,11 +72,11 @@ def test_sub_explorer_state_has_visited() -> None:
     assert state.has_visited("node-2") is False
 
 
-# ── OrchestratorState sub_explorer_summaries field ─────────────────
+# ── PipelineState sub_explorer_summaries field ─────────────────
 
 
 def test_orchestrator_state_has_sub_explorer_summaries() -> None:
-    """OrchestratorState includes sub_explorer_summaries field."""
+    """PipelineState includes sub_explorer_summaries field."""
     state = _make_orchestrator_state()
     assert hasattr(state, "sub_explorer_summaries")
     assert state.sub_explorer_summaries == []
