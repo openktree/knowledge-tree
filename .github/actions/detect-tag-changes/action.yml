@@ -37,7 +37,7 @@ runs:
 
         if [ -z "$PREV_TAG" ]; then
           echo "No previous tag found — marking all services as changed"
-          echo "build-matrix=${{ inputs.services }}" >> "$GITHUB_OUTPUT"
+          echo "build-matrix=$(echo '${{ inputs.services }}' | jq -c '{include: .}')" >> "$GITHUB_OUTPUT"
           echo "retag-list=[]" >> "$GITHUB_OUTPUT"
           echo "has-changes=true" >> "$GITHUB_OUTPUT"
           exit 0
@@ -70,7 +70,7 @@ runs:
           fi
 
           # Write back after each iteration (last write wins)
-          echo "build-matrix=$(echo "$BUILD_MATRIX" | jq -c '.')" > /tmp/gha_outputs
+          echo "build-matrix=$(echo "$BUILD_MATRIX" | jq -c '{include: .}')" > /tmp/gha_outputs
           echo "retag-list=$(echo "$RETAG_LIST" | jq -c '.')" >> /tmp/gha_outputs
         done
 
@@ -78,11 +78,11 @@ runs:
         if [ -f /tmp/gha_outputs ]; then
           cat /tmp/gha_outputs >> "$GITHUB_OUTPUT"
         else
-          echo "build-matrix=[]" >> "$GITHUB_OUTPUT"
+          echo 'build-matrix={"include":[]}' >> "$GITHUB_OUTPUT"
           echo "retag-list=$SERVICES" >> "$GITHUB_OUTPUT"
         fi
 
-        BUILD_COUNT=$(grep 'build-matrix=' "$GITHUB_OUTPUT" | tail -1 | sed 's/build-matrix=//' | jq 'length')
+        BUILD_COUNT=$(grep 'build-matrix=' "$GITHUB_OUTPUT" | tail -1 | sed 's/build-matrix=//' | jq '.include | length')
         echo "has-changes=$([ "$BUILD_COUNT" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
         echo "Services to build: $BUILD_COUNT"
