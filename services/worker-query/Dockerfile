@@ -23,9 +23,6 @@ COPY services/worker-sync/pyproject.toml services/worker-sync/pyproject.toml
 # Copy this service's source
 COPY services/worker-query/ services/worker-query/
 
-# Copy cross-dependency sources
-COPY services/worker-orchestrator/ services/worker-orchestrator/
-
 # Install dependencies
 RUN uv sync --frozen --no-dev --package kt-worker-query
 

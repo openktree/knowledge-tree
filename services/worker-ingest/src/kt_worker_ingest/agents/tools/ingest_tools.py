@@ -9,9 +9,8 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, tool
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, NodeEntry, PerspectiveEntry
 from kt_worker_ingest.agents.ingest_state import IngestState
-from kt_worker_orchestrator.agents.tools.explore_scope import NodeEntry, PerspectiveEntry
 
 logger = logging.getLogger(__name__)
 

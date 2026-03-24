@@ -267,8 +267,8 @@ async def resynthesize_task(input: ResynthesizeInput, ctx: Context) -> dict:
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
     from kt_agents_core.state import PipelineState
+    from kt_agents_core.synthesis import synthesize_answer_impl
     from kt_db.repositories.conversations import ConversationRepository
-    from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
 
     ctx.log(f"Resynthesize starting: conv={input.conversation_id}, msg={input.message_id}")
 

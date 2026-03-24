@@ -172,7 +172,7 @@ class QueryWorker(BaseWorker):
                         created_nodes=[],
                     )
 
-                from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
+                from kt_agents_core.synthesis import synthesize_answer_impl
 
                 result = await synthesize_answer_impl(ctx, synth_state)
                 answer = synth_state.answer or str(result.get("answer", "") if isinstance(result, dict) else "")

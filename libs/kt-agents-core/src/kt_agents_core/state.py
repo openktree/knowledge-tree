@@ -83,6 +83,21 @@ class PipelineState(BaseModel):
         return node_id in self.visited_nodes
 
 
+class NodeEntry(BaseModel):
+    """A node to build — shared tool input schema."""
+
+    name: str = Field(description="Node name or label")
+    node_type: str = Field(default="concept", description="One of: concept, entity, event, location")
+
+
+class PerspectiveEntry(BaseModel):
+    """A perspective to build as a thesis/antithesis pair."""
+
+    claim: str = Field(description="Full propositional sentence (the thesis)")
+    source_concept_id: str = Field(description="UUID of the concept node this perspective is about")
+    antithesis: str | None = Field(default=None, description="Opposing claim (the antithesis)")
+
+
 class ConversationState(PipelineState):
     """State for the Conversation Agent -- follow-up turns in a conversation."""
 

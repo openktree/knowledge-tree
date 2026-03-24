@@ -21,43 +21,13 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.messages.utils import trim_messages
 from langchain_core.tools import BaseTool, tool
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel, Field
 
 from kt_agents_core.base import BaseAgent, approx_tokens
-from kt_agents_core.state import AgentContext, PipelineState
+from kt_agents_core.state import AgentContext, NodeEntry, PerspectiveEntry, PipelineState
 from kt_config.settings import get_settings
 from kt_worker_orchestrator.agents.orchestrator_state import SubExplorerState
 
 logger = logging.getLogger(__name__)
-
-
-# ── Pydantic schemas for tool inputs ─────────────────────────────
-
-
-class NodeEntry(BaseModel):
-    """A node to build."""
-
-    name: str = Field(description="Node name or label, e.g. 'quantum entanglement' or 'Albert Einstein'")
-    node_type: str = Field(
-        default="concept",
-        description=(
-            "One of: 'concept' (abstract topic/idea), 'entity' (person or organization), "
-            "'event' (temporal occurrence), 'location' (physical place)"
-        ),
-    )
-
-
-class PerspectiveEntry(BaseModel):
-    """A perspective to build as a thesis/antithesis pair."""
-
-    claim: str = Field(
-        description="Full propositional sentence (the thesis), e.g. 'Vaccines have a strong safety profile'"
-    )
-    source_concept_id: str = Field(description="UUID of the concept node this perspective is about")
-    antithesis: str | None = Field(
-        default=None,
-        description="Opposing claim (the antithesis). When provided, BOTH thesis and antithesis nodes are created as a dialectic pair.",
-    )
 
 
 # ── Sub-explorer system prompt ─────────────────────────────────────
