@@ -1,10 +1,11 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "knowledge-tree.fullname" . }}-redis
   labels:
     {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "redis") | nindent 4 }}
 spec:
+  serviceName: {{ include "knowledge-tree.fullname" . }}-redis
   replicas: 1
   selector:
     matchLabels:
@@ -35,7 +36,15 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: {{ include "knowledge-tree.fullname" . }}-redis
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.redis.storage.size }}
+        {{- if .Values.redis.storage.storageClass }}
+        storageClassName: {{ .Values.redis.storage.storageClass }}
+        {{- end }}

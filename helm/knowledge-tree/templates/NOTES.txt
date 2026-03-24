@@ -34,6 +34,23 @@ Hatchet token: Auto-generated via post-install hook.
 Hatchet token: Provided via secrets.hatchetClientToken
 {{- end }}
 
+{{- if not .Values.secrets.existingSecret }}
+
+Auto-generated credentials (retrieve with kubectl):
+
+  JWT secret:
+    kubectl get secret {{ include "knowledge-tree.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.jwt-secret-key}' | base64 -d
+
+  Hatchet admin email:
+    kubectl get secret {{ include "knowledge-tree.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.hatchet-admin-email}' | base64 -d
+
+  Hatchet admin password:
+    kubectl get secret {{ include "knowledge-tree.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.hatchet-admin-password}' | base64 -d
+
+  Hatchet client token:
+    kubectl get secret {{ include "knowledge-tree.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.hatchet-client-token}' | base64 -d
+{{- end }}
+
 To check status:
   kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
   kubectl get clusters.postgresql.cnpg.io
