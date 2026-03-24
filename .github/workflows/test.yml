@@ -9,6 +9,89 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      kt-config: ${{ steps.filter.outputs.kt-config }}
+      kt-db: ${{ steps.filter.outputs.kt-db }}
+      kt-models: ${{ steps.filter.outputs.kt-models }}
+      kt-providers: ${{ steps.filter.outputs.kt-providers }}
+      kt-graph: ${{ steps.filter.outputs.kt-graph }}
+      kt-facts: ${{ steps.filter.outputs.kt-facts }}
+      kt-ontology: ${{ steps.filter.outputs.kt-ontology }}
+      api: ${{ steps.filter.outputs.api }}
+      mcp: ${{ steps.filter.outputs.mcp }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            kt-config:
+              - 'libs/kt-config/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            kt-db:
+              - 'libs/kt-db/**'
+              - 'libs/kt-config/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            kt-models:
+              - 'libs/kt-models/**'
+              - 'libs/kt-config/**'
+              - 'libs/kt-db/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            kt-providers:
+              - 'libs/kt-providers/**'
+              - 'libs/kt-config/**'
+              - 'libs/kt-agents-core/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            kt-graph:
+              - 'libs/kt-graph/**'
+              - 'libs/kt-db/**'
+              - 'libs/kt-models/**'
+              - 'libs/kt-config/**'
+              - 'libs/kt-qdrant/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            kt-facts:
+              - 'libs/kt-facts/**'
+              - 'libs/kt-db/**'
+              - 'libs/kt-models/**'
+              - 'libs/kt-providers/**'
+              - 'libs/kt-config/**'
+              - 'libs/kt-agents-core/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            kt-ontology:
+              - 'libs/kt-ontology/**'
+              - 'libs/kt-db/**'
+              - 'libs/kt-graph/**'
+              - 'libs/kt-models/**'
+              - 'libs/kt-config/**'
+              - 'libs/kt-qdrant/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            api:
+              - 'services/api/**'
+              - 'libs/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            mcp:
+              - 'services/mcp/**'
+              - 'libs/kt-db/**'
+              - 'libs/kt-config/**'
+              - 'libs/kt-graph/**'
+              - 'libs/kt-qdrant/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            frontend:
+              - 'frontend/**'
+
   backend-lint:
     name: Backend Lint
     runs-on: ubuntu-latest
@@ -25,8 +108,24 @@ jobs:
       - run: uv run ruff format --check .
 
   backend-test:
-    name: Backend Tests
+    name: Test ${{ matrix.suite.name }}
+    needs: changes
+    if: >-
+      needs.changes.outputs[matrix.suite.filter] == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - { name: kt-config, path: libs/kt-config, filter: kt-config }
+          - { name: kt-db, path: libs/kt-db, filter: kt-db }
+          - { name: kt-models, path: libs/kt-models, filter: kt-models }
+          - { name: kt-providers, path: libs/kt-providers, filter: kt-providers }
+          - { name: kt-graph, path: libs/kt-graph, filter: kt-graph }
+          - { name: kt-facts, path: libs/kt-facts, filter: kt-facts }
+          - { name: kt-ontology, path: libs/kt-ontology, filter: kt-ontology }
+          - { name: api, path: services/api, filter: api }
+          - { name: mcp, path: services/mcp, filter: mcp }
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -78,25 +177,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-packages --frozen
-      - name: Run lib tests
-        run: |
-          uv run pytest libs/kt-config/tests/ -x --ignore=libs/kt-config/tests/integration
-          uv run pytest libs/kt-db/tests/ -x --ignore=libs/kt-db/tests/integration
-          uv run pytest libs/kt-models/tests/ -x --ignore=libs/kt-models/tests/integration
-          uv run pytest libs/kt-providers/tests/ -x --ignore=libs/kt-providers/tests/integration
-          uv run pytest libs/kt-graph/tests/ -x --ignore=libs/kt-graph/tests/integration
-          uv run pytest libs/kt-facts/tests/ -x --ignore=libs/kt-facts/tests/integration
-          uv run pytest libs/kt-ontology/tests/ -x --ignore=libs/kt-ontology/tests/integration --ignore=libs/kt-ontology/tests/test_crystallization.py
-      - name: Run service tests
-        run: |
-          uv run pytest services/api/tests/ -x --ignore=services/api/tests/integration
-          uv run pytest services/mcp/tests/ -x --ignore=services/mcp/tests/integration
-      # Worker tests are skipped: circular imports between worker packages
-      # when all are installed in a single venv (uv sync --all-packages).
-      # Workers are tested locally with isolated installs.
+      - name: Run tests
+        run: >-
+          uv run pytest ${{ matrix.suite.path }}/tests/ -x -n auto
+          --ignore=${{ matrix.suite.path }}/tests/integration
+          ${{ matrix.suite.name == 'kt-ontology' && '--ignore=libs/kt-ontology/tests/test_crystallization.py' || '' }}
 
   frontend-test:
     name: Frontend Tests
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
