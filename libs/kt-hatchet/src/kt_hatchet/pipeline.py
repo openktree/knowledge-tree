@@ -193,10 +193,9 @@ class HatchetPipeline:
         """
         from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
         from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
-        from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
         task = CreateNodeTask(name=concept, node_type=node_type, seed_key=seed_key, entity_subtype=entity_subtype)
-        orch_state = OrchestratorState(
+        orch_state = PipelineState(
             query=query or concept,
             nav_budget=100,
             explore_budget=0,  # planner already gathered facts -- no external search here
@@ -496,7 +495,6 @@ class HatchetPipeline:
         from kt_db.models import Node
         from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
         from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
-        from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
         nid = uuid.UUID(node_id)
 
@@ -512,7 +510,7 @@ class HatchetPipeline:
             task.node = node
             task.action = "create"
 
-            orch_state = OrchestratorState(
+            orch_state = PipelineState(
                 query=concept,
                 nav_budget=100,
                 explore_budget=0,

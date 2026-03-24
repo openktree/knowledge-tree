@@ -39,32 +39,35 @@ class SynthesisState(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
-class ConversationState(BaseModel):
-    """State for the Conversation Agent -- follow-up turns in a conversation."""
+class PipelineState(BaseModel):
+    """Shared budget/tracking state for all pipeline agents.
 
-    query: str  # The follow-up question
-    original_query: str = ""  # The initial question that started the conversation
-    prior_answer: str = ""  # Most recent completed answer
-    prior_visited_nodes: list[str] = Field(default_factory=list)  # All node IDs visited in prior turns
-    conversation_summary: str = ""  # Brief summary for context window management
+    This is the base state for orchestrator, query, conversation, and ingest
+    agents. It tracks budgets, visited/created nodes, and exploration path.
+    Formerly ``OrchestratorState`` in worker-orchestrator.
+    """
 
+    query: str
     nav_budget: int = 20
     explore_budget: int = 2
     explore_used: int = 0
     nav_used: int = 0
 
-    # Structural compatibility with OrchestratorState (used by shared tools)
-    gathered_fact_count: int = 0
+    # Graph awareness (populated during scout phase)
     existing_concepts: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
     existing_perspectives: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
-    sub_explorer_summaries: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
 
+    # Tracking
+    gathered_fact_count: int = 0
     visited_nodes: list[str] = Field(default_factory=list)
     created_nodes: list[str] = Field(default_factory=list)
     created_edges: list[str] = Field(default_factory=list)
     exploration_path: list[str] = Field(default_factory=list)
-    context_summary: str = ""
-    phase: str = "exploring"
+
+    # Sub-explorer briefings
+    sub_explorer_summaries: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
+
+    phase: str = "planning"  # planning | gathering | assembling | synthesizing
     answer: str = ""
     messages: Annotated[Sequence[BaseMessage], add_messages] = Field(default_factory=list)
 
@@ -74,6 +77,21 @@ class ConversationState(BaseModel):
     def explore_remaining(self) -> int:
         """How many explore budget units remain."""
         return max(0, self.explore_budget - self.explore_used)
+
+    def has_visited(self, node_id: str) -> bool:
+        """Check if a node has already been visited."""
+        return node_id in self.visited_nodes
+
+
+class ConversationState(PipelineState):
+    """State for the Conversation Agent -- follow-up turns in a conversation."""
+
+    original_query: str = ""  # The initial question that started the conversation
+    prior_answer: str = ""  # Most recent completed answer
+    prior_visited_nodes: list[str] = Field(default_factory=list)  # All node IDs visited in prior turns
+    conversation_summary: str = ""  # Brief summary for context window management
+    context_summary: str = ""
+    phase: str = "exploring"  # type: ignore[assignment]
 
     def has_visited(self, node_id: str) -> bool:
         """Check if a node has been visited in this turn OR prior turns."""
