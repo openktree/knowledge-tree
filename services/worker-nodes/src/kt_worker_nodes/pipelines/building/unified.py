@@ -11,7 +11,7 @@ import logging
 import uuid
 from typing import Any
 
-from kt_agents_core.state import AgentContext
+from kt_agents_core.state import AgentContext, PipelineState
 from kt_config.settings import get_settings
 from kt_db.models import Fact
 from kt_facts.pipeline import DecompositionPipeline
@@ -26,7 +26,6 @@ from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
 from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
 from kt_worker_nodes.pipelines.nodes.enrichment import PoolEnricher
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ class UnifiedNodeBuilder(NodeBuilder):
         name: str,
         node_type: str,
         ctx: AgentContext,
-        state: OrchestratorState,
+        state: PipelineState,
         entity_subtype: str | None = None,
     ) -> dict[str, Any]:
         """Full node build with dedup, refresh, enrichment.
@@ -118,7 +117,7 @@ class UnifiedNodeBuilder(NodeBuilder):
         node: Any,
         name: str,
         ctx: AgentContext,
-        state: OrchestratorState,
+        state: PipelineState,
         dim_mode: str,
         tool_label: str,
     ) -> dict[str, Any]:
@@ -197,7 +196,7 @@ class UnifiedNodeBuilder(NodeBuilder):
         name: str,
         is_concept: bool,
         ctx: AgentContext,
-        state: OrchestratorState,
+        state: PipelineState,
     ) -> dict[str, Any]:
         """READ + ENRICH an existing node (free)."""
         dim_pl = DimensionPipeline(ctx)
@@ -239,7 +238,7 @@ class UnifiedNodeBuilder(NodeBuilder):
         name: str,
         node_type: str,
         ctx: AgentContext,
-        state: OrchestratorState,
+        state: PipelineState,
         dim_mode: str,
         tool_label: str,
         entity_subtype: str | None = None,

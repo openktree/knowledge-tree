@@ -29,7 +29,6 @@ from kt_hatchet.models import (
     IngestPartitionInput,
     IngestPartitionOutput,
     ProposedNode,
-    ProposedPerspective,
 )
 
 logger = logging.getLogger(__name__)
@@ -831,199 +830,52 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
         ctx.refresh_timeout("2h")
 
-        # ── Phase 3: Extract nodes from facts ────────────────────
-        await emit(
-            "pipeline_scope_start",
-            {
-                "scope_id": "ingest-extraction",
-                "scope_name": "Extracting Nodes",
-            },
-        )
-        await emit("phase_change", {"phase": "extracting"})
+        # ── Build proposals directly from seeds ───────────────────
+        # Seeds are created during decomposition (step 2). The old
+        # extract→filter→prioritize pipeline was replaced by the seed
+        # system — all seeds with enough facts become nodes automatically.
+        await emit("phase_change", {"phase": "building_proposals"})
 
-        # Load all facts for this conversation from graph-db
-        from kt_facts.processing.entity_extraction import extract_entities_from_facts
-
-        async with worker_state.session_factory() as session:
-            # Get facts via the same pattern as reconstruct_decomp_summary
-            from sqlalchemy import select as sa_select
-
-            from kt_db.models import Fact, FactSource, IngestSource
-
-            src_result = await session.execute(
-                sa_select(IngestSource.raw_source_id).where(
-                    IngestSource.conversation_id == conv_uuid,
-                    IngestSource.raw_source_id.isnot(None),
-                )
-            )
-            raw_source_ids = [row[0] for row in src_result.all()]
-
-            facts: list[Fact] = []
-            if raw_source_ids:
-                fact_result = await session.execute(
-                    sa_select(Fact)
-                    .join(FactSource, Fact.id == FactSource.fact_id)
-                    .where(FactSource.raw_source_id.in_(raw_source_ids))
-                    .distinct()
-                )
-                facts = list(fact_result.scalars().all())
-
-        ctx.log(f"Loaded {len(facts)} facts for extraction")
-
-        if not facts:
-            # No facts — return empty proposals
-            async with worker_state.session_factory() as session:
-                repo = ConversationRepository(session)
-                output = IngestDecomposeOutput(
-                    fact_count=0,
-                    source_count=len(processed),
-                    content_summary="No facts could be extracted.",
-                )
-                await repo.update_message(
-                    msg_uuid,
-                    status="completed",
-                    content="Decomposition complete but no facts extracted.",
-                    metadata_json=output.model_dump(),
-                )
-                await session.commit()
-            await emit("done", {})
-            return {}
-
-        # Extract nodes from facts
-        from kt_models.gateway import ModelGateway
-
-        gateway = ModelGateway()
-        extracted_nodes = await extract_entities_from_facts(facts, gateway) or []
-
-        ctx.log(f"Extracted {len(extracted_nodes)} raw nodes from {len(facts)} facts")
-        await emit("pipeline_scope_end", {"scope_id": "ingest-extraction"})
-
-        ctx.refresh_timeout("1h")
-
-        # ── Phase 4: Filter generic nodes ────────────────────────
-        await emit(
-            "pipeline_scope_start",
-            {
-                "scope_id": "ingest-filtering",
-                "scope_name": "Filtering & Prioritizing",
-            },
-        )
-        await emit("phase_change", {"phase": "filtering"})
-
-        if extracted_nodes:
-            from kt_worker_orchestrator.bottom_up.scope import _filter_nodes
-
-            async with worker_state.session_factory() as session:
-                agent_ctx = await _build_agent_context(worker_state, session, emit_event=emit_cb, api_key=input.api_key)
-                scope_desc = decomp_summary.key_topics[0] if decomp_summary.key_topics else "document content"
-                filtered_nodes = await _filter_nodes(agent_ctx, extracted_nodes, scope_desc)
-        else:
-            filtered_nodes = []
-
-        ctx.log(f"Filtered: {len(extracted_nodes)} → {len(filtered_nodes)} nodes")
-
-        # ── Phase 5: Batched prioritization ──────────────────────
-        await emit("phase_change", {"phase": "prioritizing"})
-
-        if filtered_nodes:
-            from kt_worker_orchestrator.bottom_up.scope import batched_prioritize_nodes
-
-            # Build summary context for the LLM
-            summary_parts: list[str] = []
-            if decomp_summary.source_summaries:
-                summary_parts.append(decomp_summary.source_summaries[0].get("name", ""))
-            if decomp_summary.key_topics:
-                summary_parts.append(f"Key topics: {', '.join(decomp_summary.key_topics[:15])}")
-            if decomp_summary.fact_type_counts:
-                type_str = ", ".join(f"{k}: {v}" for k, v in decomp_summary.fact_type_counts.items())
-                summary_parts.append(f"Fact types: {type_str}")
-            content_summary = "\n".join(summary_parts)
-
-            generic_query = (
-                "Extract and prioritize the main entities, concepts, events, and facts from the source material"
-            )
-
-            async with worker_state.session_factory() as session:
-                agent_ctx = await _build_agent_context(worker_state, session, emit_event=emit_cb, api_key=input.api_key)
-                prioritized = await batched_prioritize_nodes(
-                    agent_ctx,
-                    filtered_nodes,
-                    query=generic_query,
-                    content_summary=content_summary,
-                )
-        else:
-            prioritized = []
-
-        ctx.log(f"Prioritized {len(prioritized)} nodes")
-
-        # ── Build proposals from deduplicated seeds ─────────────
-        from kt_db.keys import key_to_uuid, make_seed_key
+        from kt_db.keys import key_to_uuid
         from kt_db.repositories.write_seeds import WriteSeedRepository
 
-        # Map prioritized node → seed key, preserving priority/perspectives
-        priority_map: dict[str, dict[str, Any]] = {}
-        for n in prioritized:
-            sk = make_seed_key(n.get("node_type", "concept"), n.get("name", ""))
-            priority_map[sk] = n
-
-        # Fetch actual seed objects (post-dedup)
-        seed_status: dict[str, Any] = {}
+        proposed_nodes: list[ProposedNode] = []
         try:
             async with _open_sessions(worker_state) as (session, write_session):
                 if write_session is not None:
                     seed_repo = WriteSeedRepository(write_session)
-                    seed_status = await seed_repo.get_seeds_by_keys_batch(
-                        list(priority_map.keys()),
+                    seeds = await seed_repo.list_seeds(
+                        exclude_merged=True,
+                        limit=500,
                     )
+
+                    for seed in seeds:
+                        if seed.status in ("garbage",):
+                            continue
+
+                        existing_id = None
+                        if seed.status == "promoted" and seed.promoted_node_key:
+                            existing_id = str(key_to_uuid(seed.promoted_node_key))
+
+                        aliases = (seed.metadata_ or {}).get("aliases", []) if seed.metadata_ else []
+
+                        proposed_nodes.append(
+                            ProposedNode(
+                                name=seed.name,
+                                node_type=seed.node_type,
+                                entity_subtype=seed.entity_subtype,
+                                priority=5,
+                                selected=True,
+                                seed_key=seed.key,
+                                existing_node_id=existing_id,
+                                fact_count=seed.fact_count,
+                                aliases=aliases,
+                            )
+                        )
         except Exception:
-            logger.debug("Seed status lookup failed during ingest decompose", exc_info=True)
+            logger.debug("Seed listing failed during ingest decompose", exc_info=True)
 
-        proposed_nodes: list[ProposedNode] = []
-        seen_keys: set[str] = set()
-        for sk, pri in priority_map.items():
-            seed = seed_status.get(sk)
-
-            # Follow merge chain
-            if seed and seed.status == "merged" and seed.merged_into_key:
-                winner = seed_status.get(seed.merged_into_key)
-                if winner:
-                    sk = seed.merged_into_key
-                    seed = winner
-                else:
-                    continue
-
-            if sk in seen_keys:
-                continue
-            seen_keys.add(sk)
-
-            existing_id = None
-            if seed and seed.status == "promoted" and seed.promoted_node_key:
-                existing_id = str(key_to_uuid(seed.promoted_node_key))
-
-            name = seed.name if seed else pri.get("name", "")
-            node_type = seed.node_type if seed else pri.get("node_type", "concept")
-            entity_subtype = seed.entity_subtype if seed else pri.get("entity_subtype")
-            fact_count = seed.fact_count if seed else 0
-            aliases = (seed.metadata_ or {}).get("aliases", []) if seed else []
-
-            proposed_nodes.append(
-                ProposedNode(
-                    name=name,
-                    node_type=node_type,
-                    entity_subtype=entity_subtype,
-                    priority=pri.get("priority", 5),
-                    selected=pri.get("selected", True),
-                    seed_key=sk,
-                    existing_node_id=existing_id,
-                    fact_count=fact_count,
-                    aliases=aliases,
-                    perspectives=[
-                        ProposedPerspective(claim=p["claim"], antithesis=p["antithesis"])
-                        for p in pri.get("perspectives", [])
-                        if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
-                    ],
-                )
-            )
+        ctx.log(f"Built {len(proposed_nodes)} proposals from seeds")
 
         output = IngestDecomposeOutput(
             fact_count=decomp_summary.total_facts,
@@ -1041,12 +893,10 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             await repo.update_message(
                 msg_uuid,
                 status="completed",
-                content=f"Extracted {len(proposed_nodes)} proposed nodes from {decomp_summary.total_facts} facts.",
+                content=f"Built {len(proposed_nodes)} proposals from {decomp_summary.total_facts} facts.",
                 metadata_json=output.model_dump(),
             )
             await session.commit()
-
-        await emit("pipeline_scope_end", {"scope_id": "ingest-filtering"})
 
     except Exception as e:
         logger.exception("Ingest decompose failed: conv=%s", input.conversation_id)
@@ -1082,8 +932,8 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
     Follows the same pattern as bottom_up_build_wf.
     """
     from kt_hatchet.models import BuildNodeInput
-    from kt_hatchet.scope_planner import resolve_perspective_source_ids
     from kt_hatchet.usage_helpers import flush_usage_to_db
+    from kt_hatchet.utils import resolve_perspective_source_ids
     from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)

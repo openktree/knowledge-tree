@@ -25,11 +25,11 @@ from kt_graph.engine import GraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_ontology.base import AncestorEntry, AncestryChain
-from kt_ontology.registry import OntologyProviderRegistry
-from kt_worker_nodes.prompts.ontology_architect import (
+from kt_ontology.prompts.ontology_architect import (
     ONTOLOGY_PROMPTS,
     build_ontology_architect_user_msg,
 )
+from kt_ontology.registry import OntologyProviderRegistry
 
 logger = logging.getLogger(__name__)
 

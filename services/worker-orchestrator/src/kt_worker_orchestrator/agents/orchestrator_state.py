@@ -1,108 +1,37 @@
-"""Orchestrator state — state model for the perspective-structured orchestrator agent."""
+"""Orchestrator state — re-exports PipelineState as OrchestratorState for backward compat."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field as dc_field
-from typing import Annotated
 
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from kt_agents_core.state import PipelineState
+
+# Backward-compatible alias — all shared budget/tracking logic lives in PipelineState.
+OrchestratorState = PipelineState
 
 
-class SubExplorerState(BaseModel):
+class SubExplorerState(PipelineState):
     """State for a scoped sub-explorer agent.
 
-    Structurally compatible with OrchestratorState for duck-typing with
-    existing ``_impl`` functions (gather_facts_impl, build_node_unified, etc.).
+    Extends PipelineState with sub-explorer-specific fields.
     """
 
-    scope: str
-    parent_query: str
-    query: str  # Set to scope for _impl compatibility
-
-    nav_budget: int
-    explore_budget: int
-    explore_used: int = 0
-    nav_used: int = 0
-
-    # Tracking (same fields as OrchestratorState for _impl compat)
-    gathered_fact_count: int = 0
-    visited_nodes: list[str] = Field(default_factory=list)
-    created_nodes: list[str] = Field(default_factory=list)
-    created_edges: list[str] = Field(default_factory=list)
-    exploration_path: list[str] = Field(default_factory=list)
-
-    existing_concepts: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
-    existing_perspectives: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
+    scope: str = ""
+    parent_query: str = ""
 
     # Sub-explorer specific
     summary: str = ""
-    phase: str = "exploring"  # exploring | done
-    answer: str = ""  # unused but needed for structural compat
+    phase: str = "exploring"  # type: ignore[assignment]
     perspectives_built: int = 0
     nudge_count: int = 0
     iteration_count: int = 0
 
-    # Event-mode fields (used when sub-explorer emits events instead of calling pipelines)
+    # Event-mode fields
     tracking_ids: list[str] = Field(default_factory=list)
     scope_barrier_key: str = ""
-    messages: Annotated[Sequence[BaseMessage], add_messages] = Field(default_factory=list)
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    @property
-    def explore_remaining(self) -> int:
-        """How many explore budget units remain."""
-        return max(0, self.explore_budget - self.explore_used)
-
-    def has_visited(self, node_id: str) -> bool:
-        """Check if a node has already been visited."""
-        return node_id in self.visited_nodes
-
-
-class OrchestratorState(BaseModel):
-    """State that persists across the Orchestrator Agent's execution.
-
-    Tracks budgets, graph awareness, and assembled nodes/edges.
-    """
-
-    query: str
-    nav_budget: int
-    explore_budget: int
-    explore_used: int = 0
-    nav_used: int = 0
-
-    # Graph awareness (populated during scout phase)
-    existing_concepts: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
-    existing_perspectives: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
-
-    # Tracking
-    gathered_fact_count: int = 0
-    visited_nodes: list[str] = Field(default_factory=list)
-    created_nodes: list[str] = Field(default_factory=list)
-    created_edges: list[str] = Field(default_factory=list)
-    exploration_path: list[str] = Field(default_factory=list)
-
-    # Sub-explorer briefings
-    sub_explorer_summaries: list[dict] = Field(default_factory=list)  # type: ignore[type-arg]
-
-    phase: str = "planning"  # planning | gathering | assembling | synthesizing
-    answer: str = ""
-    messages: Annotated[Sequence[BaseMessage], add_messages] = Field(default_factory=list)
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    @property
-    def explore_remaining(self) -> int:
-        """How many explore budget units remain."""
-        return max(0, self.explore_budget - self.explore_used)
-
-    def has_visited(self, node_id: str) -> bool:
-        """Check if a node has already been visited."""
-        return node_id in self.visited_nodes
 
 
 # ── Wave pipeline types ──────────────────────────────────────────

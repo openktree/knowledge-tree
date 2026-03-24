@@ -9,10 +9,8 @@ from typing import Any, cast
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from kt_agents_core.results import AgentResult, build_subgraph, extract_final_state
-from kt_agents_core.state import ConversationState
+from kt_agents_core.state import ConversationState, PipelineState
 from kt_agents_core.worker_base import BaseWorker
-from kt_worker_orchestrator.agents.orchestrator_state import OrchestratorState
-from kt_worker_orchestrator.agents.tools.synthesize_answer import synthesize_answer_impl
 from kt_worker_query.agents.query_agent import (
     QUERY_AGENT_SYSTEM_PROMPT,
     QueryAgentImpl,
@@ -155,7 +153,7 @@ class QueryWorker(BaseWorker):
             try:
                 if original_query and prior_answer:
                     # Follow-up turn — ConversationState carries prior context
-                    synth_state: OrchestratorState | ConversationState = ConversationState(
+                    synth_state: PipelineState | ConversationState = ConversationState(
                         query=query,
                         original_query=original_query,
                         prior_answer=prior_answer,
@@ -166,13 +164,15 @@ class QueryWorker(BaseWorker):
                     )
                 else:
                     # Initial query
-                    synth_state = OrchestratorState(
+                    synth_state = PipelineState(
                         query=query,
                         nav_budget=nav_budget,
                         explore_budget=0,
                         visited_nodes=list(visited),
                         created_nodes=[],
                     )
+
+                from kt_agents_core.synthesis import synthesize_answer_impl
 
                 result = await synthesize_answer_impl(ctx, synth_state)
                 answer = synth_state.answer or str(result.get("answer", "") if isinstance(result, dict) else "")
