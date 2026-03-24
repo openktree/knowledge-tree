@@ -250,7 +250,7 @@ async def plan_and_store_perspective_seeds(
     """
     from kt_db.repositories.write_seeds import WriteSeedRepository
     from kt_facts.processing.perspective_seeds import store_perspective_seeds
-    from kt_hatchet.scope_planner import resolve_perspective_source_ids
+    from kt_hatchet.utils import resolve_perspective_source_ids
 
     plans = await plan_perspectives(
         ctx,
