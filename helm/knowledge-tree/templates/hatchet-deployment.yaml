@@ -28,6 +28,9 @@ spec:
             - containerPort: 7070
               name: grpc
               protocol: TCP
+            - containerPort: 8888
+              name: ui
+              protocol: TCP
           env:
             - name: HATCHET_DB_PASSWORD
               valueFrom:
@@ -68,6 +71,9 @@ spec:
                   optional: true
             - name: SERVER_FLUSH_PERIOD_MILLISECONDS
               value: "250"
+          volumeMounts:
+            - name: hatchet-config
+              mountPath: /config
           livenessProbe:
             httpGet:
               path: /api/live
@@ -82,3 +88,22 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.hatchet.resources | nindent 12 }}
+      volumes:
+        - name: hatchet-config
+          persistentVolumeClaim:
+            claimName: {{ include "knowledge-tree.fullname" . }}-hatchet-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-hatchet-config
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "hatchet") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
