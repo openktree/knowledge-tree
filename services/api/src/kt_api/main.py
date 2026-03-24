@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from kt_api.router import api_router
 
 logger = logging.getLogger(__name__)
+
+
+def _get_cors_origins() -> list[str]:
+    origins = os.environ.get("CORS_ORIGINS", "")
+    if origins:
+        return [o.strip() for o in origins.split(",") if o.strip()]
+    return ["*"]
+
 
 # Suppress noisy LiteLLM debug output ("Provider List: ..." on every call)
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
@@ -60,9 +69,10 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(title="Knowledge Tree", version="0.1.0", lifespan=lifespan)
 
+    origins = _get_cors_origins()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -32,6 +32,10 @@ spec:
               protocol: TCP
           env:
             {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+            {{- if .Values.api.corsOrigins }}
+            - name: CORS_ORIGINS
+              value: {{ .Values.api.corsOrigins | quote }}
+            {{- end }}
           volumeMounts:
             {{- include "knowledge-tree.configVolumeMount" . | nindent 12 }}
           livenessProbe:
