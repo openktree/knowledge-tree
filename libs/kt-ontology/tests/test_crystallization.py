@@ -13,7 +13,7 @@ from kt_ontology.crystallization import (
     _is_crystallized,
     _needs_recrystallization,
 )
-from kt_worker_nodes.prompts.crystallization import (
+from kt_ontology.prompts.crystallization import (
     CRYSTALLIZATION_SYSTEM_PROMPT,
     build_crystallization_user_prompt,
 )

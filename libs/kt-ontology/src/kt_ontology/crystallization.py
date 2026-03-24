@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from kt_config.settings import get_settings
-from kt_worker_nodes.prompts.crystallization import (
+from kt_ontology.prompts.crystallization import (
     CRYSTALLIZATION_SYSTEM_PROMPT,
     build_crystallization_user_prompt,
 )
