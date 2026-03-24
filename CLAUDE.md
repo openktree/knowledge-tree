@@ -29,7 +29,7 @@ The system is designed so that over time, frequently queried topics accumulate i
 - **Embeddings:** OpenAI text-embedding-3-large via OpenRouter (3072 dimensions)
 - **Knowledge Providers:** Serper (default), Brave Search API (extensible via abstract interface)
 - **Auth:** fastapi-users (JWT + Google OAuth) + API tokens
-- **Cache:** Redis (ontology cache, general caching)
+- **Cache:** Redis (general caching)
 - **Validation:** Pydantic v2 for all schemas
 - **Linting:** ruff (lint + format), pyright (type checking)
 - **Testing:** pytest + pytest-asyncio + pytest-xdist (parallel), 556+ tests across 10 packages
@@ -45,7 +45,7 @@ The system is designed so that over time, frequently queried topics accumulate i
 ### Infrastructure
 - **PostgreSQL 16 — graph-db** (pgvector) — read-optimized graph database with FK constraints, embeddings, pgvector search
 - **PostgreSQL 16 — write-db** — write-optimized database, normalized, no FKs, deterministic TEXT keys, no deadlocks
-- **Redis 7** — ontology caching
+- **Redis 7** — general caching
 - **Hatchet** (v0.79.22) — durable workflow orchestration engine (with its own Postgres)
 - **Docker Compose** — local dev for infrastructure + production-like deployment for all services
 
@@ -53,72 +53,35 @@ The system is designed so that over time, frequently queried topics accumulate i
 
 **uv workspace monorepo** with shared libraries (`libs/`) and deployable services (`services/`). Each package follows `src/kt_<name>/` layout with `tests/` alongside.
 
-### Root
-- `pyproject.toml` — Root uv workspace (members: `libs/*`, `services/*`)
-- `uv.lock` — Single lockfile for entire workspace
-- `docker-compose.yml`, `justfile`, `.env`
+**Shared libraries (`libs/`)** — Reusable infrastructure with no agent/LLM logic. Each is a uv workspace package (`src/kt_<name>/` layout). Create new libs only when shared by 2+ packages.
+- **kt-config** — Settings, shared enums, custom errors
+- **kt-db** — SQLAlchemy models (both DBs), repositories, Alembic migrations (`alembic/` graph-db, `alembic_write/` write-db)
+- **kt-models** — AI model gateway (LiteLLM), embeddings
+- **kt-providers** — Knowledge providers (Serper, Brave), abstract `KnowledgeProvider` ABC
+- **kt-graph** — GraphEngine — node/edge CRUD, search, convergence
+- **kt-facts** — Fact decomposition, extraction, dedup
+- **kt-ontology** — *(deprecated — do not use)*
+- **kt-hatchet** — Hatchet client singleton, worker state, workflow I/O models
+- **kt-agents-core** — Base agent classes, shared state models
+- **kt-qdrant** — Qdrant vector search repositories
 
-### Shared Libraries (`libs/`)
-| Package | Purpose |
-|---|---|
-| **kt-config** | Pydantic Settings, shared enums (`NodeType`, `EdgeType`, etc.), custom errors |
-| **kt-db** | SQLAlchemy models (graph-db + write-db), repositories, Alembic migrations (`alembic/` for graph-db, `alembic_write/` for write-db), deterministic keys |
-| **kt-models** | AI model gateway (LiteLLM), embeddings, LangChain adapter |
-| **kt-providers** | Knowledge providers (Serper, Brave), URL fetcher, abstract `KnowledgeProvider` ABC |
-| **kt-graph** | GraphEngine — node/edge CRUD, search, convergence scoring, splitting |
-| **kt-facts** | Fact decomposition pipeline, extraction, dedup, prompt building |
-| **kt-ontology** | Wikidata integration, ancestry calculation, crystallization, Redis cache |
-| **kt-hatchet** | Hatchet client singleton, worker state, workflow I/O models, scope planner |
-| **kt-agents-core** | Base agent classes, shared state models (`AgentContext`, `ConversationState`) |
-| **kt-qdrant** | Qdrant vector search repositories for nodes and facts |
+**Services (`services/`)** — Deployable processes. Workers own their agents, prompts, and workflow logic. Create new workers only for distinct workflow domains.
+- **api** — FastAPI REST + SSE, auth, dependency injection. NO agent code.
+- **worker-query** — Primary query agent workflow (bottom-up discovery + synthesis)
+- **worker-nodes** — Node creation pipeline (create → dimensions → definition → parent)
+- **worker-search** — Standalone search workflow
+- **worker-ingest** — File/link ingestion agent + pipeline
+- **worker-conversations** — Follow-up turns, resynthesis
+- **worker-sync** — Write-db → graph-db incremental sync
+- **worker-orchestrator** — *(deprecated — do not use)*
+- **worker-all** — Dev-mode: all workflows in single process
 
-### Services (`services/`)
-| Service | Purpose |
-|---|---|
-| **api** | FastAPI REST + SSE. Routes per resource, auth (JWT + OAuth + API tokens), dependency injection |
-| **worker-orchestrator** | Exploration + synthesis workflows. Agents, tools (explore_scope, scout, synthesize), prompts |
-| **worker-search** | Standalone search workflow |
-| **worker-nodes** | Node creation pipeline (BatchPipeline → create → dimensions → definition → edges → parent) |
-| **worker-query** | Query agent workflow |
-| **worker-ingest** | File/link ingestion agent + pipeline (partitioning, content indexing) |
-| **worker-conversations** | Follow-up turns, resynthesis, ingest confirmation |
-| **worker-sync** | Write-db → graph-db incremental sync (watermark-based) |
-| **worker-all** | Dev-mode: registers all workflows on single Hatchet worker |
+**Frontend** (`frontend/src/`) — Next.js App Router. Components organized by domain in `components/`, hooks in `hooks/`, typed API client in `lib/api.ts`.
 
-### Frontend (`frontend/src/`)
-- `app/` — Next.js App Router pages (conversation, nodes, edges, facts, ingest, auth, profile)
-- `components/` — Organized by domain: `ui/` (shadcn), `chat/`, `pipeline/`, `graph/`, `node/`, `edge/`, `fact/`, `answer/`, `query/`, `ingest/`, `auth/`, `layout/`, `shared/`
-- `hooks/` — Custom React hooks (useConversation, usePipelineProgress, useGraphState, etc.)
-- `lib/` — Utilities (typed API client, cost estimator, graph utils). Tests in `lib/__tests__/`
-- `types/` — All TypeScript types
-- `contexts/` — AuthProvider + RouteGuard
+**Other:** `wiki-frontend/` (Astro wiki UI), `config/` (YAML configs)
 
-### Other
-- `wiki-frontend/` — Alternative wiki-style UI (Astro)
-- `config/` — YAML configs (filters, models)
-
-### Import Names (package → import)
-
-| Package | Import as |
-|---|---|
-| kt-config | `kt_config` |
-| kt-db | `kt_db` |
-| kt-models | `kt_models` |
-| kt-providers | `kt_providers` |
-| kt-graph | `kt_graph` |
-| kt-facts | `kt_facts` |
-| kt-ontology | `kt_ontology` |
-| kt-hatchet | `kt_hatchet` |
-| kt-agents-core | `kt_agents_core` |
-| api | `kt_api` |
-| worker-orchestrator | `kt_worker_orchestrator` |
-| worker-search | `kt_worker_search` |
-| worker-nodes | `kt_worker_nodes` |
-| worker-query | `kt_worker_query` |
-| worker-ingest | `kt_worker_ingest` |
-| worker-conversations | `kt_worker_conv` |
-| worker-sync | `kt_worker_sync` |
-| worker-all | `kt_worker_all` |
+### Import Names
+Pattern: `kt-<name>` → `kt_<name>`, `worker-<name>` → `kt_worker_<name>`, `api` → `kt_api`. Exception: `worker-conversations` → `kt_worker_conv`.
 
 ## Key Architectural Concepts
 
@@ -177,47 +140,32 @@ The backend is a **uv workspace monorepo** split into shared libraries (`libs/`)
 ### Hatchet Workflow Architecture
 All heavy processing runs as **durable Hatchet workflows** — not in-process or via simple background tasks.
 
-**Main workflow flow:**
-1. User submits a message -> `exploration_wf` is dispatched
-2. **Orchestrator** runs scout phase, then iterates through **waves**
-3. Each wave LLM-plans **scopes** and fans out `sub_explore_wf` child workflows
-4. Each scope gathers facts, builds nodes via `node_pipeline_wf` (create -> dimensions -> definition -> parent DAG)
-5. After all waves, `synthesis` task produces the answer
-6. Progress streamed to frontend via **SSE** (Hatchet `put_stream`)
+**Main workflow flow (bottom-up discovery):**
+1. User submits a message -> `query_wf` is dispatched
+2. **Query Agent** performs bottom-up discovery: searches for facts, creates/expands nodes as needed
+3. Nodes are built via `node_pipeline_wf` (create -> dimensions -> definition -> parent DAG)
+4. Query Agent synthesizes an answer from the discovered and navigated nodes
+5. Progress streamed to frontend via **SSE** (Hatchet `put_stream`)
 
 **Key workflows:**
-- `exploration_wf` — Top-level orchestrator (scout -> waves -> synthesis) — `kt_worker_orchestrator`
-- `sub_explore_wf` — Single scope exploration (plan nodes -> fan out node_pipeline_wf) — `kt_worker_orchestrator`
+- `query_wf` — Primary entry point. Lightweight query agent with bottom-up discovery and synthesis — `kt_worker_query`
 - `node_pipeline_wf` — Node creation DAG (create_node -> dimensions -> definition -> parent) — `kt_worker_nodes`
 - `conversations_wf` — Follow-up turns, resynthesis, ingest confirmation — `kt_worker_conv`
 - `search_wf` — Standalone search — `kt_worker_search`
-- `query_wf` — Query agent workflow — `kt_worker_query`
-
-**Workers** (started via `just worker` for all, or individually):
-- `worker-orchestrator` — Runs exploration_wf, sub_explore_wf, synthesis
-- `worker-search` — Runs search_wf
-- `worker-nodes` — Runs node_pipeline_wf
-- `worker-query` — Runs query_wf
-- `worker-ingest` — Runs ingest workflows
-- `worker-conversations` — Runs conversation workflows
-- `worker-sync` — Incremental sync from write-db to graph-db
-- `worker-all` — Dev-mode: all of the above in one process
+- `exploration_wf` — *(deprecated)* Legacy top-level orchestrator — `kt_worker_orchestrator`
+- `sub_explore_wf` — *(deprecated)* Legacy scope exploration — `kt_worker_orchestrator`
 
 ### Agent Architecture
-Agents (LangGraph-based) are used **within** Hatchet tasks for LLM reasoning:
-1. **Orchestrator Agent** (`kt_worker_orchestrator.agents.orchestrator`) — Strategic coordinator. Plans scoped explorations, delegates to sub-explorers, integrates findings.
-2. **Sub-Explorer** (`kt_worker_orchestrator.agents.tools.explore_scope`) — Isolated agent per scope. Gathers facts, builds nodes via `BatchPipeline`.
-3. **Query Agent** (`kt_worker_query.agents.query_agent`) — Entry point for new queries.
-4. **Conversation Agent** (`kt_worker_conv.agents.conversation`) — Follow-up turns with prior context.
-5. **Ingest Agent** (`kt_worker_ingest.agents.ingest_agent`) — File/link ingestion into the knowledge graph.
-6. **Synthesis Tool** (`kt_worker_orchestrator.agents.tools.synthesize_answer`) — Produces answer from navigated nodes.
+The system uses **bottom-up discovery** — a lightweight query agent drives all exploration and synthesis directly, rather than a top-down orchestrator planning waves of scoped explorations.
 
-### Ontology System
-The ontology module provides taxonomy-aware node organization:
-- **Wikidata integration** — Maps concepts to Wikidata entities for canonical classification
-- **Ancestry calculation** — Computes hierarchical lineage for nodes
-- **Crystallization** — When a parent accumulates enough children, its ontological position is crystallized
-- **Redis-cached** — Ontology lookups are cached in Redis with configurable TTL
+Agents (LangGraph-based) are used **within** Hatchet tasks for LLM reasoning:
+1. **Bottom up Agent** (`kt_worker_query.agents.query_agent`) — Primary agent. Performs bottom-up discovery: searches for relevant facts, creates/expands nodes. It is a research agent
+2. **Conversation Agent** (`kt_worker_conv.agents.conversation`) — Follow-up turns with prior context.
+3. **Ingest Agent** (`kt_worker_ingest.agents.ingest_agent`) — File/link ingestion into the knowledge graph.
+4. **Orchestrator Agent** (`kt_worker_orchestrator.agents.orchestrator`) — Legacy top-down coordinator that planned scoped explorations in waves.
+
+### Ontology System *(deprecated — scheduled for removal)*
+> **Do not add new code that depends on kt-ontology.** This module will be removed soon.
 
 ### Authentication
 - **fastapi-users** with JWT + refresh tokens
@@ -245,17 +193,7 @@ Parent-child structure (e.g., perspective -> parent concept) uses the `parent_id
 Facts are independent of nodes. A fact can be linked to many nodes. Facts accumulate sources over time (deduplication by embedding similarity). Provenance chain: Node -> Fact -> RawSource.
 
 ### Data Model (DB Tables)
-**Graph-db** (read-optimized, FK constraints, pgvector):
-Core: `nodes`, `node_counters`, `edges`, `facts`, `fact_sources`, `raw_sources`, `node_facts`, `edge_facts`, `dimension_facts`, `node_fact_rejections`, `fact_edge_evaluations`
-Dimensions: `dimensions`, `convergence_reports`, `divergent_claims`
-Versioning: `node_versions`
-Conversations: `conversations`, `conversation_messages`, `research_reports`
-Ingestion: `ingest_sources`
-Auth: `user`, `oauthaccount`, `api_tokens`
-Metadata: `ai_models`, `query_origins`, `provider_fetches`
-
-**Write-db** (write-optimized, no FKs, TEXT keys):
-`write_nodes`, `write_edges`, `write_dimensions`, `write_convergence_reports`, `write_node_counters`, `sync_watermarks`
+See `kt_db/models.py` for graph-db tables and `kt_db/write_models.py` for write-db tables.
 
 ### Real-Time Streaming
 Progress is streamed to the frontend via **Server-Sent Events (SSE)**:
@@ -265,8 +203,8 @@ Progress is streamed to the frontend via **Server-Sent Events (SSE)**:
 - Frontend `usePipelineProgress` fetches snapshot for completed turns, streams SSE for active turns
 
 ### Research Reports
-At the end of each orchestrator run, a `ResearchReport` is persisted with:
-- Nodes/edges created, waves completed
+At the end of each query agent run, a `ResearchReport` is persisted with:
+- Nodes/edges created
 - Budget usage (explore/nav)
 - Human-readable scope summaries
 
@@ -472,20 +410,6 @@ export function useConversation(conversationId: string): UseConversationResult {
 export function usePipelineProgress(messageId: string, isActive: boolean): PipelineProgress { ... }
 ```
 
-### Frontend: Component Organization
-- `components/ui/` — shadcn primitives (Button, Card, Badge, etc.)
-- `components/auth/` — Login, register, route guard, user menu
-- `components/chat/` — Chat panel, input, messages, conversation history
-- `components/pipeline/` — Pipeline progress visualization (stages, scopes, logs)
-- `components/graph/` — Cytoscape graph (GraphView, GraphExplorer, GraphControls)
-- `components/node/` — Node detail panel with tabs (Dimensions, Facts, Sources, etc.)
-- `components/edge/` — Edge detail panel
-- `components/fact/` — Fact detail panel
-- `components/answer/` — Answer display (AnswerView, ProgressPanel, PhaseIndicator)
-- `components/query/` — Query input and budget controls
-- `components/ingest/` — File/link upload form
-- `components/layout/` — Sidebar
-
 ### Frontend: Named Exports for Components
 All custom components use **named exports** (not default exports), except page components and dynamically imported components.
 
@@ -539,153 +463,38 @@ Most changes belong in an existing package. Use this table:
 | New search provider | `libs/kt-providers/src/kt_providers/` (implement `KnowledgeProvider` ABC) |
 | New graph algorithm | `libs/kt-graph/src/kt_graph/` |
 | New fact extraction strategy | `libs/kt-facts/src/kt_facts/` |
-| New ontology source | `libs/kt-ontology/src/kt_ontology/` |
+| New ontology source | `libs/kt-ontology/src/kt_ontology/` *(deprecated — do not add)* |
 | New Hatchet input/output model | `libs/kt-hatchet/src/kt_hatchet/models.py` |
 | New API endpoint | `services/api/src/kt_api/` (new file + register in `router.py`) |
-| New orchestrator tool/prompt | `services/worker-orchestrator/src/kt_worker_orchestrator/` |
+| New orchestrator tool/prompt | `services/worker-orchestrator/src/kt_worker_orchestrator/` *(deprecated — do not add)* |
 | New node pipeline stage | `services/worker-nodes/src/kt_worker_nodes/pipelines/` |
 | New query tool | `services/worker-query/src/kt_worker_query/agents/tools/` |
 | New ingest pipeline stage | `services/worker-ingest/src/kt_worker_ingest/ingest/` |
 
 ### Creating a New Shared Library (`libs/`)
 
-Create a new lib ONLY when you have **shared, reusable infrastructure** that:
-- Has NO agent/LLM reasoning logic (that belongs in services)
-- Is needed by 2+ services or libs
-- Doesn't fit in any existing lib
-
-**Steps:**
-
-1. Create the directory structure:
-   ```
-   libs/kt-<name>/
-   ├── pyproject.toml
-   ├── src/kt_<name>/
-   │   ├── __init__.py
-   │   └── ...your modules...
-   └── tests/
-       └── ...
-   ```
-
-2. Write `pyproject.toml` following this exact pattern:
-   ```toml
-   [project]
-   name = "kt-<name>"
-   version = "0.1.0"
-   description = "Knowledge Tree <description>"
-   requires-python = ">=3.12"
-   dependencies = [
-       # Only list kt-* deps you actually import + third-party deps
-       "kt-config",
-   ]
-
-   [build-system]
-   requires = ["hatchling"]
-   build-backend = "hatchling.build"
-
-   [tool.uv.sources]
-   # One entry per kt-* dependency
-   kt-config = { workspace = true }
-
-   [tool.pytest.ini_options]
-   asyncio_mode = "auto"
-   testpaths = ["tests"]
-
-   [tool.hatch.build.targets.wheel]
-   packages = ["src/kt_<name>"]
-   ```
-
-3. Run `uv sync --all-packages` to register the new package
-4. Add tests in `libs/kt-<name>/tests/`
-5. Update this CLAUDE.md: add the lib to the Project Structure tree, Import Names table, and Dependency Graph
+Create a new lib ONLY when you have **shared, reusable infrastructure** that has NO agent/LLM logic, is needed by 2+ packages, and doesn't fit in any existing lib. Copy structure and `pyproject.toml` from an existing lib (e.g., `libs/kt-qdrant`), then run `uv sync --all-packages`. Add tests, update this CLAUDE.md.
 
 ### Creating a New Worker Service (`services/`)
 
-Create a new worker ONLY when you have a **distinct domain of Hatchet workflows** that:
-- Doesn't belong in any existing worker
-- Has its own agents, prompts, or pipeline logic
-- Can run as an independent process/container
+Create a new worker ONLY when you have a **distinct domain of Hatchet workflows** that doesn't belong in any existing worker. Follow this structure:
 
-**Steps:**
+```
+services/worker-<name>/
+├── pyproject.toml
+├── Dockerfile
+├── src/kt_worker_<name>/
+│   ├── __init__.py
+│   ├── workflows/          # Hatchet workflow definitions
+│   │   └── <name>.py
+│   ├── agents/             # LangGraph agents (if needed)
+│   │   └── tools/          # Agent tools
+│   └── prompts/            # LLM prompt templates (if needed)
+└── tests/
+    └── ...
+```
 
-1. Create the directory structure:
-   ```
-   services/worker-<name>/
-   ├── pyproject.toml
-   ├── Dockerfile
-   ├── src/kt_worker_<name>/
-   │   ├── __init__.py
-   │   ├── workflows/          # Hatchet workflow definitions
-   │   │   └── <name>.py
-   │   ├── agents/             # LangGraph agents (if needed)
-   │   │   └── tools/          # Agent tools
-   │   └── prompts/            # LLM prompt templates (if needed)
-   └── tests/
-       └── ...
-   ```
-
-2. Write `pyproject.toml` following this exact pattern:
-   ```toml
-   [project]
-   name = "kt-worker-<name>"
-   version = "0.1.0"
-   description = "Knowledge Tree <name> worker"
-   requires-python = ">=3.12"
-   dependencies = [
-       "kt-hatchet",
-       "kt-agents-core",
-       "kt-db",
-       # Only list other kt-* deps you actually import
-   ]
-
-   [build-system]
-   requires = ["hatchling"]
-   build-backend = "hatchling.build"
-
-   [tool.uv.sources]
-   kt-hatchet = { workspace = true }
-   kt-agents-core = { workspace = true }
-   kt-db = { workspace = true }
-
-   [tool.pytest.ini_options]
-   asyncio_mode = "auto"
-   testpaths = ["tests"]
-
-   [tool.hatch.build.targets.wheel]
-   packages = ["src/kt_worker_<name>"]
-   ```
-
-3. Write a `Dockerfile` following existing worker Dockerfiles (copy from `services/worker-orchestrator/Dockerfile` and change the package name)
-
-4. Define workflows in `workflows/` using the Hatchet pattern:
-   ```python
-   from kt_hatchet.client import get_hatchet
-
-   hatchet = get_hatchet()
-
-   my_wf = hatchet.workflow(name="my_wf", input_validator=MyInput)
-
-   @my_wf.task(execution_timeout=timedelta(minutes=10))
-   async def my_task(input: MyInput, ctx: Context) -> dict:
-       worker_state = cast(WorkerState, ctx.lifespan)
-       # ... business logic ...
-       return {}
-   ```
-
-5. Register the new workflows in `worker-all`:
-   - Add imports to `services/worker-all/src/kt_worker_all/__main__.py`
-   - Add the workflow objects to the `workflows=[]` list
-   - Add `kt-worker-<name>` to `services/worker-all/pyproject.toml` dependencies
-
-6. Add a Docker Compose service in `docker-compose.yml`
-
-7. Add `just` commands in `justfile` for running the worker individually
-
-8. Run `uv sync --all-packages` to register the new package
-
-9. Add tests in `services/worker-<name>/tests/`
-
-10. Update this CLAUDE.md: add the service to the Project Structure tree, Import Names table, worker list, and workflow list
+Copy `pyproject.toml` and `Dockerfile` from an existing worker (e.g., `services/worker-search`). Then: register workflows in `worker-all/__main__.py`, add Docker Compose service, add `just` commands, run `uv sync --all-packages`. Add tests, update this CLAUDE.md.
 
 ### Boundary Rules (NEVER violate these)
 
@@ -789,6 +598,32 @@ just test-frontend  # Run frontend tests
 
 ## Git Practices
 
+**Repository:** https://github.com/openktree/knowledge-tree/
+
+### Branch & PR Workflow
+
+Every change — no matter how small — **must be made on a new branch with a pull request**. A change is only considered successful when:
+
+1. **Create a new branch** from `main` with a descriptive name (e.g., `feat/add-search-provider`, `fix/node-cache-invalidation`)
+2. **Make commits** on that branch (tests passing at each commit)
+3. **Push the branch** and **create a pull request** via the GitHub CLI (`gh pr create`)
+4. **Ensure all CI pipelines pass** — use `gh pr checks <pr-number> --watch` or `gh run watch` to monitor pipeline status. Do NOT consider the task complete until all checks are green.
+5. If pipelines fail, **fix the issues**, push again, and re-verify checks pass.
+
+```bash
+# Example workflow
+git checkout -b feat/my-change main
+# ... make changes, run tests locally ...
+git add -A && git commit -m "feat(scope): description"
+git push -u origin feat/my-change
+gh pr create --fill
+gh pr checks <pr-number> --watch   # Wait for all CI checks to pass
+```
+
+**A task is NOT complete until the PR exists and all CI pipelines are green.**
+
+### General Rules
+
 - Commit after each completed task (tests passing)
 - Do not commit `.env` or API keys
 - Use **Conventional Commits** for all commit messages: https://www.conventionalcommits.org/
@@ -820,7 +655,7 @@ Use the package or area affected: `kt-config`, `kt-db`, `kt-models`, `kt-provide
 
 ### Examples
 ```
-feat(worker-orchestrator): add wave-based exploration workflow
+feat(worker-query): add bottom-up discovery tools
 feat(api): add Google OAuth support
 feat(worker-ingest): file upload and decomposition pipeline
 fix(kt-api): handle missing node gracefully in GET /nodes/:id
