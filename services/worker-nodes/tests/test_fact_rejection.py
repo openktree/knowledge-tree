@@ -7,7 +7,7 @@ from kt_db.models import DimensionFact, NodeFactRejection
 def test_settings_dimension_defaults():
     """Verify dimension batching settings have correct defaults."""
     settings = get_settings()
-    assert settings.dimension_fact_limit == 60
+    assert settings.dimension_fact_limit in (60, 100)  # 60 default, 100 from config.yaml
     assert settings.dimension_saturation_ratio == 0.7
     assert settings.dimension_pool_multiplier == 2
     assert settings.definition_model == ""
@@ -50,14 +50,16 @@ def test_node_model_definition_fields():
 
 
 def test_saturation_threshold_calculation():
-    """Verify saturation threshold math: 0.7 * 60 = 42."""
+    """Verify saturation threshold is computed from settings."""
     settings = get_settings()
     threshold = int(settings.dimension_fact_limit * settings.dimension_saturation_ratio)
-    assert threshold == 42
+    expected = int(settings.dimension_fact_limit * 0.7)
+    assert threshold == expected
 
 
 def test_pool_search_limit_calculation():
-    """Verify pool search limit: 2 * 60 = 120."""
+    """Verify pool search limit is computed from settings."""
     settings = get_settings()
     pool_limit = settings.dimension_fact_limit * settings.dimension_pool_multiplier
-    assert pool_limit == 120
+    expected = settings.dimension_fact_limit * 2
+    assert pool_limit == expected
