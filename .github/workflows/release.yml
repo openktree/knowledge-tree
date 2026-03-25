@@ -53,4 +53,7 @@ jobs:
             git add helm/knowledge-tree/Chart.yaml
             git commit --amend --no-edit
             git push --force-with-lease origin main
+            # Move the tag to the amended commit so it stays in main's history
+            git tag -f "v${VERSION}"
+            git push --force origin "v${VERSION}"
           fi
