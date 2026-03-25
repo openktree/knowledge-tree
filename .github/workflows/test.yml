@@ -86,6 +86,31 @@ jobs:
               - 'libs/kt-qdrant/**'
               - 'pyproject.toml'
               - 'uv.lock'
+            worker-orchestrator:
+              - 'services/worker-orchestrator/**'
+              - 'libs/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            worker-nodes:
+              - 'services/worker-nodes/**'
+              - 'libs/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            worker-query:
+              - 'services/worker-query/**'
+              - 'libs/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            worker-search:
+              - 'services/worker-search/**'
+              - 'libs/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            worker-sync:
+              - 'services/worker-sync/**'
+              - 'libs/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
             frontend:
               - 'frontend/**'
       - name: Build test matrix from changed packages
@@ -101,8 +126,13 @@ jobs:
           [ "${{ steps.filter.outputs.kt-graph }}" = "true" ]     && add "kt-graph"     "libs/kt-graph"
           [ "${{ steps.filter.outputs.kt-facts }}" = "true" ]     && add "kt-facts"     "libs/kt-facts"
           [ "${{ steps.filter.outputs.kt-ontology }}" = "true" ]  && add "kt-ontology"  "libs/kt-ontology"
-          [ "${{ steps.filter.outputs.api }}" = "true" ]          && add "api"           "services/api"
-          [ "${{ steps.filter.outputs.mcp }}" = "true" ]          && add "mcp"           "services/mcp"
+          [ "${{ steps.filter.outputs.api }}" = "true" ]                  && add "api"                  "services/api"
+          [ "${{ steps.filter.outputs.mcp }}" = "true" ]                  && add "mcp"                  "services/mcp"
+          [ "${{ steps.filter.outputs.worker-orchestrator }}" = "true" ]  && add "worker-orchestrator"  "services/worker-orchestrator"
+          [ "${{ steps.filter.outputs.worker-nodes }}" = "true" ]         && add "worker-nodes"         "services/worker-nodes"
+          [ "${{ steps.filter.outputs.worker-query }}" = "true" ]         && add "worker-query"         "services/worker-query"
+          [ "${{ steps.filter.outputs.worker-search }}" = "true" ]        && add "worker-search"        "services/worker-search"
+          [ "${{ steps.filter.outputs.worker-sync }}" = "true" ]          && add "worker-sync"          "services/worker-sync"
 
           echo "matrix={\"suite\":$(echo "$MATRIX" | jq -c '.')}" >> "$GITHUB_OUTPUT"
           echo "has-backend=$([ "$(echo "$MATRIX" | jq 'length')" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -186,7 +216,6 @@ jobs:
         run: >-
           uv run --frozen pytest ${{ matrix.suite.path }}/tests/ -x -n auto
           --ignore=${{ matrix.suite.path }}/tests/integration
-          ${{ matrix.suite.name == 'kt-ontology' && '--ignore=libs/kt-ontology/tests/test_crystallization.py' || '' }}
 
   frontend-test:
     name: Frontend Tests

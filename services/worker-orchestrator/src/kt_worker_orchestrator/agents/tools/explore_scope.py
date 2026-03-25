@@ -373,7 +373,7 @@ def create_sub_explorer_tools(
     async def gather_facts(search_queries: list[str]) -> str:
         """Gather facts from external sources into the fact pool.
         Each query costs 1 explore_budget."""
-        from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
+        from kt_worker_nodes.pipelines.gathering.pipeline import GatherFactsPipeline
 
         state = get_state()
         result = await GatherFactsPipeline(ctx).gather(search_queries, state)  # type: ignore[arg-type]

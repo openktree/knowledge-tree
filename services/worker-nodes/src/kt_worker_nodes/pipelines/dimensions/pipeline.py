@@ -23,7 +23,7 @@ from kt_config.settings import get_settings
 from kt_db.models import Dimension, Fact
 from kt_models.dimensions import generate_dimensions
 from kt_worker_nodes.pipelines.dimensions.types import DimensionResult
-from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
+from kt_worker_nodes.pipelines.models import CreateNodeTask
 
 logger = logging.getLogger(__name__)
 

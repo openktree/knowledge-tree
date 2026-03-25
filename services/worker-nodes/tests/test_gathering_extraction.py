@@ -30,22 +30,27 @@ async def test_extract_nodes_valid_response() -> None:
     gateway.decomposition_model = "test-model"
     gateway.generate_json = AsyncMock(
         return_value={
-            "nodes": [
-                {"name": "Albert Einstein", "node_type": "entity", "fact_indices": [1]},
-                {"name": "general relativity", "node_type": "concept", "fact_indices": [1]},
-                {"name": "NASA", "node_type": "entity", "fact_indices": [2]},
-                {"name": "Apollo 11 launch", "node_type": "event", "fact_indices": [2]},
-            ]
+            "facts": {
+                "1": [
+                    {"name": "Albert Einstein", "node_type": "entity"},
+                    {"name": "general relativity", "node_type": "concept"},
+                ],
+                "2": [
+                    {"name": "NASA", "node_type": "entity"},
+                    {"name": "Apollo 11 launch", "node_type": "event"},
+                ],
+            }
         }
     )
 
     result = await extract_entities_from_facts(facts, gateway, scope="physics history")
     assert result is not None
     assert len(result) == 4
-    assert result[0]["name"] == "Albert Einstein"
-    assert result[0]["node_type"] == "entity"
-    assert result[1]["name"] == "general relativity"
-    assert result[1]["node_type"] == "concept"
+    names = {r["name"] for r in result}
+    assert "Albert Einstein" in names
+    assert "general relativity" in names
+    assert "NASA" in names
+    assert "Apollo 11 launch" in names
 
 
 @pytest.mark.asyncio
@@ -55,9 +60,11 @@ async def test_extract_nodes_normalizes_invalid_type() -> None:
     gateway.decomposition_model = "test-model"
     gateway.generate_json = AsyncMock(
         return_value={
-            "nodes": [
-                {"name": "test node", "node_type": "invalid_type", "fact_indices": [1]},
-            ]
+            "facts": {
+                "1": [
+                    {"name": "test node", "node_type": "invalid_type"},
+                ],
+            }
         }
     )
 
@@ -74,21 +81,24 @@ async def test_extract_nodes_skips_invalid_entries() -> None:
     gateway.decomposition_model = "test-model"
     gateway.generate_json = AsyncMock(
         return_value={
-            "nodes": [
-                {"name": "valid node", "node_type": "concept"},
-                {"name": "", "node_type": "concept"},  # empty name
-                {"node_type": "entity"},  # missing name
-                "not a dict",  # invalid type
-                {"name": "another valid", "node_type": "entity"},
-            ]
+            "facts": {
+                "1": [
+                    {"name": "valid node", "node_type": "concept"},
+                    {"name": "", "node_type": "concept"},  # empty name
+                    {"node_type": "entity"},  # missing name
+                    "not a dict",  # invalid type
+                    {"name": "another valid", "node_type": "entity"},
+                ],
+            }
         }
     )
 
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
     assert len(result) == 2
-    assert result[0]["name"] == "valid node"
-    assert result[1]["name"] == "another valid"
+    names = [r["name"] for r in result]
+    assert "valid node" in names
+    assert "another valid" in names
 
 
 @pytest.mark.asyncio

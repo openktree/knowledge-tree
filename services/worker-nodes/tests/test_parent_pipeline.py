@@ -9,7 +9,7 @@ import pytest
 
 from kt_agents_core.state import AgentContext
 from kt_config.types import DEFAULT_PARENTS
-from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
+from kt_worker_nodes.pipelines.models import CreateNodeTask
 from kt_worker_nodes.pipelines.parent.pipeline import ParentSelectionPipeline
 
 # ── Helpers ───────────────────────────────────────────────────────────

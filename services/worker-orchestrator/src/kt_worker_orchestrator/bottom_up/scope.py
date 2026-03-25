@@ -65,7 +65,7 @@ async def run_bottom_up_scope_pipeline(
     IMPORTANT: the caller must ``await session.commit()`` after this
     returns so that pool facts gathered are visible to the node builder.
     """
-    from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
+    from kt_worker_nodes.pipelines.gathering.pipeline import GatherFactsPipeline
 
     # Step 1: Scout for this scope, then build search queries
     queries = await _scout_and_build_queries(scope_description, explore_slice, ctx)
