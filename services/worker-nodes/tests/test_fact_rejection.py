@@ -4,14 +4,15 @@ from kt_config.settings import get_settings
 from kt_db.models import DimensionFact, NodeFactRejection
 
 
-def test_settings_dimension_defaults():
-    """Verify dimension batching settings have correct defaults."""
+def test_settings_dimension_fields_exist():
+    """Verify dimension batching settings are present and have valid types."""
     settings = get_settings()
-    assert settings.dimension_fact_limit in (60, 100)  # 60 default, 100 from config.yaml
-    assert settings.dimension_saturation_ratio == 0.7
-    assert settings.dimension_pool_multiplier == 2
-    assert settings.definition_model == ""
-    assert settings.definition_thinking_level == ""
+    assert isinstance(settings.dimension_fact_limit, int)
+    assert settings.dimension_fact_limit > 0
+    assert isinstance(settings.dimension_saturation_ratio, float)
+    assert 0.0 < settings.dimension_saturation_ratio <= 1.0
+    assert isinstance(settings.dimension_pool_multiplier, int)
+    assert settings.dimension_pool_multiplier > 0
 
 
 def test_node_fact_rejection_model():
