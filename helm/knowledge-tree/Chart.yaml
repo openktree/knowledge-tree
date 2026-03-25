@@ -2,8 +2,8 @@ apiVersion: v2
 name: knowledge-tree
 description: Knowledge Tree - AI knowledge integration system
 type: application
-version: 0.2.10
-appVersion: "0.2.10"
+version: 0.2.11
+appVersion: "0.2.11"
 keywords:
   - knowledge-graph
   - ai
@@ -12,9 +12,9 @@ home: https://github.com/openktree/knowledge-tree
 
 dependencies:
   - name: cloudnative-pg
-    version: "0.23.0"
+    version: "0.2.11"
     repository: "https://cloudnative-pg.github.io/charts"
     condition: cnpg-operator.enabled
   - name: qdrant
-    version: "1.17.0"
+    version: "0.2.11"
     repository: "https://qdrant.github.io/qdrant-helm/"
