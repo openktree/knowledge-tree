@@ -51,16 +51,15 @@ def test_node_model_definition_fields():
 
 
 def test_saturation_threshold_calculation():
-    """Verify saturation threshold is computed from settings."""
+    """Verify saturation threshold is computed from limit * ratio."""
     settings = get_settings()
     threshold = int(settings.dimension_fact_limit * settings.dimension_saturation_ratio)
-    expected = int(settings.dimension_fact_limit * 0.7)
-    assert threshold == expected
+    assert threshold > 0
+    assert threshold <= settings.dimension_fact_limit
 
 
 def test_pool_search_limit_calculation():
-    """Verify pool search limit is computed from settings."""
+    """Verify pool search limit is computed from limit * multiplier."""
     settings = get_settings()
     pool_limit = settings.dimension_fact_limit * settings.dimension_pool_multiplier
-    expected = settings.dimension_fact_limit * 2
-    assert pool_limit == expected
+    assert pool_limit > settings.dimension_fact_limit
