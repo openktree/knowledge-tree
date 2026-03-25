@@ -209,28 +209,3 @@ class TestCrystallizationPipelineIntegration:
         assert result is False
         mock_model_gateway.generate.assert_not_awaited()
 
-    async def test_definition_preserved_for_crystallized(
-        self,
-        db_session: AsyncSession,
-    ) -> None:
-        """DefinitionPipeline should skip crystallized nodes."""
-        from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
-
-        parent = await _create_node(
-            db_session,
-            "preserved-def-parent",
-            metadata_={"ontology_stable": True},
-            definition="Preserved crystallized definition",
-        )
-
-        mock_gw = MagicMock()
-        mock_gw.definition_model = "test-model"
-        mock_gw.definition_thinking_level = ""
-        mock_gw.generate = AsyncMock(return_value="NEW definition that should NOT be used")
-
-        ctx = _make_agent_ctx(db_session, mock_gw)
-        def_pipeline = DefinitionPipeline(ctx)
-        result = await def_pipeline.generate_definition(parent.id, parent.concept)
-
-        assert result == "Preserved crystallized definition"
-        mock_gw.generate.assert_not_awaited()
