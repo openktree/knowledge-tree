@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_agents_core.state import AgentContext, PipelineState, SubExplorerState
+from kt_agents_core.state import AgentContext, PipelineState
+from kt_worker_orchestrator.agents.orchestrator_state import SubExplorerState
 
 pytestmark = pytest.mark.asyncio
 

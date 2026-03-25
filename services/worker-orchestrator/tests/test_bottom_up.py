@@ -272,7 +272,7 @@ async def test_run_pipeline_basic_flow() -> None:
 
     with (
         patch(
-            "kt_worker_nodes.pipelines.gathering.GatherFactsPipeline",
+            "kt_worker_nodes.pipelines.gathering.pipeline.GatherFactsPipeline",
         ) as mock_cls,
         patch(
             "kt_worker_orchestrator.agents.tools.scout.scout_impl",
@@ -317,7 +317,7 @@ async def test_run_pipeline_builds_all_extracted_nodes() -> None:
 
     with (
         patch(
-            "kt_worker_nodes.pipelines.gathering.GatherFactsPipeline",
+            "kt_worker_nodes.pipelines.gathering.pipeline.GatherFactsPipeline",
         ) as mock_cls,
         patch(
             "kt_worker_orchestrator.agents.tools.scout.scout_impl",

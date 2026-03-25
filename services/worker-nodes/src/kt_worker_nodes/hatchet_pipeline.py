@@ -192,8 +192,8 @@ class HatchetPipeline:
         Returns a serializable dict: ``{node_id, action, concept, node_type,
         explore_charged}``.
         """
+        from kt_worker_nodes.pipelines.models import CreateNodeTask
         from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
-        from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
 
         task = CreateNodeTask(name=concept, node_type=node_type, seed_key=seed_key, entity_subtype=entity_subtype)
         orch_state = PipelineState(
@@ -495,7 +495,7 @@ class HatchetPipeline:
         """
         from kt_db.models import Node
         from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
-        from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
+        from kt_worker_nodes.pipelines.models import CreateNodeTask
 
         nid = uuid.UUID(node_id)
 
