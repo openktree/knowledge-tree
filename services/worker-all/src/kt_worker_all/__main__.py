@@ -78,6 +78,7 @@ def main() -> None:
     from kt_worker_search.workflows.seed_dedup import seed_dedup_task
     from kt_worker_sync.workflows.sync import sync_wf
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
+    from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
 
     hatchet = get_hatchet()
     worker = hatchet.worker(
@@ -112,6 +113,7 @@ def main() -> None:
             ingest_partition_wf,
             sync_wf,
             synthesizer_wf,
+            super_synthesizer_wf,
         ],
         lifespan=worker_lifespan,
     )

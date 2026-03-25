@@ -25,6 +25,7 @@ def main() -> None:
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
 
+    from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
 
     hatchet = get_hatchet()
@@ -32,7 +33,7 @@ def main() -> None:
         "knowledge-tree-synthesis",
         slots=10,
         durable_slots=5,
-        workflows=[synthesizer_wf],
+        workflows=[synthesizer_wf, super_synthesizer_wf],
         lifespan=worker_lifespan,
     )
     logging.getLogger(__name__).info("Starting synthesis worker")
