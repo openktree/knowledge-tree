@@ -9,7 +9,7 @@ import pytest
 
 from kt_db.keys import make_seed_key
 from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
-from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
+from kt_worker_nodes.pipelines.models import CreateNodeTask
 
 
 def _make_ctx(write_session=None):

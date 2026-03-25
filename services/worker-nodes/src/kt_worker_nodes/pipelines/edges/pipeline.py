@@ -11,7 +11,7 @@ from typing import Any
 
 from kt_agents_core.state import AgentContext
 from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
-from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
+from kt_worker_nodes.pipelines.models import CreateNodeTask
 
 logger = logging.getLogger(__name__)
 

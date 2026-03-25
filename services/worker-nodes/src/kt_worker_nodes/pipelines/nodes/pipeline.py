@@ -21,7 +21,7 @@ from kt_worker_nodes.pipelines.building.helpers import (
     get_pool_hint,
 )
 from kt_worker_nodes.pipelines.nodes.enrichment import PoolEnricher
-from kt_worker_nodes.pipelines.nodes.types import CreateNodeTask
+from kt_worker_nodes.pipelines.models import CreateNodeTask
 
 logger = logging.getLogger(__name__)
 

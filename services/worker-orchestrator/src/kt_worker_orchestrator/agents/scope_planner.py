@@ -321,7 +321,7 @@ class ScopePlannerAgent(BaseAgent[ScopePlannerState]):
             Do NOT call for concepts that already exist with good richness in the
             graph -- existing nodes are enriched from pool facts for free.
             """
-            from kt_worker_nodes.pipelines.gathering import GatherFactsPipeline
+            from kt_worker_nodes.pipelines.gathering.pipeline import GatherFactsPipeline
 
             state = self._get_state()
 
