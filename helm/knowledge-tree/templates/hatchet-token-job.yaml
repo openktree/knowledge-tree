@@ -87,11 +87,11 @@ spec:
 
               PATCH="{\"data\":{\"hatchet-client-token\":\"${TOKEN_B64}\"}}"
 
-              wget -q -O- --method=PATCH \
-                --header="Authorization: Bearer ${KUBE_TOKEN}" \
-                --header="Content-Type: application/strategic-merge-patch+json" \
-                --body-data="${PATCH}" \
-                --ca-certificate=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+              curl -sf -X PATCH \
+                -H "Authorization: Bearer ${KUBE_TOKEN}" \
+                -H "Content-Type: application/strategic-merge-patch+json" \
+                -d "${PATCH}" \
+                --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
                 "${APISERVER}/api/v1/namespaces/${NAMESPACE}/secrets/${SECRET_NAME}" \
                 > /dev/null
 
@@ -103,11 +103,11 @@ spec:
                             worker-query worker-ingest worker-conversations worker-sync; do
                 DEPLOY_NAME="{{ include "knowledge-tree.fullname" . }}-${DEPLOY}"
                 PATCH_BODY="{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"hatchet-token/refreshed-at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}"
-                wget -q -O- --method=PATCH \
-                  --header="Authorization: Bearer ${KUBE_TOKEN}" \
-                  --header="Content-Type: application/strategic-merge-patch+json" \
-                  --body-data="${PATCH_BODY}" \
-                  --ca-certificate=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                curl -sf -X PATCH \
+                  -H "Authorization: Bearer ${KUBE_TOKEN}" \
+                  -H "Content-Type: application/strategic-merge-patch+json" \
+                  -d "${PATCH_BODY}" \
+                  --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
                   "${APISERVER}/apis/apps/v1/namespaces/${NAMESPACE}/deployments/${DEPLOY_NAME}" \
                   > /dev/null 2>&1 || echo "  (skipped ${DEPLOY} — may not exist)"
               done
