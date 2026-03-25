@@ -12,7 +12,13 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
-import { X, Loader2, RefreshCw, Search, ArrowLeftRight, GitBranch, Sparkles } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { X, Loader2, RefreshCw, Search, ArrowLeftRight, GitBranch, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DimensionsTab } from "@/components/node/DimensionsTab";
 import { ConvergenceTab } from "@/components/node/ConvergenceTab";
@@ -56,11 +62,9 @@ export default function NodeDetailPanel({
     perspectives,
     isLoading,
     error,
-    recalculateNode,
-    isRecalculating,
+    rebuildNode,
+    isRebuilding,
     refreshPerspectives,
-    enrichNode,
-    isEnriching,
   } = useNodeDetail(nodeId);
   const [researchDialogOpen, setResearchDialogOpen] = useState(false);
 
@@ -157,16 +161,31 @@ export default function NodeDetailPanel({
                 <Badge variant="outline">
                   Updates: {node.update_count ?? 0}
                 </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 text-xs gap-1"
-                  onClick={recalculateNode}
-                  disabled={isRecalculating}
-                >
-                  <RefreshCw className={cn("h-3 w-3", isRecalculating && "animate-spin")} />
-                  Recalculate
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs gap-1"
+                      disabled={isRebuilding}
+                    >
+                      <RefreshCw className={cn("h-3 w-3", isRebuilding && "animate-spin")} />
+                      Rebuild
+                      <ChevronDown className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={() => rebuildNode("full", "all")}>
+                      Full Rebuild
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => rebuildNode("full", "dimensions")}>
+                      Rebuild Dimensions
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => rebuildNode("full", "edges")}>
+                      Rebuild Edges
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button
                   variant="outline"
                   size="sm"
@@ -229,21 +248,21 @@ export default function NodeDetailPanel({
                     variant="outline"
                     size="sm"
                     className="mt-1.5 h-6 text-xs gap-1 border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                    onClick={enrichNode}
-                    disabled={isEnriching}
+                    onClick={() => rebuildNode("full", "all")}
+                    disabled={isRebuilding}
                   >
-                    <Sparkles className={cn("h-3 w-3", isEnriching && "animate-spin")} />
-                    {isEnriching ? "Enriching..." : "Enrich Now"}
+                    <Sparkles className={cn("h-3 w-3", isRebuilding && "animate-spin")} />
+                    {isRebuilding ? "Building..." : "Build Node"}
                   </Button>
                 </div>
               </div>
             )}
 
-            {isRecalculating && (
+            {isRebuilding && (
               <div className="mx-4 my-2 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
                 <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
                 <span>
-                  Recalculating dimensions and edges — this may take a minute.
+                  Rebuilding node — this may take a minute.
                   Results will appear automatically.
                 </span>
               </div>

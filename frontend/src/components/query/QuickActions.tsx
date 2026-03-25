@@ -379,7 +379,7 @@ function RefreshNodePanel() {
     setRefreshedId(null);
     setError(null);
     try {
-      await api.nodes.recalculateNode(nodeId);
+      await api.nodes.rebuildNode(nodeId, "full", "all");
       setRefreshedId(nodeId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Refresh failed");
