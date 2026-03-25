@@ -19,8 +19,8 @@ from kt_agents_core.state import AgentContext, PipelineState
 from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
 from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
-from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
 from kt_worker_nodes.pipelines.models import CreateNodeTask
+from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
 from kt_worker_nodes.pipelines.parent.pipeline import ParentSelectionPipeline
 
 logger = logging.getLogger(__name__)

@@ -60,6 +60,7 @@ class CreateNodeTask:
     def is_concept(self) -> bool:
         return self.node_type == "concept"
 
+
 # ── Node build results ───────────────────────────────────────────────
 
 

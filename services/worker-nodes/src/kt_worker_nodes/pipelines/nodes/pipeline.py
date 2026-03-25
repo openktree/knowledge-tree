@@ -20,8 +20,8 @@ from kt_worker_nodes.pipelines.building.helpers import (
     dedup_on_refresh,
     get_pool_hint,
 )
-from kt_worker_nodes.pipelines.nodes.enrichment import PoolEnricher
 from kt_worker_nodes.pipelines.models import CreateNodeTask
+from kt_worker_nodes.pipelines.nodes.enrichment import PoolEnricher
 
 logger = logging.getLogger(__name__)
 

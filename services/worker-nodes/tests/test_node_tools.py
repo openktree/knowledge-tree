@@ -507,9 +507,7 @@ async def test_gather_facts_uses_batch_search() -> None:
     mock_settings.fetch_guarantee_max_rounds = 1
     mock_settings.page_stale_days = 30
 
-    with patch(
-        "kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch", new_callable=AsyncMock, return_value=[]
-    ):
+    with patch("kt_worker_nodes.pipelines.gathering.pipeline.store_and_fetch", new_callable=AsyncMock, return_value=[]):
         with patch(
             "kt_worker_nodes.pipelines.gathering.pipeline.WritePageFetchLogRepository", return_value=mock_page_log
         ):

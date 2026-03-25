@@ -208,4 +208,3 @@ class TestCrystallizationPipelineIntegration:
         result = await pipeline.check_and_crystallize(parent.id)
         assert result is False
         mock_model_gateway.generate.assert_not_awaited()
-
