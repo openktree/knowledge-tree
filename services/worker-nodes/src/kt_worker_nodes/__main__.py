@@ -14,13 +14,13 @@ def main() -> None:
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
     from kt_worker_nodes.workflows.auto_build import auto_build_task
-    from kt_worker_nodes.workflows.enrich_node import enrich_edge_task, enrich_node_task
+    from kt_worker_nodes.workflows.enrich_node import enrich_edge_task
     from kt_worker_nodes.workflows.node_pipeline import (
         crystallize_task,
         edge_task,
         node_pipeline_wf,
-        recalculate_task,
     )
+    from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
 
     hatchet = get_hatchet()
     worker = hatchet.worker(
@@ -30,9 +30,8 @@ def main() -> None:
             node_pipeline_wf,
             edge_task,
             crystallize_task,
-            recalculate_task,
+            rebuild_node_task,
             auto_build_task,
-            enrich_node_task,
             enrich_edge_task,
         ],
     )

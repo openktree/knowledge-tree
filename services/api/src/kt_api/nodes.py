@@ -576,16 +576,17 @@ async def get_node_facts(
     ]
 
 
-@router.post("/{node_id}/recalculate-node")
-async def recalculate_node(
+@router.post("/{node_id}/rebuild")
+async def rebuild_node(
     node_id: str,
+    body: dict | None = None,
     user: User = Depends(require_auth),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
-    """Regenerate dimensions, edges, definition, ancestry, and crystallization.
+    """Rebuild a node's dimensions, edges, definition, and ancestry.
 
-    Dispatches a Hatchet ``recalculate_node`` task that runs the full
-    pipeline phases.  Also recalculates the dialectic pair partner.
+    Accepts optional JSON body ``{"mode": "full"|"incremental", "scope": "all"|"dimensions"|"edges"}``.
+    Defaults to ``mode="full", scope="all"`` (full rebuild).
     """
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
     try:
@@ -596,14 +597,32 @@ async def recalculate_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    from kt_hatchet.models import RecalculateInput
-    from kt_worker_nodes.workflows.node_pipeline import recalculate_task
+    from kt_hatchet.models import RebuildNodeInput
+    from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
 
+    mode = (body or {}).get("mode", "full")
+    scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
-    await recalculate_task.aio_run_no_wait(
-        RecalculateInput(node_id=node_id, recalculate_pair=True, api_key=api_key),
+    await rebuild_node_task.aio_run_no_wait(
+        RebuildNodeInput(
+            node_id=node_id,
+            mode=mode,
+            scope=scope,
+            recalculate_pair=True,
+            api_key=api_key,
+        ),
     )
     return {"status": "started", "node_id": node_id}
+
+
+@router.post("/{node_id}/recalculate-node")
+async def recalculate_node(
+    node_id: str,
+    user: User = Depends(require_auth),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    """Legacy endpoint — redirects to rebuild_node with mode=full, scope=all."""
+    return await rebuild_node(node_id, {"mode": "full", "scope": "all"}, user, session)
 
 
 @router.get("/{node_id}/edges", response_model=list[EdgeResponse])
@@ -774,11 +793,7 @@ async def enrich_node(
     node_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
-    """Trigger on-demand enrichment for a stub node.
-
-    Dispatches an ``enrich_node`` Hatchet task that generates dimensions
-    and a definition for a node that was auto-promoted from a seed.
-    """
+    """Legacy endpoint — redirects to rebuild_node with mode=full, scope=all."""
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
@@ -788,10 +803,12 @@ async def enrich_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    from kt_hatchet.models import EnrichNodeInput
-    from kt_worker_nodes.workflows.enrich_node import enrich_node_task
+    from kt_hatchet.models import RebuildNodeInput
+    from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
 
-    await enrich_node_task.aio_run_no_wait(EnrichNodeInput(node_id=node_id))
+    await rebuild_node_task.aio_run_no_wait(
+        RebuildNodeInput(node_id=node_id, mode="full", scope="all"),
+    )
     return {"status": "started", "node_id": node_id}
 
 
@@ -821,12 +838,12 @@ async def quick_add_node(
             break
 
     if match:
-        # Trigger full recalculate via Hatchet
-        from kt_hatchet.models import RecalculateInput
-        from kt_worker_nodes.workflows.node_pipeline import recalculate_task
+        # Trigger full rebuild via Hatchet
+        from kt_hatchet.models import RebuildNodeInput
+        from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
 
-        await recalculate_task.aio_run_no_wait(
-            RecalculateInput(node_id=str(match.id), recalculate_pair=True),
+        await rebuild_node_task.aio_run_no_wait(
+            RebuildNodeInput(node_id=str(match.id), mode="full", scope="all", recalculate_pair=True),
         )
         return QuickAddNodeResponse(
             status="started",

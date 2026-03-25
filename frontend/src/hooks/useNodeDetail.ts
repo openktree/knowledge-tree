@@ -26,11 +26,9 @@ export interface UseNodeDetailResult {
   perspectives: PerspectivePair[];
   isLoading: boolean;
   error: string | null;
-  recalculateNode: () => Promise<void>;
-  isRecalculating: boolean;
+  rebuildNode: (mode?: "full" | "incremental", scope?: "all" | "dimensions" | "edges") => Promise<void>;
+  isRebuilding: boolean;
   refreshPerspectives: () => Promise<void>;
-  enrichNode: () => Promise<void>;
-  isEnriching: boolean;
 }
 
 function groupIntoPairs(perspectives: NodeResponse[]): PerspectivePair[] {
@@ -73,10 +71,8 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
   );
   const [perspectives, setPerspectives] = useState<PerspectivePair[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [recalculatingNodeId, setRecalculatingNodeId] = useState<string | null>(null);
-  const isRecalculating = recalculatingNodeId === nodeId;
-  const [enrichingNodeId, setEnrichingNodeId] = useState<string | null>(null);
-  const isEnriching = enrichingNodeId === nodeId;
+  const [rebuildingNodeId, setRebuildingNodeId] = useState<string | null>(null);
+  const isRebuilding = rebuildingNodeId === nodeId;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -156,12 +152,15 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
     }
   }, [nodeId]);
 
-  const recalculateNode = useCallback(async () => {
+  const rebuildNode = useCallback(async (
+    mode: "full" | "incremental" = "full",
+    scope: "all" | "dimensions" | "edges" = "all",
+  ) => {
     if (!nodeId) return;
-    setRecalculatingNodeId(nodeId);
+    setRebuildingNodeId(nodeId);
     try {
-      await api.nodes.recalculateNode(nodeId);
-      // Poll until updated_at changes (background task completed) or timeout
+      await api.nodes.rebuildNode(nodeId, mode, scope);
+      // Poll until updated_at changes or enrichment_status flips
       const baselineUpdatedAt = node?.updated_at;
       const POLL_INTERVAL = 4000;
       const MAX_POLLS = 30; // ~2 minutes max
@@ -186,12 +185,12 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
             setEdges(edgesData);
             setDimensions(dimsData);
             setConvergence(convergenceData);
-            setRecalculatingNodeId(null);
+            setRebuildingNodeId(null);
             return;
           }
         } catch {
           if (polls >= MAX_POLLS) {
-            setRecalculatingNodeId(null);
+            setRebuildingNodeId(null);
             return;
           }
         }
@@ -201,55 +200,11 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
       setTimeout(poll, POLL_INTERVAL);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to recalculate edges"
+        err instanceof Error ? err.message : "Failed to rebuild node"
       );
-      setRecalculatingNodeId(null);
+      setRebuildingNodeId(null);
     }
   }, [nodeId, node]);
-
-  const enrichNode = useCallback(async () => {
-    if (!nodeId) return;
-    setEnrichingNodeId(nodeId);
-    try {
-      await api.nodes.enrichNode(nodeId);
-      // Poll until enrichment_status changes
-      const POLL_INTERVAL = 4000;
-      const MAX_POLLS = 30;
-      let polls = 0;
-
-      const poll = async () => {
-        polls++;
-        try {
-          const [freshNode, dimsData] = await Promise.all([
-            api.nodes.get(nodeId),
-            api.nodes.getDimensions(nodeId),
-          ]);
-          if (
-            freshNode.enrichment_status === "enriched" ||
-            polls >= MAX_POLLS
-          ) {
-            setNode(freshNode);
-            setDimensions(dimsData);
-            setEnrichingNodeId(null);
-            return;
-          }
-        } catch {
-          if (polls >= MAX_POLLS) {
-            setEnrichingNodeId(null);
-            return;
-          }
-        }
-        setTimeout(poll, POLL_INTERVAL);
-      };
-
-      setTimeout(poll, POLL_INTERVAL);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to enrich node"
-      );
-      setEnrichingNodeId(null);
-    }
-  }, [nodeId]);
 
   return {
     node,
@@ -261,10 +216,8 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
     perspectives,
     isLoading,
     error,
-    recalculateNode,
-    isRecalculating,
+    rebuildNode,
+    isRebuilding,
     refreshPerspectives,
-    enrichNode,
-    isEnriching,
   };
 }
