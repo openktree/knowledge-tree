@@ -21,10 +21,6 @@ dev-dependencies = [
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
-version_variables = [
-    "helm/knowledge-tree/Chart.yaml:version",
-    "helm/knowledge-tree/Chart.yaml:appVersion",
-]
 branch = "main"
 commit_message = "chore(release): v{version}"
 tag_format = "v{version}"
