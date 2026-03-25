@@ -324,21 +324,17 @@ export const api = {
       );
     },
 
-    recalculateNode(
+    rebuildNode(
       id: string,
+      mode: "full" | "incremental" = "full",
+      scope: "all" | "dimensions" | "edges" = "all",
     ): Promise<{ status: string; node_id: string }> {
       return request<{ status: string; node_id: string }>(
-        `/nodes/${encodeURIComponent(id)}/recalculate-node`,
-        { method: "POST" },
-      );
-    },
-
-    enrichNode(
-      id: string,
-    ): Promise<{ status: string; node_id: string }> {
-      return request<{ status: string; node_id: string }>(
-        `/nodes/${encodeURIComponent(id)}/enrich`,
-        { method: "POST" },
+        `/nodes/${encodeURIComponent(id)}/rebuild`,
+        {
+          method: "POST",
+          body: JSON.stringify({ mode, scope }),
+        },
       );
     },
 

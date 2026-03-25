@@ -51,13 +51,13 @@ def main() -> None:
         build_composite_task,
         regenerate_composite_task,
     )
-    from kt_worker_nodes.workflows.enrich_node import enrich_edge_task, enrich_node_task
+    from kt_worker_nodes.workflows.enrich_node import enrich_edge_task
     from kt_worker_nodes.workflows.node_pipeline import (
         crystallize_task,
         edge_task,
         node_pipeline_wf,
-        recalculate_task,
     )
+    from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
     from kt_worker_orchestrator.bottom_up import (
         agent_select_wf,
         bottom_up_prepare_scope_wf,
@@ -102,9 +102,8 @@ def main() -> None:
             node_pipeline_wf,
             edge_task,
             crystallize_task,
-            recalculate_task,
+            rebuild_node_task,
             auto_build_task,
-            enrich_node_task,
             enrich_edge_task,
             build_composite_task,
             regenerate_composite_task,

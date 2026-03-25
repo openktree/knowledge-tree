@@ -104,9 +104,11 @@ async def auto_build_graph(input: AutoBuildInput, ctx: Context) -> dict:
 
 
 async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> tuple[int, int]:
-    """Promote active seeds with enough facts to stub nodes.
+    """Promote active seeds to stub nodes.
 
-    Returns (nodes_promoted, enrichment_dispatched).
+    Returns (nodes_promoted, 0).  Enrichment is NOT dispatched here —
+    ``_check_fact_stale_nodes`` detects newly promoted stubs (facts_at_last_build=0)
+    and dispatches ``rebuild_node`` for them.
     """
     from kt_db.keys import key_to_uuid, make_node_key
     from kt_db.repositories.write_nodes import WriteNodeRepository
@@ -115,13 +117,9 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
 
     min_facts = settings.graph_build_auto_promote_min_facts  # type: ignore[attr-defined]
     batch_size = settings.graph_build_batch_size  # type: ignore[attr-defined]
-    enrich_min = settings.enrichment_min_facts_for_dimensions  # type: ignore[attr-defined]
 
     embedding_service = EmbeddingService()
     promoted = 0
-    enrichment_dispatched = 0
-    # Collect (node_uuid, fact_count) for enrichment dispatch after commit
-    enrich_candidates: list[str] = []
 
     write_sf = state.write_session_factory
     if write_sf is None:
@@ -152,7 +150,7 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                 node_uuid = key_to_uuid(node_key)
 
                 # Create WriteNode with enrichment_status='stub'
-                # facts_at_last_build=0 since stubs have no dimensions yet
+                # facts_at_last_build=0 so _check_fact_stale_nodes picks it up
                 await node_repo.upsert(
                     node_type=seed.node_type,
                     concept=seed.name,
@@ -183,30 +181,10 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                 await seed_repo.mark_seed_promoted(seed.key, node_key)
                 promoted += 1
 
-                # Queue for enrichment if enough facts
-                if seed.fact_count >= enrich_min:
-                    enrich_candidates.append(str(node_uuid))
-
             except Exception:
                 logger.debug("Error promoting seed %s", seed.key, exc_info=True)
 
         await ws.commit()
-
-    # Fire-and-forget enrichment for nodes with enough facts
-    if enrich_candidates:
-        from kt_hatchet.models import EnrichNodeInput
-        from kt_worker_nodes.workflows.enrich_node import enrich_node_task
-
-        for node_id in enrich_candidates:
-            try:
-                await enrich_node_task.aio_run_no_wait(
-                    EnrichNodeInput(node_id=node_id),
-                )
-                enrichment_dispatched += 1
-            except Exception:
-                logger.debug("Failed to dispatch enrichment for %s", node_id, exc_info=True)
-
-        logger.info("Dispatched enrichment for %d newly promoted nodes", enrichment_dispatched)
 
     logger.info("Promoted %d seeds to stub nodes", promoted)
     try:
@@ -216,14 +194,13 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                     "type": "auto_build_progress",
                     "step": "promote",
                     "nodes_promoted": promoted,
-                    "enrichment_dispatched": enrichment_dispatched,
                 }
             )
         )
     except Exception:
         pass
 
-    return promoted, enrichment_dispatched
+    return promoted, 0
 
 
 async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Context) -> int:
@@ -496,11 +473,9 @@ async def _create_cooccurrence_edges(state: WorkerState, settings: object, ctx: 
 async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Context) -> int:
     """Dispatch enrichment or recalculation for nodes with accumulated new facts.
 
-    Stub/partial nodes → enrich_node_task (first-time enrichment).
-    Already-enriched nodes → recalculate_task (refresh dimensions).
+    Dispatches ``rebuild_node`` in incremental mode for all stale nodes.
     """
     from kt_db.keys import key_to_uuid
-    from kt_db.repositories.write_nodes import WriteNodeRepository
     from kt_db.repositories.write_seeds import WriteSeedRepository
 
     threshold = settings.graph_build_auto_recalculate_min_new_facts  # type: ignore[attr-defined]
@@ -514,26 +489,23 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
 
     async with write_sf() as ws:
         seed_repo = WriteSeedRepository(ws)
-        node_repo = WriteNodeRepository(ws)
-
         stale_nodes = await seed_repo.get_fact_stale_nodes(threshold, batch_size)
         if not stale_nodes:
             return 0
 
         logger.info("Found %d fact-stale nodes to process", len(stale_nodes))
 
-        from kt_hatchet.models import EnrichNodeInput, RecalculateInput
-        from kt_worker_nodes.workflows.enrich_node import enrich_node_task as _enrich
-        from kt_worker_nodes.workflows.node_pipeline import recalculate_task as _recalc
+        from kt_hatchet.models import RebuildNodeInput
+        from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task as _rebuild
 
-        # Update facts_at_last_build for all stale nodes first
+        # Do NOT update facts_at_last_build here — rebuild_node updates it
+        # after successful dimension generation, preventing the watermark
+        # from advancing if the task fails.
         dispatch_entries: list[tuple[str, str, dict]] = []
         for entry in stale_nodes:
             try:
                 node_key = entry["promoted_node_key"]
                 node_uuid = key_to_uuid(node_key)
-
-                await node_repo.update_facts_at_last_build(node_key, entry["fact_count"])
                 dispatch_entries.append((node_key, str(node_uuid), entry))
             except Exception:
                 logger.debug(
@@ -542,38 +514,25 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
                     exc_info=True,
                 )
 
-        await ws.commit()
-
     # Fire-and-forget all dispatches concurrently
     import asyncio
 
     async def _dispatch_one(node_key: str, node_uuid: str, entry: dict) -> bool:
         try:
-            enrichment_status = entry.get("enrichment_status", "enriched")
-            if enrichment_status in ("stub", "partial"):
-                await _enrich.aio_run_no_wait(
-                    EnrichNodeInput(node_id=node_uuid),
-                )
-                logger.info(
-                    "Dispatched enrichment for stale %s node '%s' (delta=%d)",
-                    enrichment_status,
-                    node_key,
-                    entry["delta"],
-                )
-            else:
-                await _recalc.aio_run_no_wait(
-                    RecalculateInput(node_id=node_uuid, recalculate_pair=False),
-                )
-                logger.info(
-                    "Dispatched recalculation for node '%s' (delta=%d, total_facts=%d)",
-                    node_key,
-                    entry["delta"],
-                    entry["fact_count"],
-                )
+            await _rebuild.aio_run_no_wait(
+                RebuildNodeInput(node_id=node_uuid, mode="incremental", scope="all"),
+            )
+            logger.info(
+                "Dispatched rebuild for node '%s' (status=%s, delta=%d, total_facts=%d)",
+                node_key,
+                entry.get("enrichment_status", "?"),
+                entry["delta"],
+                entry["fact_count"],
+            )
             return True
         except Exception:
             logger.debug(
-                "Error dispatching for %s",
+                "Error dispatching rebuild for %s",
                 node_key,
                 exc_info=True,
             )

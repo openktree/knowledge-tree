@@ -401,6 +401,71 @@ class HatchetPipeline:
             "fact_count": len(facts),
         }
 
+    async def full_dimensions(self, node_id: str) -> dict:
+        """Full-mode dimensions: delete all existing, then regenerate from ALL facts.
+
+        Same return shape as ``dimensions()``:
+        ``{node_id, node_type, dimensions_created, fact_count}``.
+        """
+        from kt_db.keys import make_node_key
+        from kt_db.models import Node
+        from kt_db.repositories.write_dimensions import WriteDimensionRepository
+        from kt_db.repositories.write_nodes import WriteNodeRepository
+        from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
+
+        nid = uuid.UUID(node_id)
+
+        async with self._open_sessions() as (session, write_session):
+            if write_session is None:
+                raise RuntimeError("full_dimensions: write_session is required")
+            ctx = await self._build_ctx(session, write_session=write_session)
+
+            wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
+            node = Node(id=nid, concept=wn.concept, node_type=wn.node_type) if wn else None
+            if node is None:
+                logger.warning("full_dimensions: node %s not found", node_id)
+                return {"node_id": node_id, "node_type": "concept", "dimensions_created": 0, "fact_count": 0}
+
+            # Sync seed facts first
+            await self._sync_seed_facts_to_node(nid, write_session, ctx.graph_engine)
+
+            # Delete all existing dimensions + derived data
+            node_key = make_node_key(node.node_type, node.concept)
+            dim_repo = WriteDimensionRepository(write_session)
+            deleted = await dim_repo.delete_all_for_node(node_key)
+            await dim_repo.delete_convergence_report(node_key)
+            await dim_repo.delete_divergent_claims(node_key)
+            if deleted:
+                await write_session.flush()
+                logger.info("full_dimensions: deleted %d existing dimensions for node %s", deleted, node_id)
+
+            # Regenerate from all facts
+            facts = await ctx.graph_engine.get_node_facts(nid)
+            dim_mode = "neutral" if node.node_type == "concept" else node.node_type
+            node_type = node.node_type
+
+            dim_pipeline = DimensionPipeline(ctx)
+            dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
+
+            # Update watermark
+            if facts:
+                write_node_repo = WriteNodeRepository(write_session)
+                await write_node_repo.update_facts_at_last_build(node_key, len(facts))
+
+            await session.commit()
+
+        dimensions_created = len(dim_result.dim_results)
+        logger.info(
+            "full_dimensions: node %s ('%s') — %d dims from %d facts (deleted %d old)",
+            node_id, node.concept, dimensions_created, len(facts), deleted,
+        )
+        return {
+            "node_id": node_id,
+            "node_type": node_type,
+            "dimensions_created": dimensions_created,
+            "fact_count": len(facts),
+        }
+
     # -- Phase 3.5: definition ---------------------------------------------
 
     async def definition(self, node_id: str) -> dict:

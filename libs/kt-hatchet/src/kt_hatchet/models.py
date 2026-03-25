@@ -180,11 +180,36 @@ class AncestryOutput(BaseModel):
 
 
 class RecalculateInput(BaseModel):
-    """Input for the recalculate workflow (full refresh of an existing node)."""
+    """Input for the recalculate workflow (full refresh of an existing node).
+
+    .. deprecated:: Use ``RebuildNodeInput`` instead.
+    """
 
     node_id: str
     recalculate_pair: bool = True  # Also recalculate dialectic pair partner
     api_key: str | None = None
+
+
+class RebuildNodeInput(BaseModel):
+    """Input for the unified rebuild_node task (replaces enrich_node + recalculate)."""
+
+    node_id: str
+    mode: str = "incremental"  # "incremental" | "full"
+    scope: str = "all"  # "all" | "dimensions" | "edges"
+    recalculate_pair: bool = False  # Also rebuild dialectic pair (full+all only)
+    api_key: str | None = None
+
+
+class RebuildNodeOutput(BaseModel):
+    """Results from the rebuild_node task."""
+
+    node_id: str
+    status: str = "completed"  # "completed" | "skipped" | "error"
+    mode: str = "incremental"
+    scope: str = "all"
+    dimensions_created: int = 0
+    edges_resolved: int = 0
+    fact_count: int = 0
 
 
 # -- Bottom-up exploration ---------------------------------------------

@@ -1,208 +1,29 @@
-"""On-demand enrichment tasks for stub nodes and co-occurrence edges.
+"""On-demand enrichment task for co-occurrence edges.
 
-These tasks generate dimensions/definitions (for nodes) and justifications
-(for edges) that were skipped during auto-build. Triggered by API access
-or explicit user action.
+Generates justifications for edges that were created during auto-build
+without LLM justification. Triggered by API access or explicit user action.
+
+NOTE: The enrich_node task has been replaced by ``rebuild_node`` in
+``rebuild_node.py``.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import uuid
 from datetime import timedelta
 from typing import cast
 
-from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
+from hatchet_sdk import Context
 
 from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
-from kt_hatchet.models import EnrichEdgeInput, EnrichEdgeOutput, EnrichNodeInput, EnrichNodeOutput
-from kt_worker_nodes.hatchet_pipeline import HatchetPipeline
+from kt_hatchet.models import EnrichEdgeInput, EnrichEdgeOutput
 
 logger = logging.getLogger(__name__)
 
 hatchet = get_hatchet()
 _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_minutes)
-
-
-# ══════════════════════════════════════════════════════════════
-# Enrich Node Task
-# ══════════════════════════════════════════════════════════════
-
-enrich_node_task = hatchet.workflow(
-    name="enrich_node",
-    input_validator=EnrichNodeInput,
-    concurrency=ConcurrencyExpression(
-        expression="input.node_id",
-        max_runs=1,
-        limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
-    ),
-)
-
-
-@enrich_node_task.task(
-    execution_timeout=timedelta(minutes=15),
-    schedule_timeout=_schedule_timeout,
-)
-async def enrich_node(input: EnrichNodeInput, ctx: Context) -> dict:
-    """Generate dimensions and definition for a stub node.
-
-    1. Load node from write-db
-    2. If enrichment_status not in ('stub', 'partial'), skip
-    3. Check fact count — need enough facts for meaningful dimensions
-    4. Generate dimensions via DimensionPipeline
-    5. Generate definition via DefinitionPipeline
-    6. Set enrichment_status = 'enriched'
-    """
-    import uuid
-
-    state = cast(WorkerState, ctx.lifespan)
-    settings = get_settings()
-    pipeline = HatchetPipeline(state, api_key=input.api_key)
-
-    node_id = uuid.UUID(input.node_id)
-
-    async with pipeline._open_sessions() as (graph_session, write_session):
-        from kt_agents_core.state import AgentContext
-        from kt_db.repositories.write_nodes import WriteNodeRepository
-        from kt_graph.engine import GraphEngine
-        from kt_models.gateway import ModelGateway
-
-        if write_session is None:
-            return EnrichNodeOutput(enriched=False).model_dump()
-
-        write_repo = WriteNodeRepository(write_session)
-        wn = await write_repo.get_by_uuid(node_id)
-        if wn is None:
-            logger.warning("Node %s not found in write-db", input.node_id)
-            return EnrichNodeOutput(enriched=False).model_dump()
-
-        # Only enrich stub/partial nodes
-        if wn.enrichment_status not in ("stub", "partial"):
-            logger.info("Node %s already enriched (status=%s)", wn.concept, wn.enrichment_status)
-            return EnrichNodeOutput(enriched=False).model_dump()
-
-        # Look up the corresponding seed to get the authoritative fact count
-        from kt_db.repositories.write_seeds import WriteSeedRepository
-
-        seed_repo = WriteSeedRepository(write_session)
-        seeds = await seed_repo.get_seeds_by_promoted_node_key(wn.key)
-
-        if seeds:
-            all_fact_ids: set[uuid.UUID] = set()
-            for seed in seeds:
-                descendant_facts = await seed_repo.get_all_descendant_facts(seed.key)
-                all_fact_ids.update(descendant_facts)
-            seed_fact_ids = list(all_fact_ids)
-            fact_count = len(seed_fact_ids)
-        else:
-            seed_fact_ids = None
-            fact_count = len(wn.fact_ids or [])
-
-        min_facts = settings.enrichment_min_facts_for_dimensions
-
-        if fact_count < min_facts:
-            # Not enough facts yet — mark as partial
-            from sqlalchemy import text
-
-            await write_session.execute(
-                text("UPDATE write_nodes SET enrichment_status = 'partial', updated_at = NOW() WHERE key = :key"),
-                {"key": wn.key},
-            )
-            await write_session.commit()
-            logger.info(
-                "Node '%s' has %d facts (need %d) — marked partial",
-                wn.concept,
-                fact_count,
-                min_facts,
-            )
-            return EnrichNodeOutput(enriched=False).model_dump()
-
-        # Create engine + context for dimension pipeline
-        engine = GraphEngine(
-            graph_session,
-            write_session=write_session,
-            qdrant_client=state.qdrant_client,
-        )
-        gateway = ModelGateway()
-
-        async def emit(event_type: str, **kwargs: object) -> None:
-            try:
-                await ctx.aio_put_stream(json.dumps({"type": event_type, **kwargs}))
-            except Exception:
-                pass
-
-        agent_ctx = AgentContext(
-            graph_engine=engine,
-            provider_registry=state.provider_registry,
-            model_gateway=gateway,
-            embedding_service=state.embedding_service,
-            session=graph_session,
-            emit_event=emit,
-            session_factory=state.session_factory,
-            content_fetcher=state.content_fetcher,
-            write_session_factory=state.write_session_factory,
-            qdrant_client=state.qdrant_client,
-        )
-
-        # Load the node from graph-db for dimension generation
-        node = await engine.get_node(node_id)
-        if node is None:
-            logger.warning("Node %s not found in graph-db", input.node_id)
-            return EnrichNodeOutput(enriched=False).model_dump()
-
-        # Load facts from the seed (authoritative) or fall back to node facts
-        if seed_fact_ids:
-            facts = await engine.get_facts_by_ids(seed_fact_ids)
-            # Link any seed facts not yet linked to the node
-            existing_node_fact_ids = set(str(fid) for fid in (wn.fact_ids or []))
-            linked = 0
-            for fact in facts:
-                if str(fact.id) not in existing_node_fact_ids:
-                    await engine.link_fact_to_node(node_id, fact.id)
-                    linked += 1
-            if linked:
-                logger.info("Linked %d seed facts to node '%s'", linked, wn.concept)
-        else:
-            facts = await engine.get_node_facts_with_sources(node_id)
-
-        sample_size = settings.enrichment_dimension_sample_size
-        if len(facts) > sample_size:
-            import random
-
-            facts = random.sample(facts, sample_size)
-
-        # Generate dimensions
-        from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
-
-        dim_pipeline = DimensionPipeline(agent_ctx)
-        dim_mode = "entity" if node.node_type == "entity" else "neutral"
-        dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
-
-        # Generate definition
-        from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
-
-        def_pipeline = DefinitionPipeline(agent_ctx)
-        await def_pipeline.generate_definition(node.id, node.concept)
-
-        # Update enrichment status
-        from sqlalchemy import text
-
-        await write_session.execute(
-            text("UPDATE write_nodes SET enrichment_status = 'enriched', updated_at = NOW() WHERE key = :key"),
-            {"key": wn.key},
-        )
-
-        await write_session.commit()
-        if graph_session is not None:
-            await graph_session.commit()
-
-    dims_count = len(dim_result.dim_results)
-    logger.info("Enriched node '%s': %d dimensions generated", wn.concept, dims_count)
-
-    return EnrichNodeOutput(enriched=True, dimensions_count=dims_count).model_dump()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -226,6 +47,8 @@ async def enrich_edge(input: EnrichEdgeInput, ctx: Context) -> dict:
     Only generates a justification text from shared facts.
     """
     import uuid
+
+    from kt_worker_nodes.hatchet_pipeline import HatchetPipeline
 
     state = cast(WorkerState, ctx.lifespan)
     settings = get_settings()

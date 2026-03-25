@@ -118,6 +118,15 @@ class WriteDimensionRepository:
         )
         return result.rowcount or 0
 
+    async def delete_all_for_node(self, node_key: str) -> int:
+        """Delete ALL dimensions for a node (for full rebuild). Returns count deleted."""
+        from sqlalchemy import delete as sa_delete
+
+        result = await self._session.execute(
+            sa_delete(WriteDimension).where(WriteDimension.node_key == node_key)
+        )
+        return result.rowcount or 0
+
     async def get_by_node_key(self, node_key: str, limit: int = 10) -> list[WriteDimension]:
         """Return dimensions for a node by its write-db key."""
         stmt = select(WriteDimension).where(WriteDimension.node_key == node_key).limit(limit)
