@@ -39,7 +39,6 @@ def main() -> None:
     from kt_hatchet.lifespan import worker_lifespan
 
     # Import all workflows from all worker packages
-    from kt_worker_conv.workflows.conversations import follow_up_wf, resynthesize_task
     from kt_worker_ingest.workflows.ingest import (
         ingest_build_wf,
         ingest_confirm_wf,
@@ -65,7 +64,6 @@ def main() -> None:
         bottom_up_scope_wf,
         bottom_up_wf,
     )
-    from kt_worker_query.workflows.query import query_wf
     from kt_worker_search.workflows.decompose import (
         decompose_source_task,
         decompose_sources_wf,
@@ -107,13 +105,10 @@ def main() -> None:
             enrich_edge_task,
             build_composite_task,
             regenerate_composite_task,
-            follow_up_wf,
-            resynthesize_task,
             ingest_build_wf,
             ingest_confirm_wf,
             ingest_decompose_wf,
             ingest_partition_wf,
-            query_wf,
             sync_wf,
         ],
         lifespan=worker_lifespan,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch  # noqa: F401 — may be needed by remaining tests
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -13,8 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_api.dependencies import get_db_session
 from kt_api.main import create_app
 from kt_db.models import (
-    Conversation,
-    ConversationMessage,
     Edge,
     Fact,
     FactSource,
@@ -49,179 +47,6 @@ async def api_client(api_app):
     transport = ASGITransport(app=api_app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
-
-
-# ── Conversation endpoints ───────────────────────────────────────────
-
-
-@patch("kt_worker_query.workflows.query.query_wf.aio_run_no_wait", new_callable=AsyncMock)
-async def test_create_conversation(mock_run, api_client: AsyncClient):
-    mock_run.return_value.workflow_run_id = str(uuid.uuid4())
-    resp = await api_client.post(
-        "/api/v1/conversations",
-        json={"message": "what is water"},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "id" in data
-    assert data["title"] == "what is water"
-    assert len(data["messages"]) == 2
-    assert data["messages"][0]["role"] == "user"
-    assert data["messages"][0]["content"] == "what is water"
-    assert data["messages"][1]["role"] == "assistant"
-    assert data["messages"][1]["status"] == "pending"
-
-
-@patch("kt_worker_query.workflows.query.query_wf.aio_run_no_wait", new_callable=AsyncMock)
-async def test_create_conversation_custom_budgets(mock_run, api_client: AsyncClient):
-    mock_run.return_value.workflow_run_id = str(uuid.uuid4())
-    resp = await api_client.post(
-        "/api/v1/conversations",
-        json={"message": "test", "nav_budget": 50, "explore_budget": 5},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["messages"][1]["nav_budget"] == 50
-    assert data["messages"][1]["explore_budget"] == 0  # query mode always sets explore_budget=0
-
-
-async def test_get_conversation_not_found(api_client: AsyncClient):
-    fake_id = str(uuid.uuid4())
-    resp = await api_client.get(f"/api/v1/conversations/{fake_id}")
-    assert resp.status_code == 404
-
-
-async def test_get_conversation_invalid_id(api_client: AsyncClient):
-    resp = await api_client.get("/api/v1/conversations/not-a-uuid")
-    assert resp.status_code == 400
-
-
-async def test_list_conversations(api_client: AsyncClient):
-    resp = await api_client.get("/api/v1/conversations", params={"limit": 5})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "items" in data
-    assert "total" in data
-    assert "offset" in data
-    assert "limit" in data
-
-
-async def test_get_conversation_with_db(api_session_factory):
-    """Create a conversation in DB and fetch via API."""
-    async with api_session_factory() as session:
-        conv = Conversation(id=uuid.uuid4(), title="API test conv")
-        session.add(conv)
-        await session.flush()
-
-        msg = ConversationMessage(
-            id=uuid.uuid4(),
-            conversation_id=conv.id,
-            turn_number=0,
-            role="user",
-            content="Hello",
-        )
-        session.add(msg)
-        await session.flush()
-
-        app = create_app()
-
-        async def override() -> AsyncGenerator[AsyncSession, None]:
-            yield session
-
-        app.dependency_overrides[get_db_session] = override
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.get(f"/api/v1/conversations/{conv.id}")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["title"] == "API test conv"
-            assert len(data["messages"]) == 1
-            assert data["messages"][0]["content"] == "Hello"
-
-        await session.rollback()
-
-
-# ── Delete conversation endpoints ────────────────────────────────────
-
-
-async def test_delete_conversation_not_found(api_client: AsyncClient):
-    fake_id = str(uuid.uuid4())
-    resp = await api_client.delete(f"/api/v1/conversations/{fake_id}")
-    assert resp.status_code == 404
-
-
-async def test_delete_conversation_invalid_id(api_client: AsyncClient):
-    resp = await api_client.delete("/api/v1/conversations/not-a-uuid")
-    assert resp.status_code == 400
-
-
-async def test_delete_conversation_with_db(api_session_factory):
-    """Create a conversation and delete it, verify it's gone."""
-    async with api_session_factory() as session:
-        conv = Conversation(id=uuid.uuid4(), title="Delete me")
-        session.add(conv)
-        msg = ConversationMessage(
-            id=uuid.uuid4(),
-            conversation_id=conv.id,
-            turn_number=0,
-            role="user",
-            content="Hello",
-        )
-        session.add(msg)
-        await session.commit()
-
-        app = create_app()
-
-        async def override() -> AsyncGenerator[AsyncSession, None]:
-            yield session
-
-        app.dependency_overrides[get_db_session] = override
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.delete(f"/api/v1/conversations/{conv.id}")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["deleted"] is True
-            assert data["id"] == str(conv.id)
-
-            # Verify it's gone
-            resp2 = await c.get(f"/api/v1/conversations/{conv.id}")
-            assert resp2.status_code == 404
-
-        await session.rollback()
-
-
-async def test_delete_conversation_running_rejected(api_session_factory):
-    """Cannot delete a conversation with a running message."""
-    async with api_session_factory() as session:
-        conv = Conversation(id=uuid.uuid4(), title="Running conv")
-        session.add(conv)
-        msg = ConversationMessage(
-            id=uuid.uuid4(),
-            conversation_id=conv.id,
-            turn_number=1,
-            role="assistant",
-            content="",
-            status="running",
-        )
-        session.add(msg)
-        await session.commit()
-
-        app = create_app()
-
-        async def override() -> AsyncGenerator[AsyncSession, None]:
-            yield session
-
-        app.dependency_overrides[get_db_session] = override
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.delete(f"/api/v1/conversations/{conv.id}")
-            assert resp.status_code == 409
-
-        await session.rollback()
 
 
 # ── Graph endpoints ──────────────────────────────────────────────────
@@ -818,17 +643,6 @@ async def test_export_facts_empty(api_client: AsyncClient):
     assert isinstance(data["facts"], list)
 
 
-async def test_export_conversation_not_found(api_client: AsyncClient):
-    fake_id = str(uuid.uuid4())
-    resp = await api_client.get(f"/api/v1/export/conversations/{fake_id}")
-    assert resp.status_code == 404
-
-
-async def test_export_conversation_invalid_id(api_client: AsyncClient):
-    resp = await api_client.get("/api/v1/export/conversations/not-a-uuid")
-    assert resp.status_code == 400
-
-
 async def test_export_nodes_includes_facts(api_session_factory):
     """Verify that export_nodes includes facts and node_fact_links."""
     async with api_session_factory() as session:
@@ -973,65 +787,6 @@ async def test_export_import_roundtrip_preserves_edges(api_session_factory):
             assert import_resp.status_code == 200
             import_data = import_resp.json()
             assert import_data["imported_edges"] >= 1
-
-        await session.rollback()
-
-
-async def test_export_conversation_includes_node_fact_links(api_session_factory):
-    """Verify that export_conversation includes node_fact_links."""
-    async with api_session_factory() as session:
-        # Create conversation with a message referencing a node
-        conv = Conversation(id=uuid.uuid4(), title="Link export test")
-        session.add(conv)
-        node = Node(id=uuid.uuid4(), concept="conv_link_test", max_content_tokens=500)
-        session.add(node)
-        fact = Fact(id=uuid.uuid4(), content="Conv fact", fact_type="claim")
-        session.add(fact)
-        raw_source = RawSource(
-            id=uuid.uuid4(),
-            uri="https://example.com/conv-link-test",
-            title="Conv Link Source",
-            raw_content="content",
-            content_hash="conv_link_hash_" + str(uuid.uuid4()),
-            provider_id="brave_search",
-        )
-        session.add(raw_source)
-        await session.flush()
-
-        link = NodeFact(node_id=node.id, fact_id=fact.id, relevance_score=1.0)
-        session.add(link)
-        fact_source = FactSource(
-            id=uuid.uuid4(),
-            fact_id=fact.id,
-            raw_source_id=raw_source.id,
-        )
-        session.add(fact_source)
-
-        msg = ConversationMessage(
-            id=uuid.uuid4(),
-            conversation_id=conv.id,
-            turn_number=0,
-            role="user",
-            content="test",
-            created_nodes=[str(node.id)],
-        )
-        session.add(msg)
-        await session.flush()
-
-        app = create_app()
-
-        async def override() -> AsyncGenerator[AsyncSession, None]:
-            yield session
-
-        app.dependency_overrides[get_db_session] = override
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.get(f"/api/v1/export/conversations/{conv.id}")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert "node_fact_links" in data
-            assert len(data["node_fact_links"]) >= 1
 
         await session.rollback()
 

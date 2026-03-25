@@ -362,10 +362,10 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
         except Exception:
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
-    from kt_worker_orchestrator.agents.orchestrator_state import (
+    from kt_worker_orchestrator.bottom_up.state import (
         WaveAccumulator,
     )
-    from kt_worker_orchestrator.agents.tools.scout import scout_impl
+    from kt_worker_orchestrator.bottom_up.scout import scout_impl
 
     ctx.log("Starting bottom-up exploration workflow")
 
@@ -523,7 +523,7 @@ async def _run_waves(
     emit: Any,
 ) -> int:
     """Run wave-based exploration using the wave planner."""
-    from kt_worker_orchestrator.agents.orchestrator_state import (
+    from kt_worker_orchestrator.bottom_up.state import (
         ScopeBriefing,
         wave_budget_ratios,
     )
@@ -679,7 +679,7 @@ async def _run_single_scope(
     emit: Any,
 ) -> int:
     """Run a single bottom-up scope (no waves)."""
-    from kt_worker_orchestrator.agents.orchestrator_state import ScopeBriefing
+    from kt_worker_orchestrator.bottom_up.state import ScopeBriefing
 
     scope_id = str(uuid.uuid4())
 
@@ -859,7 +859,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
     """
     from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_models.usage import start_usage_tracking
-    from kt_worker_orchestrator.agents.tools.scout import scout_impl
+    from kt_worker_orchestrator.bottom_up.scout import scout_impl
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -948,7 +948,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
 
     if not scopes:
         # Fallback: use the query itself as a single scope
-        from kt_worker_orchestrator.agents.orchestrator_state import ScopePlan
+        from kt_worker_orchestrator.bottom_up.state import ScopePlan
 
         scopes = [ScopePlan(scope=input.query, explore_budget=input.explore_budget, nav_budget=0)]
 

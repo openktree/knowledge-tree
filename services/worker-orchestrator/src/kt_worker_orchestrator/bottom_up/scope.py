@@ -306,7 +306,7 @@ async def _scout_and_build_queries(
     search queries from the combination of scope description and
     scout-derived terms.
     """
-    from kt_worker_orchestrator.agents.tools.scout import scout_impl
+    from kt_worker_orchestrator.bottom_up.scout import scout_impl
 
     queries: list[str] = [scope_description]
 

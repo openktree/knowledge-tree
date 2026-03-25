@@ -10,7 +10,7 @@ import json
 import logging
 from typing import Any
 
-from kt_worker_orchestrator.agents.orchestrator_state import ScopeBriefing, ScopePlan
+from kt_worker_orchestrator.bottom_up.state import ScopeBriefing, ScopePlan
 
 logger = logging.getLogger(__name__)
 

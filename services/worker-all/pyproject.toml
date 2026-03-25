@@ -8,9 +8,7 @@ dependencies = [
     "kt-worker-orchestrator",
     "kt-worker-search",
     "kt-worker-nodes",
-    "kt-worker-query",
     "kt-worker-ingest",
-    "kt-worker-conversations",
     "kt-worker-sync",
 ]
 
@@ -23,9 +21,7 @@ kt-hatchet = { workspace = true }
 kt-worker-orchestrator = { workspace = true }
 kt-worker-search = { workspace = true }
 kt-worker-nodes = { workspace = true }
-kt-worker-query = { workspace = true }
 kt-worker-ingest = { workspace = true }
-kt-worker-conversations = { workspace = true }
 kt-worker-sync = { workspace = true }
 
 [tool.hatch.build.targets.wheel]

@@ -316,7 +316,9 @@ async def confirm_ingest(
     from hatchet_sdk import TriggerWorkflowOptions
 
     from kt_hatchet.models import IngestConfirmInput
-    from kt_worker_conv.workflows.conversations import ingest_confirm_wf
+    # TODO: ingest_confirm_wf was in worker-conversations (now deleted).
+    # Move ingest confirmation to worker-ingest or remove this endpoint.
+    from kt_worker_ingest.workflows.ingest import ingest_confirm_wf  # type: ignore[attr-defined]
 
     api_key = require_api_key(user)
     ref = await ingest_confirm_wf.aio_run_no_wait(

@@ -103,7 +103,7 @@ async def _plan_wave(
     workflow fails cleanly rather than proceeding with a degraded single-scope
     fallback.
     """
-    from kt_worker_orchestrator.agents.wave_planner import (
+    from kt_worker_orchestrator.bottom_up.wave_planner import (
         WAVE_PLANNER_PROMPT,
         WavePlanParseError,
         build_wave_planner_user_msg,
