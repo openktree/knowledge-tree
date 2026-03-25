@@ -1,13 +1,13 @@
 """Orchestrator worker entry point.
 
-Usage: python -m kt_worker_orchestrator
+Usage: python -m kt_worker_bottomup
 """
 
 import logging
 
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import worker_lifespan
-from kt_worker_orchestrator.bottom_up import (
+from kt_worker_bottomup.bottom_up import (
     agent_select_wf,
     bottom_up_prepare_scope_wf,
     bottom_up_prepare_wf,

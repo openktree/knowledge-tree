@@ -12,22 +12,19 @@ COPY libs/ libs/
 COPY services/api/pyproject.toml services/api/pyproject.toml
 COPY services/mcp/pyproject.toml services/mcp/pyproject.toml
 COPY services/worker-all/pyproject.toml services/worker-all/pyproject.toml
-COPY services/worker-conversations/pyproject.toml services/worker-conversations/pyproject.toml
 COPY services/worker-ingest/pyproject.toml services/worker-ingest/pyproject.toml
 COPY services/worker-nodes/pyproject.toml services/worker-nodes/pyproject.toml
-COPY services/worker-orchestrator/pyproject.toml services/worker-orchestrator/pyproject.toml
-COPY services/worker-query/pyproject.toml services/worker-query/pyproject.toml
+COPY services/worker-bottomup/pyproject.toml services/worker-bottomup/pyproject.toml
 COPY services/worker-search/pyproject.toml services/worker-search/pyproject.toml
 COPY services/worker-sync/pyproject.toml services/worker-sync/pyproject.toml
 
 # Copy this service's source
-COPY services/worker-orchestrator/ services/worker-orchestrator/
+COPY services/worker-bottomup/ services/worker-bottomup/
 
 # Copy cross-dependency sources
 COPY services/worker-nodes/ services/worker-nodes/
-COPY services/worker-query/ services/worker-query/
 
 # Install dependencies
-RUN uv sync --frozen --no-dev --package kt-worker-orchestrator
+RUN uv sync --frozen --no-dev --package kt-worker-bottomup
 
-CMD ["uv", "run", "--project", "services/worker-orchestrator", "-m", "kt_worker_orchestrator"]
+CMD ["uv", "run", "--project", "services/worker-bottomup", "-m", "kt_worker_bottomup"]

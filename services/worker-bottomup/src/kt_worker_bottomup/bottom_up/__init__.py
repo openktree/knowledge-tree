@@ -1,6 +1,6 @@
 """Bottom-up exploration — exhaustive extraction with priority-based node selection."""
 
-from kt_worker_orchestrator.bottom_up.workflow import (
+from kt_worker_bottomup.bottom_up.workflow import (
     agent_select_wf,
     bottom_up_prepare_scope_wf,
     bottom_up_prepare_wf,

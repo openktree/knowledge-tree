@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_worker_orchestrator.bottom_up.state import BottomUpScopePlan
+from kt_worker_bottomup.bottom_up.state import BottomUpScopePlan
 
 # ── Plan dataclass tests ─────────────────────────────────────
 
@@ -40,12 +40,12 @@ def test_scope_plan_defaults() -> None:
 
 @pytest.mark.asyncio
 async def test_scout_and_build_queries_basic() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import _scout_and_build_queries
+    from kt_worker_bottomup.bottom_up.scope import _scout_and_build_queries
 
     ctx = MagicMock()
 
     with patch(
-        "kt_worker_orchestrator.agents.tools.scout.scout_impl",
+        "kt_worker_bottomup.bottom_up.scout.scout_impl",
         new_callable=AsyncMock,
         return_value={
             "CRISPR": {
@@ -69,12 +69,12 @@ async def test_scout_and_build_queries_basic() -> None:
 
 @pytest.mark.asyncio
 async def test_scout_and_build_queries_caps_to_budget() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import _scout_and_build_queries
+    from kt_worker_bottomup.bottom_up.scope import _scout_and_build_queries
 
     ctx = MagicMock()
 
     with patch(
-        "kt_worker_orchestrator.agents.tools.scout.scout_impl",
+        "kt_worker_bottomup.bottom_up.scout.scout_impl",
         new_callable=AsyncMock,
         return_value={
             "CRISPR": {
@@ -90,12 +90,12 @@ async def test_scout_and_build_queries_caps_to_budget() -> None:
 
 @pytest.mark.asyncio
 async def test_scout_and_build_queries_fallback_on_error() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import _scout_and_build_queries
+    from kt_worker_bottomup.bottom_up.scope import _scout_and_build_queries
 
     ctx = MagicMock()
 
     with patch(
-        "kt_worker_orchestrator.agents.tools.scout.scout_impl",
+        "kt_worker_bottomup.bottom_up.scout.scout_impl",
         new_callable=AsyncMock,
         side_effect=Exception("scout failed"),
     ):
@@ -107,12 +107,12 @@ async def test_scout_and_build_queries_fallback_on_error() -> None:
 
 @pytest.mark.asyncio
 async def test_scout_and_build_queries_no_duplicate_scope() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import _scout_and_build_queries
+    from kt_worker_bottomup.bottom_up.scope import _scout_and_build_queries
 
     ctx = MagicMock()
 
     with patch(
-        "kt_worker_orchestrator.agents.tools.scout.scout_impl",
+        "kt_worker_bottomup.bottom_up.scout.scout_impl",
         new_callable=AsyncMock,
         return_value={
             "CRISPR": {
@@ -132,7 +132,7 @@ async def test_scout_and_build_queries_no_duplicate_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_perspectives_basic() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import plan_perspectives
+    from kt_worker_bottomup.bottom_up.scope import plan_perspectives
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -163,7 +163,7 @@ async def test_plan_perspectives_basic() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_perspectives_empty_nodes() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import plan_perspectives
+    from kt_worker_bottomup.bottom_up.scope import plan_perspectives
 
     ctx = MagicMock()
     result = await plan_perspectives(ctx, "test", [])
@@ -172,7 +172,7 @@ async def test_plan_perspectives_empty_nodes() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_perspectives_caps_to_max() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import plan_perspectives
+    from kt_worker_bottomup.bottom_up.scope import plan_perspectives
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -198,7 +198,7 @@ async def test_plan_perspectives_caps_to_max() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_perspectives_handles_error() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import plan_perspectives
+    from kt_worker_bottomup.bottom_up.scope import plan_perspectives
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -215,7 +215,7 @@ async def test_plan_perspectives_handles_error() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_perspectives_filters_incomplete() -> None:
-    from kt_worker_orchestrator.bottom_up.scope import plan_perspectives
+    from kt_worker_bottomup.bottom_up.scope import plan_perspectives
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -252,7 +252,7 @@ async def test_plan_perspectives_filters_incomplete() -> None:
 @pytest.mark.asyncio
 async def test_run_pipeline_basic_flow() -> None:
     """run_bottom_up_scope_pipeline gathers and returns all extracted nodes as plans."""
-    from kt_worker_orchestrator.bottom_up.scope import run_bottom_up_scope_pipeline
+    from kt_worker_bottomup.bottom_up.scope import run_bottom_up_scope_pipeline
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -275,7 +275,7 @@ async def test_run_pipeline_basic_flow() -> None:
             "kt_worker_nodes.pipelines.gathering.pipeline.GatherFactsPipeline",
         ) as mock_cls,
         patch(
-            "kt_worker_orchestrator.agents.tools.scout.scout_impl",
+            "kt_worker_bottomup.bottom_up.scout.scout_impl",
             new_callable=AsyncMock,
             return_value={"CRISPR gene editing": {"external": [], "graph_matches": []}},
         ),
@@ -308,7 +308,7 @@ async def test_run_pipeline_basic_flow() -> None:
 @pytest.mark.asyncio
 async def test_run_pipeline_builds_all_extracted_nodes() -> None:
     """run_bottom_up_scope_pipeline returns all extracted nodes (no cap)."""
-    from kt_worker_orchestrator.bottom_up.scope import run_bottom_up_scope_pipeline
+    from kt_worker_bottomup.bottom_up.scope import run_bottom_up_scope_pipeline
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -320,7 +320,7 @@ async def test_run_pipeline_builds_all_extracted_nodes() -> None:
             "kt_worker_nodes.pipelines.gathering.pipeline.GatherFactsPipeline",
         ) as mock_cls,
         patch(
-            "kt_worker_orchestrator.agents.tools.scout.scout_impl",
+            "kt_worker_bottomup.bottom_up.scout.scout_impl",
             new_callable=AsyncMock,
             return_value={"test": {"external": [], "graph_matches": []}},
         ),
@@ -351,7 +351,7 @@ async def test_run_pipeline_builds_all_extracted_nodes() -> None:
 
 
 def test_wave_threshold() -> None:
-    from kt_worker_orchestrator.bottom_up.workflow import _WAVE_THRESHOLD
+    from kt_worker_bottomup.bottom_up.workflow import _WAVE_THRESHOLD
 
     assert _WAVE_THRESHOLD == 5
 
@@ -363,7 +363,7 @@ def test_wave_threshold() -> None:
 async def test_agent_select_basic() -> None:
     """agent_select_nodes selects nodes via tool calls."""
     from kt_hatchet.models import ProposedNode
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
+    from kt_worker_bottomup.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -392,7 +392,7 @@ async def test_agent_select_basic() -> None:
 async def test_agent_select_with_edits() -> None:
     """agent_select_nodes applies edit_node tool calls."""
     from kt_hatchet.models import ProposedNode
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
+    from kt_worker_bottomup.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -422,7 +422,7 @@ async def test_agent_select_with_edits() -> None:
 async def test_agent_select_respects_max() -> None:
     """agent_select_nodes stops at max_select even if LLM selects more."""
     from kt_hatchet.models import ProposedNode
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
+    from kt_worker_bottomup.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -445,7 +445,7 @@ async def test_agent_select_respects_max() -> None:
 async def test_agent_select_handles_error() -> None:
     """agent_select_nodes handles LLM errors gracefully."""
     from kt_hatchet.models import ProposedNode
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
+    from kt_worker_bottomup.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     ctx.model_gateway = MagicMock()
@@ -463,7 +463,7 @@ async def test_agent_select_handles_error() -> None:
 @pytest.mark.asyncio
 async def test_agent_select_empty_nodes() -> None:
     """agent_select_nodes handles empty node list."""
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
+    from kt_worker_bottomup.bottom_up.agent_select import agent_select_nodes
 
     ctx = MagicMock()
     result = await agent_select_nodes(ctx, [], max_select=5)

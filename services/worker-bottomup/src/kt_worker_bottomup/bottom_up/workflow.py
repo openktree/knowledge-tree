@@ -40,7 +40,7 @@ from kt_hatchet.models import (
     BottomUpScopeOutput,
     BuildNodeInput,
 )
-from kt_worker_orchestrator.shared import _build_agent_context, _open_sessions
+from kt_worker_bottomup.shared import _build_agent_context, _open_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
     """
     from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_models.usage import start_usage_tracking
-    from kt_worker_orchestrator.bottom_up.scope import (
+    from kt_worker_bottomup.bottom_up.scope import (
         plan_and_store_perspective_seeds,
         run_bottom_up_scope_pipeline,
     )
@@ -362,10 +362,10 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
         except Exception:
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
-    from kt_worker_orchestrator.bottom_up.state import (
+    from kt_worker_bottomup.bottom_up.state import (
         WaveAccumulator,
     )
-    from kt_worker_orchestrator.bottom_up.scout import scout_impl
+    from kt_worker_bottomup.bottom_up.scout import scout_impl
 
     ctx.log("Starting bottom-up exploration workflow")
 
@@ -523,11 +523,11 @@ async def _run_waves(
     emit: Any,
 ) -> int:
     """Run wave-based exploration using the wave planner."""
-    from kt_worker_orchestrator.bottom_up.state import (
+    from kt_worker_bottomup.bottom_up.state import (
         ScopeBriefing,
         wave_budget_ratios,
     )
-    from kt_worker_orchestrator.shared import _plan_wave
+    from kt_worker_bottomup.shared import _plan_wave
 
     wave_count = state.settings.default_wave_count
     ratios = wave_budget_ratios(wave_count)
@@ -679,7 +679,7 @@ async def _run_single_scope(
     emit: Any,
 ) -> int:
     """Run a single bottom-up scope (no waves)."""
-    from kt_worker_orchestrator.bottom_up.state import ScopeBriefing
+    from kt_worker_bottomup.bottom_up.state import ScopeBriefing
 
     scope_id = str(uuid.uuid4())
 
@@ -750,7 +750,7 @@ async def bottom_up_prepare_scope(
     """
     from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_models.usage import start_usage_tracking
-    from kt_worker_orchestrator.bottom_up.scope import run_bottom_up_scope_pipeline
+    from kt_worker_bottomup.bottom_up.scope import run_bottom_up_scope_pipeline
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -859,7 +859,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
     """
     from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_models.usage import start_usage_tracking
-    from kt_worker_orchestrator.bottom_up.scout import scout_impl
+    from kt_worker_bottomup.bottom_up.scout import scout_impl
 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
@@ -913,7 +913,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
     ctx.log(f"Scout complete: {sum(len(v.get('graph_matches', [])) for v in scout_results.values())} graph matches")
 
     # ── Plan scopes (single wave, thorough scouting) ─────────────────
-    from kt_worker_orchestrator.shared import _plan_wave
+    from kt_worker_bottomup.shared import _plan_wave
 
     await emit(
         "pipeline_phase",
@@ -948,7 +948,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
 
     if not scopes:
         # Fallback: use the query itself as a single scope
-        from kt_worker_orchestrator.bottom_up.state import ScopePlan
+        from kt_worker_bottomup.bottom_up.state import ScopePlan
 
         scopes = [ScopePlan(scope=input.query, explore_budget=input.explore_budget, nav_budget=0)]
 
@@ -1178,7 +1178,7 @@ async def agent_select(input: AgentSelectInput, ctx: DurableContext) -> dict:
     and optionally edit nodes. Results are stored on the conversation
     message metadata for frontend retrieval.
     """
-    from kt_worker_orchestrator.bottom_up.agent_select import agent_select_nodes
+    from kt_worker_bottomup.bottom_up.agent_select import agent_select_nodes
 
     state = cast(WorkerState, ctx.lifespan)
 

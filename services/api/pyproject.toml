@@ -13,7 +13,7 @@ dependencies = [
     "kt-facts",
     "kt-ontology",
     "kt-agents-core",
-    "kt-worker-orchestrator",
+    "kt-worker-bottomup",
     "kt-worker-nodes",
     "kt-worker-query",
     "kt-worker-ingest",
@@ -42,7 +42,7 @@ kt-providers = { workspace = true }
 kt-facts = { workspace = true }
 kt-ontology = { workspace = true }
 kt-agents-core = { workspace = true }
-kt-worker-orchestrator = { workspace = true }
+kt-worker-bottomup = { workspace = true }
 kt-worker-nodes = { workspace = true }
 kt-worker-query = { workspace = true }
 kt-worker-ingest = { workspace = true }

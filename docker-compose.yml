@@ -150,10 +150,10 @@ services:
       hatchet:
         condition: service_healthy
 
-  worker-orchestrator:
+  worker-bottomup:
     build:
       context: .
-      dockerfile: services/worker-orchestrator/Dockerfile
+      dockerfile: services/worker-bottomup/Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
@@ -213,52 +213,10 @@ services:
         limits:
           memory: 2G
 
-  worker-query:
-    build:
-      context: .
-      dockerfile: services/worker-query/Dockerfile
-    env_file: .env
-    environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
-      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
-      REDIS_URL: "redis://redis:6379/0"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      pgbouncer-write:
-        condition: service_healthy
-      hatchet:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-
   worker-ingest:
     build:
       context: .
       dockerfile: services/worker-ingest/Dockerfile
-    env_file: .env
-    environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
-      WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
-      REDIS_URL: "redis://redis:6379/0"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      pgbouncer-write:
-        condition: service_healthy
-      hatchet:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-
-  worker-conversations:
-    build:
-      context: .
-      dockerfile: services/worker-conversations/Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"

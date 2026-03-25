@@ -1,7 +1,7 @@
 [project]
-name = "kt-worker-orchestrator"
+name = "kt-worker-bottomup"
 version = "0.1.0"
-description = "Knowledge Tree orchestrator worker"
+description = "Knowledge Tree bottom-up discovery worker"
 requires-python = ">=3.12"
 dependencies = [
     "kt-hatchet",
@@ -14,7 +14,6 @@ dependencies = [
     "kt-ontology",
     "kt-config",
     "kt-worker-nodes",
-    "kt-worker-query",
     "langchain-core>=0.3.0",
     "langgraph>=1.0.8",
 ]
@@ -34,11 +33,10 @@ kt-facts = { workspace = true }
 kt-ontology = { workspace = true }
 kt-config = { workspace = true }
 kt-worker-nodes = { workspace = true }
-kt-worker-query = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/kt_worker_orchestrator"]
+packages = ["src/kt_worker_bottomup"]

@@ -13,13 +13,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from kt_agents_core.state import AgentContext
-from kt_worker_orchestrator.bottom_up.prompt import (
+from kt_worker_bottomup.bottom_up.prompt import (
     PERSPECTIVE_SYSTEM,
     PERSPECTIVE_USER,
     PRIORITIZE_SYSTEM,
     PRIORITIZE_USER,
 )
-from kt_worker_orchestrator.bottom_up.state import BottomUpScopePlan
+from kt_worker_bottomup.bottom_up.state import BottomUpScopePlan
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,7 @@ async def _scout_and_build_queries(
     search queries from the combination of scope description and
     scout-derived terms.
     """
-    from kt_worker_orchestrator.bottom_up.scout import scout_impl
+    from kt_worker_bottomup.bottom_up.scout import scout_impl
 
     queries: list[str] = [scope_description]
 

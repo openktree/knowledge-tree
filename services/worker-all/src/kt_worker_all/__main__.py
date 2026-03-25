@@ -57,7 +57,7 @@ def main() -> None:
         node_pipeline_wf,
     )
     from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
-    from kt_worker_orchestrator.bottom_up import (
+    from kt_worker_bottomup.bottom_up import (
         agent_select_wf,
         bottom_up_prepare_scope_wf,
         bottom_up_prepare_wf,

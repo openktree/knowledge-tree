@@ -99,8 +99,8 @@ spec:
 
               # Restart worker deployments so they pick up the new token.
               # We do this by annotating each deployment, which triggers a rollout.
-              for DEPLOY in api worker-orchestrator worker-search worker-nodes \
-                            worker-query worker-ingest worker-conversations worker-sync; do
+              for DEPLOY in api worker-bottomup worker-search worker-nodes \
+                            worker-ingest worker-sync; do
                 DEPLOY_NAME="{{ include "knowledge-tree.fullname" . }}-${DEPLOY}"
                 PATCH_BODY="{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"hatchet-token/refreshed-at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}"
                 curl -sf -X PATCH \
