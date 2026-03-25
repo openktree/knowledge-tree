@@ -15,7 +15,7 @@ import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Query", icon: Search },
+  { href: "/", label: "Home", icon: TreePine },
   { href: "/research", label: "Research", icon: Upload },
   { href: "/nodes", label: "Nodes", icon: CircleDot },
   { href: "/edges", label: "Edges", icon: ArrowLeftRight },
@@ -38,7 +38,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.is_superuser ?? false;
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/" || pathname.startsWith("/query");
+    if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   };
 

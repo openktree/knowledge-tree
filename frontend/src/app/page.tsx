@@ -1,52 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { TreePine } from "lucide-react";
-import { toast } from "sonner";
-import { QueryBar } from "@/components/query/QueryBar";
-import { QueryBudgetControls } from "@/components/query/QueryBudgetControls";
-import { QuickActions } from "@/components/query/QuickActions";
-import { ConversationHistory } from "@/components/chat/ConversationHistory";
 import { useAuth } from "@/contexts/auth";
-import { api } from "@/lib/api";
 
 export default function HomePage() {
-  const router = useRouter();
   const { user } = useAuth();
-
-  const [navBudget, setNavBudget] = useState(50);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = useCallback(
-    async (query: string) => {
-      setIsSubmitting(true);
-      setError(null);
-
-      if (user?.has_api_key) {
-        toast.info("This query will use your OpenRouter API key. Costs depend on complexity.");
-      } else if (user?.is_superuser) {
-        toast.info("Using system API key for this query.");
-      }
-
-      try {
-        const response = await api.conversations.create({
-          message: query,
-          nav_budget: navBudget,
-          explore_budget: 0,
-          mode: "query",
-        });
-        router.push(`/conversation/${response.id}`);
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to submit query";
-        setError(message);
-        setIsSubmitting(false);
-      }
-    },
-    [navBudget, router, user],
-  );
 
   return (
     <div className="flex min-h-full flex-col items-center justify-start px-4 pt-24 pb-12">
@@ -61,31 +19,38 @@ export default function HomePage() {
           </div>
           <p className="text-muted-foreground">
             A knowledge integration system that builds understanding from raw
-            external data. Ask a question and watch the knowledge graph grow.
+            external data. Ingest sources, grow the graph, and synthesize
+            research documents.
           </p>
         </div>
 
-        {/* Query bar */}
-        <QueryBar onSubmit={handleSubmit} disabled={isSubmitting} />
+        {/* Navigation cards */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <a
+            href="/research"
+            className="rounded-lg border p-6 hover:bg-accent transition-colors"
+          >
+            <h2 className="font-semibold mb-1">Ingest Sources</h2>
+            <p className="text-sm text-muted-foreground">
+              Upload files or add links to grow the knowledge graph.
+            </p>
+          </a>
+          <a
+            href="/nodes"
+            className="rounded-lg border p-6 hover:bg-accent transition-colors"
+          >
+            <h2 className="font-semibold mb-1">Browse Graph</h2>
+            <p className="text-sm text-muted-foreground">
+              Explore nodes, edges, facts, and seeds in the knowledge graph.
+            </p>
+          </a>
+        </div>
 
-        {/* Error message */}
-        {error && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
+        {user && (
+          <p className="text-xs text-center text-muted-foreground">
+            Signed in as {user.email}
+          </p>
         )}
-
-        {/* Budget controls */}
-        <QueryBudgetControls
-          navBudget={navBudget}
-          onNavBudgetChange={setNavBudget}
-        />
-
-        {/* Quick actions */}
-        <QuickActions />
-
-        {/* Conversation history */}
-        <ConversationHistory />
       </main>
     </div>
   );

@@ -381,12 +381,12 @@ export function ResearchBuildProgress({
         </div>
       )}
 
-      {/* Link to conversation */}
+      {/* Link to nodes */}
       {overallStatus === "completed" && (
         <Button variant="outline" className="w-full gap-2" asChild>
-          <a href={`/conversation/${conversationId}`}>
+          <a href="/nodes">
             <ExternalLink className="size-4" />
-            View in Conversation
+            Browse Nodes
           </a>
         </Button>
       )}

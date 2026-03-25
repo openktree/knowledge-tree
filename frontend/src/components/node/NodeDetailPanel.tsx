@@ -27,7 +27,6 @@ import { HistoryTab } from "@/components/node/HistoryTab";
 import { NeighborsTab } from "@/components/node/NeighborsTab";
 import { PerspectivesTab } from "@/components/node/PerspectivesTab";
 import { PerspectiveSeedsTab } from "@/components/node/PerspectiveSeedsTab";
-import { ResearchNodeDialog } from "@/components/node/ResearchNodeDialog";
 import { SeedAmbiguityBadge } from "@/components/node/SeedAmbiguityBadge";
 
 
@@ -353,12 +352,6 @@ export default function NodeDetailPanel({
         </ScrollArea>
       )}
 
-      {researchDialogOpen && node && (
-        <ResearchNodeDialog
-          node={node}
-          onClose={() => setResearchDialogOpen(false)}
-        />
-      )}
     </div>
   );
 }

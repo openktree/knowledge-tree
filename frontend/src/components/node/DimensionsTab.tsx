@@ -4,7 +4,6 @@ import type { DimensionResponse } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ConfidenceIndicator } from "@/components/answer/ConfidenceIndicator";
 import { BrainCircuit, CheckCircle, FileEdit } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -71,10 +70,9 @@ export function DimensionsTab({
                 )}
               </div>
               <div className="flex items-center gap-3">
-                <ConfidenceIndicator
-                  score={dimension.confidence}
-                  label="Confidence"
-                />
+                <Badge variant="outline" className="text-xs">
+                  Confidence: {(dimension.confidence * 100).toFixed(0)}%
+                </Badge>
                 <span className="text-xs text-muted-foreground">
                   {formatDate(dimension.generated_at)}
                 </span>

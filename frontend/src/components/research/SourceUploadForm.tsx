@@ -379,7 +379,7 @@ export function SourceUploadForm() {
     try {
       const selected = nodes.filter((n) => n.selected);
       await api.research.build(prepareResult.conversation_id, selected);
-      router.push(`/conversation/${prepareResult.conversation_id}`);
+      router.push(`/research`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Build failed");
       setStep("review");
@@ -404,7 +404,7 @@ export function SourceUploadForm() {
         50, // default nav budget for legacy path
         allSelected,
       );
-      router.push(`/conversation/${result.id}`);
+      router.push(`/research`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ingest failed");
       setStep("confirm");
