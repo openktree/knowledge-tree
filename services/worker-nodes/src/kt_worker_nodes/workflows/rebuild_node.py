@@ -107,7 +107,11 @@ async def rebuild_node(input: RebuildNodeInput, ctx: Context) -> dict:
                 await ws.commit()
             ctx.log(f"rebuild_node: node '{node_concept}' has {fact_count} facts (need {min_facts}) — marked partial")
             return RebuildNodeOutput(
-                node_id=nid, status="skipped", mode=mode, scope=scope, fact_count=fact_count,
+                node_id=nid,
+                status="skipped",
+                mode=mode,
+                scope=scope,
+                fact_count=fact_count,
             ).model_dump()
 
     # ── Phase 2.5: sync seed facts ────────────────────────────────
@@ -163,7 +167,9 @@ async def rebuild_node(input: RebuildNodeInput, ctx: Context) -> dict:
         if mode == "full":
             try:
                 refresh_result = await pipeline.refresh_edge_justifications(
-                    nid, node_concept, node_type,
+                    nid,
+                    node_concept,
+                    node_type,
                 )
                 edges_refreshed = refresh_result.get("edges_refreshed", 0)
                 if edges_refreshed:
@@ -225,14 +231,16 @@ async def rebuild_node(input: RebuildNodeInput, ctx: Context) -> dict:
 
     try:
         await ctx.aio_put_stream(
-            json.dumps({
-                "type": "rebuild_complete",
-                "node_id": nid,
-                "mode": mode,
-                "scope": scope,
-                "dimensions_created": dims_created,
-                "fact_count": total_facts,
-            })
+            json.dumps(
+                {
+                    "type": "rebuild_complete",
+                    "node_id": nid,
+                    "mode": mode,
+                    "scope": scope,
+                    "dimensions_created": dims_created,
+                    "fact_count": total_facts,
+                }
+            )
         )
     except Exception:
         pass

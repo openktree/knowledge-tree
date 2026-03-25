@@ -457,7 +457,11 @@ class HatchetPipeline:
         dimensions_created = len(dim_result.dim_results)
         logger.info(
             "full_dimensions: node %s ('%s') — %d dims from %d facts (deleted %d old)",
-            node_id, node.concept, dimensions_created, len(facts), deleted,
+            node_id,
+            node.concept,
+            dimensions_created,
+            len(facts),
+            deleted,
         )
         return {
             "node_id": node_id,
