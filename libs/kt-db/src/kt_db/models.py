@@ -46,6 +46,10 @@ class Node(Base):
     definition_generated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     enrichment_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="public", server_default="public")
+    creator_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
 
     def __init__(self, **kwargs: object) -> None:
         self._embedding: list[float] | None = kwargs.pop("embedding", None)  # type: ignore[assignment]
@@ -662,3 +666,76 @@ class LlmUsage(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+# ── Synthesis document models ─────────────────────────────────────────
+
+
+class SynthesisSentence(Base):
+    """A sentence in a synthesis/supersynthesis document."""
+
+    __tablename__ = "synthesis_sentences"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    synthesis_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sentence_text: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    # Relationships
+    fact_links: Mapped[list["SentenceFact"]] = relationship(back_populates="sentence", cascade="all, delete-orphan")
+    node_links: Mapped[list["SentenceNodeLink"]] = relationship(
+        back_populates="sentence", cascade="all, delete-orphan"
+    )
+
+
+class SentenceFact(Base):
+    """Links a synthesis sentence to a fact by embedding distance."""
+
+    __tablename__ = "sentence_facts"
+
+    sentence_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("synthesis_sentences.id", ondelete="CASCADE"), primary_key=True
+    )
+    fact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("facts.id", ondelete="CASCADE"), primary_key=True
+    )
+    embedding_distance: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Relationships
+    sentence: Mapped["SynthesisSentence"] = relationship(back_populates="fact_links")
+    fact: Mapped["Fact"] = relationship()
+
+
+class SentenceNodeLink(Base):
+    """Links a synthesis sentence to a node (by name/alias text match)."""
+
+    __tablename__ = "sentence_node_links"
+
+    sentence_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("synthesis_sentences.id", ondelete="CASCADE"), primary_key=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
+    )
+    link_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "name_match" | "alias_match"
+
+    # Relationships
+    sentence: Mapped["SynthesisSentence"] = relationship(back_populates="node_links")
+    node: Mapped["Node"] = relationship()
+
+
+class SynthesisChild(Base):
+    """Links a supersynthesis to its child synthesis nodes."""
+
+    __tablename__ = "synthesis_children"
+
+    supersynthesis_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
+    )
+    synthesis_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
