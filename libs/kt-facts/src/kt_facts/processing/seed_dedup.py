@@ -255,12 +255,13 @@ async def deduplicate_seed(
                         model_gateway=model_gateway,
                     )
                     if not confirmed:
-                        # LLM says different — create embedding-ambiguity routes
-                        await _create_embedding_disambiguation(
-                            seed_key,
-                            match.seed_key,
+                        # LLM says different — just skip. Disambiguation trees
+                        # are reserved for genuine homonyms detected by fact
+                        # clustering in seed_disambiguation.py.
+                        logger.info(
+                            "LLM merge gate rejected: '%s' vs '%s' — keeping separate",
+                            name,
                             matched_seed.name,
-                            write_seed_repo,
                         )
                         continue  # try next candidate
 
@@ -580,16 +581,30 @@ async def _llm_confirm_merge(
     facts_a_str = "\n".join(f"  - {f}" for f in incoming_facts_text) if incoming_facts_text else "  (no facts yet)"
     facts_b_str = "\n".join(f"  - {f}" for f in candidate_facts_text) if candidate_facts_text else "  (no facts yet)"
 
+    # Compute string similarity to give LLM context on how close the names are
+    d = edit_distance(incoming_name.lower(), candidate_name.lower())
+    max_len = max(len(incoming_name), len(candidate_name))
+    string_sim_pct = int((1.0 - d / max_len) * 100) if max_len else 100
+
     prompt = (
-        "Are these two knowledge-graph seeds the SAME concept/entity?\n"
-        "Be STRICT — only confirm for synonyms, abbreviations, or "
-        "different-specificity names for the same thing. "
-        "Related-but-distinct concepts = NOT same.\n\n"
+        "Two knowledge-graph seeds matched by high embedding similarity. "
+        f"Their names are {string_sim_pct}% identical by edit distance. "
+        "Determine whether they refer to the SAME concept/entity.\n\n"
+        "MERGE (same_entity=true) when:\n"
+        '- Singular/plural forms ("neural network" / "neural networks")\n'
+        '- Synonyms or abbreviations ("LLM" / "large language model")\n'
+        '- Grammatical variants ("photosynthesis" / "photosynthetic process")\n'
+        '- Same concept at different specificity ("ML" / "machine learning")\n\n'
+        "DO NOT MERGE (same_entity=false) when:\n"
+        "- Distinct processes sharing terminology "
+        '("light-dependent reactions" / "light-independent reactions")\n'
+        '- Different subdisciplines ("deep learning" / "reinforcement learning")\n'
+        '- Different entities with the same name ("Mercury" planet vs element)\n\n'
         f'Seed A: "{incoming_name}"\n'
         f"Facts:\n{facts_a_str}\n\n"
         f'Seed B: "{candidate_name}"\n'
         f"Facts:\n{facts_b_str}\n\n"
-        'JSON: {"same_entity": bool, "preferred_name": "more specific name or null"}'
+        'JSON: {"same_entity": bool, "preferred_name": "more canonical form or null"}'
     )
 
     try:

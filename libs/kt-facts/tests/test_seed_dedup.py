@@ -1144,8 +1144,8 @@ class TestLLMConfirmMerge:
         # LLM SHOULD have been called (academic initials guard blocks auto-merge)
         model_gw.generate_json.assert_called_once()
 
-    async def test_llm_rejects_creates_anchor(self):
-        """LLM says different → existing becomes disambiguation anchor."""
+    async def test_llm_rejects_skips_without_disambiguation(self):
+        """LLM says different → seeds kept separate, no disambiguation tree."""
         repo = make_seed_repo_mock()
         existing = make_seed(
             "concept:light-dependent-reactions",
@@ -1192,8 +1192,9 @@ class TestLLMConfirmMerge:
         )
         # Should NOT have merged
         repo.merge_seeds.assert_not_called()
-        # Should have created disambiguation (split_seed called)
-        repo.split_seed.assert_called_once()
+        # Should NOT create disambiguation tree — just skip
+        repo.split_seed.assert_not_called()
+        repo.create_route.assert_not_called()
 
     async def test_llm_unavailable_auto_merges(self):
         """Without model_gateway, Signal 1 auto-merges (backward compat)."""
