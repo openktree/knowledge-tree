@@ -175,6 +175,9 @@ export default function NodeDetailPanel({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={() => rebuildNode("incremental", "all")}>
+                      Incremental Refresh
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => rebuildNode("full", "all")}>
                       Full Rebuild
                     </DropdownMenuItem>
@@ -248,7 +251,7 @@ export default function NodeDetailPanel({
                     variant="outline"
                     size="sm"
                     className="mt-1.5 h-6 text-xs gap-1 border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                    onClick={() => rebuildNode("full", "all")}
+                    onClick={() => rebuildNode("incremental", "all")}
                     disabled={isRebuilding}
                   >
                     <Sparkles className={cn("h-3 w-3", isRebuilding && "animate-spin")} />
