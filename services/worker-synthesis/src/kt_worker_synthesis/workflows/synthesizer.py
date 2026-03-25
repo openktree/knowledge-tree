@@ -1,0 +1,187 @@
+"""Hatchet workflow for the Synthesizer Agent.
+
+Dispatched via API to create a new synthesis document:
+1. Creates a synthesis node
+2. Runs the SynthesizerAgent to navigate the graph and produce text
+3. Runs the document processing pipeline (split, embed, link)
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import uuid
+from datetime import timedelta
+from typing import Any, cast
+
+from hatchet_sdk import Context
+
+from kt_hatchet.client import get_hatchet
+from kt_hatchet.lifespan import WorkerState
+from kt_hatchet.models import SynthesizerInput, SynthesizerOutput
+
+logger = logging.getLogger(__name__)
+
+hatchet = get_hatchet()
+
+synthesizer_wf = hatchet.workflow(name="synthesizer_wf", input_validator=SynthesizerInput)
+
+
+@synthesizer_wf.task(execution_timeout=timedelta(minutes=30))
+async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, Any]:
+    """Run the full synthesis pipeline."""
+    worker_state = cast(WorkerState, ctx.lifespan)
+
+    from kt_agents_core.state import AgentContext
+    from kt_graph.engine import GraphEngine
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from kt_worker_synthesis.agents.synthesizer_agent import SynthesizerAgent
+    from kt_worker_synthesis.agents.synthesizer_state import SynthesizerState
+    from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
+    from kt_worker_synthesis.prompts.synthesizer import build_synthesizer_system_message
+
+    async with worker_state.session_factory() as session:
+        write_session = None
+        if worker_state.write_session_factory is not None:
+            write_session = worker_state.write_session_factory()
+
+        try:
+            graph_engine = GraphEngine(
+                session,
+                worker_state.embedding_service,
+                write_session=write_session,
+                qdrant_client=worker_state.qdrant_client,
+            )
+
+            async def emit_event(event_type: str, **data: Any) -> None:
+                try:
+                    await ctx.aio_put_stream(json.dumps({"type": event_type, **data}))
+                except Exception:
+                    pass
+
+            agent_ctx = AgentContext(
+                graph_engine=graph_engine,
+                provider_registry=worker_state.provider_registry,
+                model_gateway=worker_state.model_gateway,
+                embedding_service=worker_state.embedding_service,
+                session=session,
+                session_factory=worker_state.session_factory,
+                emit_event=emit_event,
+                write_session_factory=worker_state.write_session_factory,
+                qdrant_client=worker_state.qdrant_client,
+            )
+
+            # Build system message
+            system_content = build_synthesizer_system_message(
+                topic=input.topic,
+                starting_node_ids=input.starting_node_ids,
+                budget=input.exploration_budget,
+            )
+
+            initial_state = SynthesizerState(
+                topic=input.topic,
+                starting_node_ids=input.starting_node_ids,
+                exploration_budget=input.exploration_budget,
+                messages=[
+                    SystemMessage(content=system_content),
+                    HumanMessage(
+                        content=(
+                            "Investigate the topic using the tools available. When done, "
+                            "call finish_synthesis(text) with your complete markdown document. "
+                            "The text argument must contain the COMPLETE document — anything "
+                            "written outside finish_synthesis() is discarded."
+                        )
+                    ),
+                ],
+            )
+
+            # Run the agent
+            await emit_event("synthesis_agent_started", topic=input.topic)
+
+            agent = SynthesizerAgent(agent_ctx)
+            graph, _ = agent.build_graph()
+            compiled = graph.compile()
+
+            recursion_limit = max(input.exploration_budget * 6 + 20, 50)
+            final = await compiled.ainvoke(
+                initial_state, config={"recursion_limit": recursion_limit}
+            )
+
+            if isinstance(final, dict):
+                synthesis_text = final.get("synthesis_text", "")
+                nodes_visited = final.get("nodes_visited", [])
+            else:
+                synthesis_text = final.synthesis_text
+                nodes_visited = final.nodes_visited
+
+            if not synthesis_text:
+                logger.warning("Synthesizer agent ended without producing text")
+                synthesis_text = "Synthesis completed but no document was produced."
+
+            # Create synthesis node
+            synthesis_node_id = uuid.uuid4()
+            node = await graph_engine.create_node(
+                concept=input.topic or "Synthesis",
+                node_type="synthesis",
+                node_id=synthesis_node_id,
+                definition=synthesis_text,
+            )
+            if node:
+                synthesis_node_id = node.id
+
+            # Set visibility and creator via write-db if available
+            if write_session:
+                from kt_db.write_models import WriteNode
+                from sqlalchemy import update
+
+                await write_session.execute(
+                    update(WriteNode)
+                    .where(WriteNode.node_uuid == synthesis_node_id)
+                    .values(
+                        visibility=input.visibility,
+                        creator_id=input.creator_id,
+                    )
+                )
+                await write_session.commit()
+
+            # Build node name/alias lookup for text matching
+            node_names: dict[str, list[str]] = {}
+            for nid in nodes_visited:
+                try:
+                    n = await graph_engine.get_node(uuid.UUID(nid))
+                    if n:
+                        names = [n.concept]
+                        node_names[nid] = names
+                except Exception:
+                    pass
+
+            # Run document processing pipeline
+            stats = await process_synthesis_document(
+                synthesis_node_id=synthesis_node_id,
+                synthesis_text=synthesis_text,
+                session=session,
+                embedding_service=worker_state.embedding_service,
+                qdrant_client=worker_state.qdrant_client,
+                node_names_and_aliases=node_names,
+            )
+
+            await session.commit()
+
+            await emit_event(
+                "synthesis_completed",
+                synthesis_node_id=str(synthesis_node_id),
+                **stats,
+            )
+
+            output = SynthesizerOutput(
+                synthesis_node_id=str(synthesis_node_id),
+                sentences_count=stats.get("sentences_count", 0),
+                facts_linked=stats.get("facts_linked", 0),
+                nodes_referenced=stats.get("nodes_referenced", 0),
+            )
+            return output.model_dump()
+
+        finally:
+            if write_session is not None:
+                await write_session.close()

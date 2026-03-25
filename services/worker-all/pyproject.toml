@@ -10,6 +10,7 @@ dependencies = [
     "kt-worker-nodes",
     "kt-worker-ingest",
     "kt-worker-sync",
+    "kt-worker-synthesis",
 ]
 
 [build-system]
@@ -23,6 +24,7 @@ kt-worker-search = { workspace = true }
 kt-worker-nodes = { workspace = true }
 kt-worker-ingest = { workspace = true }
 kt-worker-sync = { workspace = true }
+kt-worker-synthesis = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kt_worker_all"]

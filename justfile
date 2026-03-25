@@ -18,6 +18,9 @@ worker-nodes:
 worker-ingest:
     uv run --project services/worker-ingest -m kt_worker_ingest
 
+worker-synthesis:
+    uv run --project services/worker-synthesis -m kt_worker_synthesis
+
 worker-sync:
     uv run --project services/worker-sync -m kt_worker_sync
 
