@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { X, Loader2, RefreshCw, Search, ArrowLeftRight, GitBranch, Sparkles, ChevronDown } from "lucide-react";
+import { X, Loader2, RefreshCw, ArrowLeftRight, GitBranch, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DimensionsTab } from "@/components/node/DimensionsTab";
 import { ConvergenceTab } from "@/components/node/ConvergenceTab";
@@ -65,7 +65,6 @@ export default function NodeDetailPanel({
     isRebuilding,
     refreshPerspectives,
   } = useNodeDetail(nodeId);
-  const [researchDialogOpen, setResearchDialogOpen] = useState(false);
 
   if (!nodeId) return null;
 
@@ -188,15 +187,6 @@ export default function NodeDetailPanel({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 text-xs gap-1"
-                  onClick={() => setResearchDialogOpen(true)}
-                >
-                  <Search className="h-3 w-3" />
-                  Research
-                </Button>
               </div>
               {!!node.metadata?.dialectic_pair_id && (
                 <Button

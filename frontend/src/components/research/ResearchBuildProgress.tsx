@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   Loader2,
   CheckCircle2,
@@ -384,10 +385,10 @@ export function ResearchBuildProgress({
       {/* Link to nodes */}
       {overallStatus === "completed" && (
         <Button variant="outline" className="w-full gap-2" asChild>
-          <a href="/nodes">
+          <Link href="/nodes">
             <ExternalLink className="size-4" />
             Browse Nodes
-          </a>
+          </Link>
         </Button>
       )}
     </div>

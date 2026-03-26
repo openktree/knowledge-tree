@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { TreePine } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 
@@ -26,7 +27,7 @@ export default function HomePage() {
 
         {/* Navigation cards */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <a
+          <Link
             href="/syntheses"
             className="rounded-lg border p-6 hover:bg-accent transition-colors"
           >
@@ -34,8 +35,8 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground">
               Create and view research synthesis documents from the graph.
             </p>
-          </a>
-          <a
+          </Link>
+          <Link
             href="/research"
             className="rounded-lg border p-6 hover:bg-accent transition-colors"
           >
@@ -43,8 +44,8 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground">
               Upload files or add links to grow the knowledge graph.
             </p>
-          </a>
-          <a
+          </Link>
+          <Link
             href="/nodes"
             className="rounded-lg border p-6 hover:bg-accent transition-colors"
           >
@@ -52,8 +53,8 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground">
               Explore nodes, edges, facts, and seeds in the knowledge graph.
             </p>
-          </a>
-          <a
+          </Link>
+          <Link
             href="/seeds"
             className="rounded-lg border p-6 hover:bg-accent transition-colors"
           >
@@ -61,7 +62,7 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground">
               View extracted entities and concepts awaiting promotion.
             </p>
-          </a>
+          </Link>
         </div>
 
         {user && (

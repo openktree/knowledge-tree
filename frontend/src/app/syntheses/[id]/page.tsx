@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSynthesis } from "@/lib/api";
@@ -17,14 +18,21 @@ export default function SynthesisDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchDocument = useCallback(async () => {
     if (!id) return;
-    setLoading(true);
-    getSynthesis(id)
-      .then(setDocument)
-      .catch((err) => setError(err.message || "Failed to load synthesis"))
-      .finally(() => setLoading(false));
+    try {
+      const doc = await getSynthesis(id);
+      setDocument(doc);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load synthesis");
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    fetchDocument();
+  }, [fetchDocument]);
 
   if (loading) {
     return (
@@ -38,10 +46,10 @@ export default function SynthesisDetailPage() {
     return (
       <div className="container max-w-4xl py-8">
         <Button variant="ghost" asChild className="mb-4">
-          <a href="/syntheses">
+          <Link href="/syntheses">
             <ArrowLeft className="mr-2 size-4" />
             Back to Syntheses
-          </a>
+          </Link>
         </Button>
         <p className="text-destructive">{error || "Synthesis not found"}</p>
       </div>
@@ -51,10 +59,10 @@ export default function SynthesisDetailPage() {
   return (
     <div className="container max-w-6xl py-8">
       <Button variant="ghost" asChild className="mb-4">
-        <a href="/syntheses">
+        <Link href="/syntheses">
           <ArrowLeft className="mr-2 size-4" />
           Back to Syntheses
-        </a>
+        </Link>
       </Button>
       <SynthesisDocument document={document} />
     </div>

@@ -399,7 +399,7 @@ export function SourceUploadForm() {
           ? null
           : Array.from(selectedChunks);
 
-      const result = await api.research.confirm(
+      await api.research.confirm(
         prepareResult.conversation_id,
         50, // default nav budget for legacy path
         allSelected,
