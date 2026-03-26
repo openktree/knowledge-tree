@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/badge";
@@ -21,17 +21,59 @@ interface SynthesisDocumentProps {
   document: SynthesisDocumentResponse;
 }
 
+/**
+ * Build a map from paragraph text (first 60 chars) to the sentences it contains.
+ * A paragraph may contain multiple sentences.
+ */
+function buildParagraphSentenceMap(
+  definition: string,
+  sentences: SynthesisSentenceResponse[]
+): Map<string, SynthesisSentenceResponse[]> {
+  const map = new Map<string, SynthesisSentenceResponse[]>();
+  if (!definition || sentences.length === 0) return map;
+
+  // Split definition into paragraphs (by double newline or heading)
+  const paragraphs = definition.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+
+  for (const para of paragraphs) {
+    // Strip markdown formatting for matching
+    const plainPara = para
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1");
+
+    const matched: SynthesisSentenceResponse[] = [];
+    for (const s of sentences) {
+      // Strip links/formatting from sentence text too
+      const plainSentence = s.text
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/\*([^*]+)\*/g, "$1")
+        .trim();
+      // Check if this sentence's text appears in the paragraph
+      if (plainSentence.length > 10 && plainPara.includes(plainSentence.slice(0, 40))) {
+        matched.push(s);
+      }
+    }
+
+    if (matched.length > 0) {
+      // Use first 60 chars of the raw paragraph as key
+      const key = para.slice(0, 60).trim();
+      map.set(key, matched);
+    }
+  }
+
+  return map;
+}
+
 export function SynthesisDocument({ document }: SynthesisDocumentProps) {
-  const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
+  const [selectedSentences, setSelectedSentences] = useState<SynthesisSentenceResponse[] | null>(null);
+  const [selectedParaKey, setSelectedParaKey] = useState<string | null>(null);
   const [factLinks, setFactLinks] = useState<SentenceFactLink[] | null>(null);
   const [loadingFacts, setLoadingFacts] = useState(false);
+  const [activeSentencePos, setActiveSentencePos] = useState<number | null>(null);
 
-  const selectedSentence =
-    selectedPosition !== null
-      ? document.sentences[selectedPosition] ?? null
-      : null;
-
-  // Build lookups
   const nodeMap = useMemo(() => {
     const map = new Map<string, SynthesisNodeResponse>();
     for (const n of document.referenced_nodes) {
@@ -40,78 +82,105 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
     return map;
   }, [document.referenced_nodes]);
 
-  // Build a map from sentence text -> sentence data for matching in markdown
-  const sentenceMap = useMemo(() => {
-    const map = new Map<string, SynthesisSentenceResponse>();
-    for (const s of document.sentences) {
-      // Use a normalized key (first 80 chars) to handle minor whitespace diffs
-      const key = s.text.slice(0, 80).trim();
-      if (key) map.set(key, s);
-    }
-    return map;
-  }, [document.sentences]);
+  const paragraphMap = useMemo(
+    () => buildParagraphSentenceMap(document.definition || "", document.sentences),
+    [document.definition, document.sentences]
+  );
 
-  const handleSentenceClick = async (position: number) => {
-    if (selectedPosition === position) {
-      setSelectedPosition(null);
-      setFactLinks(null);
-      return;
-    }
-    setSelectedPosition(position);
-    setFactLinks(null);
-
-    const sentence = document.sentences[position];
-    if (sentence && sentence.fact_count > 0) {
-      setLoadingFacts(true);
-      try {
-        const facts = await getSentenceFacts(document.id, position);
-        setFactLinks(facts);
-      } catch {
-        setFactLinks([]);
-      } finally {
-        setLoadingFacts(false);
+  const handleParaClick = useCallback(
+    (paraKey: string, sentences: SynthesisSentenceResponse[]) => {
+      if (selectedParaKey === paraKey) {
+        setSelectedSentences(null);
+        setSelectedParaKey(null);
+        setFactLinks(null);
+        setActiveSentencePos(null);
+        return;
       }
-    }
-  };
+      setSelectedSentences(sentences);
+      setSelectedParaKey(paraKey);
+      setFactLinks(null);
+      setActiveSentencePos(null);
+    },
+    [selectedParaKey]
+  );
 
-  // Find which sentence a text fragment belongs to
-  const findSentence = (text: string): SynthesisSentenceResponse | null => {
-    const trimmed = text.trim();
-    if (!trimmed || trimmed.length < 10) return null;
-    const key = trimmed.slice(0, 80).trim();
-    return sentenceMap.get(key) ?? null;
-  };
+  const handleSentenceFactLoad = useCallback(
+    async (sentence: SynthesisSentenceResponse) => {
+      if (activeSentencePos === sentence.position) {
+        setActiveSentencePos(null);
+        setFactLinks(null);
+        return;
+      }
+      setActiveSentencePos(sentence.position);
+      if (sentence.fact_count > 0) {
+        setLoadingFacts(true);
+        try {
+          const facts = await getSentenceFacts(document.id, sentence.position);
+          setFactLinks(facts);
+        } catch {
+          setFactLinks([]);
+        } finally {
+          setLoadingFacts(false);
+        }
+      } else {
+        setFactLinks([]);
+      }
+    },
+    [activeSentencePos, document.id]
+  );
 
-  // Custom markdown components that overlay sentence interactivity
+  // Custom markdown components
   const markdownComponents = useMemo(
     () => ({
-      // Render paragraphs with sentence-level interactivity
       p: ({ children }: { children?: React.ReactNode }) => {
+        // Extract plain text to find matching sentences
+        const text = extractText(children);
+        const key = text.slice(0, 60).trim();
+        const sentences = paragraphMap.get(key);
+        const isSelected = selectedParaKey === key;
+        const hasInfo = sentences && sentences.some((s) => s.fact_count > 0 || s.node_ids.length > 0);
+        const totalFacts = sentences?.reduce((sum, s) => sum + s.fact_count, 0) ?? 0;
+        const totalNodes = sentences?.reduce((sum, s) => sum + s.node_ids.length, 0) ?? 0;
+
         return (
-          <p className="mb-4 leading-relaxed">
-            <InteractiveText
-              findSentence={findSentence}
-              selectedPosition={selectedPosition}
-              onSentenceClick={handleSentenceClick}
-            >
-              {children}
-            </InteractiveText>
+          <p
+            className={`mb-4 leading-relaxed rounded-sm transition-colors ${
+              isSelected
+                ? "bg-primary/5 ring-1 ring-primary/20 px-2 py-1 -mx-2"
+                : hasInfo
+                  ? "hover:bg-muted/30 cursor-pointer px-2 py-1 -mx-2"
+                  : ""
+            }`}
+            onClick={
+              hasInfo && sentences
+                ? () => handleParaClick(key, sentences)
+                : undefined
+            }
+          >
+            {children}
+            {hasInfo && (
+              <>
+                {" "}
+                <Badge
+                  variant={isSelected ? "default" : "outline"}
+                  className="text-[10px] px-1 py-0 align-super"
+                >
+                  {totalNodes > 0 && `${totalNodes}n`}
+                  {totalNodes > 0 && totalFacts > 0 && " "}
+                  {totalFacts > 0 && `${totalFacts}f`}
+                </Badge>
+              </>
+            )}
           </p>
         );
       },
-      // Render links as Next.js Links for internal, regular <a> for external
-      a: ({
-        href,
-        children,
-      }: {
-        href?: string;
-        children?: React.ReactNode;
-      }) => {
+      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
         if (href?.startsWith("/nodes/") || href?.startsWith("/facts/")) {
           return (
             <Link
               href={href}
               className="text-primary underline underline-offset-2 hover:text-primary/80"
+              onClick={(e) => e.stopPropagation()}
             >
               {children}
             </Link>
@@ -123,12 +192,12 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary underline underline-offset-2"
+            onClick={(e) => e.stopPropagation()}
           >
             {children}
           </a>
         );
       },
-      // Style headings
       h1: ({ children }: { children?: React.ReactNode }) => (
         <h1 className="text-2xl font-bold mt-6 mb-3">{children}</h1>
       ),
@@ -138,21 +207,38 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       h3: ({ children }: { children?: React.ReactNode }) => (
         <h3 className="text-lg font-medium mt-4 mb-2">{children}</h3>
       ),
-      // Style list items with sentence interactivity
-      li: ({ children }: { children?: React.ReactNode }) => (
-        <li className="mb-1">
-          <InteractiveText
-            findSentence={findSentence}
-            selectedPosition={selectedPosition}
-            onSentenceClick={handleSentenceClick}
+      li: ({ children }: { children?: React.ReactNode }) => {
+        const text = extractText(children);
+        const key = text.slice(0, 60).trim();
+        const sentences = paragraphMap.get(key);
+        const hasInfo = sentences && sentences.some((s) => s.fact_count > 0 || s.node_ids.length > 0);
+        const isSelected = selectedParaKey === key;
+
+        return (
+          <li
+            className={`mb-1 ${
+              isSelected
+                ? "bg-primary/5 rounded px-1"
+                : hasInfo
+                  ? "hover:bg-muted/30 cursor-pointer rounded px-1"
+                  : ""
+            }`}
+            onClick={
+              hasInfo && sentences
+                ? (e) => {
+                    e.stopPropagation();
+                    handleParaClick(key, sentences);
+                  }
+                : undefined
+            }
           >
             {children}
-          </InteractiveText>
-        </li>
-      ),
+          </li>
+        );
+      },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedPosition, sentenceMap]
+    [selectedParaKey, paragraphMap]
   );
 
   const hasDefinition = document.definition && document.definition.trim();
@@ -195,123 +281,132 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           </CardContent>
         </Card>
 
-        {/* Sub-syntheses */}
         {document.sub_syntheses.length > 0 && (
           <SubSynthesisList subSyntheses={document.sub_syntheses} />
         )}
-
-        {/* Referenced nodes */}
         {document.referenced_nodes.length > 0 && (
           <SynthesisNodeList nodes={document.referenced_nodes} />
         )}
       </div>
 
-      {/* Right panel — sentence details (lazy-loaded) */}
-      {selectedSentence && (
+      {/* Right panel — paragraph/sentence details */}
+      {selectedSentences && selectedSentences.length > 0 && (
         <div className="w-96 shrink-0">
           <Card className="sticky top-4">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <CardTitle className="text-sm">
-                Sentence {selectedSentence.position + 1}
+                {selectedSentences.length} sentence{selectedSentences.length !== 1 ? "s" : ""} in this section
               </CardTitle>
               <Button
                 variant="ghost"
                 size="icon"
                 className="size-6"
                 onClick={() => {
-                  setSelectedPosition(null);
+                  setSelectedSentences(null);
+                  setSelectedParaKey(null);
                   setFactLinks(null);
+                  setActiveSentencePos(null);
                 }}
               >
                 <X className="size-4" />
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4 max-h-[70vh] overflow-y-auto">
-              {/* Sentence text */}
-              <p className="text-sm text-muted-foreground italic border-l-2 pl-3">
-                {selectedSentence.text.replace(
-                  /\[([^\]]+)\]\([^)]+\)/g,
-                  "$1"
-                )}
-              </p>
+            <CardContent className="space-y-3 max-h-[70vh] overflow-y-auto">
+              {selectedSentences.map((sentence) => {
+                const isActive = activeSentencePos === sentence.position;
+                const hasNodes = sentence.node_ids.length > 0;
+                const hasFacts = sentence.fact_count > 0;
 
-              {/* Related nodes */}
-              {selectedSentence.node_ids.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-xs font-medium flex items-center gap-1.5">
-                    <CircleDot className="size-3" />
-                    Related Nodes ({selectedSentence.node_ids.length})
-                  </h4>
-                  <div className="space-y-1">
-                    {selectedSentence.node_ids.map((nid) => {
-                      const nodeInfo = nodeMap.get(nid);
-                      return (
-                        <Link
-                          key={nid}
-                          href={`/nodes/${nid}`}
-                          className="flex items-center gap-2 rounded border px-2 py-1.5 text-xs hover:bg-accent transition-colors"
-                        >
-                          <CircleDot className="size-3 text-primary shrink-0" />
-                          <span className="truncate">
-                            {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
-                          </span>
-                          {nodeInfo?.node_type && (
-                            <Badge
-                              variant="outline"
-                              className="text-[9px] px-1 py-0 shrink-0"
-                            >
-                              {nodeInfo.node_type}
-                            </Badge>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Related facts (lazy-loaded) */}
-              {selectedSentence.fact_count > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-xs font-medium flex items-center gap-1.5">
-                    <FileText className="size-3" />
-                    Closest Facts ({selectedSentence.fact_count})
-                  </h4>
-                  {loadingFacts ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-                      <Loader2 className="size-3 animate-spin" />
-                      Loading facts...
-                    </div>
-                  ) : factLinks && factLinks.length > 0 ? (
-                    <ul className="space-y-1">
-                      {factLinks.map((fl) => (
-                        <li key={fl.fact_id} className="text-xs">
-                          <Link
-                            href={`/facts/${fl.fact_id}`}
-                            className="text-primary hover:underline"
-                          >
-                            {fl.fact_id.slice(0, 12)}...
-                          </Link>
-                          <span className="text-muted-foreground ml-1">
-                            ({(fl.distance * 100).toFixed(0)}% match)
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-[10px] text-muted-foreground">
-                      No fact links available.
+                return (
+                  <div
+                    key={sentence.position}
+                    className={`rounded-md border p-3 space-y-2 transition-colors ${
+                      isActive ? "border-primary bg-primary/5" : "hover:bg-muted/30 cursor-pointer"
+                    }`}
+                    onClick={() => handleSentenceFactLoad(sentence)}
+                  >
+                    {/* Sentence preview */}
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {sentence.text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").slice(0, 120)}
+                      {sentence.text.length > 120 ? "..." : ""}
                     </p>
-                  )}
-                </div>
-              )}
 
-              {selectedSentence.node_ids.length === 0 &&
-                selectedSentence.fact_count === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    No nodes or facts linked to this sentence.
-                  </p>
-                )}
+                    {/* Counts */}
+                    <div className="flex gap-2">
+                      {hasNodes && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {sentence.node_ids.length} node{sentence.node_ids.length !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
+                      {hasFacts && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {sentence.fact_count} fact{sentence.fact_count !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Expanded details when active */}
+                    {isActive && (
+                      <div className="space-y-3 pt-2 border-t">
+                        {/* Nodes */}
+                        {hasNodes && (
+                          <div className="space-y-1">
+                            <h5 className="text-[10px] font-medium flex items-center gap-1">
+                              <CircleDot className="size-3" /> Nodes
+                            </h5>
+                            {sentence.node_ids.map((nid) => {
+                              const nodeInfo = nodeMap.get(nid);
+                              return (
+                                <Link
+                                  key={nid}
+                                  href={`/nodes/${nid}`}
+                                  className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <CircleDot className="size-2.5 shrink-0" />
+                                  {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Facts (lazy-loaded) */}
+                        {hasFacts && (
+                          <div className="space-y-1">
+                            <h5 className="text-[10px] font-medium flex items-center gap-1">
+                              <FileText className="size-3" /> Facts
+                            </h5>
+                            {loadingFacts ? (
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <Loader2 className="size-3 animate-spin" />
+                                Loading...
+                              </div>
+                            ) : factLinks && factLinks.length > 0 ? (
+                              factLinks.map((fl) => (
+                                <Link
+                                  key={fl.fact_id}
+                                  href={`/facts/${fl.fact_id}`}
+                                  className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <FileText className="size-2.5 shrink-0" />
+                                  {fl.fact_id.slice(0, 12)}...
+                                  <span className="text-muted-foreground">
+                                    ({(fl.distance * 100).toFixed(0)}%)
+                                  </span>
+                                </Link>
+                              ))
+                            ) : (
+                              <p className="text-[10px] text-muted-foreground">No facts.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         </div>
@@ -320,79 +415,16 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   );
 }
 
-// ── InteractiveText: wraps text children with sentence click handlers ──
+// ── Helpers ──────────────────────────────────────────────────────
 
-interface InteractiveTextProps {
-  children: React.ReactNode;
-  findSentence: (text: string) => SynthesisSentenceResponse | null;
-  selectedPosition: number | null;
-  onSentenceClick: (position: number) => void;
-}
-
-function InteractiveText({
-  children,
-  findSentence,
-  selectedPosition,
-  onSentenceClick,
-}: InteractiveTextProps) {
-  if (!children) return null;
-
-  // Process children — wrap text nodes with sentence handlers
-  const processChild = (
-    child: React.ReactNode,
-    key: number
-  ): React.ReactNode => {
-    if (typeof child === "string") {
-      const sentence = findSentence(child);
-      if (sentence) {
-        const hasInfo =
-          sentence.fact_count > 0 || sentence.node_ids.length > 0;
-        const isSelected = selectedPosition === sentence.position;
-        return (
-          <span
-            key={key}
-            className={`${
-              hasInfo ? "cursor-pointer" : ""
-            } transition-colors rounded-sm ${
-              isSelected
-                ? "bg-primary/10 ring-1 ring-primary/30"
-                : hasInfo
-                  ? "hover:bg-muted/50"
-                  : ""
-            }`}
-            onClick={
-              hasInfo ? () => onSentenceClick(sentence.position) : undefined
-            }
-          >
-            {child}
-            {hasInfo && (
-              <>
-                {" "}
-                <Badge
-                  variant={isSelected ? "default" : "outline"}
-                  className="text-[10px] px-1 py-0 align-super no-underline"
-                >
-                  {sentence.node_ids.length > 0 &&
-                    `${sentence.node_ids.length}n`}
-                  {sentence.node_ids.length > 0 &&
-                    sentence.fact_count > 0 &&
-                    " "}
-                  {sentence.fact_count > 0 && `${sentence.fact_count}f`}
-                </Badge>
-              </>
-            )}
-          </span>
-        );
-      }
-      return child;
-    }
-
-    // Pass through non-text children (e.g., <a>, <strong>, <em>)
-    return child;
-  };
-
-  if (Array.isArray(children)) {
-    return <>{children.map((child, i) => processChild(child, i))}</>;
+/** Recursively extract plain text from React children. */
+function extractText(children: React.ReactNode): string {
+  if (!children) return "";
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(extractText).join("");
+  if (typeof children === "object" && "props" in children) {
+    return extractText((children as React.ReactElement).props?.children);
   }
-  return <>{processChild(children, 0)}</>;
+  return "";
 }
