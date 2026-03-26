@@ -1137,14 +1137,14 @@ async function streamImport(
 
 export async function createSynthesis(data: CreateSynthesisRequest) {
   return request<{ status: string; workflow_run_id: string; topic: string }>(
-    "/api/v1/syntheses",
+    "/syntheses",
     { method: "POST", body: JSON.stringify(data) }
   );
 }
 
 export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
   return request<{ status: string; workflow_run_id: string; topic: string }>(
-    "/api/v1/super-syntheses",
+    "/super-syntheses",
     { method: "POST", body: JSON.stringify(data) }
   );
 }
@@ -1152,33 +1152,33 @@ export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
 export async function listSyntheses(offset = 0, limit = 20, visibility?: string) {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (visibility) params.set("visibility", visibility);
-  return request<PaginatedSynthesesResponse>(`/api/v1/syntheses?${params}`);
+  return request<PaginatedSynthesesResponse>(`/syntheses?${params}`);
 }
 
 export async function getSynthesis(id: string) {
-  return request<SynthesisDocumentResponse>(`/api/v1/syntheses/${id}`);
+  return request<SynthesisDocumentResponse>(`/syntheses/${id}`);
 }
 
 export async function getSentenceFacts(synthesisId: string, position: number) {
   return request<SentenceFactsBySourceResponse[]>(
-    `/api/v1/syntheses/${synthesisId}/sentences/${position}/facts`
+    `/syntheses/${synthesisId}/sentences/${position}/facts`
   );
 }
 
 export async function getSynthesisNodes(synthesisId: string) {
-  return request<SynthesisNodeResponse[]>(`/api/v1/syntheses/${synthesisId}/nodes`);
+  return request<SynthesisNodeResponse[]>(`/syntheses/${synthesisId}/nodes`);
 }
 
 export async function deleteSynthesis(id: string) {
   return request<{ deleted: boolean; id: string }>(
-    `/api/v1/syntheses/${id}`,
+    `/syntheses/${id}`,
     { method: "DELETE" }
   );
 }
 
 export async function updateSynthesisVisibility(id: string, visibility: string) {
   return request<{ id: string; visibility: string }>(
-    `/api/v1/syntheses/${id}`,
+    `/syntheses/${id}`,
     { method: "PATCH", body: JSON.stringify({ visibility }) }
   );
 }
