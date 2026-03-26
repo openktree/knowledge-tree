@@ -6,14 +6,12 @@ import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { X, CircleDot, FileText, Loader2 } from "lucide-react";
+import { X, CircleDot } from "lucide-react";
 import type {
   SynthesisDocumentResponse,
   SynthesisSentenceResponse,
   SynthesisNodeResponse,
-  SentenceFactLink,
 } from "@/types";
-import { getSentenceFacts } from "@/lib/api";
 import { SynthesisNodeList } from "./SynthesisNodeList";
 import { SubSynthesisList } from "./SubSynthesisList";
 
@@ -21,10 +19,6 @@ interface SynthesisDocumentProps {
   document: SynthesisDocumentResponse;
 }
 
-/**
- * Build a map from paragraph text (first 60 chars) to the sentences it contains.
- * A paragraph may contain multiple sentences.
- */
 function buildParagraphSentenceMap(
   definition: string,
   sentences: SynthesisSentenceResponse[]
@@ -32,11 +26,12 @@ function buildParagraphSentenceMap(
   const map = new Map<string, SynthesisSentenceResponse[]>();
   if (!definition || sentences.length === 0) return map;
 
-  // Split definition into paragraphs (by double newline or heading)
-  const paragraphs = definition.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const paragraphs = definition
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   for (const para of paragraphs) {
-    // Strip markdown formatting for matching
     const plainPara = para
       .replace(/^#{1,6}\s+/, "")
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -45,20 +40,20 @@ function buildParagraphSentenceMap(
 
     const matched: SynthesisSentenceResponse[] = [];
     for (const s of sentences) {
-      // Strip links/formatting from sentence text too
       const plainSentence = s.text
         .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
         .replace(/\*\*([^*]+)\*\*/g, "$1")
         .replace(/\*([^*]+)\*/g, "$1")
         .trim();
-      // Check if this sentence's text appears in the paragraph
-      if (plainSentence.length > 10 && plainPara.includes(plainSentence.slice(0, 40))) {
+      if (
+        plainSentence.length > 10 &&
+        plainPara.includes(plainSentence.slice(0, 40))
+      ) {
         matched.push(s);
       }
     }
 
     if (matched.length > 0) {
-      // Use first 60 chars of the raw paragraph as key
       const key = para.slice(0, 60).trim();
       map.set(key, matched);
     }
@@ -67,12 +62,23 @@ function buildParagraphSentenceMap(
   return map;
 }
 
+/** Recursively extract plain text from React children. */
+function extractText(children: React.ReactNode): string {
+  if (!children) return "";
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(extractText).join("");
+  if (typeof children === "object" && "props" in children) {
+    return extractText(
+      (children as React.ReactElement).props?.children
+    );
+  }
+  return "";
+}
+
 export function SynthesisDocument({ document }: SynthesisDocumentProps) {
-  const [selectedSentences, setSelectedSentences] = useState<SynthesisSentenceResponse[] | null>(null);
   const [selectedParaKey, setSelectedParaKey] = useState<string | null>(null);
-  const [factLinks, setFactLinks] = useState<SentenceFactLink[] | null>(null);
-  const [loadingFacts, setLoadingFacts] = useState(false);
-  const [activeSentencePos, setActiveSentencePos] = useState<number | null>(null);
+  const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, SynthesisNodeResponse>();
@@ -83,65 +89,57 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   }, [document.referenced_nodes]);
 
   const paragraphMap = useMemo(
-    () => buildParagraphSentenceMap(document.definition || "", document.sentences),
+    () =>
+      buildParagraphSentenceMap(
+        document.definition || "",
+        document.sentences
+      ),
     [document.definition, document.sentences]
   );
 
-  const handleParaClick = useCallback(
-    (paraKey: string, sentences: SynthesisSentenceResponse[]) => {
-      if (selectedParaKey === paraKey) {
-        setSelectedSentences(null);
+  const handleSectionClick = useCallback(
+    (key: string, sentences: SynthesisSentenceResponse[]) => {
+      if (selectedParaKey === key) {
         setSelectedParaKey(null);
-        setFactLinks(null);
-        setActiveSentencePos(null);
+        setSelectedNodes([]);
         return;
       }
-      setSelectedSentences(sentences);
-      setSelectedParaKey(paraKey);
-      setFactLinks(null);
-      setActiveSentencePos(null);
+      setSelectedParaKey(key);
+      // Collect unique node IDs from all sentences in this section
+      const nodeIds = new Set<string>();
+      for (const s of sentences) {
+        for (const nid of s.node_ids) {
+          nodeIds.add(nid);
+        }
+      }
+      setSelectedNodes(Array.from(nodeIds));
     },
     [selectedParaKey]
   );
 
-  const handleSentenceFactLoad = useCallback(
-    async (sentence: SynthesisSentenceResponse) => {
-      if (activeSentencePos === sentence.position) {
-        setActiveSentencePos(null);
-        setFactLinks(null);
-        return;
-      }
-      setActiveSentencePos(sentence.position);
-      if (sentence.fact_count > 0) {
-        setLoadingFacts(true);
-        try {
-          const facts = await getSentenceFacts(document.id, sentence.position);
-          setFactLinks(facts);
-        } catch {
-          setFactLinks([]);
-        } finally {
-          setLoadingFacts(false);
-        }
-      } else {
-        setFactLinks([]);
-      }
+  // Helper: get section info for a text block
+  const getSectionInfo = useCallback(
+    (children: React.ReactNode) => {
+      const text = extractText(children);
+      const key = text.slice(0, 60).trim();
+      const sentences = paragraphMap.get(key);
+      const hasInfo =
+        sentences &&
+        sentences.some((s) => s.node_ids.length > 0);
+      const totalNodes = sentences
+        ? new Set(sentences.flatMap((s) => s.node_ids)).size
+        : 0;
+      const isSelected = selectedParaKey === key;
+      return { key, sentences, hasInfo, totalNodes, isSelected };
     },
-    [activeSentencePos, document.id]
+    [paragraphMap, selectedParaKey]
   );
 
-  // Custom markdown components
   const markdownComponents = useMemo(
     () => ({
       p: ({ children }: { children?: React.ReactNode }) => {
-        // Extract plain text to find matching sentences
-        const text = extractText(children);
-        const key = text.slice(0, 60).trim();
-        const sentences = paragraphMap.get(key);
-        const isSelected = selectedParaKey === key;
-        const hasInfo = sentences && sentences.some((s) => s.fact_count > 0 || s.node_ids.length > 0);
-        const totalFacts = sentences?.reduce((sum, s) => sum + s.fact_count, 0) ?? 0;
-        const totalNodes = sentences?.reduce((sum, s) => sum + s.node_ids.length, 0) ?? 0;
-
+        const { key, sentences, hasInfo, totalNodes, isSelected } =
+          getSectionInfo(children);
         return (
           <p
             className={`mb-4 leading-relaxed rounded-sm transition-colors ${
@@ -153,28 +151,131 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
             }`}
             onClick={
               hasInfo && sentences
-                ? () => handleParaClick(key, sentences)
+                ? () => handleSectionClick(key, sentences)
                 : undefined
             }
           >
             {children}
-            {hasInfo && (
+            {hasInfo && totalNodes > 0 && (
               <>
                 {" "}
                 <Badge
                   variant={isSelected ? "default" : "outline"}
                   className="text-[10px] px-1 py-0 align-super"
                 >
-                  {totalNodes > 0 && `${totalNodes}n`}
-                  {totalNodes > 0 && totalFacts > 0 && " "}
-                  {totalFacts > 0 && `${totalFacts}f`}
+                  {totalNodes}n
                 </Badge>
               </>
             )}
           </p>
         );
       },
-      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+      h1: ({ children }: { children?: React.ReactNode }) => {
+        const { key, sentences, hasInfo, totalNodes, isSelected } =
+          getSectionInfo(children);
+        return (
+          <h1
+            className={`text-2xl font-bold mt-6 mb-3 rounded-sm transition-colors ${
+              isSelected
+                ? "bg-primary/5 ring-1 ring-primary/20 px-2 -mx-2"
+                : hasInfo
+                  ? "hover:bg-muted/30 cursor-pointer px-2 -mx-2"
+                  : ""
+            }`}
+            onClick={
+              hasInfo && sentences
+                ? () => handleSectionClick(key, sentences)
+                : undefined
+            }
+          >
+            {children}
+            {hasInfo && totalNodes > 0 && (
+              <>
+                {" "}
+                <Badge
+                  variant={isSelected ? "default" : "outline"}
+                  className="text-[10px] px-1 py-0 align-super"
+                >
+                  {totalNodes}n
+                </Badge>
+              </>
+            )}
+          </h1>
+        );
+      },
+      h2: ({ children }: { children?: React.ReactNode }) => {
+        const { key, sentences, hasInfo, totalNodes, isSelected } =
+          getSectionInfo(children);
+        return (
+          <h2
+            className={`text-xl font-semibold mt-5 mb-2 rounded-sm transition-colors ${
+              isSelected
+                ? "bg-primary/5 ring-1 ring-primary/20 px-2 -mx-2"
+                : hasInfo
+                  ? "hover:bg-muted/30 cursor-pointer px-2 -mx-2"
+                  : ""
+            }`}
+            onClick={
+              hasInfo && sentences
+                ? () => handleSectionClick(key, sentences)
+                : undefined
+            }
+          >
+            {children}
+            {hasInfo && totalNodes > 0 && (
+              <>
+                {" "}
+                <Badge
+                  variant={isSelected ? "default" : "outline"}
+                  className="text-[10px] px-1 py-0 align-super"
+                >
+                  {totalNodes}n
+                </Badge>
+              </>
+            )}
+          </h2>
+        );
+      },
+      h3: ({ children }: { children?: React.ReactNode }) => {
+        const { key, sentences, hasInfo, totalNodes, isSelected } =
+          getSectionInfo(children);
+        return (
+          <h3
+            className={`text-lg font-medium mt-4 mb-2 rounded-sm transition-colors ${
+              isSelected
+                ? "bg-primary/5 ring-1 ring-primary/20 px-2 -mx-2"
+                : hasInfo
+                  ? "hover:bg-muted/30 cursor-pointer px-2 -mx-2"
+                  : ""
+            }`}
+            onClick={
+              hasInfo && sentences
+                ? () => handleSectionClick(key, sentences)
+                : undefined
+            }
+          >
+            {children}
+            {hasInfo && totalNodes > 0 && (
+              <>
+                {" "}
+                <Badge
+                  variant={isSelected ? "default" : "outline"}
+                  className="text-[10px] px-1 py-0 align-super"
+                >
+                  {totalNodes}n
+                </Badge>
+              </>
+            )}
+          </h3>
+        );
+      },
+      a: ({
+        href,
+        children,
+      }: {
+        href?: string;
+        children?: React.ReactNode;
+      }) => {
         if (href?.startsWith("/nodes/") || href?.startsWith("/facts/")) {
           return (
             <Link
@@ -198,22 +299,9 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           </a>
         );
       },
-      h1: ({ children }: { children?: React.ReactNode }) => (
-        <h1 className="text-2xl font-bold mt-6 mb-3">{children}</h1>
-      ),
-      h2: ({ children }: { children?: React.ReactNode }) => (
-        <h2 className="text-xl font-semibold mt-5 mb-2">{children}</h2>
-      ),
-      h3: ({ children }: { children?: React.ReactNode }) => (
-        <h3 className="text-lg font-medium mt-4 mb-2">{children}</h3>
-      ),
       li: ({ children }: { children?: React.ReactNode }) => {
-        const text = extractText(children);
-        const key = text.slice(0, 60).trim();
-        const sentences = paragraphMap.get(key);
-        const hasInfo = sentences && sentences.some((s) => s.fact_count > 0 || s.node_ids.length > 0);
-        const isSelected = selectedParaKey === key;
-
+        const { key, sentences, hasInfo, isSelected } =
+          getSectionInfo(children);
         return (
           <li
             className={`mb-1 ${
@@ -227,7 +315,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               hasInfo && sentences
                 ? (e) => {
                     e.stopPropagation();
-                    handleParaClick(key, sentences);
+                    handleSectionClick(key, sentences);
                   }
                 : undefined
             }
@@ -238,7 +326,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedParaKey, paragraphMap]
+    [selectedParaKey, paragraphMap, getSectionInfo]
   );
 
   const hasDefinition = document.definition && document.definition.trim();
@@ -289,122 +377,49 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         )}
       </div>
 
-      {/* Right panel — paragraph/sentence details */}
-      {selectedSentences && selectedSentences.length > 0 && (
-        <div className="w-96 shrink-0">
+      {/* Right panel — related nodes for clicked section */}
+      {selectedNodes.length > 0 && (
+        <div className="w-80 shrink-0">
           <Card className="sticky top-4">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <CardTitle className="text-sm">
-                {selectedSentences.length} sentence{selectedSentences.length !== 1 ? "s" : ""} in this section
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                <CircleDot className="size-3.5" />
+                Related Nodes ({selectedNodes.length})
               </CardTitle>
               <Button
                 variant="ghost"
                 size="icon"
                 className="size-6"
                 onClick={() => {
-                  setSelectedSentences(null);
                   setSelectedParaKey(null);
-                  setFactLinks(null);
-                  setActiveSentencePos(null);
+                  setSelectedNodes([]);
                 }}
               >
                 <X className="size-4" />
               </Button>
             </CardHeader>
-            <CardContent className="space-y-3 max-h-[70vh] overflow-y-auto">
-              {selectedSentences.map((sentence) => {
-                const isActive = activeSentencePos === sentence.position;
-                const hasNodes = sentence.node_ids.length > 0;
-                const hasFacts = sentence.fact_count > 0;
-
+            <CardContent className="space-y-1.5 max-h-[70vh] overflow-y-auto">
+              {selectedNodes.map((nid) => {
+                const nodeInfo = nodeMap.get(nid);
                 return (
-                  <div
-                    key={sentence.position}
-                    className={`rounded-md border p-3 space-y-2 transition-colors ${
-                      isActive ? "border-primary bg-primary/5" : "hover:bg-muted/30 cursor-pointer"
-                    }`}
-                    onClick={() => handleSentenceFactLoad(sentence)}
+                  <Link
+                    key={nid}
+                    href={`/nodes/${nid}`}
+                    className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent transition-colors"
                   >
-                    {/* Sentence preview */}
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {sentence.text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").slice(0, 120)}
-                      {sentence.text.length > 120 ? "..." : ""}
-                    </p>
-
-                    {/* Counts */}
-                    <div className="flex gap-2">
-                      {hasNodes && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {sentence.node_ids.length} node{sentence.node_ids.length !== 1 ? "s" : ""}
-                        </Badge>
-                      )}
-                      {hasFacts && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {sentence.fact_count} fact{sentence.fact_count !== 1 ? "s" : ""}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Expanded details when active */}
-                    {isActive && (
-                      <div className="space-y-3 pt-2 border-t">
-                        {/* Nodes */}
-                        {hasNodes && (
-                          <div className="space-y-1">
-                            <h5 className="text-[10px] font-medium flex items-center gap-1">
-                              <CircleDot className="size-3" /> Nodes
-                            </h5>
-                            {sentence.node_ids.map((nid) => {
-                              const nodeInfo = nodeMap.get(nid);
-                              return (
-                                <Link
-                                  key={nid}
-                                  href={`/nodes/${nid}`}
-                                  className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <CircleDot className="size-2.5 shrink-0" />
-                                  {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Facts (lazy-loaded) */}
-                        {hasFacts && (
-                          <div className="space-y-1">
-                            <h5 className="text-[10px] font-medium flex items-center gap-1">
-                              <FileText className="size-3" /> Facts
-                            </h5>
-                            {loadingFacts ? (
-                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                <Loader2 className="size-3 animate-spin" />
-                                Loading...
-                              </div>
-                            ) : factLinks && factLinks.length > 0 ? (
-                              factLinks.map((fl) => (
-                                <Link
-                                  key={fl.fact_id}
-                                  href={`/facts/${fl.fact_id}`}
-                                  className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <FileText className="size-2.5 shrink-0" />
-                                  {fl.fact_id.slice(0, 12)}...
-                                  <span className="text-muted-foreground">
-                                    ({(fl.distance * 100).toFixed(0)}%)
-                                  </span>
-                                </Link>
-                              ))
-                            ) : (
-                              <p className="text-[10px] text-muted-foreground">No facts.</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                    <CircleDot className="size-3.5 text-primary shrink-0" />
+                    <span className="truncate">
+                      {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
+                    </span>
+                    {nodeInfo?.node_type && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 shrink-0 ml-auto"
+                      >
+                        {nodeInfo.node_type}
+                      </Badge>
                     )}
-                  </div>
+                  </Link>
                 );
               })}
             </CardContent>
@@ -413,18 +428,4 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       )}
     </div>
   );
-}
-
-// ── Helpers ──────────────────────────────────────────────────────
-
-/** Recursively extract plain text from React children. */
-function extractText(children: React.ReactNode): string {
-  if (!children) return "";
-  if (typeof children === "string") return children;
-  if (typeof children === "number") return String(children);
-  if (Array.isArray(children)) return children.map(extractText).join("");
-  if (typeof children === "object" && "props" in children) {
-    return extractText((children as React.ReactElement).props?.children);
-  }
-  return "";
 }
