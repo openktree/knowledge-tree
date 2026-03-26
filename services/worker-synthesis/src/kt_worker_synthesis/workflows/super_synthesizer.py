@@ -264,16 +264,13 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
             if not super_text:
                 super_text = "Super-synthesis completed but no document was produced."
 
-            # Create supersynthesis node
-            supersynthesis_node_id = uuid.uuid4()
+            # Create supersynthesis node and set its definition
             node = await graph_engine.create_node(
                 concept=input.topic or "Super-Synthesis",
                 node_type="supersynthesis",
-                node_id=supersynthesis_node_id,
-                definition=super_text,
             )
-            if node:
-                supersynthesis_node_id = node.id
+            supersynthesis_node_id = node.id
+            await graph_engine.set_node_definition(supersynthesis_node_id, super_text)
 
             # Set visibility
             if write_session:

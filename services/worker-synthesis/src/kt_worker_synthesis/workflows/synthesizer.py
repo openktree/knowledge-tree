@@ -117,16 +117,13 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 logger.warning("Synthesizer agent ended without producing text")
                 synthesis_text = "Synthesis completed but no document was produced."
 
-            # Create synthesis node
-            synthesis_node_id = uuid.uuid4()
+            # Create synthesis node and set its definition
             node = await graph_engine.create_node(
                 concept=input.topic or "Synthesis",
                 node_type="synthesis",
-                node_id=synthesis_node_id,
-                definition=synthesis_text,
             )
-            if node:
-                synthesis_node_id = node.id
+            synthesis_node_id = node.id
+            await graph_engine.set_node_definition(synthesis_node_id, synthesis_text)
 
             # Set visibility and creator via write-db if available
             if write_session:
