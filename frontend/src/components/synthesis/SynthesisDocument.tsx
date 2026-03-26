@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { X, CircleDot } from "lucide-react";
+import { formatSynthesisConcept } from "./utils";
 import type {
   SynthesisDocumentResponse,
   SynthesisSentenceResponse,
@@ -338,7 +339,9 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-2xl">{document.concept}</CardTitle>
+              <CardTitle className="text-2xl">
+                {formatSynthesisConcept(document.concept).title}
+              </CardTitle>
               <Badge variant="outline">
                 {document.node_type === "supersynthesis"
                   ? "Super-Synthesis"
@@ -352,9 +355,10 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 {document.visibility}
               </Badge>
             </div>
-            {document.created_at && (
+            {(formatSynthesisConcept(document.concept).date || document.created_at) && (
               <p className="text-sm text-muted-foreground">
-                Created {new Date(document.created_at).toLocaleDateString()}
+                {formatSynthesisConcept(document.concept).date
+                  ?? (document.created_at && new Date(document.created_at).toLocaleDateString())}
               </p>
             )}
           </CardHeader>

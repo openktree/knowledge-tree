@@ -162,6 +162,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 embedding_service=worker_state.embedding_service,
                 qdrant_client=worker_state.qdrant_client,
                 node_names_and_aliases=node_names,
+                session=session,
             )
 
             # Store document JSON in node metadata via write-db

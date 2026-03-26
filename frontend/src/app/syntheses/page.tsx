@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listSyntheses } from "@/lib/api";
 import { CreateSynthesisDialog } from "@/components/synthesis/CreateSynthesisDialog";
 import type { SynthesisListItem } from "@/types";
+import { formatSynthesisConcept } from "@/components/synthesis/utils";
 
 export default function SynthesesPage() {
   const [items, setItems] = useState<SynthesisListItem[]>([]);
@@ -74,7 +75,7 @@ export default function SynthesesPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-base">
-                        {item.concept}
+                        {formatSynthesisConcept(item.concept).title}
                       </CardTitle>
                       <Badge variant="outline" className="text-[10px]">
                         {item.node_type === "supersynthesis"
