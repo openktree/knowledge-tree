@@ -100,19 +100,21 @@ async def create_synthesis(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Create a new synthesis by dispatching the synthesizer workflow."""
-    from kt_hatchet.models import SynthesizerInput
-    from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
+    from kt_hatchet.client import get_hatchet
 
-    inp = SynthesizerInput(
-        topic=body.topic,
-        starting_node_ids=body.starting_node_ids,
-        exploration_budget=body.exploration_budget,
-        visibility=body.visibility,
+    hatchet = get_hatchet()
+    result = await hatchet.runs.aio_create(
+        workflow_name="synthesizer_wf",
+        input={
+            "topic": body.topic,
+            "starting_node_ids": body.starting_node_ids,
+            "exploration_budget": body.exploration_budget,
+            "visibility": body.visibility,
+        },
     )
-    ref = await synthesizer_wf.aio_run_no_wait(inp)
     return {
         "status": "pending",
-        "workflow_run_id": ref.workflow_run_id,
+        "workflow_run_id": str(result.workflow_run_id) if result.workflow_run_id else "",
         "topic": body.topic,
     }
 
@@ -123,28 +125,30 @@ async def create_super_synthesis(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Create a new super-synthesis by dispatching the super-synthesizer workflow."""
-    from kt_hatchet.models import SuperSynthesizerInput, SynthesizerInput
-    from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
+    from kt_hatchet.client import get_hatchet
 
     sub_configs = [
-        SynthesizerInput(
-            topic=c.topic,
-            starting_node_ids=c.starting_node_ids,
-            exploration_budget=c.exploration_budget,
-            visibility=c.visibility,
-        )
+        {
+            "topic": c.topic,
+            "starting_node_ids": c.starting_node_ids,
+            "exploration_budget": c.exploration_budget,
+            "visibility": c.visibility,
+        }
         for c in body.sub_configs
     ]
-    inp = SuperSynthesizerInput(
-        topic=body.topic,
-        sub_configs=sub_configs,
-        visibility=body.visibility,
-        distance_threshold=body.distance_threshold,
+    hatchet = get_hatchet()
+    result = await hatchet.runs.aio_create(
+        workflow_name="super_synthesizer_wf",
+        input={
+            "topic": body.topic,
+            "sub_configs": sub_configs,
+            "visibility": body.visibility,
+            "distance_threshold": body.distance_threshold,
+        },
     )
-    ref = await super_synthesizer_wf.aio_run_no_wait(inp)
     return {
         "status": "pending",
-        "workflow_run_id": ref.workflow_run_id,
+        "workflow_run_id": str(result.workflow_run_id) if result.workflow_run_id else "",
         "topic": body.topic,
     }
 

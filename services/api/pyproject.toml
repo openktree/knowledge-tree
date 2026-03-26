@@ -16,7 +16,6 @@ dependencies = [
     "kt-worker-bottomup",
     "kt-worker-nodes",
     "kt-worker-ingest",
-    "kt-worker-synthesis",
     "fastapi>=0.129.0",
     "uvicorn>=0.40.0",
     "sse-starlette>=3.3.2",
@@ -44,7 +43,6 @@ kt-agents-core = { workspace = true }
 kt-worker-bottomup = { workspace = true }
 kt-worker-nodes = { workspace = true }
 kt-worker-ingest = { workspace = true }
-kt-worker-synthesis = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
