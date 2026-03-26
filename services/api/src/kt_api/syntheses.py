@@ -102,12 +102,15 @@ async def create_synthesis(
     """Create a new synthesis by dispatching the synthesizer workflow."""
     from kt_hatchet.client import dispatch_workflow
 
-    run_id = await dispatch_workflow("synthesizer_wf", {
-        "topic": body.topic,
-        "starting_node_ids": body.starting_node_ids,
-        "exploration_budget": body.exploration_budget,
-        "visibility": body.visibility,
-    })
+    try:
+        run_id = await dispatch_workflow("synthesizer_wf", {
+            "topic": body.topic,
+            "starting_node_ids": body.starting_node_ids,
+            "exploration_budget": body.exploration_budget,
+            "visibility": body.visibility,
+        })
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return {"status": "pending", "workflow_run_id": run_id, "topic": body.topic}
 
 
@@ -128,12 +131,15 @@ async def create_super_synthesis(
         }
         for c in body.sub_configs
     ]
-    run_id = await dispatch_workflow("super_synthesizer_wf", {
-        "topic": body.topic,
-        "sub_configs": sub_configs,
-        "visibility": body.visibility,
-        "distance_threshold": body.distance_threshold,
-    })
+    try:
+        run_id = await dispatch_workflow("super_synthesizer_wf", {
+            "topic": body.topic,
+            "sub_configs": sub_configs,
+            "visibility": body.visibility,
+            "distance_threshold": body.distance_threshold,
+        })
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return {"status": "pending", "workflow_run_id": run_id, "topic": body.topic}
 
 

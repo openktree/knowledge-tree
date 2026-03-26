@@ -37,14 +37,27 @@ async def dispatch_workflow(
     This is the preferred way for the API to trigger workflows — it avoids
     importing worker packages directly (which would create cross-service
     dependencies).
+
+    Raises ``RuntimeError`` if Hatchet rejects the request (e.g. no active
+    worker is registered for this workflow).
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
     h = get_hatchet()
-    result = await h.runs.aio_create(
-        workflow_name=workflow_name,
-        input=input,
-        additional_metadata=additional_metadata,
-    )
-    return str(result.run.metadata.id) if result.run and result.run.metadata else ""
+    try:
+        result = await h.runs.aio_create(
+            workflow_name=workflow_name,
+            input=input,
+            additional_metadata=additional_metadata,
+        )
+        return str(result.run.metadata.id) if result.run and result.run.metadata else ""
+    except Exception as exc:
+        logger.error("Failed to dispatch workflow %s: %s", workflow_name, exc)
+        raise RuntimeError(
+            f"Failed to dispatch workflow '{workflow_name}'. "
+            f"Ensure the worker is running (just worker). Error: {exc}"
+        ) from exc
 
 
 async def run_workflow(
@@ -56,13 +69,8 @@ async def run_workflow(
 
     Returns the workflow output dict.
     """
-    h = get_hatchet()
-    result = await h.runs.aio_create(
-        workflow_name=workflow_name,
-        input=input,
-        additional_metadata=additional_metadata,
-    )
-    run_id = str(result.run.metadata.id) if result.run and result.run.metadata else ""
+    run_id = await dispatch_workflow(workflow_name, input, additional_metadata)
     if not run_id:
         return {}
+    h = get_hatchet()
     return await h.runs.aio_get_result(run_id)
