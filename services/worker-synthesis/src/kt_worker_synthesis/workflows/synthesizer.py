@@ -32,10 +32,10 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
     """Run the full synthesis pipeline."""
     worker_state = cast(WorkerState, ctx.lifespan)
 
-    from kt_agents_core.state import AgentContext
-    from kt_graph.engine import GraphEngine
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    from kt_agents_core.state import AgentContext
+    from kt_graph.engine import GraphEngine
     from kt_worker_synthesis.agents.synthesizer_agent import SynthesizerAgent
     from kt_worker_synthesis.agents.synthesizer_state import SynthesizerState
     from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
@@ -132,8 +132,9 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
 
             # Set visibility and creator via write-db if available
             if write_session:
-                from kt_db.write_models import WriteNode
                 from sqlalchemy import update
+
+                from kt_db.write_models import WriteNode
 
                 await write_session.execute(
                     update(WriteNode)

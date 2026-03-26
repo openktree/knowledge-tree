@@ -13,7 +13,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
 
 from kt_agents_core.base import BaseAgent
-from kt_agents_core.state import AgentContext
 from kt_worker_synthesis.agents.synthesizer_state import SynthesizerState
 from kt_worker_synthesis.agents.tools.navigation import build_navigation_tools
 from kt_worker_synthesis.agents.tools.synthesis import build_synthesis_tools

@@ -126,7 +126,7 @@ Link text must be a 5-10 word descriptive phrase, not generic text.
 
 def build_synthesizer_system_message(topic: str, starting_node_ids: list[str], budget: int) -> str:
     """Build the full system message for a synthesis run."""
-    task_block = f"\n\n# YOUR TASK\n\n"
+    task_block = "\n\n# YOUR TASK\n\n"
     task_block += f"## Topic\n{topic}\n\n"
     task_block += f"## Exploration Budget\nYou can visit up to {budget} nodes.\n\n"
 

@@ -24,7 +24,6 @@ def main() -> None:
 
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
-
     from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
 

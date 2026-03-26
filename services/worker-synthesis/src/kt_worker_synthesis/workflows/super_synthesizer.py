@@ -22,7 +22,6 @@ from kt_hatchet.models import (
     SuperSynthesizerInput,
     SuperSynthesizerOutput,
     SynthesizerInput,
-    SynthesizerOutput,
 )
 
 logger = logging.getLogger(__name__)
@@ -195,10 +194,10 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
 
     worker_state = cast(WorkerState, ctx.lifespan)
 
-    from kt_agents_core.state import AgentContext
-    from kt_graph.engine import GraphEngine
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    from kt_agents_core.state import AgentContext
+    from kt_graph.engine import GraphEngine
     from kt_worker_synthesis.agents.super_synthesizer_agent import SuperSynthesizerAgent
     from kt_worker_synthesis.agents.super_synthesizer_state import SuperSynthesizerState
     from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
@@ -276,8 +275,9 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
 
             # Set visibility
             if write_session:
-                from kt_db.write_models import WriteNode
                 from sqlalchemy import update
+
+                from kt_db.write_models import WriteNode
 
                 await write_session.execute(
                     update(WriteNode)

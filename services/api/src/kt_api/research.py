@@ -316,6 +316,7 @@ async def confirm_ingest(
     from hatchet_sdk import TriggerWorkflowOptions
 
     from kt_hatchet.models import IngestConfirmInput
+
     # TODO: ingest_confirm_wf was in worker-conversations (now deleted).
     # Move ingest confirmation to worker-ingest or remove this endpoint.
     from kt_worker_ingest.workflows.ingest import ingest_confirm_wf  # type: ignore[attr-defined]
@@ -702,9 +703,9 @@ async def bottom_up_prepare(
     await session.commit()
 
     from hatchet_sdk import TriggerWorkflowOptions
+    from kt_worker_orchestrator.bottom_up import bottom_up_prepare_wf
 
     from kt_hatchet.models import BottomUpPrepareInput
-    from kt_worker_orchestrator.bottom_up import bottom_up_prepare_wf
 
     wf_options = TriggerWorkflowOptions(
         additional_metadata={
@@ -975,7 +976,6 @@ async def agent_select(
     await session.commit()
 
     from hatchet_sdk import TriggerWorkflowOptions
-
     from kt_worker_orchestrator.bottom_up import agent_select_wf
 
     wf_options = TriggerWorkflowOptions(

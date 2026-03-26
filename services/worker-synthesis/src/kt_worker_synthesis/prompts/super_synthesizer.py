@@ -73,9 +73,9 @@ def build_super_synthesizer_system_message(
     synthesis_node_ids: list[str],
 ) -> str:
     """Build the full system message for a super-synthesis run."""
-    task_block = f"\n\n# YOUR TASK\n\n"
+    task_block = "\n\n# YOUR TASK\n\n"
     task_block += f"## Topic\n{topic}\n\n"
-    task_block += f"## Sub-Syntheses to Combine\n"
+    task_block += "## Sub-Syntheses to Combine\n"
     task_block += f"You have {len(synthesis_node_ids)} sub-synthesis documents to read and combine:\n"
     for nid in synthesis_node_ids:
         task_block += f"- {nid}\n"

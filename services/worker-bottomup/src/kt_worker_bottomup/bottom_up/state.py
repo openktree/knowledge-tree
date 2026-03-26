@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ── Wave pipeline types (moved from agents/orchestrator_state.py) ─────
 
 

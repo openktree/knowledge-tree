@@ -362,10 +362,10 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
         except Exception:
             logger.warning("Failed to stream event %s", event_type, exc_info=True)
 
+    from kt_worker_bottomup.bottom_up.scout import scout_impl
     from kt_worker_bottomup.bottom_up.state import (
         WaveAccumulator,
     )
-    from kt_worker_bottomup.bottom_up.scout import scout_impl
 
     ctx.log("Starting bottom-up exploration workflow")
 
