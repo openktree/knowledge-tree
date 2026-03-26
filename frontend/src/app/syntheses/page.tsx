@@ -33,7 +33,7 @@ export default function SynthesesPage() {
   }, [fetchSyntheses]);
 
   return (
-    <div className="container max-w-4xl py-8 space-y-6">
+    <div className="mx-auto max-w-4xl py-8 px-4 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Syntheses</h1>

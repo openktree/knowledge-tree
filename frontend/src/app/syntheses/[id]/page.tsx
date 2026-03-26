@@ -44,7 +44,7 @@ export default function SynthesisDetailPage() {
 
   if (error || !document) {
     return (
-      <div className="container max-w-4xl py-8">
+      <div className="mx-auto max-w-4xl py-8 px-4">
         <Button variant="ghost" asChild className="mb-4">
           <Link href="/syntheses">
             <ArrowLeft className="mr-2 size-4" />
@@ -57,7 +57,7 @@ export default function SynthesisDetailPage() {
   }
 
   return (
-    <div className="container max-w-6xl py-8">
+    <div className="mx-auto max-w-6xl py-8 px-4">
       <Button variant="ghost" asChild className="mb-4">
         <Link href="/syntheses">
           <ArrowLeft className="mr-2 size-4" />
