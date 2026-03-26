@@ -38,20 +38,30 @@ async def dispatch_workflow(
     importing worker packages directly (which would create cross-service
     dependencies).
 
-    Raises ``RuntimeError`` if Hatchet rejects the request (e.g. no active
-    worker is registered for this workflow).
+    Uses the admin gRPC client (``admin.aio_run_workflow``) which is what
+    ``Workflow.aio_run_no_wait()`` uses internally.
+
+    Raises ``RuntimeError`` if Hatchet rejects the request.
     """
+    import json
     import logging
+
+    from hatchet_sdk import TriggerWorkflowOptions
 
     logger = logging.getLogger(__name__)
     h = get_hatchet()
+
+    options = TriggerWorkflowOptions()
+    if additional_metadata:
+        options.additional_metadata = additional_metadata
+
     try:
-        result = await h.runs.aio_create(
+        ref = await h._client.admin.aio_run_workflow(
             workflow_name=workflow_name,
-            input=input,
-            additional_metadata=additional_metadata,
+            input=json.dumps(input),
+            options=options,
         )
-        return str(result.run.metadata.id) if result.run and result.run.metadata else ""
+        return ref.workflow_run_id
     except Exception as exc:
         logger.error("Failed to dispatch workflow %s: %s", workflow_name, exc)
         raise RuntimeError(
@@ -69,8 +79,28 @@ async def run_workflow(
 
     Returns the workflow output dict.
     """
-    run_id = await dispatch_workflow(workflow_name, input, additional_metadata)
-    if not run_id:
-        return {}
+    import json
+    import logging
+
+    from hatchet_sdk import TriggerWorkflowOptions
+
+    logger = logging.getLogger(__name__)
     h = get_hatchet()
-    return await h.runs.aio_get_result(run_id)
+
+    options = TriggerWorkflowOptions()
+    if additional_metadata:
+        options.additional_metadata = additional_metadata
+
+    try:
+        ref = await h._client.admin.aio_run_workflow(
+            workflow_name=workflow_name,
+            input=json.dumps(input),
+            options=options,
+        )
+        return ref.result()
+    except Exception as exc:
+        logger.error("Failed to run workflow %s: %s", workflow_name, exc)
+        raise RuntimeError(
+            f"Failed to run workflow '{workflow_name}'. "
+            f"Ensure the worker is running (just worker). Error: {exc}"
+        ) from exc
