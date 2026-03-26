@@ -14,6 +14,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     HasIdCondition,
+    MatchAny,
     MatchValue,
     PointStruct,
     VectorParams,
@@ -127,6 +128,7 @@ class QdrantFactRepository:
         score_threshold: float = 0.5,
         fact_type: str | None = None,
         exclude_ids: list[uuid.UUID] | None = None,
+        node_ids: list[str] | None = None,
     ) -> list[FactSearchResult]:
         """Search for facts similar to the given embedding.
 
@@ -136,11 +138,12 @@ class QdrantFactRepository:
             score_threshold: Minimum cosine similarity score.
             fact_type: Optional filter by fact type.
             exclude_ids: Optional fact IDs to exclude from results.
+            node_ids: Optional filter — only return facts linked to these nodes.
 
         Returns:
             List of FactSearchResult ordered by similarity (highest first).
         """
-        query_filter = self._build_filter(fact_type=fact_type, exclude_ids=exclude_ids)
+        query_filter = self._build_filter(fact_type=fact_type, exclude_ids=exclude_ids, node_ids=node_ids)
 
         results = await self._client.query_points(
             collection_name=FACTS_COLLECTION,
@@ -265,6 +268,7 @@ class QdrantFactRepository:
         self,
         fact_type: str | None = None,
         exclude_ids: list[uuid.UUID] | None = None,
+        node_ids: list[str] | None = None,
     ) -> Filter | None:
         """Build a Qdrant filter from optional parameters."""
         conditions: list[FieldCondition] = []
@@ -273,6 +277,11 @@ class QdrantFactRepository:
         if fact_type is not None:
             conditions.append(
                 FieldCondition(key="fact_type", match=MatchValue(value=fact_type)),
+            )
+
+        if node_ids:
+            conditions.append(
+                FieldCondition(key="node_ids", match=MatchAny(any=node_ids)),
             )
 
         if exclude_ids:

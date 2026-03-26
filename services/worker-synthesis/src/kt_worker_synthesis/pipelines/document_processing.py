@@ -86,11 +86,14 @@ def link_nodes_by_text(
 
 async def link_facts_by_embedding(
     sentence_embeddings: list[list[float]],
-    referenced_node_ids: list[str],
     qdrant_client: object,
+    referenced_node_ids: list[str] | None = None,
     top_k: int = 5,
 ) -> dict[int, list[tuple[str, float]]]:
-    """For each sentence, find the closest facts from referenced nodes.
+    """For each sentence, find the closest facts by embedding similarity.
+
+    When referenced_node_ids is provided, only searches facts linked to
+    those nodes — keeping results relevant to the synthesis content.
 
     Returns {sentence_index: [(fact_id, distance), ...]}
     """
@@ -104,10 +107,10 @@ async def link_facts_by_embedding(
             results = await fact_repo.search_similar(
                 embedding,
                 limit=top_k,
-                node_ids=referenced_node_ids if referenced_node_ids else None,
+                node_ids=referenced_node_ids,
             )
             if results:
-                links[i] = [(str(r.id), r.score) for r in results]
+                links[i] = [(str(r.fact_id), r.score) for r in results]
         except Exception:
             logger.warning("Fact embedding search failed for sentence %d", i, exc_info=True)
 
@@ -171,8 +174,8 @@ async def process_synthesis_document(
     if sentence_embeddings and qdrant_client:
         fact_links_map = await link_facts_by_embedding(
             sentence_embeddings,
-            list(all_referenced_node_ids),
             qdrant_client,
+            referenced_node_ids=list(all_referenced_node_ids) if all_referenced_node_ids else None,
         )
         total_fact_links = sum(len(fl) for fl in fact_links_map.values())
 
@@ -180,26 +183,27 @@ async def process_synthesis_document(
     sentence_records = []
     for i, text in enumerate(sentences):
         node_ids = [nid for nid, _ in node_links_map.get(i, [])]
-        fact_links = [
-            {"fact_id": fid, "distance": round(dist, 4)}
-            for fid, dist in fact_links_map.get(i, [])
-        ]
-        sentence_records.append({
-            "text": text,
-            "position": i,
-            "fact_links": fact_links,
-            "node_ids": node_ids,
-        })
+        fact_links = [{"fact_id": fid, "distance": round(dist, 4)} for fid, dist in fact_links_map.get(i, [])]
+        sentence_records.append(
+            {
+                "text": text,
+                "position": i,
+                "fact_links": fact_links,
+                "node_ids": node_ids,
+            }
+        )
 
     # Build referenced nodes list
     referenced_nodes = []
     if node_names_and_aliases:
         for node_id in all_referenced_node_ids:
             names = node_names_and_aliases.get(node_id, [])
-            referenced_nodes.append({
-                "node_id": node_id,
-                "concept": names[0] if names else "unknown",
-            })
+            referenced_nodes.append(
+                {
+                    "node_id": node_id,
+                    "concept": names[0] if names else "unknown",
+                }
+            )
 
     return {
         "sentences": sentence_records,
