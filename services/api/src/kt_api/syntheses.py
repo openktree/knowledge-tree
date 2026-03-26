@@ -1,4 +1,10 @@
-"""Synthesis and super-synthesis endpoints."""
+"""Synthesis and super-synthesis endpoints.
+
+Synthesis documents are stored as JSON in the node's metadata_ field
+under the key "synthesis_document". This follows the project's dual-database
+architecture where pipelines write to write-db and the sync worker
+propagates to graph-db.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.dependencies import get_db_session
-from kt_db.models import Node, SynthesisSentence
+from kt_db.models import Node
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +52,13 @@ class SynthesisSentenceResponse(BaseModel):
 class SynthesisNodeResponse(BaseModel):
     node_id: str
     concept: str
-    node_type: str
+    node_type: str = "concept"
 
 
 class SynthesisDocumentResponse(BaseModel):
     id: str
     concept: str
-    node_type: str  # "synthesis" or "supersynthesis"
+    node_type: str
     visibility: str = "public"
     definition: str | None = None
     sentences: list[SynthesisSentenceResponse] = Field(default_factory=list)
@@ -79,16 +85,31 @@ class PaginatedSynthesesResponse(BaseModel):
 
 class SentenceFactResponse(BaseModel):
     fact_id: str
-    content: str
-    fact_type: str
-    embedding_distance: float
+    content: str = ""
+    fact_type: str = ""
+    embedding_distance: float = 0.0
 
 
 class SentenceFactsBySourceResponse(BaseModel):
-    source_id: str
-    source_uri: str
-    source_title: str
+    source_id: str = ""
+    source_uri: str = ""
+    source_title: str = ""
     facts: list[SentenceFactResponse]
+
+
+# ── Helpers ────────────────────────────────────────────────────────
+
+
+def _get_synthesis_doc(node: Node) -> dict[str, Any]:
+    """Extract synthesis_document from node metadata, or empty dict."""
+    meta = node.metadata_ or {}
+    return meta.get("synthesis_document", {})
+
+
+def _get_sentence_count(node: Node) -> int:
+    doc = _get_synthesis_doc(node)
+    stats = doc.get("stats", {})
+    return stats.get("sentences_count", 0)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────
@@ -155,32 +176,23 @@ async def list_syntheses(
     if visibility:
         base_filter = base_filter & (Node.visibility == visibility)
 
-    # Count
     count_q = select(func.count()).select_from(Node).where(base_filter)
     total = (await session.execute(count_q)).scalar_one()
 
-    # Fetch
     q = select(Node).where(base_filter).order_by(Node.created_at.desc()).offset(offset).limit(limit)
     nodes = (await session.execute(q)).scalars().all()
 
-    items = []
-    for n in nodes:
-        # Get sentence count
-        sc = (
-            await session.execute(
-                select(func.count()).select_from(SynthesisSentence).where(SynthesisSentence.synthesis_node_id == n.id)
-            )
-        ).scalar_one()
-        items.append(
-            SynthesisListItem(
-                id=str(n.id),
-                concept=n.concept,
-                node_type=n.node_type,
-                visibility=n.visibility,
-                sentence_count=sc,
-                created_at=n.created_at.isoformat() if n.created_at else None,
-            )
+    items = [
+        SynthesisListItem(
+            id=str(n.id),
+            concept=n.concept,
+            node_type=n.node_type,
+            visibility=n.visibility,
+            sentence_count=_get_sentence_count(n),
+            created_at=n.created_at.isoformat() if n.created_at else None,
         )
+        for n in nodes
+    ]
 
     return PaginatedSynthesesResponse(items=items, total=total, offset=offset, limit=limit)
 
@@ -200,53 +212,44 @@ async def get_synthesis(
     if not node or node.node_type not in ("synthesis", "supersynthesis"):
         raise HTTPException(status_code=404, detail="Synthesis not found")
 
-    from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
+    doc = _get_synthesis_doc(node)
 
-    repo = SynthesisDocumentRepository(session)
-    sentences = await repo.get_sentences(nid)
-    fact_counts = await repo.get_sentence_fact_counts(nid)
-    node_links = await repo.get_sentence_node_links(nid)
-    referenced_nodes = await repo.get_all_referenced_nodes(nid)
-
-    # Build sentence-level node link map
-    sent_node_map: dict[str, list[str]] = {}
-    for link in node_links:
-        sid = link["sentence_id"]
-        if sid not in sent_node_map:
-            sent_node_map[sid] = []
-        sent_node_map[sid].append(link["node_id"])
-
-    sentence_responses = [
+    sentences = [
         SynthesisSentenceResponse(
-            position=s.position,
-            text=s.sentence_text,
-            fact_count=fact_counts.get(s.id, 0),
-            node_ids=sent_node_map.get(str(s.id), []),
+            position=s.get("position", i),
+            text=s.get("text", ""),
+            fact_count=len(s.get("fact_links", [])),
+            node_ids=s.get("node_ids", []),
         )
-        for s in sentences
+        for i, s in enumerate(doc.get("sentences", []))
     ]
 
-    node_responses = [
+    referenced_nodes = [
         SynthesisNodeResponse(
-            node_id=str(n.id),
-            concept=n.concept,
-            node_type=n.node_type,
+            node_id=rn.get("node_id", ""),
+            concept=rn.get("concept", "unknown"),
+            node_type=rn.get("node_type", "concept"),
         )
-        for n in referenced_nodes
+        for rn in doc.get("referenced_nodes", [])
     ]
 
-    # For supersynthesis, get children
+    # For supersynthesis, resolve sub-synthesis nodes
     sub_syntheses: list[SynthesisNodeResponse] = []
-    if node.node_type == "supersynthesis":
-        children = await repo.get_synthesis_children(nid)
-        sub_syntheses = [
-            SynthesisNodeResponse(
-                node_id=str(c.id),
-                concept=c.concept,
-                node_type=c.node_type,
-            )
-            for c in children
-        ]
+    sub_ids = doc.get("sub_synthesis_ids", [])
+    if sub_ids:
+        for sid in sub_ids:
+            try:
+                sub_node = (
+                    await session.execute(select(Node).where(Node.id == uuid.UUID(sid)))
+                ).scalar_one_or_none()
+                if sub_node:
+                    sub_syntheses.append(SynthesisNodeResponse(
+                        node_id=str(sub_node.id),
+                        concept=sub_node.concept,
+                        node_type=sub_node.node_type,
+                    ))
+            except Exception:
+                pass
 
     return SynthesisDocumentResponse(
         id=str(node.id),
@@ -254,8 +257,8 @@ async def get_synthesis(
         node_type=node.node_type,
         visibility=node.visibility,
         definition=node.definition,
-        sentences=sentence_responses,
-        referenced_nodes=node_responses,
+        sentences=sentences,
+        referenced_nodes=referenced_nodes,
         sub_syntheses=sub_syntheses,
         created_at=node.created_at.isoformat() if node.created_at else None,
     )
@@ -266,45 +269,30 @@ async def get_sentence_facts(
     synthesis_id: str,
     position: int,
     session: AsyncSession = Depends(get_db_session),
-) -> list[SentenceFactsBySourceResponse]:
-    """Get facts for a specific sentence, grouped by source."""
+) -> list[SentenceFactResponse]:
+    """Get fact links for a specific sentence."""
     try:
         nid = uuid.UUID(synthesis_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid synthesis ID")
 
-    # Find sentence by position
-    result = await session.execute(
-        select(SynthesisSentence).where(
-            SynthesisSentence.synthesis_node_id == nid,
-            SynthesisSentence.position == position,
-        )
-    )
-    sentence = result.scalar_one_or_none()
-    if not sentence:
+    node = (await session.execute(select(Node).where(Node.id == nid))).scalar_one_or_none()
+    if not node:
+        raise HTTPException(status_code=404, detail="Synthesis not found")
+
+    doc = _get_synthesis_doc(node)
+    sentences = doc.get("sentences", [])
+
+    if position < 0 or position >= len(sentences):
         raise HTTPException(status_code=404, detail="Sentence not found")
 
-    from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
-
-    repo = SynthesisDocumentRepository(session)
-    facts_by_source = await repo.get_sentence_facts(sentence.id)
-
+    sentence = sentences[position]
     return [
-        SentenceFactsBySourceResponse(
-            source_id=group["source_id"],
-            source_uri=group["source_uri"],
-            source_title=group["source_title"],
-            facts=[
-                SentenceFactResponse(
-                    fact_id=f["fact_id"],
-                    content=f["content"],
-                    fact_type=f["fact_type"],
-                    embedding_distance=f["embedding_distance"],
-                )
-                for f in group["facts"]
-            ],
+        SentenceFactResponse(
+            fact_id=fl.get("fact_id", ""),
+            embedding_distance=fl.get("distance", 0.0),
         )
-        for group in facts_by_source
+        for fl in sentence.get("fact_links", [])
     ]
 
 
@@ -319,17 +307,18 @@ async def get_synthesis_nodes(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid synthesis ID")
 
-    from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
+    node = (await session.execute(select(Node).where(Node.id == nid))).scalar_one_or_none()
+    if not node:
+        raise HTTPException(status_code=404, detail="Synthesis not found")
 
-    repo = SynthesisDocumentRepository(session)
-    nodes = await repo.get_all_referenced_nodes(nid)
+    doc = _get_synthesis_doc(node)
     return [
         SynthesisNodeResponse(
-            node_id=str(n.id),
-            concept=n.concept,
-            node_type=n.node_type,
+            node_id=rn.get("node_id", ""),
+            concept=rn.get("concept", "unknown"),
+            node_type=rn.get("node_type", "concept"),
         )
-        for n in nodes
+        for rn in doc.get("referenced_nodes", [])
     ]
 
 
@@ -338,7 +327,7 @@ async def delete_synthesis(
     synthesis_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
-    """Delete a synthesis document and its sentence data."""
+    """Delete a synthesis node."""
     try:
         nid = uuid.UUID(synthesis_id)
     except ValueError:
@@ -348,10 +337,6 @@ async def delete_synthesis(
     if not node or node.node_type not in ("synthesis", "supersynthesis"):
         raise HTTPException(status_code=404, detail="Synthesis not found")
 
-    from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
-
-    repo = SynthesisDocumentRepository(session)
-    await repo.delete_document(nid)
     await session.delete(node)
     await session.commit()
 

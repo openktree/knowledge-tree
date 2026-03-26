@@ -283,38 +283,56 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                     .where(WriteNode.node_uuid == supersynthesis_node_id)
                     .values(visibility=input.visibility, creator_id=input.creator_id)
                 )
-                await write_session.commit()
-
-            # Link children
-            from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
-
-            doc_repo = SynthesisDocumentRepository(session)
-            await doc_repo.add_synthesis_children(
-                supersynthesis_node_id,
-                [uuid.UUID(sid) for sid in synthesis_node_ids],
-            )
+                await write_session.flush()
 
             # Collect node names from all sub-syntheses for text matching
+            # Read from sub-synthesis nodes' metadata (which has synthesis_document)
             node_names: dict[str, list[str]] = {}
             for sid in synthesis_node_ids:
                 try:
-                    referenced = await doc_repo.get_all_referenced_nodes(uuid.UUID(sid))
-                    for n in referenced:
-                        node_names[str(n.id)] = [n.concept]
+                    sub_node = await graph_engine.get_node(uuid.UUID(sid))
+                    if sub_node and sub_node.metadata_:
+                        sub_doc = sub_node.metadata_.get("synthesis_document", {})
+                        for ref_node in sub_doc.get("referenced_nodes", []):
+                            nid = ref_node.get("node_id", "")
+                            concept = ref_node.get("concept", "unknown")
+                            if nid:
+                                node_names[nid] = [concept]
                 except Exception:
                     pass
 
-            # Run document processing
-            stats = await process_synthesis_document(
-                synthesis_node_id=supersynthesis_node_id,
+            # Run document processing (returns JSON doc)
+            doc = await process_synthesis_document(
                 synthesis_text=super_text,
-                session=session,
                 embedding_service=worker_state.embedding_service,
                 qdrant_client=worker_state.qdrant_client,
                 node_names_and_aliases=node_names,
             )
 
-            await session.commit()
+            # Add sub_synthesis_ids to the document
+            doc["sub_synthesis_ids"] = synthesis_node_ids
+
+            # Store document JSON in node metadata via write-db
+            if write_session:
+                from sqlalchemy import select as sa_select
+
+                row = (
+                    await write_session.execute(
+                        sa_select(WriteNode.metadata_).where(
+                            WriteNode.node_uuid == supersynthesis_node_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                existing_meta = row if isinstance(row, dict) else {}
+                existing_meta["synthesis_document"] = doc
+                await write_session.execute(
+                    update(WriteNode)
+                    .where(WriteNode.node_uuid == supersynthesis_node_id)
+                    .values(metadata_=existing_meta)
+                )
+                await write_session.commit()
+
+            stats = doc.get("stats", {})
 
             output = SuperSynthesizerOutput(
                 supersynthesis_node_id=str(supersynthesis_node_id),

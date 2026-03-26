@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   SynthesisDocumentResponse,
   SynthesisSentenceResponse,
-  SentenceFactsBySourceResponse,
+  SentenceFactResponse,
 } from "@/types";
 import { getSentenceFacts } from "@/lib/api";
 import { SynthesisFactPanel } from "./SynthesisFactPanel";
@@ -20,7 +20,7 @@ interface SynthesisDocumentProps {
 export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const [selectedSentence, setSelectedSentence] = useState<number | null>(null);
   const [sentenceFacts, setSentenceFacts] = useState<
-    SentenceFactsBySourceResponse[] | null
+    SentenceFactResponse[] | null
   >(null);
   const [loadingFacts, setLoadingFacts] = useState(false);
 

@@ -45,15 +45,17 @@ def _build_super_tools(ctx: AgentContext, state_ref: list[Any]) -> list[BaseTool
         except (ValueError, AttributeError):
             return f"Invalid node_id: '{synthesis_node_id}'"
 
-        from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
-
-        repo = SynthesisDocumentRepository(ctx.session)
-        nodes = await repo.get_all_referenced_nodes(nid)
-        if not nodes:
+        node = await ctx.graph_engine.get_node(nid)
+        if not node:
+            return f"Synthesis node not found: {synthesis_node_id}"
+        meta = node.metadata_ or {}
+        doc = meta.get("synthesis_document", {})
+        ref_nodes = doc.get("referenced_nodes", [])
+        if not ref_nodes:
             return f"No referenced nodes found for synthesis {synthesis_node_id}"
-        lines = [f"Referenced nodes ({len(nodes)}):"]
-        for n in nodes:
-            lines.append(f"- {n.id} — {n.concept} [{n.node_type}]")
+        lines = [f"Referenced nodes ({len(ref_nodes)}):"]
+        for rn in ref_nodes:
+            lines.append(f"- {rn.get('node_id', '?')} — {rn.get('concept', '?')}")
         return "\n".join(lines)
 
     @tool

@@ -125,7 +125,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
             synthesis_node_id = node.id
             await graph_engine.set_node_definition(synthesis_node_id, synthesis_text)
 
-            # Set visibility and creator via write-db if available
+            # Set visibility and creator via write-db
             if write_session:
                 from sqlalchemy import update
 
@@ -139,7 +139,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                         creator_id=input.creator_id,
                     )
                 )
-                await write_session.commit()
+                await write_session.flush()
 
             # Build node name/alias lookup for text matching
             node_names: dict[str, list[str]] = {}
@@ -152,17 +152,42 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 except Exception:
                     pass
 
-            # Run document processing pipeline
-            stats = await process_synthesis_document(
-                synthesis_node_id=synthesis_node_id,
+            # Run document processing pipeline (returns JSON doc)
+            doc = await process_synthesis_document(
                 synthesis_text=synthesis_text,
-                session=session,
                 embedding_service=worker_state.embedding_service,
                 qdrant_client=worker_state.qdrant_client,
                 node_names_and_aliases=node_names,
             )
 
-            await session.commit()
+            # Store document JSON in node metadata via write-db
+            if write_session:
+                from sqlalchemy import update
+
+                from kt_db.write_models import WriteNode
+
+                existing_meta = {}
+                from sqlalchemy import select as sa_select
+
+                row = (
+                    await write_session.execute(
+                        sa_select(WriteNode.metadata_).where(
+                            WriteNode.node_uuid == synthesis_node_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if row and isinstance(row, dict):
+                    existing_meta = row
+
+                existing_meta["synthesis_document"] = doc
+                await write_session.execute(
+                    update(WriteNode)
+                    .where(WriteNode.node_uuid == synthesis_node_id)
+                    .values(metadata_=existing_meta)
+                )
+                await write_session.commit()
+
+            stats = doc.get("stats", {})
 
             await emit_event(
                 "synthesis_completed",

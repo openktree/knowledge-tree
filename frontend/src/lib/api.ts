@@ -74,7 +74,7 @@ import type {
   CreateSuperSynthesisRequest,
   SynthesisDocumentResponse,
   PaginatedSynthesesResponse,
-  SentenceFactsBySourceResponse,
+  SentenceFactResponse,
   SynthesisNodeResponse,
 } from "@/types";
 
@@ -1160,7 +1160,7 @@ export async function getSynthesis(id: string) {
 }
 
 export async function getSentenceFacts(synthesisId: string, position: number) {
-  return request<SentenceFactsBySourceResponse[]>(
+  return request<SentenceFactResponse[]>(
     `/syntheses/${synthesisId}/sentences/${position}/facts`
   );
 }
