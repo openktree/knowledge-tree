@@ -17,6 +17,19 @@ export default function SynthesesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  const fetchSyntheses = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await listSyntheses(0, 50);
+      setItems(data.items);
+      setTotal(data.total);
+    } catch (err) {
+      console.error("Failed to load syntheses:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const handleDelete = useCallback(
     async (e: React.MouseEvent, id: string) => {
       e.preventDefault();
@@ -34,19 +47,6 @@ export default function SynthesesPage() {
     },
     [fetchSyntheses]
   );
-
-  const fetchSyntheses = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listSyntheses(0, 50);
-      setItems(data.items);
-      setTotal(data.total);
-    } catch (err) {
-      console.error("Failed to load syntheses:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     fetchSyntheses();
