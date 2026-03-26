@@ -243,8 +243,21 @@ def _build_node_response(
         definition_source=n.definition_source,
         definition_generated_at=n.definition_generated_at.isoformat() if n.definition_generated_at else None,
         enrichment_status=n.enrichment_status,
-        metadata=n.metadata_,
+        metadata=_strip_synthesis_doc(n.metadata_),
     )
+
+
+def _strip_synthesis_doc(meta: dict | None) -> dict | None:
+    """Remove the synthesis_document blob from metadata for normal node responses.
+
+    The synthesis document is large (~50KB) and only needed by the
+    /syntheses/{id} endpoint. Stripping it avoids sending it over the
+    network for node list, detail, wiki, and search responses.
+    """
+    if not meta or "synthesis_document" not in meta:
+        return meta
+    filtered = {k: v for k, v in meta.items() if k != "synthesis_document"}
+    return filtered or None
 
 
 async def _list_nodes_by_pending_facts(
