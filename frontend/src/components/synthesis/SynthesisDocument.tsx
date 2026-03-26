@@ -5,12 +5,14 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { X, CircleDot, FileText } from "lucide-react";
+import { X, CircleDot, FileText, Loader2 } from "lucide-react";
 import type {
   SynthesisDocumentResponse,
   SynthesisSentenceResponse,
   SynthesisNodeResponse,
+  SentenceFactLink,
 } from "@/types";
+import { getSentenceFacts } from "@/lib/api";
 import { SynthesisNodeList } from "./SynthesisNodeList";
 import { SubSynthesisList } from "./SubSynthesisList";
 
@@ -20,6 +22,8 @@ interface SynthesisDocumentProps {
 
 export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
+  const [factLinks, setFactLinks] = useState<SentenceFactLink[] | null>(null);
+  const [loadingFacts, setLoadingFacts] = useState(false);
 
   const selectedSentence =
     selectedPosition !== null
@@ -32,8 +36,28 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
     nodeMap.set(n.node_id, n);
   }
 
-  const handleSentenceClick = (position: number) => {
-    setSelectedPosition(selectedPosition === position ? null : position);
+  const handleSentenceClick = async (position: number) => {
+    if (selectedPosition === position) {
+      setSelectedPosition(null);
+      setFactLinks(null);
+      return;
+    }
+    setSelectedPosition(position);
+    setFactLinks(null);
+
+    // Lazy-load fact links for this sentence
+    const sentence = document.sentences[position];
+    if (sentence && sentence.fact_count > 0) {
+      setLoadingFacts(true);
+      try {
+        const facts = await getSentenceFacts(document.id, position);
+        setFactLinks(facts);
+      } catch {
+        setFactLinks([]);
+      } finally {
+        setLoadingFacts(false);
+      }
+    }
   };
 
   return (
@@ -94,7 +118,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         )}
       </div>
 
-      {/* Right panel — sentence details */}
+      {/* Right panel — sentence details (lazy-loaded) */}
       {selectedSentence && (
         <div className="w-96 shrink-0">
           <Card className="sticky top-4">
@@ -106,7 +130,10 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 variant="ghost"
                 size="icon"
                 className="size-6"
-                onClick={() => setSelectedPosition(null)}
+                onClick={() => {
+                  setSelectedPosition(null);
+                  setFactLinks(null);
+                }}
               >
                 <X className="size-4" />
               </Button>
@@ -120,7 +147,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 )}
               </p>
 
-              {/* Related nodes */}
+              {/* Related nodes (already in the response) */}
               {selectedSentence.node_ids.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-medium flex items-center gap-1.5">
@@ -155,36 +182,44 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 </div>
               )}
 
-              {/* Related facts */}
-              {selectedSentence.fact_links.length > 0 && (
+              {/* Related facts (lazy-loaded) */}
+              {selectedSentence.fact_count > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-medium flex items-center gap-1.5">
                     <FileText className="size-3" />
-                    Closest Facts ({selectedSentence.fact_links.length})
+                    Closest Facts ({selectedSentence.fact_count})
                   </h4>
-                  <p className="text-[10px] text-muted-foreground">
-                    Facts matched by embedding similarity to this sentence.
-                  </p>
-                  <ul className="space-y-1">
-                    {selectedSentence.fact_links.map((fl) => (
-                      <li key={fl.fact_id} className="text-xs">
-                        <Link
-                          href={`/facts/${fl.fact_id}`}
-                          className="text-primary hover:underline"
-                        >
-                          {fl.fact_id.slice(0, 12)}...
-                        </Link>
-                        <span className="text-muted-foreground ml-1">
-                          ({(fl.distance * 100).toFixed(0)}% match)
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  {loadingFacts ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                      <Loader2 className="size-3 animate-spin" />
+                      Loading facts...
+                    </div>
+                  ) : factLinks && factLinks.length > 0 ? (
+                    <ul className="space-y-1">
+                      {factLinks.map((fl) => (
+                        <li key={fl.fact_id} className="text-xs">
+                          <Link
+                            href={`/facts/${fl.fact_id}`}
+                            className="text-primary hover:underline"
+                          >
+                            {fl.fact_id.slice(0, 12)}...
+                          </Link>
+                          <span className="text-muted-foreground ml-1">
+                            ({(fl.distance * 100).toFixed(0)}% match)
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">
+                      No fact links available.
+                    </p>
+                  )}
                 </div>
               )}
 
               {selectedSentence.node_ids.length === 0 &&
-                selectedSentence.fact_links.length === 0 && (
+                selectedSentence.fact_count === 0 && (
                   <p className="text-xs text-muted-foreground">
                     No nodes or facts linked to this sentence.
                   </p>
@@ -214,8 +249,7 @@ function SynthesisSentenceView({
     /(\[[^\]]+\]\(\/(?:nodes|facts)\/[a-f0-9-]+\))/g
   );
 
-  const hasInfo =
-    sentence.fact_links.length > 0 || sentence.node_ids.length > 0;
+  const hasInfo = sentence.fact_count > 0 || sentence.node_ids.length > 0;
 
   return (
     <span
@@ -253,8 +287,8 @@ function SynthesisSentenceView({
           className="text-[10px] px-1 py-0 align-super"
         >
           {sentence.node_ids.length > 0 && `${sentence.node_ids.length}n`}
-          {sentence.node_ids.length > 0 && sentence.fact_links.length > 0 && " "}
-          {sentence.fact_links.length > 0 && `${sentence.fact_links.length}f`}
+          {sentence.node_ids.length > 0 && sentence.fact_count > 0 && " "}
+          {sentence.fact_count > 0 && `${sentence.fact_count}f`}
         </Badge>
       )}
     </span>

@@ -1201,7 +1201,6 @@ export interface SynthesisSentenceResponse {
   text: string;
   fact_count: number;
   node_ids: string[];
-  fact_links: SentenceFactLink[];
 }
 
 export interface SynthesisNodeResponse {

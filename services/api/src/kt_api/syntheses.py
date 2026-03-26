@@ -52,7 +52,6 @@ class SynthesisSentenceResponse(BaseModel):
     text: str
     fact_count: int = 0
     node_ids: list[str] = Field(default_factory=list)
-    fact_links: list[SentenceFactLink] = Field(default_factory=list)
 
 
 class SynthesisNodeResponse(BaseModel):
@@ -226,10 +225,6 @@ async def get_synthesis(
             text=s.get("text", ""),
             fact_count=len(s.get("fact_links", [])),
             node_ids=s.get("node_ids", []),
-            fact_links=[
-                SentenceFactLink(fact_id=fl.get("fact_id", ""), distance=fl.get("distance", 0.0))
-                for fl in s.get("fact_links", [])
-            ],
         )
         for i, s in enumerate(doc.get("sentences", []))
     ]
