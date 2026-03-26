@@ -100,23 +100,15 @@ async def create_synthesis(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Create a new synthesis by dispatching the synthesizer workflow."""
-    from kt_hatchet.client import get_hatchet
+    from kt_hatchet.client import dispatch_workflow
 
-    hatchet = get_hatchet()
-    result = await hatchet.runs.aio_create(
-        workflow_name="synthesizer_wf",
-        input={
-            "topic": body.topic,
-            "starting_node_ids": body.starting_node_ids,
-            "exploration_budget": body.exploration_budget,
-            "visibility": body.visibility,
-        },
-    )
-    return {
-        "status": "pending",
-        "workflow_run_id": str(result.workflow_run_id) if result.workflow_run_id else "",
+    run_id = await dispatch_workflow("synthesizer_wf", {
         "topic": body.topic,
-    }
+        "starting_node_ids": body.starting_node_ids,
+        "exploration_budget": body.exploration_budget,
+        "visibility": body.visibility,
+    })
+    return {"status": "pending", "workflow_run_id": run_id, "topic": body.topic}
 
 
 @router.post("/super-syntheses")
@@ -125,7 +117,7 @@ async def create_super_synthesis(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Create a new super-synthesis by dispatching the super-synthesizer workflow."""
-    from kt_hatchet.client import get_hatchet
+    from kt_hatchet.client import dispatch_workflow
 
     sub_configs = [
         {
@@ -136,21 +128,13 @@ async def create_super_synthesis(
         }
         for c in body.sub_configs
     ]
-    hatchet = get_hatchet()
-    result = await hatchet.runs.aio_create(
-        workflow_name="super_synthesizer_wf",
-        input={
-            "topic": body.topic,
-            "sub_configs": sub_configs,
-            "visibility": body.visibility,
-            "distance_threshold": body.distance_threshold,
-        },
-    )
-    return {
-        "status": "pending",
-        "workflow_run_id": str(result.workflow_run_id) if result.workflow_run_id else "",
+    run_id = await dispatch_workflow("super_synthesizer_wf", {
         "topic": body.topic,
-    }
+        "sub_configs": sub_configs,
+        "visibility": body.visibility,
+        "distance_threshold": body.distance_threshold,
+    })
+    return {"status": "pending", "workflow_run_id": run_id, "topic": body.topic}
 
 
 @router.get("/syntheses", response_model=PaginatedSynthesesResponse)

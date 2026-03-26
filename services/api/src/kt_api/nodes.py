@@ -597,21 +597,15 @@ async def rebuild_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    from kt_hatchet.models import RebuildNodeInput
-    from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
+    from kt_hatchet.client import dispatch_workflow
 
     mode = (body or {}).get("mode", "full")
     scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
-    await rebuild_node_task.aio_run_no_wait(
-        RebuildNodeInput(
-            node_id=node_id,
-            mode=mode,
-            scope=scope,
-            recalculate_pair=True,
-            api_key=api_key,
-        ),
-    )
+    await dispatch_workflow("rebuild_node_task", {
+        "node_id": node_id, "mode": mode, "scope": scope,
+        "recalculate_pair": True, "api_key": api_key,
+    })
     return {"status": "started", "node_id": node_id}
 
 
@@ -803,12 +797,9 @@ async def enrich_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    from kt_hatchet.models import RebuildNodeInput
-    from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
+    from kt_hatchet.client import dispatch_workflow
 
-    await rebuild_node_task.aio_run_no_wait(
-        RebuildNodeInput(node_id=node_id, mode="full", scope="all"),
-    )
+    await dispatch_workflow("rebuild_node_task", {"node_id": node_id, "mode": "full", "scope": "all"})
     return {"status": "started", "node_id": node_id}
 
 
@@ -839,12 +830,11 @@ async def quick_add_node(
 
     if match:
         # Trigger full rebuild via Hatchet
-        from kt_hatchet.models import RebuildNodeInput
-        from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
+        from kt_hatchet.client import dispatch_workflow
 
-        await rebuild_node_task.aio_run_no_wait(
-            RebuildNodeInput(node_id=str(match.id), mode="full", scope="all", recalculate_pair=True),
-        )
+        await dispatch_workflow("rebuild_node_task", {
+            "node_id": str(match.id), "mode": "full", "scope": "all", "recalculate_pair": True,
+        })
         return QuickAddNodeResponse(
             status="started",
             action="refreshed",
@@ -860,8 +850,7 @@ async def quick_add_node(
     from kt_api.dependencies import get_write_session_factory_cached
     from kt_db.keys import make_seed_key
     from kt_db.repositories.write_seeds import WriteSeedRepository
-    from kt_hatchet.models import BuildNodeInput
-    from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
+    from kt_hatchet.client import dispatch_workflow
 
     seed_key = make_seed_key("concept", concept)
 
@@ -872,23 +861,19 @@ async def quick_add_node(
         await seed_repo.upsert_seed(seed_key, concept, "concept", None)
         await ws.commit()
 
-    ref = await node_pipeline_wf.aio_run_no_wait(
-        BuildNodeInput(
-            scope_id=scope_id,
-            concept=concept,
-            node_type="concept",
-            seed_key=seed_key,
-            message_id=scope_id,
-            conversation_id=scope_id,
-        ),
-    )
+    run_id = await dispatch_workflow("node_pipeline_wf", {
+        "scope_id": scope_id,
+        "concept": concept,
+        "node_type": "concept",
+        "seed_key": seed_key,
+        "message_id": scope_id,
+        "conversation_id": scope_id,
+    })
 
-    # We don't have the node_id yet (pipeline will create it), so return
-    # a placeholder.  The frontend can poll or the user can search later.
     return QuickAddNodeResponse(
         status="started",
         action="created",
-        node_id=ref.workflow_run_id,
+        node_id=run_id,
         concept=concept,
     )
 
@@ -1031,8 +1016,7 @@ async def quick_add_perspective(
     from kt_api.dependencies import get_write_session_factory_cached as _gwsf
     from kt_db.keys import make_seed_key as _msk
     from kt_db.repositories.write_seeds import WriteSeedRepository as _WSR
-    from kt_hatchet.models import BuildNodeInput
-    from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
+    from kt_hatchet.client import dispatch_workflow
 
     scope_id = f"quick-perspective-{uuid.uuid4().hex[:8]}"
     thesis_key = _msk("perspective", body.thesis)
@@ -1045,30 +1029,19 @@ async def quick_add_perspective(
         await seed_repo.upsert_seed(antithesis_key, body.antithesis, "perspective", None)
         await ws.commit()
 
-    bulk_items = [
-        node_pipeline_wf.create_bulk_run_item(
-            input=BuildNodeInput(
-                scope_id=scope_id,
-                concept=body.thesis,
-                node_type="perspective",
-                seed_key=thesis_key,
-                message_id=scope_id,
-                conversation_id=scope_id,
-            ),
-        ),
-        node_pipeline_wf.create_bulk_run_item(
-            input=BuildNodeInput(
-                scope_id=scope_id,
-                concept=body.antithesis,
-                node_type="perspective",
-                seed_key=antithesis_key,
-                message_id=scope_id,
-                conversation_id=scope_id,
-            ),
-        ),
-    ]
     try:
-        await node_pipeline_wf.aio_run_many(bulk_items)
+        import asyncio
+
+        await asyncio.gather(
+            dispatch_workflow("node_pipeline_wf", {
+                "scope_id": scope_id, "concept": body.thesis, "node_type": "perspective",
+                "seed_key": thesis_key, "message_id": scope_id, "conversation_id": scope_id,
+            }),
+            dispatch_workflow("node_pipeline_wf", {
+                "scope_id": scope_id, "concept": body.antithesis, "node_type": "perspective",
+                "seed_key": antithesis_key, "message_id": scope_id, "conversation_id": scope_id,
+            }),
+        )
     except Exception:
         logger.warning("Failed to trigger node pipeline for perspective pair", exc_info=True)
 
@@ -1112,12 +1085,9 @@ async def regenerate_composite(
             detail=f"Node type '{node.node_type}' is not a composite node. Only {sorted(COMPOSITE_NODE_TYPES)} can be regenerated.",
         )
 
-    from kt_hatchet.models import RegenerateCompositeInput
-    from kt_worker_nodes.workflows.composite import regenerate_composite_task
+    from kt_hatchet.client import dispatch_workflow
 
-    await regenerate_composite_task.aio_run_no_wait(
-        RegenerateCompositeInput(node_id=node_id),
-    )
+    await dispatch_workflow("regenerate_composite_task", {"node_id": node_id})
     return {"status": "started", "node_id": node_id}
 
 
