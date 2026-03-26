@@ -149,12 +149,12 @@ Output ONLY the JSON array."""
 
 @super_synthesizer_wf.task(
     name="run_sub_syntheses",
-    parents=["reconnaissance"],
+    parents=[reconnaissance],
     execution_timeout=timedelta(minutes=60),
 )
 async def run_sub_syntheses(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
     """Dispatch synthesizer_wf for each scope and collect results."""
-    recon = ctx.task_output("reconnaissance")
+    recon = ctx.task_output(reconnaissance)
     sub_configs = recon.get("sub_configs", [])
 
     if not sub_configs:
@@ -185,12 +185,12 @@ async def run_sub_syntheses(input: SuperSynthesizerInput, ctx: Context) -> dict[
 
 @super_synthesizer_wf.task(
     name="combine",
-    parents=["run_sub_syntheses"],
+    parents=[run_sub_syntheses],
     execution_timeout=timedelta(minutes=30),
 )
 async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
     """Run SuperSynthesizerAgent to combine sub-syntheses into a meta-synthesis."""
-    sub_result = ctx.task_output("run_sub_syntheses")
+    sub_result = ctx.task_output(run_sub_syntheses)
     synthesis_node_ids = sub_result.get("synthesis_node_ids", [])
 
     if not synthesis_node_ids:
