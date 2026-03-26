@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, FileText, Loader2 } from "lucide-react";
+import { Plus, FileText, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { listSyntheses } from "@/lib/api";
+import { listSyntheses, deleteSynthesis } from "@/lib/api";
 import { CreateSynthesisDialog } from "@/components/synthesis/CreateSynthesisDialog";
 import type { SynthesisListItem } from "@/types";
 import { formatSynthesisConcept } from "@/components/synthesis/utils";
@@ -15,6 +15,25 @@ export default function SynthesesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const handleDelete = useCallback(
+    async (e: React.MouseEvent, id: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!confirm("Delete this synthesis? This cannot be undone.")) return;
+      setDeleting(id);
+      try {
+        await deleteSynthesis(id);
+        fetchSyntheses();
+      } catch (err) {
+        console.error("Failed to delete synthesis:", err);
+      } finally {
+        setDeleting(null);
+      }
+    },
+    [fetchSyntheses]
+  );
 
   const fetchSyntheses = useCallback(async () => {
     setLoading(true);
@@ -100,6 +119,19 @@ export default function SynthesesPage() {
                           {new Date(item.created_at).toLocaleDateString()}
                         </span>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => handleDelete(e, item.id)}
+                        disabled={deleting === item.id}
+                      >
+                        {deleting === item.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
