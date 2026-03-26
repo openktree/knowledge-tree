@@ -1191,11 +1191,17 @@ export interface EdgeCandidatePairDetail {
 // Synthesis types
 // ---------------------------------------------------------------------------
 
+export interface SentenceFactLink {
+  fact_id: string;
+  distance: number;
+}
+
 export interface SynthesisSentenceResponse {
   position: number;
   text: string;
   fact_count: number;
   node_ids: string[];
+  fact_links: SentenceFactLink[];
 }
 
 export interface SynthesisNodeResponse {

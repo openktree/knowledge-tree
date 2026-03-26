@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { X, CircleDot, FileText } from "lucide-react";
 import type {
   SynthesisDocumentResponse,
   SynthesisSentenceResponse,
-  SentenceFactResponse,
+  SynthesisNodeResponse,
 } from "@/types";
-import { getSentenceFacts } from "@/lib/api";
-import { SynthesisFactPanel } from "./SynthesisFactPanel";
 import { SynthesisNodeList } from "./SynthesisNodeList";
 import { SubSynthesisList } from "./SubSynthesisList";
 
@@ -18,28 +19,21 @@ interface SynthesisDocumentProps {
 }
 
 export function SynthesisDocument({ document }: SynthesisDocumentProps) {
-  const [selectedSentence, setSelectedSentence] = useState<number | null>(null);
-  const [sentenceFacts, setSentenceFacts] = useState<
-    SentenceFactResponse[] | null
-  >(null);
-  const [loadingFacts, setLoadingFacts] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
 
-  const handleSentenceClick = async (position: number) => {
-    if (selectedSentence === position) {
-      setSelectedSentence(null);
-      setSentenceFacts(null);
-      return;
-    }
-    setSelectedSentence(position);
-    setLoadingFacts(true);
-    try {
-      const facts = await getSentenceFacts(document.id, position);
-      setSentenceFacts(facts);
-    } catch {
-      setSentenceFacts([]);
-    } finally {
-      setLoadingFacts(false);
-    }
+  const selectedSentence =
+    selectedPosition !== null
+      ? document.sentences[selectedPosition] ?? null
+      : null;
+
+  // Build a node lookup from referenced_nodes
+  const nodeMap = new Map<string, SynthesisNodeResponse>();
+  for (const n of document.referenced_nodes) {
+    nodeMap.set(n.node_id, n);
+  }
+
+  const handleSentenceClick = (position: number) => {
+    setSelectedPosition(selectedPosition === position ? null : position);
   };
 
   return (
@@ -75,7 +69,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 <SynthesisSentenceView
                   key={sentence.position}
                   sentence={sentence}
-                  isSelected={selectedSentence === sentence.position}
+                  isSelected={selectedPosition === sentence.position}
                   onClick={() => handleSentenceClick(sentence.position)}
                 />
               ))
@@ -100,18 +94,103 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         )}
       </div>
 
-      {/* Right panel — facts for selected sentence */}
-      {selectedSentence !== null && (
+      {/* Right panel — sentence details */}
+      {selectedSentence && (
         <div className="w-96 shrink-0">
-          <SynthesisFactPanel
-            position={selectedSentence}
-            facts={sentenceFacts}
-            loading={loadingFacts}
-            onClose={() => {
-              setSelectedSentence(null);
-              setSentenceFacts(null);
-            }}
-          />
+          <Card className="sticky top-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-sm">
+                Sentence {selectedSentence.position + 1}
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                onClick={() => setSelectedPosition(null)}
+              >
+                <X className="size-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Sentence text */}
+              <p className="text-sm text-muted-foreground italic border-l-2 pl-3">
+                {selectedSentence.text.replace(
+                  /\[([^\]]+)\]\([^)]+\)/g,
+                  "$1"
+                )}
+              </p>
+
+              {/* Related nodes */}
+              {selectedSentence.node_ids.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-medium flex items-center gap-1.5">
+                    <CircleDot className="size-3" />
+                    Related Nodes ({selectedSentence.node_ids.length})
+                  </h4>
+                  <div className="space-y-1">
+                    {selectedSentence.node_ids.map((nid) => {
+                      const nodeInfo = nodeMap.get(nid);
+                      return (
+                        <Link
+                          key={nid}
+                          href={`/nodes/${nid}`}
+                          className="flex items-center gap-2 rounded border px-2 py-1.5 text-xs hover:bg-accent transition-colors"
+                        >
+                          <CircleDot className="size-3 text-primary shrink-0" />
+                          <span className="truncate">
+                            {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
+                          </span>
+                          {nodeInfo?.node_type && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1 py-0 shrink-0"
+                            >
+                              {nodeInfo.node_type}
+                            </Badge>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Related facts */}
+              {selectedSentence.fact_links.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-medium flex items-center gap-1.5">
+                    <FileText className="size-3" />
+                    Closest Facts ({selectedSentence.fact_links.length})
+                  </h4>
+                  <p className="text-[10px] text-muted-foreground">
+                    Facts matched by embedding similarity to this sentence.
+                  </p>
+                  <ul className="space-y-1">
+                    {selectedSentence.fact_links.map((fl) => (
+                      <li key={fl.fact_id} className="text-xs">
+                        <Link
+                          href={`/facts/${fl.fact_id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {fl.fact_id.slice(0, 12)}...
+                        </Link>
+                        <span className="text-muted-foreground ml-1">
+                          ({(fl.distance * 100).toFixed(0)}% match)
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {selectedSentence.node_ids.length === 0 &&
+                selectedSentence.fact_links.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No nodes or facts linked to this sentence.
+                  </p>
+                )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
@@ -131,37 +210,51 @@ function SynthesisSentenceView({
   isSelected,
   onClick,
 }: SynthesisSentenceViewProps) {
-  // Parse node links: [text](/nodes/uuid) -> clickable links
-  const parts = sentence.text.split(/(\[[^\]]+\]\(\/nodes\/[a-f0-9-]+\))/g);
+  const parts = sentence.text.split(
+    /(\[[^\]]+\]\(\/(?:nodes|facts)\/[a-f0-9-]+\))/g
+  );
+
+  const hasInfo =
+    sentence.fact_links.length > 0 || sentence.node_ids.length > 0;
 
   return (
     <span
       className={`inline cursor-pointer transition-colors rounded px-0.5 ${
         isSelected
           ? "bg-primary/10 ring-1 ring-primary/30"
-          : "hover:bg-muted/50"
+          : hasInfo
+            ? "hover:bg-muted/50"
+            : ""
       }`}
-      onClick={onClick}
+      onClick={hasInfo ? onClick : undefined}
     >
       {parts.map((part, i) => {
-        const match = part.match(/\[([^\]]+)\]\(\/nodes\/([a-f0-9-]+)\)/);
+        const match = part.match(
+          /\[([^\]]+)\]\(\/(nodes|facts)\/([a-f0-9-]+)\)/
+        );
         if (match) {
+          const [, text, type, id] = match;
           return (
-            <a
+            <Link
               key={i}
-              href={`/nodes/${match[2]}`}
+              href={`/${type}/${id}`}
               className="text-primary underline underline-offset-2 hover:text-primary/80"
               onClick={(e) => e.stopPropagation()}
             >
-              {match[1]}
-            </a>
+              {text}
+            </Link>
           );
         }
         return <span key={i}>{part}</span>;
       })}{" "}
-      {sentence.fact_count > 0 && (
-        <Badge variant="outline" className="text-[10px] px-1 py-0 align-super">
-          {sentence.fact_count}
+      {hasInfo && (
+        <Badge
+          variant={isSelected ? "default" : "outline"}
+          className="text-[10px] px-1 py-0 align-super"
+        >
+          {sentence.node_ids.length > 0 && `${sentence.node_ids.length}n`}
+          {sentence.node_ids.length > 0 && sentence.fact_links.length > 0 && " "}
+          {sentence.fact_links.length > 0 && `${sentence.fact_links.length}f`}
         </Badge>
       )}
     </span>
