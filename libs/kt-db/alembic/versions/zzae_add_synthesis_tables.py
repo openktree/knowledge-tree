@@ -1,7 +1,7 @@
 """Add synthesis document tables and node visibility.
 
 Revision ID: zzae
-Revises: zzad
+Revises: hhh9i0j1k2l3
 Create Date: 2026-03-25
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "zzae"
-down_revision = "zzad"
+down_revision = "hhh9i0j1k2l3"
 branch_labels = None
 depends_on = None
 
