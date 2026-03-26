@@ -20,6 +20,7 @@ from kt_api.nodes import router as nodes_router
 from kt_api.research import router as research_router
 from kt_api.seeds import router as seeds_router
 from kt_api.sources import router as sources_router
+from kt_api.syntheses import router as syntheses_router
 from kt_api.system_settings import router as system_settings_router
 from kt_api.usage import router as usage_router
 
@@ -44,4 +45,5 @@ api_router.include_router(edge_candidates_router, dependencies=_auth_dep)
 api_router.include_router(graph_builder_router, dependencies=_auth_dep)
 api_router.include_router(usage_router, dependencies=_auth_dep)
 api_router.include_router(members_router, dependencies=_auth_dep)
+api_router.include_router(syntheses_router, dependencies=_auth_dep)
 api_router.include_router(system_settings_router, dependencies=_auth_dep)
