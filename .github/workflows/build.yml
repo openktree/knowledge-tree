@@ -34,7 +34,8 @@ jobs:
               {"service": "worker-search",         "image": "openktree-worker-search"},
               {"service": "worker-nodes",          "image": "openktree-worker-nodes"},
               {"service": "worker-ingest",         "image": "openktree-worker-ingest"},
-              {"service": "worker-sync",           "image": "openktree-worker-sync"}
+              {"service": "worker-sync",           "image": "openktree-worker-sync"},
+              {"service": "worker-synthesis",     "image": "openktree-worker-synthesis"}
             ]
       - name: Detect frontend changes
         id: frontend
