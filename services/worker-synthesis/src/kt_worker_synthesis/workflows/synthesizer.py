@@ -117,9 +117,13 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 logger.warning("Synthesizer agent ended without producing text")
                 synthesis_text = "Synthesis completed but no document was produced."
 
-            # Create synthesis node and set its definition
+            # Create synthesis node — append timestamp for unique key
+            from datetime import datetime, UTC
+
+            ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+            concept = f"{input.topic or 'Synthesis'} [{ts}]"
             node = await graph_engine.create_node(
-                concept=input.topic or "Synthesis",
+                concept=concept,
                 node_type="synthesis",
             )
             synthesis_node_id = node.id

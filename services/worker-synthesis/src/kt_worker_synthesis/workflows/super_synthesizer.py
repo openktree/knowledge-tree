@@ -264,9 +264,13 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
             if not super_text:
                 super_text = "Super-synthesis completed but no document was produced."
 
-            # Create supersynthesis node and set its definition
+            # Create supersynthesis node — append timestamp for unique key
+            from datetime import UTC, datetime
+
+            ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+            concept = f"{input.topic or 'Super-Synthesis'} [{ts}]"
             node = await graph_engine.create_node(
-                concept=input.topic or "Super-Synthesis",
+                concept=concept,
                 node_type="supersynthesis",
             )
             supersynthesis_node_id = node.id
