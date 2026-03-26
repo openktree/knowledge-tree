@@ -116,6 +116,9 @@ class SuperSynthesizerAgent(BaseAgent[SuperSynthesizerState]):
     def get_reasoning_effort(self) -> str | None:
         return self.ctx.model_gateway.synthesis_thinking_level or None
 
+    def get_model_kwargs(self) -> dict[str, Any]:
+        return {"max_tokens": 32000}
+
     def get_state_type(self) -> type[SuperSynthesizerState]:
         return SuperSynthesizerState
 

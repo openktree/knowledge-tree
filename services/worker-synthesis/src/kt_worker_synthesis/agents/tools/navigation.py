@@ -81,7 +81,8 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
         if not ctx.embedding_service:
             return "Embedding service not available for fact search."
         try:
-            embedding = await ctx.embedding_service.embed(query)
+            embeddings = await ctx.embedding_service.embed_batch([query])
+            embedding = embeddings[0]
             from kt_qdrant.repositories.facts import QdrantFactRepository
 
             fact_repo = QdrantFactRepository(ctx.qdrant_client)
