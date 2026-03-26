@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
+import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,11 +31,25 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       ? document.sentences[selectedPosition] ?? null
       : null;
 
-  // Build a node lookup from referenced_nodes
-  const nodeMap = new Map<string, SynthesisNodeResponse>();
-  for (const n of document.referenced_nodes) {
-    nodeMap.set(n.node_id, n);
-  }
+  // Build lookups
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, SynthesisNodeResponse>();
+    for (const n of document.referenced_nodes) {
+      map.set(n.node_id, n);
+    }
+    return map;
+  }, [document.referenced_nodes]);
+
+  // Build a map from sentence text -> sentence data for matching in markdown
+  const sentenceMap = useMemo(() => {
+    const map = new Map<string, SynthesisSentenceResponse>();
+    for (const s of document.sentences) {
+      // Use a normalized key (first 80 chars) to handle minor whitespace diffs
+      const key = s.text.slice(0, 80).trim();
+      if (key) map.set(key, s);
+    }
+    return map;
+  }, [document.sentences]);
 
   const handleSentenceClick = async (position: number) => {
     if (selectedPosition === position) {
@@ -45,7 +60,6 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
     setSelectedPosition(position);
     setFactLinks(null);
 
-    // Lazy-load fact links for this sentence
     const sentence = document.sentences[position];
     if (sentence && sentence.fact_count > 0) {
       setLoadingFacts(true);
@@ -59,6 +73,89 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       }
     }
   };
+
+  // Find which sentence a text fragment belongs to
+  const findSentence = (text: string): SynthesisSentenceResponse | null => {
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.length < 10) return null;
+    const key = trimmed.slice(0, 80).trim();
+    return sentenceMap.get(key) ?? null;
+  };
+
+  // Custom markdown components that overlay sentence interactivity
+  const markdownComponents = useMemo(
+    () => ({
+      // Render paragraphs with sentence-level interactivity
+      p: ({ children }: { children?: React.ReactNode }) => {
+        return (
+          <p className="mb-4 leading-relaxed">
+            <InteractiveText
+              findSentence={findSentence}
+              selectedPosition={selectedPosition}
+              onSentenceClick={handleSentenceClick}
+            >
+              {children}
+            </InteractiveText>
+          </p>
+        );
+      },
+      // Render links as Next.js Links for internal, regular <a> for external
+      a: ({
+        href,
+        children,
+      }: {
+        href?: string;
+        children?: React.ReactNode;
+      }) => {
+        if (href?.startsWith("/nodes/") || href?.startsWith("/facts/")) {
+          return (
+            <Link
+              href={href}
+              className="text-primary underline underline-offset-2 hover:text-primary/80"
+            >
+              {children}
+            </Link>
+          );
+        }
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline underline-offset-2"
+          >
+            {children}
+          </a>
+        );
+      },
+      // Style headings
+      h1: ({ children }: { children?: React.ReactNode }) => (
+        <h1 className="text-2xl font-bold mt-6 mb-3">{children}</h1>
+      ),
+      h2: ({ children }: { children?: React.ReactNode }) => (
+        <h2 className="text-xl font-semibold mt-5 mb-2">{children}</h2>
+      ),
+      h3: ({ children }: { children?: React.ReactNode }) => (
+        <h3 className="text-lg font-medium mt-4 mb-2">{children}</h3>
+      ),
+      // Style list items with sentence interactivity
+      li: ({ children }: { children?: React.ReactNode }) => (
+        <li className="mb-1">
+          <InteractiveText
+            findSentence={findSentence}
+            selectedPosition={selectedPosition}
+            onSentenceClick={handleSentenceClick}
+          >
+            {children}
+          </InteractiveText>
+        </li>
+      ),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedPosition, sentenceMap]
+  );
+
+  const hasDefinition = document.definition && document.definition.trim();
 
   return (
     <div className="flex gap-6">
@@ -87,27 +184,18 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               </p>
             )}
           </CardHeader>
-          <CardContent className="space-y-1">
-            {document.sentences.length > 0 ? (
-              document.sentences.map((sentence) => (
-                <SynthesisSentenceView
-                  key={sentence.position}
-                  sentence={sentence}
-                  isSelected={selectedPosition === sentence.position}
-                  onClick={() => handleSentenceClick(sentence.position)}
-                />
-              ))
-            ) : document.definition ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
-                {document.definition}
-              </div>
+          <CardContent className="prose prose-sm dark:prose-invert max-w-none">
+            {hasDefinition ? (
+              <Markdown components={markdownComponents}>
+                {document.definition!}
+              </Markdown>
             ) : (
               <p className="text-muted-foreground">No content available.</p>
             )}
           </CardContent>
         </Card>
 
-        {/* Sub-syntheses (for supersynthesis) */}
+        {/* Sub-syntheses */}
         {document.sub_syntheses.length > 0 && (
           <SubSynthesisList subSyntheses={document.sub_syntheses} />
         )}
@@ -147,7 +235,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 )}
               </p>
 
-              {/* Related nodes (already in the response) */}
+              {/* Related nodes */}
               {selectedSentence.node_ids.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-medium flex items-center gap-1.5">
@@ -232,65 +320,79 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   );
 }
 
-// ── Sentence component ────────────────────────────────────────────
+// ── InteractiveText: wraps text children with sentence click handlers ──
 
-interface SynthesisSentenceViewProps {
-  sentence: SynthesisSentenceResponse;
-  isSelected: boolean;
-  onClick: () => void;
+interface InteractiveTextProps {
+  children: React.ReactNode;
+  findSentence: (text: string) => SynthesisSentenceResponse | null;
+  selectedPosition: number | null;
+  onSentenceClick: (position: number) => void;
 }
 
-function SynthesisSentenceView({
-  sentence,
-  isSelected,
-  onClick,
-}: SynthesisSentenceViewProps) {
-  const parts = sentence.text.split(
-    /(\[[^\]]+\]\(\/(?:nodes|facts)\/[a-f0-9-]+\))/g
-  );
+function InteractiveText({
+  children,
+  findSentence,
+  selectedPosition,
+  onSentenceClick,
+}: InteractiveTextProps) {
+  if (!children) return null;
 
-  const hasInfo = sentence.fact_count > 0 || sentence.node_ids.length > 0;
-
-  return (
-    <span
-      className={`inline cursor-pointer transition-colors rounded px-0.5 ${
-        isSelected
-          ? "bg-primary/10 ring-1 ring-primary/30"
-          : hasInfo
-            ? "hover:bg-muted/50"
-            : ""
-      }`}
-      onClick={hasInfo ? onClick : undefined}
-    >
-      {parts.map((part, i) => {
-        const match = part.match(
-          /\[([^\]]+)\]\(\/(nodes|facts)\/([a-f0-9-]+)\)/
+  // Process children — wrap text nodes with sentence handlers
+  const processChild = (
+    child: React.ReactNode,
+    key: number
+  ): React.ReactNode => {
+    if (typeof child === "string") {
+      const sentence = findSentence(child);
+      if (sentence) {
+        const hasInfo =
+          sentence.fact_count > 0 || sentence.node_ids.length > 0;
+        const isSelected = selectedPosition === sentence.position;
+        return (
+          <span
+            key={key}
+            className={`${
+              hasInfo ? "cursor-pointer" : ""
+            } transition-colors rounded-sm ${
+              isSelected
+                ? "bg-primary/10 ring-1 ring-primary/30"
+                : hasInfo
+                  ? "hover:bg-muted/50"
+                  : ""
+            }`}
+            onClick={
+              hasInfo ? () => onSentenceClick(sentence.position) : undefined
+            }
+          >
+            {child}
+            {hasInfo && (
+              <>
+                {" "}
+                <Badge
+                  variant={isSelected ? "default" : "outline"}
+                  className="text-[10px] px-1 py-0 align-super no-underline"
+                >
+                  {sentence.node_ids.length > 0 &&
+                    `${sentence.node_ids.length}n`}
+                  {sentence.node_ids.length > 0 &&
+                    sentence.fact_count > 0 &&
+                    " "}
+                  {sentence.fact_count > 0 && `${sentence.fact_count}f`}
+                </Badge>
+              </>
+            )}
+          </span>
         );
-        if (match) {
-          const [, text, type, id] = match;
-          return (
-            <Link
-              key={i}
-              href={`/${type}/${id}`}
-              className="text-primary underline underline-offset-2 hover:text-primary/80"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {text}
-            </Link>
-          );
-        }
-        return <span key={i}>{part}</span>;
-      })}{" "}
-      {hasInfo && (
-        <Badge
-          variant={isSelected ? "default" : "outline"}
-          className="text-[10px] px-1 py-0 align-super"
-        >
-          {sentence.node_ids.length > 0 && `${sentence.node_ids.length}n`}
-          {sentence.node_ids.length > 0 && sentence.fact_count > 0 && " "}
-          {sentence.fact_count > 0 && `${sentence.fact_count}f`}
-        </Badge>
-      )}
-    </span>
-  );
+      }
+      return child;
+    }
+
+    // Pass through non-text children (e.g., <a>, <strong>, <em>)
+    return child;
+  };
+
+  if (Array.isArray(children)) {
+    return <>{children.map((child, i) => processChild(child, i))}</>;
+  }
+  return <>{processChild(children, 0)}</>;
 }
