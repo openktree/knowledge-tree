@@ -49,6 +49,7 @@ class Visibility(str, Enum):
     public = "public"
     private = "private"
 
+
 # Base (non-composite) node types — built directly from raw facts.
 BASE_NODE_TYPES: frozenset[str] = frozenset({"concept", "entity", "event", "location"})
 

@@ -46,6 +46,7 @@ def _build_super_tools(ctx: AgentContext, state_ref: list[Any]) -> list[BaseTool
             return f"Invalid node_id: '{synthesis_node_id}'"
 
         from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
+
         repo = SynthesisDocumentRepository(ctx.session)
         nodes = await repo.get_all_referenced_nodes(nid)
         if not nodes:
@@ -132,9 +133,7 @@ class SuperSynthesizerAgent(BaseAgent[SuperSynthesizerState]):
             return {
                 "messages": [
                     response,
-                    HumanMessage(
-                        content="You must call finish_super_synthesis(text) with your complete document."
-                    ),
+                    HumanMessage(content="You must call finish_super_synthesis(text) with your complete document."),
                 ]
             }
         return None

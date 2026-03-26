@@ -166,13 +166,7 @@ async def list_syntheses(
     total = (await session.execute(count_q)).scalar_one()
 
     # Fetch
-    q = (
-        select(Node)
-        .where(base_filter)
-        .order_by(Node.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    q = select(Node).where(base_filter).order_by(Node.created_at.desc()).offset(offset).limit(limit)
     nodes = (await session.execute(q)).scalars().all()
 
     items = []
@@ -180,9 +174,7 @@ async def list_syntheses(
         # Get sentence count
         sc = (
             await session.execute(
-                select(func.count())
-                .select_from(SynthesisSentence)
-                .where(SynthesisSentence.synthesis_node_id == n.id)
+                select(func.count()).select_from(SynthesisSentence).where(SynthesisSentence.synthesis_node_id == n.id)
             )
         ).scalar_one()
         items.append(
@@ -289,8 +281,7 @@ async def get_sentence_facts(
 
     # Find sentence by position
     result = await session.execute(
-        select(SynthesisSentence)
-        .where(
+        select(SynthesisSentence).where(
             SynthesisSentence.synthesis_node_id == nid,
             SynthesisSentence.position == position,
         )

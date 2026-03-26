@@ -104,9 +104,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
             compiled = graph.compile()
 
             recursion_limit = max(input.exploration_budget * 6 + 20, 50)
-            final = await compiled.ainvoke(
-                initial_state, config={"recursion_limit": recursion_limit}
-            )
+            final = await compiled.ainvoke(initial_state, config={"recursion_limit": recursion_limit})
 
             if isinstance(final, dict):
                 synthesis_text = final.get("synthesis_text", "")

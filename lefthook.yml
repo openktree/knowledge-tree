@@ -1,0 +1,30 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: python-lint
+      glob: "**/*.py"
+      run: uv run ruff check {staged_files}
+
+    - name: python-format
+      glob: "**/*.py"
+      run: uv run ruff format --check --diff {staged_files}
+
+    - name: python-typecheck
+      glob: "**/*.py"
+      run: uv run pyright
+
+    - name: frontend-lint
+      glob: "frontend/**/*.{ts,tsx,js,jsx}"
+      run: cd frontend && pnpm lint
+
+    - name: frontend-typecheck
+      glob: "frontend/**/*.{ts,tsx,js,jsx}"
+      run: cd frontend && pnpm type-check
+
+    - name: python-tests
+      glob: "**/*.py"
+      run: just test-all
+
+    - name: frontend-tests
+      glob: "frontend/**/*.{ts,tsx,js,jsx}"
+      run: cd frontend && pnpm test

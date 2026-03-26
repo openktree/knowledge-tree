@@ -126,12 +126,14 @@ class SynthesisDocumentRepository:
                         "source_title": raw_source.title or "",
                         "facts": [],
                     }
-                facts_by_source[source_key]["facts"].append({
-                    "fact_id": str(fact.id),
-                    "content": fact.content,
-                    "fact_type": fact.fact_type,
-                    "embedding_distance": sf.embedding_distance,
-                })
+                facts_by_source[source_key]["facts"].append(
+                    {
+                        "fact_id": str(fact.id),
+                        "content": fact.content,
+                        "fact_type": fact.fact_type,
+                        "embedding_distance": sf.embedding_distance,
+                    }
+                )
 
         return list(facts_by_source.values())
 
@@ -145,13 +147,15 @@ class SynthesisDocumentRepository:
         )
         links = []
         for snl, node in result.all():
-            links.append({
-                "sentence_id": str(snl.sentence_id),
-                "node_id": str(node.id),
-                "concept": node.concept,
-                "node_type": node.node_type,
-                "link_type": snl.link_type,
-            })
+            links.append(
+                {
+                    "sentence_id": str(snl.sentence_id),
+                    "node_id": str(node.id),
+                    "concept": node.concept,
+                    "node_type": node.node_type,
+                    "link_type": snl.link_type,
+                }
+            )
         return links
 
     async def get_all_referenced_nodes(self, synthesis_node_id: uuid.UUID) -> list[Node]:
@@ -194,8 +198,6 @@ class SynthesisDocumentRepository:
     async def delete_document(self, synthesis_node_id: uuid.UUID) -> None:
         """Delete all document data for a synthesis (sentences cascade to links)."""
         await self._session.execute(
-            delete(SynthesisSentence).where(
-                SynthesisSentence.synthesis_node_id == synthesis_node_id
-            )
+            delete(SynthesisSentence).where(SynthesisSentence.synthesis_node_id == synthesis_node_id)
         )
         await self._session.flush()

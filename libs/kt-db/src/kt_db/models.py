@@ -686,9 +686,7 @@ class SynthesisSentence(Base):
 
     # Relationships
     fact_links: Mapped[list["SentenceFact"]] = relationship(back_populates="sentence", cascade="all, delete-orphan")
-    node_links: Mapped[list["SentenceNodeLink"]] = relationship(
-        back_populates="sentence", cascade="all, delete-orphan"
-    )
+    node_links: Mapped[list["SentenceNodeLink"]] = relationship(back_populates="sentence", cascade="all, delete-orphan")
 
 
 class SentenceFact(Base):

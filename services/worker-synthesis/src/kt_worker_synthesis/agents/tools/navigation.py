@@ -83,6 +83,7 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
         try:
             embedding = await ctx.embedding_service.embed(query)
             from kt_qdrant.repositories.facts import QdrantFactRepository
+
             fact_repo = QdrantFactRepository(ctx.qdrant_client)
             results = await fact_repo.search_similar(embedding, limit=limit)
             if not results:
@@ -196,7 +197,11 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
 
         # Track facts retrieved
         if state:
-            state.facts_retrieved[node_id] = [f for _, stance in facts_with_stance[:limit] for f in [_format_fact(source_map.get(_.id, _), stance=stance)]]
+            state.facts_retrieved[node_id] = [
+                f
+                for _, stance in facts_with_stance[:limit]
+                for f in [_format_fact(source_map.get(_.id, _), stance=stance)]
+            ]
 
         lines = [f"Facts for node {node_id} ({len(facts_with_stance)} total, grouped by source):"]
         for source_name, data in by_source.items():
@@ -311,4 +316,13 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
             lines.append(f"  Path {i + 1}: {' → '.join(steps)}")
         return "\n".join(lines)
 
-    return [search_graph, search_facts, get_node, get_edges, get_facts, get_dimensions, get_fact_sources, get_node_paths]
+    return [
+        search_graph,
+        search_facts,
+        get_node,
+        get_edges,
+        get_facts,
+        get_dimensions,
+        get_fact_sources,
+        get_node_paths,
+    ]

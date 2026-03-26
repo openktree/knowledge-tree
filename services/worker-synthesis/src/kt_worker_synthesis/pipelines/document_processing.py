@@ -199,11 +199,13 @@ async def process_synthesis_document(
             if sent_idx < len(sentence_records):
                 for fact_id, distance in fact_links:
                     try:
-                        fact_link_tuples.append((
-                            sentence_records[sent_idx].id,
-                            uuid.UUID(fact_id),
-                            distance,
-                        ))
+                        fact_link_tuples.append(
+                            (
+                                sentence_records[sent_idx].id,
+                                uuid.UUID(fact_id),
+                                distance,
+                            )
+                        )
                     except ValueError:
                         pass
         if fact_link_tuples:

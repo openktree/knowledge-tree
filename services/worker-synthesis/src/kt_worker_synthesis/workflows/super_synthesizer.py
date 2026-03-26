@@ -67,8 +67,8 @@ async def reconnaissance(input: SuperSynthesizerInput, ctx: Context) -> dict[str
         search_terms = [input.topic]
         words = input.topic.split()
         if len(words) > 2:
-            search_terms.append(" ".join(words[:len(words) // 2]))
-            search_terms.append(" ".join(words[len(words) // 2:]))
+            search_terms.append(" ".join(words[: len(words) // 2]))
+            search_terms.append(" ".join(words[len(words) // 2 :]))
         search_terms.append(f"{input.topic} overview")
 
         seen_ids: set[str] = set()
@@ -79,12 +79,14 @@ async def reconnaissance(input: SuperSynthesizerInput, ctx: Context) -> dict[str
                 if nid not in seen_ids:
                     seen_ids.add(nid)
                     facts = await graph_engine.get_node_facts(n.id)
-                    all_nodes.append({
-                        "node_id": nid,
-                        "concept": n.concept,
-                        "node_type": n.node_type,
-                        "fact_count": len(facts),
-                    })
+                    all_nodes.append(
+                        {
+                            "node_id": nid,
+                            "concept": n.concept,
+                            "node_type": n.node_type,
+                            "fact_count": len(facts),
+                        }
+                    )
 
         # Use LLM to plan scopes
         node_list = "\n".join(
@@ -120,7 +122,7 @@ Output ONLY the JSON array."""
             start = raw.find("[")
             end = raw.rfind("]")
             if start >= 0 and end > start:
-                scopes = json.loads(raw[start:end + 1])
+                scopes = json.loads(raw[start : end + 1])
             else:
                 scopes = []
         except Exception:
@@ -132,13 +134,15 @@ Output ONLY the JSON array."""
 
         sub_configs = []
         for scope in scopes:
-            sub_configs.append(SynthesizerInput(
-                topic=scope.get("topic", input.topic),
-                starting_node_ids=scope.get("starting_node_ids", []),
-                exploration_budget=scope.get("exploration_budget", 15),
-                visibility=input.visibility,
-                creator_id=input.creator_id,
-            ).model_dump())
+            sub_configs.append(
+                SynthesizerInput(
+                    topic=scope.get("topic", input.topic),
+                    starting_node_ids=scope.get("starting_node_ids", []),
+                    exploration_budget=scope.get("exploration_budget", 15),
+                    visibility=input.visibility,
+                    creator_id=input.creator_id,
+                ).model_dump()
+            )
 
         return {"sub_configs": sub_configs}
 
@@ -250,9 +254,7 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
             compiled = graph.compile()
 
             recursion_limit = max(len(synthesis_node_ids) * 8 + 20, 40)
-            final = await compiled.ainvoke(
-                initial_state, config={"recursion_limit": recursion_limit}
-            )
+            final = await compiled.ainvoke(initial_state, config={"recursion_limit": recursion_limit})
 
             if isinstance(final, dict):
                 super_text = final.get("super_synthesis_text", "")
@@ -288,6 +290,7 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
 
             # Link children
             from kt_db.repositories.synthesis_documents import SynthesisDocumentRepository
+
             doc_repo = SynthesisDocumentRepository(session)
             await doc_repo.add_synthesis_children(
                 supersynthesis_node_id,
