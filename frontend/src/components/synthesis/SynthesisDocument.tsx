@@ -520,15 +520,15 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="overflow-y-auto flex-1 space-y-5 pr-1">
-            {/* Selected paragraph */}
-            <div className="border-l-2 border-blue-400 pl-4 py-1">
-              <p className="text-[0.9rem] leading-[1.7] text-stone-700 dark:text-stone-300 italic">
-                {selectedParaText.slice(0, 300)}
-                {selectedParaText.length > 300 ? "..." : ""}
-              </p>
-            </div>
+          {/* Selected paragraph — stays visible while scrolling */}
+          <div className="shrink-0 border-l-2 border-blue-400 pl-4 py-1 bg-stone-50/50 dark:bg-stone-900/30 rounded-r">
+            <p className="text-[0.85rem] leading-[1.6] text-stone-600 dark:text-stone-400 italic max-h-24 overflow-y-auto">
+              {selectedParaText.slice(0, 400)}
+              {selectedParaText.length > 400 ? "..." : ""}
+            </p>
+          </div>
 
+          <div className="overflow-y-auto flex-1 space-y-5 pr-1">
             {/* Nodes section */}
             {selectedNodes.length > 0 && (
               <div>
