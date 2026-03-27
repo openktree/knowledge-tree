@@ -1193,7 +1193,11 @@ export interface EdgeCandidatePairDetail {
 
 export interface SentenceFactLink {
   fact_id: string;
-  distance: number;
+  content: string;
+  fact_type: string;
+  embedding_distance: number;
+  source_title: string;
+  source_uri: string;
 }
 
 export interface SynthesisSentenceResponse {

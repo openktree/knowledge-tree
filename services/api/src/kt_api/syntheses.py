@@ -93,6 +93,8 @@ class SentenceFactResponse(BaseModel):
     content: str = ""
     fact_type: str = ""
     embedding_distance: float = 0.0
+    source_title: str = ""
+    source_uri: str = ""
 
 
 class SentenceFactsBySourceResponse(BaseModel):
@@ -292,12 +294,44 @@ async def get_sentence_facts(
         raise HTTPException(status_code=404, detail="Sentence not found")
 
     sentence = sentences[position]
+    fact_links = sentence.get("fact_links", [])
+    if not fact_links:
+        return []
+
+    # Look up fact content and sources from the DB
+    from kt_db.models import Fact, FactSource, RawSource
+
+    fact_ids = [uuid.UUID(fl["fact_id"]) for fl in fact_links if fl.get("fact_id")]
+    distance_map = {fl["fact_id"]: fl.get("distance", 0.0) for fl in fact_links}
+
+    facts_result = await session.execute(
+        select(Fact).where(Fact.id.in_(fact_ids))
+    )
+    facts_by_id = {str(f.id): f for f in facts_result.scalars().all()}
+
+    # Get first source for each fact
+    sources_result = await session.execute(
+        select(FactSource, RawSource)
+        .join(RawSource, FactSource.raw_source_id == RawSource.id)
+        .where(FactSource.fact_id.in_(fact_ids))
+    )
+    source_map: dict[str, tuple[str, str]] = {}
+    for fs, rs in sources_result.all():
+        fid = str(fs.fact_id)
+        if fid not in source_map:
+            source_map[fid] = (rs.title or "", rs.uri or "")
+
     return [
         SentenceFactResponse(
             fact_id=fl.get("fact_id", ""),
-            embedding_distance=fl.get("distance", 0.0),
+            content=facts_by_id.get(fl["fact_id"], None).content if facts_by_id.get(fl["fact_id"]) else "",
+            fact_type=facts_by_id.get(fl["fact_id"], None).fact_type if facts_by_id.get(fl["fact_id"]) else "",
+            embedding_distance=distance_map.get(fl["fact_id"], 0.0),
+            source_title=source_map.get(fl["fact_id"], ("", ""))[0],
+            source_uri=source_map.get(fl["fact_id"], ("", ""))[1],
         )
-        for fl in sentence.get("fact_links", [])
+        for fl in fact_links
+        if fl.get("fact_id")
     ]
 
 

@@ -448,15 +448,27 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                     <Link
                       key={fl.fact_id}
                       href={`/facts/${fl.fact_id}`}
-                      className="flex items-center gap-1.5 rounded border px-2 py-1.5 text-xs hover:bg-accent transition-colors"
+                      className="block rounded border px-2.5 py-2 text-xs hover:bg-accent transition-colors space-y-1"
                     >
-                      <FileText className="size-3 text-primary shrink-0" />
-                      <span className="truncate">
-                        {fl.fact_id.slice(0, 12)}...
-                      </span>
-                      <span className="text-muted-foreground shrink-0 ml-auto">
-                        {(fl.distance * 100).toFixed(0)}%
-                      </span>
+                      <p className="leading-relaxed line-clamp-3">
+                        {fl.content || fl.fact_id.slice(0, 12) + "..."}
+                      </p>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        {fl.fact_type && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] px-1 py-0"
+                          >
+                            {fl.fact_type}
+                          </Badge>
+                        )}
+                        {fl.source_title && (
+                          <span className="truncate">{fl.source_title}</span>
+                        )}
+                        <span className="shrink-0 ml-auto">
+                          {(fl.embedding_distance * 100).toFixed(0)}%
+                        </span>
+                      </div>
                     </Link>
                   ))
                 )}
