@@ -147,7 +147,7 @@ function buildExportHTML(
     /\[([^\]]+)\]\(\/nodes\/([a-f0-9-]+)\)/g,
     (_, text, nodeId) => {
       const num = nodeIndex.get(nodeId);
-      return num ? `${text}<sup class="node-ref">[${num}]</sup>` : text;
+      return num ? `${text}<sup class="node-ref"><a href="#node-${num}">[${num}]</a></sup>` : text;
     }
   );
 
@@ -166,7 +166,7 @@ function buildExportHTML(
     const refs = facts
       .map((f) => {
         const num = factIndex.get(f.fact_id);
-        return num ? `<sup class="fact-ref">[${num}]</sup>` : "";
+        return num ? `<sup class="fact-ref"><a href="#fact-${num}">[${num}]</a></sup>` : "";
       })
       .join("");
 
@@ -227,8 +227,10 @@ function buildExportHTML(
     border: 1px solid #d4cdc2; border-radius: 3px; margin-right: 6px;
     font-family: 'Helvetica', 'Arial', sans-serif;
   }
-  sup.node-ref { color: #1e63a8; font-size: 8pt; font-weight: 600; font-family: sans-serif; }
-  sup.fact-ref { color: #7c4e28; font-size: 8pt; font-weight: 600; font-family: sans-serif; }
+  sup.node-ref a { color: #1e63a8; font-size: 8pt; font-weight: 600; font-family: sans-serif; text-decoration: none; }
+  sup.node-ref a:hover { text-decoration: underline; }
+  sup.fact-ref a { color: #7c4e28; font-size: 8pt; font-weight: 600; font-family: sans-serif; text-decoration: none; }
+  sup.fact-ref a:hover { text-decoration: underline; }
   ul, ol { padding-left: 1.5rem; margin-bottom: 0.8rem; }
   li { margin-bottom: 0.3rem; }
   strong { font-weight: 700; }
@@ -304,9 +306,9 @@ function buildExportHTML(
 
 ${body}
 
-${factsSection}
-
 ${annexes}
+
+${factsSection}
 
 ${promptSection}
 
@@ -344,7 +346,7 @@ can be understood independently. The original source URL is provided for verific
     const num = factIndex.get(factId);
     if (!num) continue;
 
-    html += `<div class="fact-entry">
+    html += `<div class="fact-entry" id="fact-${num}">
 <span class="fact-num">[${num}]</span> `;
 
     if (fact.fact_type) {
@@ -392,14 +394,12 @@ with provenance-tracked facts from external sources.
 
     const def = nodeDefinitions.get(node.node_id);
 
-    html += `<div class="annex-entry">
+    html += `<div class="annex-entry" id="node-${num}">
 <span class="annex-num">[${num}]</span> <span class="annex-name">${escapeHTML(node.concept)}</span>
 <span style="font-size: 9pt; color: #6a6059; text-transform: uppercase;"> (${escapeHTML(node.node_type || "concept")})</span>`;
 
     if (def) {
-      // Truncate long definitions
-      const truncated = def.length > 800 ? def.slice(0, 800) + "..." : def;
-      html += `<div class="annex-def">${escapeHTML(truncated)}</div>`;
+      html += `<div class="annex-def">${markdownToHTML(def)}</div>`;
     } else {
       html += `<div class="annex-def" style="font-style: italic; color: #9a9088;">No definition available.</div>`;
     }
@@ -467,6 +467,12 @@ function markdownToHTML(md: string): string {
   html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
   html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
   html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+
+  // Links — convert remaining markdown links to HTML anchors
+  html = html.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
 
   // Bold and italic
   html = html.replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>");
