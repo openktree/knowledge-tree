@@ -376,7 +376,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         );
       },
       li: ({ children }: { children?: React.ReactNode }) => (
-        <li className="text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200">
+        <li className="text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200 pointer-events-none [&_a]:pointer-events-auto">
           {children}
         </li>
       ),
