@@ -311,7 +311,6 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 embedding_service=worker_state.embedding_service,
                 qdrant_client=worker_state.qdrant_client,
                 node_names_and_aliases=node_names,
-                session=session,
             )
 
             # Add sub_synthesis_ids to the document

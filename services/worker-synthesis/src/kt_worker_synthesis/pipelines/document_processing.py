@@ -87,62 +87,32 @@ def link_nodes_by_text(
 async def link_facts_by_embedding(
     sentence_embeddings: list[list[float]],
     qdrant_client: object,
-    session: object | None = None,
     referenced_node_ids: list[str] | None = None,
     top_k: int = 5,
 ) -> dict[int, list[tuple[str, float]]]:
     """For each sentence, find the closest facts by embedding similarity.
 
-    Searches all facts in Qdrant, then post-filters to only keep facts
-    that are linked to the visited nodes (via the NodeFact junction table).
-    This avoids showing irrelevant facts the synthesis agent never saw.
+    Uses Qdrant's MatchAny filter on the node_ids payload field to only
+    search facts linked to the visited nodes. This is fast and avoids
+    showing irrelevant facts the synthesis agent never saw.
 
     Returns {sentence_index: [(fact_id, distance), ...]}
     """
-    import uuid as _uuid
-
     from kt_qdrant.repositories.facts import QdrantFactRepository
 
     fact_repo = QdrantFactRepository(qdrant_client)
-
-    # Build set of valid fact IDs from visited nodes (if we have a session)
-    valid_fact_ids: set[str] | None = None
-    if session and referenced_node_ids:
-        try:
-            from sqlalchemy import select
-            from sqlalchemy.ext.asyncio import AsyncSession
-
-            if isinstance(session, AsyncSession):
-                from kt_db.models import NodeFact
-
-                node_uuids = [_uuid.UUID(nid) for nid in referenced_node_ids]
-                result = await session.execute(select(NodeFact.fact_id).where(NodeFact.node_id.in_(node_uuids)))
-                valid_fact_ids = {str(row[0]) for row in result.all()}
-                logger.info("Fact filter: %d valid facts from %d nodes", len(valid_fact_ids), len(node_uuids))
-        except Exception:
-            logger.warning("Failed to load valid fact IDs for filtering", exc_info=True)
-
     links: dict[int, list[tuple[str, float]]] = {}
-    # Search more candidates if we're post-filtering
-    search_limit = top_k * 4 if valid_fact_ids else top_k
 
     for i, embedding in enumerate(sentence_embeddings):
         try:
             results = await fact_repo.search_similar(
                 embedding,
-                limit=search_limit,
+                limit=top_k,
                 score_threshold=0.6,
+                node_ids=referenced_node_ids,
             )
             if results:
-                filtered = []
-                for r in results:
-                    fid = str(r.fact_id)
-                    if valid_fact_ids is None or fid in valid_fact_ids:
-                        filtered.append((fid, r.score))
-                        if len(filtered) >= top_k:
-                            break
-                if filtered:
-                    links[i] = filtered
+                links[i] = [(str(r.fact_id), r.score) for r in results]
         except Exception:
             logger.warning("Fact embedding search failed for sentence %d", i, exc_info=True)
 
@@ -157,7 +127,6 @@ async def process_synthesis_document(
     embedding_service: EmbeddingService | None,
     qdrant_client: object | None,
     node_names_and_aliases: dict[str, list[str]] | None = None,
-    session: object | None = None,
 ) -> dict[str, Any]:
     """Run the full document processing pipeline.
 
@@ -208,7 +177,6 @@ async def process_synthesis_document(
         fact_links_map = await link_facts_by_embedding(
             sentence_embeddings,
             qdrant_client,
-            session=session,
             referenced_node_ids=list(all_referenced_node_ids) if all_referenced_node_ids else None,
         )
         total_fact_links = sum(len(fl) for fl in fact_links_map.values())
