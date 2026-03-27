@@ -387,9 +387,11 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                   selectedNodes.map((nid) => {
                     const nodeInfo = nodeMap.get(nid);
                     return (
-                      <Link
+                      <a
                         key={nid}
                         href={`/nodes/${nid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="flex items-center gap-1.5 rounded border px-2 py-1.5 text-xs hover:bg-accent transition-colors"
                       >
                         <CircleDot className="size-3 text-primary shrink-0" />
@@ -404,7 +406,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                             {nodeInfo.node_type}
                           </Badge>
                         )}
-                      </Link>
+                      </a>
                     );
                   })
                 )}
@@ -460,9 +462,11 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                   </p>
                 ) : (
                   factLinks.map((fl) => (
-                    <Link
+                    <a
                       key={fl.fact_id}
                       href={`/facts/${fl.fact_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="block rounded border px-2.5 py-2 text-xs hover:bg-accent transition-colors space-y-1"
                     >
                       <p className="leading-relaxed line-clamp-3">
@@ -477,6 +481,11 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                             {fl.fact_type}
                           </Badge>
                         )}
+                        {fl.author && (
+                          <span className="truncate font-medium">
+                            {fl.author}
+                          </span>
+                        )}
                         {fl.source_title && (
                           <span className="truncate">{fl.source_title}</span>
                         )}
@@ -484,7 +493,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                           {(fl.embedding_distance * 100).toFixed(0)}%
                         </span>
                       </div>
-                    </Link>
+                    </a>
                   ))
                 )}
               </CardContent>

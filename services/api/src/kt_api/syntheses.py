@@ -95,6 +95,7 @@ class SentenceFactResponse(BaseModel):
     embedding_distance: float = 0.0
     source_title: str = ""
     source_uri: str = ""
+    author: str = ""
 
 
 class SentenceFactsBySourceResponse(BaseModel):
@@ -315,11 +316,12 @@ async def get_sentence_facts(
         .join(RawSource, FactSource.raw_source_id == RawSource.id)
         .where(FactSource.fact_id.in_(fact_ids))
     )
-    source_map: dict[str, tuple[str, str]] = {}
+    source_map: dict[str, tuple[str, str, str]] = {}  # title, uri, author
     for fs, rs in sources_result.all():
         fid = str(fs.fact_id)
         if fid not in source_map:
-            source_map[fid] = (rs.title or "", rs.uri or "")
+            author = getattr(fs, "author_person", None) or getattr(fs, "author_org", None) or ""
+            source_map[fid] = (rs.title or "", rs.uri or "", author)
 
     return [
         SentenceFactResponse(
@@ -327,8 +329,9 @@ async def get_sentence_facts(
             content=facts_by_id.get(fl["fact_id"], None).content if facts_by_id.get(fl["fact_id"]) else "",
             fact_type=facts_by_id.get(fl["fact_id"], None).fact_type if facts_by_id.get(fl["fact_id"]) else "",
             embedding_distance=distance_map.get(fl["fact_id"], 0.0),
-            source_title=source_map.get(fl["fact_id"], ("", ""))[0],
-            source_uri=source_map.get(fl["fact_id"], ("", ""))[1],
+            source_title=source_map.get(fl["fact_id"], ("", "", ""))[0],
+            source_uri=source_map.get(fl["fact_id"], ("", "", ""))[1],
+            author=source_map.get(fl["fact_id"], ("", "", ""))[2],
         )
         for fl in fact_links
         if fl.get("fact_id")

@@ -1198,6 +1198,7 @@ export interface SentenceFactLink {
   embedding_distance: number;
   source_title: string;
   source_uri: string;
+  author: string;
 }
 
 export interface SynthesisSentenceResponse {
