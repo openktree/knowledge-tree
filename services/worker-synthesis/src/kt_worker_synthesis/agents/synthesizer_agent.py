@@ -26,7 +26,9 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
     terminal_phase = "done"
     emit_tool_label = "synthesizer"
     max_trim_tokens = 200_000
-    route_nudges_to_agent = True
+    # Nudges go to END (not back to agent) to prevent infinite loops.
+    # The old query agent used this pattern successfully.
+    route_nudges_to_agent = False
 
     def get_model_id(self) -> str:
         return self.ctx.model_gateway.synthesis_model
@@ -46,7 +48,7 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
         return nav_tools + synthesis_tools
 
     def check_budget_exhaustion(self, state: SynthesizerState) -> dict[str, Any] | None:
-        """Nudge the agent when exploration budget is exhausted."""
+        """Nudge the agent once when budget is exhausted."""
         remaining = state.exploration_budget - state.nodes_visited_count
         logger.info(
             "[synthesizer] budget: %d/%d visited (%d remaining), messages: %d",
@@ -58,23 +60,25 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
         if state.nodes_visited_count >= state.exploration_budget:
             if state.synthesis_text:
                 return {"phase": "done"}
-            # Only nudge once — check if the last message is already our nudge
-            if state.messages and isinstance(state.messages[-1], HumanMessage):
-                last_content = state.messages[-1].content
-                if isinstance(last_content, str) and "budget is exhausted" in last_content:
-                    return None  # Already nudged, let the LLM respond
-            return {
-                "messages": [
-                    HumanMessage(
-                        content=(
-                            f"You have visited {state.nodes_visited_count}/{state.exploration_budget} nodes. "
-                            "Your exploration budget is exhausted. You MUST now call finish_synthesis(text) "
-                            "with your complete synthesis document. Do NOT make any more navigation calls."
+            # Send nudge only once — scan history to avoid loop
+            # (pattern from old query agent that worked correctly)
+            already_nudged = any(
+                isinstance(m, HumanMessage)
+                and isinstance(m.content, str)
+                and "BUDGET EXHAUSTED" in m.content
+                for m in state.messages
+            )
+            if not already_nudged:
+                return {
+                    "messages": [
+                        HumanMessage(
+                            content=(
+                                "BUDGET EXHAUSTED. Call finish_synthesis(text) with "
+                                "your complete synthesis document now."
+                            )
                         )
-                    )
-                ]
-            }
-        # No nudge for remaining budget — let the prompt handle it
+                    ]
+                }
         return None
 
     def propagate_state(self, state: SynthesizerState) -> dict[str, Any]:
@@ -87,20 +91,11 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
         }
 
     def post_llm_hook(self, state: SynthesizerState, response: AIMessage) -> dict[str, Any] | None:
-        """Nudge the agent to finish properly. Avoid nudge loops."""
-        # Only nudge if the LLM responded without tool calls and hasn't submitted
+        """If the agent responds without tool calls and hasn't submitted, remind it."""
         if not response.tool_calls and not state.synthesis_text and state.phase != "done":
-            # Check if the last few messages are already nudges to avoid looping
-            recent_nudges = 0
-            for msg in reversed(state.messages[-6:]):
-                if isinstance(msg, HumanMessage):
-                    recent_nudges += 1
-                else:
-                    break
-            if recent_nudges >= 2:
-                # Already nudged multiple times — let it end naturally
-                return None
-
+            # With route_nudges_to_agent=False, this nudge goes to END.
+            # The LLM will see it on the next invocation if the graph
+            # routes back to agent via another path.
             return {
                 "messages": [
                     response,
@@ -109,5 +104,4 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
                     ),
                 ]
             }
-
         return None

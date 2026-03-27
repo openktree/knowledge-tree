@@ -110,7 +110,7 @@ class SuperSynthesizerAgent(BaseAgent[SuperSynthesizerState]):
     terminal_phase = "done"
     emit_tool_label = "super_synthesizer"
     max_trim_tokens = 200_000
-    route_nudges_to_agent = True
+    route_nudges_to_agent = False
 
     def get_model_id(self) -> str:
         return self.ctx.model_gateway.synthesis_model
