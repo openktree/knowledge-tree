@@ -257,7 +257,7 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
             graph, _ = agent.build_graph()
             compiled = graph.compile()
 
-            recursion_limit = max(len(synthesis_node_ids) * 20 + 50, 200)
+            recursion_limit = max(len(synthesis_node_ids) * 60, 1000)
             final = await compiled.ainvoke(initial_state, config={"recursion_limit": recursion_limit})
 
             if isinstance(final, dict):
