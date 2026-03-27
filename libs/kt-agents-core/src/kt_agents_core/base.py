@@ -89,6 +89,10 @@ class BaseAgent(ABC, Generic[S]):
         """Thinking level for the chat model. Default: ``None``."""
         return None
 
+    def get_model_kwargs(self) -> dict[str, Any]:
+        """Extra kwargs passed to ``get_chat_model``. Override to set max_tokens etc."""
+        return {}
+
     def check_budget_exhaustion(self, state: S) -> dict[str, Any] | None:
         """Inject advisory/hard-stop messages based on budget state.
 
@@ -210,6 +214,7 @@ class BaseAgent(ABC, Generic[S]):
         chat_model = self.ctx.model_gateway.get_chat_model(
             model_id=self.get_model_id(),
             reasoning_effort=self.get_reasoning_effort() or None,
+            **self.get_model_kwargs(),
         )
         llm_with_tools = chat_model.bind_tools(tools)
 
@@ -231,6 +236,17 @@ class BaseAgent(ABC, Generic[S]):
                 token_counter=approx_tokens,
                 strategy="last",
                 include_system=True,
+            )
+
+            total_msgs = len(state.messages)
+            trimmed_msgs = len(trimmed)
+            token_est = approx_tokens(trimmed)
+            logger.info(
+                "[%s] LLM call: %d/%d messages, ~%dk tokens",
+                agent.emit_tool_label,
+                trimmed_msgs,
+                total_msgs,
+                token_est // 1000,
             )
 
             try:

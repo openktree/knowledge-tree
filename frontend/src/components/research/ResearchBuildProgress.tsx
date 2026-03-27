@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   Loader2,
   CheckCircle2,
@@ -381,13 +382,13 @@ export function ResearchBuildProgress({
         </div>
       )}
 
-      {/* Link to conversation */}
+      {/* Link to nodes */}
       {overallStatus === "completed" && (
         <Button variant="outline" className="w-full gap-2" asChild>
-          <a href={`/conversation/${conversationId}`}>
+          <Link href="/nodes">
             <ExternalLink className="size-4" />
-            View in Conversation
-          </a>
+            Browse Nodes
+          </Link>
         </Button>
       )}
     </div>

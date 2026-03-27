@@ -1,0 +1,36 @@
+[project]
+name = "kt-worker-synthesis"
+version = "0.1.0"
+description = "Knowledge Tree synthesis agent worker"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-hatchet",
+    "kt-agents-core",
+    "kt-db",
+    "kt-models",
+    "kt-graph",
+    "kt-config",
+    "kt-qdrant",
+    "langchain-core>=0.3.0",
+    "langgraph>=1.0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-hatchet = { workspace = true }
+kt-agents-core = { workspace = true }
+kt-db = { workspace = true }
+kt-models = { workspace = true }
+kt-graph = { workspace = true }
+kt-config = { workspace = true }
+kt-qdrant = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_worker_synthesis"]

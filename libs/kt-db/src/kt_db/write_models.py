@@ -124,6 +124,8 @@ class WriteNode(WriteBase):
     enrichment_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     facts_at_last_build: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="public", server_default="public")
+    creator_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 

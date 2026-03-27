@@ -86,8 +86,8 @@ jobs:
               - 'libs/kt-qdrant/**'
               - 'pyproject.toml'
               - 'uv.lock'
-            worker-orchestrator:
-              - 'services/worker-orchestrator/**'
+            worker-bottomup:
+              - 'services/worker-bottomup/**'
               - 'libs/**'
               - 'pyproject.toml'
               - 'uv.lock'
@@ -96,8 +96,6 @@ jobs:
               - 'libs/**'
               - 'pyproject.toml'
               - 'uv.lock'
-            worker-query:
-              - 'services/worker-query/**'
               - 'libs/**'
               - 'pyproject.toml'
               - 'uv.lock'
@@ -128,9 +126,8 @@ jobs:
           [ "${{ steps.filter.outputs.kt-ontology }}" = "true" ]  && add "kt-ontology"  "libs/kt-ontology"
           [ "${{ steps.filter.outputs.api }}" = "true" ]                  && add "api"                  "services/api"
           [ "${{ steps.filter.outputs.mcp }}" = "true" ]                  && add "mcp"                  "services/mcp"
-          [ "${{ steps.filter.outputs.worker-orchestrator }}" = "true" ]  && add "worker-orchestrator"  "services/worker-orchestrator"
+          [ "${{ steps.filter.outputs.worker-bottomup }}" = "true" ]  && add "worker-bottomup"  "services/worker-bottomup"
           [ "${{ steps.filter.outputs.worker-nodes }}" = "true" ]         && add "worker-nodes"         "services/worker-nodes"
-          [ "${{ steps.filter.outputs.worker-query }}" = "true" ]         && add "worker-query"         "services/worker-query"
           [ "${{ steps.filter.outputs.worker-search }}" = "true" ]        && add "worker-search"        "services/worker-search"
           [ "${{ steps.filter.outputs.worker-sync }}" = "true" ]          && add "worker-sync"          "services/worker-sync"
 

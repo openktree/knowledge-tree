@@ -30,13 +30,12 @@ jobs:
             [
               {"service": "api",                   "image": "openktree-api"},
               {"service": "mcp",                   "image": "openktree-mcp"},
-              {"service": "worker-orchestrator",   "image": "openktree-worker-orchestrator"},
+              {"service": "worker-bottomup",   "image": "openktree-worker-bottomup"},
               {"service": "worker-search",         "image": "openktree-worker-search"},
               {"service": "worker-nodes",          "image": "openktree-worker-nodes"},
-              {"service": "worker-query",          "image": "openktree-worker-query"},
               {"service": "worker-ingest",         "image": "openktree-worker-ingest"},
-              {"service": "worker-conversations",  "image": "openktree-worker-conversations"},
-              {"service": "worker-sync",           "image": "openktree-worker-sync"}
+              {"service": "worker-sync",           "image": "openktree-worker-sync"},
+              {"service": "worker-synthesis",     "image": "openktree-worker-synthesis"}
             ]
       - name: Detect frontend changes
         id: frontend

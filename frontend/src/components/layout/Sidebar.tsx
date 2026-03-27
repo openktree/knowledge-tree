@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings } from "lucide-react";
+import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -15,7 +15,8 @@ import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Query", icon: Search },
+  { href: "/", label: "Home", icon: TreePine },
+  { href: "/syntheses", label: "Syntheses", icon: BookOpen },
   { href: "/research", label: "Research", icon: Upload },
   { href: "/nodes", label: "Nodes", icon: CircleDot },
   { href: "/edges", label: "Edges", icon: ArrowLeftRight },
@@ -38,7 +39,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.is_superuser ?? false;
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/" || pathname.startsWith("/query");
+    if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   };
 

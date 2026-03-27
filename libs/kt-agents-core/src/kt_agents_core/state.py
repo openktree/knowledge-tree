@@ -98,26 +98,6 @@ class PerspectiveEntry(BaseModel):
     antithesis: str | None = Field(default=None, description="Opposing claim (the antithesis)")
 
 
-class ConversationState(PipelineState):
-    """State for the Conversation Agent -- follow-up turns in a conversation."""
-
-    original_query: str = ""  # The initial question that started the conversation
-    prior_answer: str = ""  # Most recent completed answer
-    prior_visited_nodes: list[str] = Field(default_factory=list)  # All node IDs visited in prior turns
-    conversation_summary: str = ""  # Brief summary for context window management
-    context_summary: str = ""
-    phase: str = "exploring"  # type: ignore[assignment]
-
-    def has_visited(self, node_id: str) -> bool:
-        """Check if a node has been visited in this turn OR prior turns."""
-        return node_id in self.visited_nodes or node_id in self.prior_visited_nodes
-
-    @property
-    def all_visited_nodes(self) -> list[str]:
-        """Union of nodes visited in this turn and prior turns."""
-        return list(set(self.visited_nodes) | set(self.prior_visited_nodes))
-
-
 class AgentContext:
     """Dependencies injected into agent tools."""
 

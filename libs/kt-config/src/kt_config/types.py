@@ -37,11 +37,18 @@ class NodeType(str, Enum):
     entity = "entity"  # Subject capable of intent (person, organization)
     event = "event"  # Temporal occurrence (historical, scientific, ongoing)
     synthesis = "synthesis"  # Composite node synthesising multiple source nodes
+    supersynthesis = "supersynthesis"  # Meta-synthesis combining multiple synthesis nodes
     location = "location"  # Geographic place (country, city, region, landmark)
 
 
 # Composite node types — built from other nodes rather than raw facts alone.
-COMPOSITE_NODE_TYPES: frozenset[str] = frozenset({"synthesis", "perspective"})
+COMPOSITE_NODE_TYPES: frozenset[str] = frozenset({"synthesis", "supersynthesis", "perspective"})
+
+
+class Visibility(str, Enum):
+    public = "public"
+    private = "private"
+
 
 # Base (non-composite) node types — built directly from raw facts.
 BASE_NODE_TYPES: frozenset[str] = frozenset({"concept", "entity", "event", "location"})
@@ -99,6 +106,8 @@ ALL_PERSPECTIVES_ID = _uuid.uuid5(_uuid.NAMESPACE_DNS, "knowledge-tree.all-persp
 ALL_LOCATIONS_ID = _uuid.uuid5(_uuid.NAMESPACE_DNS, "knowledge-tree.all-locations")
 
 ALL_ENTITIES_ID = _uuid.uuid5(_uuid.NAMESPACE_DNS, "knowledge-tree.all-entities")
+ALL_SYNTHESES_ID = _uuid.uuid5(_uuid.NAMESPACE_DNS, "knowledge-tree.all-syntheses")
+ALL_SUPERSYNTHESES_ID = _uuid.uuid5(_uuid.NAMESPACE_DNS, "knowledge-tree.all-supersyntheses")
 
 DEFAULT_PARENTS: dict[str, _uuid.UUID] = {
     "concept": ALL_CONCEPTS_ID,
@@ -106,6 +115,8 @@ DEFAULT_PARENTS: dict[str, _uuid.UUID] = {
     "perspective": ALL_PERSPECTIVES_ID,
     "entity": ALL_ENTITIES_ID,
     "location": ALL_LOCATIONS_ID,
+    "synthesis": ALL_SYNTHESES_ID,
+    "supersynthesis": ALL_SUPERSYNTHESES_ID,
 }
 
 

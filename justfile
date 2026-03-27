@@ -6,8 +6,8 @@ worker:
     uv run --project services/worker-all -m kt_worker_all
 
 # Start individual worker types (dev mode)
-worker-orch:
-    uv run --project services/worker-orchestrator -m kt_worker_orchestrator
+worker-bottomup:
+    uv run --project services/worker-bottomup -m kt_worker_bottomup
 
 worker-search:
     uv run --project services/worker-search -m kt_worker_search
@@ -15,14 +15,11 @@ worker-search:
 worker-nodes:
     uv run --project services/worker-nodes -m kt_worker_nodes
 
-worker-query:
-    uv run --project services/worker-query -m kt_worker_query
-
 worker-ingest:
     uv run --project services/worker-ingest -m kt_worker_ingest
 
-worker-conv:
-    uv run --project services/worker-conversations -m kt_worker_conv
+worker-synthesis:
+    uv run --project services/worker-synthesis -m kt_worker_synthesis
 
 worker-sync:
     uv run --project services/worker-sync -m kt_worker_sync
@@ -119,12 +116,10 @@ test-mcp:
 
 # Run worker tests
 test-workers:
-    cd services/worker-orchestrator && uv run pytest -x
+    cd services/worker-bottomup && uv run pytest -x
     cd services/worker-search && uv run pytest -x
     cd services/worker-nodes && uv run pytest -x
-    cd services/worker-query && uv run pytest -x
     cd services/worker-ingest && uv run pytest -x
-    cd services/worker-conversations && uv run pytest -x
 
 # Run all tests
 test-all: test-libs test-api test-workers

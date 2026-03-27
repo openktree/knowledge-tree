@@ -188,20 +188,21 @@ async def synthesize_perspective(seed_key: str) -> SynthesizeResponse:
         source_node_ids = meta.get("source_node_ids", [])
 
         # Dispatch composite build via Hatchet
-        from kt_hatchet.models import BuildCompositeInput
-        from kt_worker_nodes.workflows.composite import build_composite_task
+        from kt_hatchet.client import run_workflow
 
         # Build thesis
-        thesis_input = BuildCompositeInput(
-            node_type="perspective",
-            concept=claim,
-            source_node_ids=source_node_ids,
-            query_context=claim,
-            parent_concept="",
-            metadata={"dialectic_role": "thesis"},
-        )
         try:
-            await build_composite_task.aio_run(thesis_input)
+            await run_workflow(
+                "build_composite_task",
+                {
+                    "node_type": "perspective",
+                    "concept": claim,
+                    "source_node_ids": source_node_ids,
+                    "query_context": claim,
+                    "parent_concept": "",
+                    "metadata": {"dialectic_role": "thesis"},
+                },
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
@@ -210,16 +211,18 @@ async def synthesize_perspective(seed_key: str) -> SynthesizeResponse:
 
         # Build antithesis
         if antithesis:
-            anti_input = BuildCompositeInput(
-                node_type="perspective",
-                concept=antithesis,
-                source_node_ids=source_node_ids,
-                query_context=antithesis,
-                parent_concept="",
-                metadata={"dialectic_role": "antithesis"},
-            )
             try:
-                await build_composite_task.aio_run(anti_input)
+                await run_workflow(
+                    "build_composite_task",
+                    {
+                        "node_type": "perspective",
+                        "concept": antithesis,
+                        "source_node_ids": source_node_ids,
+                        "query_context": antithesis,
+                        "parent_concept": "",
+                        "metadata": {"dialectic_role": "antithesis"},
+                    },
+                )
             except Exception as exc:
                 raise HTTPException(
                     status_code=500,
@@ -317,24 +320,24 @@ async def promote_seed_to_node(
             )
 
     # Dispatch node pipeline via Hatchet
-    from kt_hatchet.models import BuildNodeInput
-    from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
+    from kt_hatchet.client import dispatch_workflow
 
     scope_id = f"seed-promote-{_uuid.uuid4().hex[:8]}"
     api_key = require_api_key(user)
 
     try:
-        ref = await node_pipeline_wf.aio_run_no_wait(
-            BuildNodeInput(
-                scope_id=scope_id,
-                concept=seed.name,
-                node_type=seed.node_type,
-                entity_subtype=seed.entity_subtype,
-                seed_key=seed_key,
-                message_id=scope_id,
-                conversation_id=scope_id,
-                api_key=api_key,
-            ),
+        run_id = await dispatch_workflow(
+            "node_pipeline_wf",
+            {
+                "scope_id": scope_id,
+                "concept": seed.name,
+                "node_type": seed.node_type,
+                "entity_subtype": seed.entity_subtype,
+                "seed_key": seed_key,
+                "message_id": scope_id,
+                "conversation_id": scope_id,
+                "api_key": api_key,
+            },
         )
     except Exception as exc:
         raise HTTPException(
@@ -345,7 +348,7 @@ async def promote_seed_to_node(
     return PromoteSeedResponse(
         seed_key=seed_key,
         status="started",
-        workflow_run_id=ref.workflow_run_id,
+        workflow_run_id=run_id,
     )
 
 

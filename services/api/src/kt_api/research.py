@@ -313,28 +313,24 @@ async def confirm_ingest(
 
     await session.commit()
 
-    from hatchet_sdk import TriggerWorkflowOptions
-
-    from kt_hatchet.models import IngestConfirmInput
-    from kt_worker_conv.workflows.conversations import ingest_confirm_wf
+    from kt_hatchet.client import dispatch_workflow
 
     api_key = require_api_key(user)
-    ref = await ingest_confirm_wf.aio_run_no_wait(
-        IngestConfirmInput(
-            nav_budget=body.nav_budget,
-            selected_chunks=body.selected_chunks,
-            conversation_id=conversation_id,
-            message_id=str(assistant_msg.id),
-            api_key=api_key,
-        ),
-        options=TriggerWorkflowOptions(
-            additional_metadata={
-                "conversation_id": conversation_id,
-                "message_id": str(assistant_msg.id),
-            }
-        ),
+    run_id = await dispatch_workflow(
+        "ingest_confirm_wf",
+        {
+            "nav_budget": body.nav_budget,
+            "selected_chunks": body.selected_chunks,
+            "conversation_id": conversation_id,
+            "message_id": str(assistant_msg.id),
+            "api_key": api_key,
+        },
+        additional_metadata={
+            "conversation_id": conversation_id,
+            "message_id": str(assistant_msg.id),
+        },
     )
-    await conv_repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
+    await conv_repo.update_message(assistant_msg.id, workflow_run_id=run_id)
     await session.commit()
 
     return _conversation_to_response(conv, [user_msg, assistant_msg])
@@ -460,27 +456,23 @@ async def decompose_ingest(
 
     await session.commit()
 
-    from hatchet_sdk import TriggerWorkflowOptions
-
-    from kt_hatchet.models import IngestDecomposeInput
-    from kt_worker_ingest.workflows.ingest import ingest_decompose_wf
+    from kt_hatchet.client import dispatch_workflow
 
     api_key = require_api_key(user)
-    ref = await ingest_decompose_wf.aio_run_no_wait(
-        IngestDecomposeInput(
-            conversation_id=conversation_id,
-            message_id=str(assistant_msg.id),
-            selected_chunks=body.selected_chunks,
-            api_key=api_key,
-        ),
-        options=TriggerWorkflowOptions(
-            additional_metadata={
-                "conversation_id": conversation_id,
-                "message_id": str(assistant_msg.id),
-            }
-        ),
+    run_id = await dispatch_workflow(
+        "ingest_decompose_wf",
+        {
+            "conversation_id": conversation_id,
+            "message_id": str(assistant_msg.id),
+            "selected_chunks": body.selected_chunks,
+            "api_key": api_key,
+        },
+        additional_metadata={
+            "conversation_id": conversation_id,
+            "message_id": str(assistant_msg.id),
+        },
     )
-    await conv_repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
+    await conv_repo.update_message(assistant_msg.id, workflow_run_id=run_id)
     await session.commit()
 
     return IngestDecomposeResponse(
@@ -617,10 +609,8 @@ async def build_ingest(
 
     await session.commit()
 
-    from hatchet_sdk import TriggerWorkflowOptions
-
+    from kt_hatchet.client import dispatch_workflow
     from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
-    from kt_worker_ingest.workflows.ingest import ingest_build_wf
 
     confirmed_nodes = [
         ConfirmedNode(
@@ -635,21 +625,20 @@ async def build_ingest(
     ]
 
     api_key = require_api_key(user)
-    ref = await ingest_build_wf.aio_run_no_wait(
+    run_id = await dispatch_workflow(
+        "ingest_build_wf",
         IngestBuildInput(
             selected_nodes=confirmed_nodes,
             conversation_id=str(conv_uuid),
             message_id=str(assistant_msg.id),
             api_key=api_key,
-        ),
-        options=TriggerWorkflowOptions(
-            additional_metadata={
-                "conversation_id": str(conv_uuid),
-                "message_id": str(assistant_msg.id),
-            }
-        ),
+        ).model_dump(),
+        additional_metadata={
+            "conversation_id": str(conv_uuid),
+            "message_id": str(assistant_msg.id),
+        },
     )
-    await conv_repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
+    await conv_repo.update_message(assistant_msg.id, workflow_run_id=run_id)
     await session.commit()
 
     return IngestBuildResponse(
@@ -699,30 +688,24 @@ async def bottom_up_prepare(
 
     await session.commit()
 
-    from hatchet_sdk import TriggerWorkflowOptions
+    from kt_hatchet.client import dispatch_workflow
 
-    from kt_hatchet.models import BottomUpPrepareInput
-    from kt_worker_orchestrator.bottom_up import bottom_up_prepare_wf
-
-    wf_options = TriggerWorkflowOptions(
+    api_key = require_api_key(user)
+    run_id = await dispatch_workflow(
+        "bottom_up_prepare_wf",
+        {
+            "query": body.query,
+            "explore_budget": body.explore_budget,
+            "conversation_id": str(conv.id),
+            "message_id": str(assistant_msg.id),
+            "api_key": api_key,
+        },
         additional_metadata={
             "conversation_id": str(conv.id),
             "message_id": str(assistant_msg.id),
-        }
+        },
     )
-
-    api_key = require_api_key(user)
-    ref = await bottom_up_prepare_wf.aio_run_no_wait(
-        BottomUpPrepareInput(
-            query=body.query,
-            explore_budget=body.explore_budget,
-            conversation_id=str(conv.id),
-            message_id=str(assistant_msg.id),
-            api_key=api_key,
-        ),
-        options=wf_options,
-    )
-    await conv_repo.update_message(assistant_msg.id, workflow_run_id=ref.workflow_run_id)
+    await conv_repo.update_message(assistant_msg.id, workflow_run_id=run_id)
     await session.commit()
 
     return _conversation_to_response(conv, [user_msg, assistant_msg])
@@ -935,7 +918,7 @@ async def agent_select(
         )
 
     # Parse proposed nodes from metadata
-    from kt_hatchet.models import AgentSelectInput, ProposedNode, ProposedPerspective
+    from kt_hatchet.models import ProposedNode, ProposedPerspective
 
     proposed_nodes = []
     for n in metadata.get("proposed_nodes", []):
@@ -972,28 +955,23 @@ async def agent_select(
     await conv_repo.update_message(uuid.UUID(msg_id), metadata_json=metadata)
     await session.commit()
 
-    from hatchet_sdk import TriggerWorkflowOptions
+    from kt_hatchet.client import dispatch_workflow
 
-    from kt_worker_orchestrator.bottom_up import agent_select_wf
-
-    wf_options = TriggerWorkflowOptions(
+    api_key = require_api_key(user)
+    await dispatch_workflow(
+        "agent_select_wf",
+        {
+            "proposed_nodes": proposed_nodes,
+            "max_select": body.max_select,
+            "instructions": instructions,
+            "conversation_id": str(conv_uuid),
+            "message_id": msg_id or "",
+            "api_key": api_key,
+        },
         additional_metadata={
             "conversation_id": str(conv_uuid),
             "message_id": msg_id,
-        }
-    )
-
-    api_key = require_api_key(user)
-    await agent_select_wf.aio_run_no_wait(
-        AgentSelectInput(
-            proposed_nodes=proposed_nodes,
-            max_select=body.max_select,
-            instructions=instructions,
-            conversation_id=str(conv_uuid),
-            message_id=msg_id or "",
-            api_key=api_key,
-        ),
-        options=wf_options,
+        },
     )
 
     return AgentSelectResponse(

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useNodeDetail } from "@/hooks/useNodeDetail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { X, Loader2, RefreshCw, Search, ArrowLeftRight, GitBranch, Sparkles, ChevronDown } from "lucide-react";
+import { X, Loader2, RefreshCw, ArrowLeftRight, GitBranch, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DimensionsTab } from "@/components/node/DimensionsTab";
 import { ConvergenceTab } from "@/components/node/ConvergenceTab";
@@ -27,7 +26,6 @@ import { HistoryTab } from "@/components/node/HistoryTab";
 import { NeighborsTab } from "@/components/node/NeighborsTab";
 import { PerspectivesTab } from "@/components/node/PerspectivesTab";
 import { PerspectiveSeedsTab } from "@/components/node/PerspectiveSeedsTab";
-import { ResearchNodeDialog } from "@/components/node/ResearchNodeDialog";
 import { SeedAmbiguityBadge } from "@/components/node/SeedAmbiguityBadge";
 
 
@@ -66,7 +64,6 @@ export default function NodeDetailPanel({
     isRebuilding,
     refreshPerspectives,
   } = useNodeDetail(nodeId);
-  const [researchDialogOpen, setResearchDialogOpen] = useState(false);
 
   if (!nodeId) return null;
 
@@ -189,15 +186,6 @@ export default function NodeDetailPanel({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 text-xs gap-1"
-                  onClick={() => setResearchDialogOpen(true)}
-                >
-                  <Search className="h-3 w-3" />
-                  Research
-                </Button>
               </div>
               {!!node.metadata?.dialectic_pair_id && (
                 <Button
@@ -353,12 +341,6 @@ export default function NodeDetailPanel({
         </ScrollArea>
       )}
 
-      {researchDialogOpen && node && (
-        <ResearchNodeDialog
-          node={node}
-          onClose={() => setResearchDialogOpen(false)}
-        />
-      )}
     </div>
   );
 }

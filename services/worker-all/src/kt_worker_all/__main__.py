@@ -37,9 +37,15 @@ def main() -> None:
 
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
+    from kt_worker_bottomup.bottom_up import (
+        agent_select_wf,
+        bottom_up_prepare_scope_wf,
+        bottom_up_prepare_wf,
+        bottom_up_scope_wf,
+        bottom_up_wf,
+    )
 
     # Import all workflows from all worker packages
-    from kt_worker_conv.workflows.conversations import follow_up_wf, resynthesize_task
     from kt_worker_ingest.workflows.ingest import (
         ingest_build_wf,
         ingest_confirm_wf,
@@ -58,14 +64,6 @@ def main() -> None:
         node_pipeline_wf,
     )
     from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
-    from kt_worker_orchestrator.bottom_up import (
-        agent_select_wf,
-        bottom_up_prepare_scope_wf,
-        bottom_up_prepare_wf,
-        bottom_up_scope_wf,
-        bottom_up_wf,
-    )
-    from kt_worker_query.workflows.query import query_wf
     from kt_worker_search.workflows.decompose import (
         decompose_source_task,
         decompose_sources_wf,
@@ -79,6 +77,8 @@ def main() -> None:
     )
     from kt_worker_search.workflows.seed_dedup import seed_dedup_task
     from kt_worker_sync.workflows.sync import sync_wf
+    from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
+    from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
 
     hatchet = get_hatchet()
     worker = hatchet.worker(
@@ -107,14 +107,13 @@ def main() -> None:
             enrich_edge_task,
             build_composite_task,
             regenerate_composite_task,
-            follow_up_wf,
-            resynthesize_task,
             ingest_build_wf,
             ingest_confirm_wf,
             ingest_decompose_wf,
             ingest_partition_wf,
-            query_wf,
             sync_wf,
+            synthesizer_wf,
+            super_synthesizer_wf,
         ],
         lifespan=worker_lifespan,
     )

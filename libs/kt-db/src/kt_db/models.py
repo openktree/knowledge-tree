@@ -46,6 +46,10 @@ class Node(Base):
     definition_generated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     enrichment_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="public", server_default="public")
+    creator_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
 
     def __init__(self, **kwargs: object) -> None:
         self._embedding: list[float] | None = kwargs.pop("embedding", None)  # type: ignore[assignment]

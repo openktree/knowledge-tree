@@ -2,7 +2,7 @@
 source nodes into a single composite node definition.
 
 Follows the same StateGraph pattern used in
-``kt_worker_orchestrator.agents.tools.synthesize_answer``.
+``kt_agents_core.synthesis``.
 """
 
 from __future__ import annotations

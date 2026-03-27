@@ -696,3 +696,46 @@ class ReingestSourceOutput(BaseModel):
     fact_ids: list[str] = Field(default_factory=list)
     content_updated: bool = False
     message: str = ""
+
+
+# -- Synthesis workflows -----------------------------------------------
+
+
+class SynthesizerInput(BaseModel):
+    """Input for the synthesizer workflow."""
+
+    topic: str = ""
+    starting_node_ids: list[str] = Field(default_factory=list)
+    exploration_budget: int = 20
+    visibility: str = "public"
+    creator_id: str | None = None
+
+
+class SynthesizerOutput(BaseModel):
+    """Output from the synthesizer workflow."""
+
+    synthesis_node_id: str = ""
+    sentences_count: int = 0
+    facts_linked: int = 0
+    nodes_referenced: int = 0
+
+
+class SuperSynthesizerInput(BaseModel):
+    """Input for the super-synthesizer workflow."""
+
+    topic: str = ""
+    sub_configs: list[SynthesizerInput] = Field(default_factory=list)
+    existing_synthesis_ids: list[str] = Field(default_factory=list)
+    scope_count: int = 0  # 0 = let the LLM decide (3-7)
+    visibility: str = "public"
+    creator_id: str | None = None
+    distance_threshold: float = 0.7
+
+
+class SuperSynthesizerOutput(BaseModel):
+    """Output from the super-synthesizer workflow."""
+
+    supersynthesis_node_id: str = ""
+    sub_synthesis_node_ids: list[str] = Field(default_factory=list)
+    total_sentences: int = 0
+    total_facts_linked: int = 0

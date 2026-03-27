@@ -70,6 +70,12 @@ import type {
   SystemSettingsResponse,
   UpdateSystemSettingsRequest,
   RegistrationStatusResponse,
+  CreateSynthesisRequest,
+  CreateSuperSynthesisRequest,
+  SynthesisDocumentResponse,
+  PaginatedSynthesesResponse,
+  SentenceFactLink,
+  SynthesisNodeResponse,
 } from "@/types";
 
 const BASE_URL =
@@ -1123,4 +1129,56 @@ async function streamImport(
     throw new Error("Import stream ended without a result");
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Syntheses
+// ---------------------------------------------------------------------------
+
+export async function createSynthesis(data: CreateSynthesisRequest) {
+  return request<{ status: string; workflow_run_id: string; topic: string }>(
+    "/syntheses",
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
+  return request<{ status: string; workflow_run_id: string; topic: string }>(
+    "/super-syntheses",
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function listSyntheses(offset = 0, limit = 20, visibility?: string) {
+  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  if (visibility) params.set("visibility", visibility);
+  return request<PaginatedSynthesesResponse>(`/syntheses?${params}`);
+}
+
+export async function getSynthesis(id: string) {
+  return request<SynthesisDocumentResponse>(`/syntheses/${id}`);
+}
+
+export async function getSentenceFacts(synthesisId: string, position: number) {
+  return request<SentenceFactLink[]>(
+    `/syntheses/${synthesisId}/sentences/${position}/facts`
+  );
+}
+
+export async function getSynthesisNodes(synthesisId: string) {
+  return request<SynthesisNodeResponse[]>(`/syntheses/${synthesisId}/nodes`);
+}
+
+export async function deleteSynthesis(id: string) {
+  return request<{ deleted: boolean; id: string }>(
+    `/syntheses/${id}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function updateSynthesisVisibility(id: string, visibility: string) {
+  return request<{ id: string; visibility: string }>(
+    `/syntheses/${id}`,
+    { method: "PATCH", body: JSON.stringify({ visibility }) }
+  );
 }

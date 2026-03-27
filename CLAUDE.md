@@ -6,7 +6,7 @@ Knowledge Tree is a **knowledge integration system** that builds understanding e
 
 The system is designed so that over time, frequently queried topics accumulate increasingly rich factual bases. Multiple AI models reason over the same fact base to produce different dimensions of each node, and convergence across models reveals genuine consensus while divergence reveals where biases determine conclusions.
 
-**This is NOT a chatbot or RAG system.** It is a persistent, growing knowledge graph with agents that navigate, expand, and synthesize from it. The primary interaction model is a **conversation-based research interface** where each turn can trigger exploration, node creation, and synthesis.
+**This is NOT a chatbot or RAG system.** It is a persistent, growing knowledge graph with agents that navigate, expand, and synthesize from it. The primary interaction model is a **document-based research interface** where users ingest sources to grow the graph, then create synthesis documents that weave evidence into analytical narratives.
 
 ## Architecture Documents
 
@@ -67,13 +67,12 @@ The system is designed so that over time, frequently queried topics accumulate i
 
 **Services (`services/`)** — Deployable processes. Workers own their agents, prompts, and workflow logic. Create new workers only for distinct workflow domains.
 - **api** — FastAPI REST + SSE, auth, dependency injection. NO agent code.
-- **worker-query** — Primary query agent workflow (bottom-up discovery + synthesis)
+- **worker-bottomup** — Bottom-up discovery workflows (scope extraction, node selection)
+- **worker-synthesis** — Synthesis agent workflows (synthesizer + super-synthesizer)
 - **worker-nodes** — Node creation pipeline (create → dimensions → definition → parent)
 - **worker-search** — Standalone search workflow
 - **worker-ingest** — File/link ingestion agent + pipeline
-- **worker-conversations** — Follow-up turns, resynthesis
 - **worker-sync** — Write-db → graph-db incremental sync
-- **worker-orchestrator** — *(deprecated — do not use)*
 - **worker-all** — Dev-mode: all workflows in single process
 
 **Frontend** (`frontend/src/`) — Next.js App Router. Components organized by domain in `components/`, hooks in `hooks/`, typed API client in `lib/api.ts`.
@@ -81,7 +80,7 @@ The system is designed so that over time, frequently queried topics accumulate i
 **Other:** `wiki-frontend/` (Astro wiki UI), `config/` (YAML configs)
 
 ### Import Names
-Pattern: `kt-<name>` → `kt_<name>`, `worker-<name>` → `kt_worker_<name>`, `api` → `kt_api`. Exception: `worker-conversations` → `kt_worker_conv`.
+Pattern: `kt-<name>` → `kt_<name>`, `worker-<name>` → `kt_worker_<name>`, `api` → `kt_api`.
 
 ## Key Architectural Concepts
 
@@ -119,13 +118,13 @@ The system uses **two PostgreSQL databases** optimized for different workloads:
 ### Flat Graph (NOT a tree)
 Nodes are flat peers — no parent-child hierarchy. All structure comes from typed, weighted edges (weight = shared fact count). Circular references are valid (A->B->C->A). Edges are created from seed co-occurrence candidates accumulated during fact decomposition — not from embedding similarity.
 
-### Conversation-Based Interaction
-The primary UI is a **chat-based research interface**. Each conversation has multiple turns (messages). Each user turn can trigger a full exploration cycle. The system tracks budgets, visited/created nodes, and subgraph per turn.
+### Research Flow
+The primary research interface has two modes:
+1. **Ingestion** — Bottom-up discovery: ingest sources, extract entities/facts, create seeds, promote to nodes
+2. **Synthesis** — Document synthesis: a synthesizer agent navigates the graph with an exploration budget and produces a standalone research document. A super-synthesizer orchestrates multiple synthesizer agents for comprehensive coverage.
 
-### Dual Budget System
-Every query turn has two budgets:
-- **nav_budget:** How many existing nodes the agent can read (cheap — DB reads)
-- **explore_budget:** How many new nodes can be created or expanded (expensive — API calls)
+### Exploration Budget
+The synthesizer agent uses an **exploration budget** (number of nodes it can visit). This controls investigation depth without limiting free operations like search.
 
 ### Microservices Architecture
 The backend is a **uv workspace monorepo** split into shared libraries (`libs/`) and deployable services (`services/`). Key design decisions:
@@ -140,29 +139,35 @@ The backend is a **uv workspace monorepo** split into shared libraries (`libs/`)
 ### Hatchet Workflow Architecture
 All heavy processing runs as **durable Hatchet workflows** — not in-process or via simple background tasks.
 
-**Main workflow flow (bottom-up discovery):**
-1. User submits a message -> `query_wf` is dispatched
-2. **Query Agent** performs bottom-up discovery: searches for facts, creates/expands nodes as needed
-3. Nodes are built via `node_pipeline_wf` (create -> dimensions -> definition -> parent DAG)
-4. Query Agent synthesizes an answer from the discovered and navigated nodes
-5. Progress streamed to frontend via **SSE** (Hatchet `put_stream`)
+**Main workflow flows:**
+
+**Ingestion (bottom-up discovery):**
+1. User submits sources (files/links) via the research UI
+2. `ingest_build_wf` extracts facts, entities, creates seeds
+3. Seeds accumulate facts and are promoted to nodes via `node_pipeline_wf`
+4. `node_pipeline_wf` creates node -> dimensions -> definition -> parent
+
+**Synthesis:**
+1. User creates a synthesis via POST `/api/v1/syntheses`
+2. `synthesizer_wf` runs the SynthesizerAgent (navigates graph, produces document)
+3. Document processing pipeline splits, embeds, and links sentences to facts/nodes
+4. User creates a super-synthesis via POST `/api/v1/super-syntheses`
+5. `super_synthesizer_wf` plans scopes, dispatches N `synthesizer_wf` in parallel, combines results
 
 **Key workflows:**
-- `query_wf` — Primary entry point. Lightweight query agent with bottom-up discovery and synthesis — `kt_worker_query`
+- `synthesizer_wf` — Synthesis document creation — `kt_worker_synthesis`
+- `super_synthesizer_wf` — Multi-scope super-synthesis (reconnaissance → dispatch → combine) — `kt_worker_synthesis`
 - `node_pipeline_wf` — Node creation DAG (create_node -> dimensions -> definition -> parent) — `kt_worker_nodes`
-- `conversations_wf` — Follow-up turns, resynthesis, ingest confirmation — `kt_worker_conv`
+- `bottom_up_wf` — Bottom-up scope exploration — `kt_worker_bottomup`
 - `search_wf` — Standalone search — `kt_worker_search`
-- `exploration_wf` — *(deprecated)* Legacy top-level orchestrator — `kt_worker_orchestrator`
-- `sub_explore_wf` — *(deprecated)* Legacy scope exploration — `kt_worker_orchestrator`
+- `ingest_build_wf` — Source ingestion pipeline — `kt_worker_ingest`
 
 ### Agent Architecture
-The system uses **bottom-up discovery** — a lightweight query agent drives all exploration and synthesis directly, rather than a top-down orchestrator planning waves of scoped explorations.
-
 Agents (LangGraph-based) are used **within** Hatchet tasks for LLM reasoning:
-1. **Bottom up Agent** (`kt_worker_query.agents.query_agent`) — Primary agent. Performs bottom-up discovery: searches for relevant facts, creates/expands nodes. It is a research agent
-2. **Conversation Agent** (`kt_worker_conv.agents.conversation`) — Follow-up turns with prior context.
+1. **Synthesizer Agent** (`kt_worker_synthesis.agents.synthesizer_agent`) — Navigates the graph with an exploration budget, produces a synthesis document. 8 navigation tools + finish_synthesis.
+2. **SuperSynthesizer Agent** (`kt_worker_synthesis.agents.super_synthesizer_agent`) — Reads sub-synthesis documents and produces a meta-synthesis.
 3. **Ingest Agent** (`kt_worker_ingest.agents.ingest_agent`) — File/link ingestion into the knowledge graph.
-4. **Orchestrator Agent** (`kt_worker_orchestrator.agents.orchestrator`) — Legacy top-down coordinator that planned scoped explorations in waves.
+4. **Bottom-up Scope** (`kt_worker_bottomup.bottom_up.scope`) — Fact gathering and node extraction from search results.
 
 ### Ontology System *(deprecated — scheduled for removal)*
 > **Do not add new code that depends on kt-ontology.** This module will be removed soon.
@@ -179,6 +184,8 @@ Agents (LangGraph-based) are used **within** Hatchet tasks for LLM reasoning:
 - `entity` — Subject capable of intent (person, organization)
 - `perspective` — A debatable claim with a parent concept and stance-classified facts
 - `event` — Temporal occurrence (historical, scientific, ongoing)
+- `synthesis` — Composite document synthesizing multiple nodes (has sentences, fact links)
+- `supersynthesis` — Meta-synthesis combining multiple synthesis documents
 
 ### Edge Types (2 active types)
 All edges are undirected with canonical UUID ordering enforced (smaller UUID always stored as source). One edge per type per node pair is enforced via DB unique constraint.
@@ -196,17 +203,9 @@ Facts are independent of nodes. A fact can be linked to many nodes. Facts accumu
 See `kt_db/models.py` for graph-db tables and `kt_db/write_models.py` for write-db tables.
 
 ### Real-Time Streaming
-Progress is streamed to the frontend via **Server-Sent Events (SSE)**:
+Progress is streamed via **Server-Sent Events (SSE)**:
 - Hatchet tasks emit events via `ctx.aio_put_stream(json.dumps({"type": ..., ...}))`
-- SSE endpoint proxies `hatchet.listener.stream_by_additional_metadata("message_id", msgId)`
-- Historical view: `GET /conversations/{id}/messages/{msgId}/pipeline` fetches run snapshot from Hatchet
-- Frontend `usePipelineProgress` fetches snapshot for completed turns, streams SSE for active turns
-
-### Research Reports
-At the end of each query agent run, a `ResearchReport` is persisted with:
-- Nodes/edges created
-- Budget usage (explore/nav)
-- Human-readable scope summaries
+- Synthesis workflows emit progress events (agent_started, synthesis_completed)
 
 ---
 
@@ -466,9 +465,9 @@ Most changes belong in an existing package. Use this table:
 | New ontology source | `libs/kt-ontology/src/kt_ontology/` *(deprecated — do not add)* |
 | New Hatchet input/output model | `libs/kt-hatchet/src/kt_hatchet/models.py` |
 | New API endpoint | `services/api/src/kt_api/` (new file + register in `router.py`) |
-| New orchestrator tool/prompt | `services/worker-orchestrator/src/kt_worker_orchestrator/` *(deprecated — do not add)* |
+| New synthesis agent/tool/prompt | `services/worker-synthesis/src/kt_worker_synthesis/` |
 | New node pipeline stage | `services/worker-nodes/src/kt_worker_nodes/pipelines/` |
-| New query tool | `services/worker-query/src/kt_worker_query/agents/tools/` |
+| New bottom-up tool | `services/worker-bottomup/src/kt_worker_bottomup/` |
 | New ingest pipeline stage | `services/worker-ingest/src/kt_worker_ingest/ingest/` |
 
 ### Creating a New Shared Library (`libs/`)
@@ -530,12 +529,11 @@ just migrate                         # Alembic upgrade head (from libs/kt-db)
 # Terminal 3 — Hatchet workers
 just worker                          # All-in-one worker (dev mode)
 # OR individual workers:
-just worker-orch                     # Orchestrator only
+just worker-bottomup                 # Bottom-up discovery only
+just worker-synthesis                # Synthesis agent only
 just worker-search                   # Search only
 just worker-nodes                    # Node pipeline only
-just worker-query                    # Query only
 just worker-ingest                   # Ingest only
-just worker-conv                     # Conversations only
 just worker-sync                     # Write-db → graph-db sync only
 
 # Terminal 4 — frontend
@@ -651,11 +649,11 @@ gh pr checks <pr-number> --watch   # Wait for all CI checks to pass
 - `chore` — Other changes that don't modify src or test files
 
 ### Scopes
-Use the package or area affected: `kt-config`, `kt-db`, `kt-models`, `kt-providers`, `kt-graph`, `kt-facts`, `kt-ontology`, `kt-hatchet`, `kt-agents-core`, `api`, `worker-orchestrator`, `worker-nodes`, `worker-query`, `worker-ingest`, `worker-conv`, `frontend`, `docker`, etc. Omit scope for cross-cutting changes.
+Use the package or area affected: `kt-config`, `kt-db`, `kt-models`, `kt-providers`, `kt-graph`, `kt-facts`, `kt-hatchet`, `kt-agents-core`, `api`, `worker-bottomup`, `worker-synthesis`, `worker-nodes`, `worker-ingest`, `frontend`, `docker`, etc. Omit scope for cross-cutting changes.
 
 ### Examples
 ```
-feat(worker-query): add bottom-up discovery tools
+feat(worker-synthesis): add synthesizer agent
 feat(api): add Google OAuth support
 feat(worker-ingest): file upload and decomposition pipeline
 fix(kt-api): handle missing node gracefully in GET /nodes/:id

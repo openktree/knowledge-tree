@@ -13,7 +13,7 @@ dependencies = [
     "kt-facts",
     "kt-ontology",
     "kt-config",
-    "kt-worker-orchestrator",
+    "kt-worker-bottomup",
     "langchain-core>=0.3.0",
     "langgraph>=1.0.8",
 ]
@@ -32,7 +32,7 @@ kt-graph = { workspace = true }
 kt-facts = { workspace = true }
 kt-ontology = { workspace = true }
 kt-config = { workspace = true }
-kt-worker-orchestrator = { workspace = true }
+kt-worker-bottomup = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

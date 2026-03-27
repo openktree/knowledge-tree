@@ -44,7 +44,7 @@ def test_edge_types_complete():
 def test_node_types_complete():
     from kt_config.types import NodeType
 
-    expected = {"concept", "perspective", "entity", "event", "synthesis", "location"}
+    expected = {"concept", "perspective", "entity", "event", "synthesis", "supersynthesis", "location"}
     assert set(nt.value for nt in NodeType) == expected
 
 

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-worker-bottomup
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "worker-bottomup") | nindent 4 }}
+spec:
+  replicas: {{ .Values.workers.orchestrator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "worker-bottomup") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "worker-bottomup") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- include "knowledge-tree.initWaitContainers" . | nindent 8 }}
+        {{- include "knowledge-tree.initWaitForToken" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.workers.orchestrator.image "defaultName" "openktree-worker-bottomup") }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "knowledge-tree.configVolumeMount" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.workers.orchestrator.resources | nindent 12 }}
+      volumes:
+        {{- include "knowledge-tree.configVolume" . | nindent 8 }}

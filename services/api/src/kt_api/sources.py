@@ -180,13 +180,10 @@ async def reingest_source(
         raise HTTPException(status_code=404, detail="Source not found")
 
     # Dispatch Hatchet workflow
-    from kt_hatchet.models import ReingestSourceInput, ReingestSourceOutput
-    from kt_worker_search.workflows.decompose import reingest_source_wf
+    from kt_hatchet.client import run_workflow
+    from kt_hatchet.models import ReingestSourceOutput
 
-    result = await reingest_source_wf.aio_run(
-        ReingestSourceInput(raw_source_id=source_id),
-    )
-
+    result = await run_workflow("reingest_source_wf", {"raw_source_id": source_id})
     output = ReingestSourceOutput.model_validate(result)
 
     # Refresh source detail after workflow completion

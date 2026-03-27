@@ -1186,3 +1186,89 @@ export interface EdgeCandidatePairDetail {
   accepted_count: number;
   rejected_count: number;
 }
+
+// ---------------------------------------------------------------------------
+// Synthesis types
+// ---------------------------------------------------------------------------
+
+export interface SentenceFactLink {
+  fact_id: string;
+  content: string;
+  fact_type: string;
+  embedding_distance: number;
+  source_title: string;
+  source_uri: string;
+  author: string;
+}
+
+export interface SynthesisSentenceResponse {
+  position: number;
+  text: string;
+  fact_count: number;
+  node_ids: string[];
+}
+
+export interface SynthesisNodeResponse {
+  node_id: string;
+  concept: string;
+  node_type: string;
+}
+
+export interface SynthesisDocumentResponse {
+  id: string;
+  concept: string;
+  node_type: string;
+  visibility: string;
+  definition: string | null;
+  sentences: SynthesisSentenceResponse[];
+  referenced_nodes: SynthesisNodeResponse[];
+  sub_syntheses: SynthesisNodeResponse[];
+  created_at: string | null;
+}
+
+export interface SynthesisListItem {
+  id: string;
+  concept: string;
+  node_type: string;
+  visibility: string;
+  sentence_count: number;
+  sub_synthesis_ids: string[];
+  created_at: string | null;
+}
+
+export interface PaginatedSynthesesResponse {
+  items: SynthesisListItem[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface SentenceFactResponse {
+  fact_id: string;
+  content: string;
+  fact_type: string;
+  embedding_distance: number;
+}
+
+export interface SentenceFactsBySourceResponse {
+  source_id: string;
+  source_uri: string;
+  source_title: string;
+  facts: SentenceFactResponse[];
+}
+
+export interface CreateSynthesisRequest {
+  topic: string;
+  starting_node_ids?: string[];
+  exploration_budget?: number;
+  visibility?: string;
+}
+
+export interface CreateSuperSynthesisRequest {
+  topic: string;
+  sub_configs?: CreateSynthesisRequest[];
+  existing_synthesis_ids?: string[];
+  scope_count?: number;
+  visibility?: string;
+  distance_threshold?: number;
+}

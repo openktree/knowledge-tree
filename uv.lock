@@ -23,13 +23,12 @@ members = [
     "kt-providers",
     "kt-qdrant",
     "kt-worker-all",
-    "kt-worker-conversations",
+    "kt-worker-bottomup",
     "kt-worker-ingest",
     "kt-worker-nodes",
-    "kt-worker-orchestrator",
-    "kt-worker-query",
     "kt-worker-search",
     "kt-worker-sync",
+    "kt-worker-synthesis",
 ]
 
 [[package]]
@@ -1629,7 +1628,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.2.7"
+version = "0.3.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1701,11 +1700,9 @@ dependencies = [
     { name = "kt-models" },
     { name = "kt-ontology" },
     { name = "kt-providers" },
-    { name = "kt-worker-conversations" },
     { name = "kt-worker-ingest" },
     { name = "kt-worker-nodes" },
-    { name = "kt-worker-orchestrator" },
-    { name = "kt-worker-query" },
+    { name = "kt-worker-synthesis" },
     { name = "python-multipart" },
     { name = "sse-starlette" },
     { name = "structlog" },
@@ -1727,11 +1724,9 @@ requires-dist = [
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
-    { name = "kt-worker-conversations", editable = "services/worker-conversations" },
     { name = "kt-worker-ingest", editable = "services/worker-ingest" },
     { name = "kt-worker-nodes", editable = "services/worker-nodes" },
-    { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
-    { name = "kt-worker-query", editable = "services/worker-query" },
+    { name = "kt-worker-synthesis", editable = "services/worker-synthesis" },
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "sse-starlette", specifier = ">=3.3.2" },
     { name = "structlog", specifier = ">=25.5.0" },
@@ -1966,39 +1961,42 @@ version = "0.1.0"
 source = { editable = "services/worker-all" }
 dependencies = [
     { name = "kt-hatchet" },
-    { name = "kt-worker-conversations" },
+    { name = "kt-worker-bottomup" },
     { name = "kt-worker-ingest" },
     { name = "kt-worker-nodes" },
-    { name = "kt-worker-orchestrator" },
-    { name = "kt-worker-query" },
     { name = "kt-worker-search" },
     { name = "kt-worker-sync" },
+    { name = "kt-worker-synthesis" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
-    { name = "kt-worker-conversations", editable = "services/worker-conversations" },
+    { name = "kt-worker-bottomup", editable = "services/worker-bottomup" },
     { name = "kt-worker-ingest", editable = "services/worker-ingest" },
     { name = "kt-worker-nodes", editable = "services/worker-nodes" },
-    { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
-    { name = "kt-worker-query", editable = "services/worker-query" },
     { name = "kt-worker-search", editable = "services/worker-search" },
     { name = "kt-worker-sync", editable = "services/worker-sync" },
+    { name = "kt-worker-synthesis", editable = "services/worker-synthesis" },
 ]
 
 [[package]]
-name = "kt-worker-conversations"
+name = "kt-worker-bottomup"
 version = "0.1.0"
-source = { editable = "services/worker-conversations" }
+source = { editable = "services/worker-bottomup" }
 dependencies = [
     { name = "kt-agents-core" },
     { name = "kt-config" },
     { name = "kt-db" },
+    { name = "kt-facts" },
     { name = "kt-graph" },
     { name = "kt-hatchet" },
     { name = "kt-models" },
+    { name = "kt-ontology" },
     { name = "kt-providers" },
+    { name = "kt-worker-nodes" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
 ]
 
 [package.metadata]
@@ -2006,10 +2004,15 @@ requires-dist = [
     { name = "kt-agents-core", editable = "libs/kt-agents-core" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
+    { name = "kt-facts", editable = "libs/kt-facts" },
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
+    { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
+    { name = "kt-worker-nodes", editable = "services/worker-nodes" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=1.0.8" },
 ]
 
 [[package]]
@@ -2025,7 +2028,7 @@ dependencies = [
     { name = "kt-hatchet" },
     { name = "kt-models" },
     { name = "kt-providers" },
-    { name = "kt-worker-orchestrator" },
+    { name = "kt-worker-bottomup" },
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "pymupdf" },
@@ -2041,7 +2044,7 @@ requires-dist = [
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
-    { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
+    { name = "kt-worker-bottomup", editable = "services/worker-bottomup" },
     { name = "langchain-core", specifier = ">=0.3.0" },
     { name = "langgraph", specifier = ">=1.0.8" },
     { name = "pymupdf", specifier = ">=1.27.1" },
@@ -2061,7 +2064,7 @@ dependencies = [
     { name = "kt-models" },
     { name = "kt-ontology" },
     { name = "kt-providers" },
-    { name = "kt-worker-orchestrator" },
+    { name = "kt-worker-bottomup" },
     { name = "langchain-core" },
     { name = "langgraph" },
 ]
@@ -2077,75 +2080,7 @@ requires-dist = [
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
-    { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
-    { name = "langchain-core", specifier = ">=0.3.0" },
-    { name = "langgraph", specifier = ">=1.0.8" },
-]
-
-[[package]]
-name = "kt-worker-orchestrator"
-version = "0.1.0"
-source = { editable = "services/worker-orchestrator" }
-dependencies = [
-    { name = "kt-agents-core" },
-    { name = "kt-config" },
-    { name = "kt-db" },
-    { name = "kt-facts" },
-    { name = "kt-graph" },
-    { name = "kt-hatchet" },
-    { name = "kt-models" },
-    { name = "kt-ontology" },
-    { name = "kt-providers" },
-    { name = "kt-worker-nodes" },
-    { name = "kt-worker-query" },
-    { name = "langchain-core" },
-    { name = "langgraph" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "kt-agents-core", editable = "libs/kt-agents-core" },
-    { name = "kt-config", editable = "libs/kt-config" },
-    { name = "kt-db", editable = "libs/kt-db" },
-    { name = "kt-facts", editable = "libs/kt-facts" },
-    { name = "kt-graph", editable = "libs/kt-graph" },
-    { name = "kt-hatchet", editable = "libs/kt-hatchet" },
-    { name = "kt-models", editable = "libs/kt-models" },
-    { name = "kt-ontology", editable = "libs/kt-ontology" },
-    { name = "kt-providers", editable = "libs/kt-providers" },
-    { name = "kt-worker-nodes", editable = "services/worker-nodes" },
-    { name = "kt-worker-query", editable = "services/worker-query" },
-    { name = "langchain-core", specifier = ">=0.3.0" },
-    { name = "langgraph", specifier = ">=1.0.8" },
-]
-
-[[package]]
-name = "kt-worker-query"
-version = "0.1.0"
-source = { editable = "services/worker-query" }
-dependencies = [
-    { name = "kt-agents-core" },
-    { name = "kt-config" },
-    { name = "kt-db" },
-    { name = "kt-graph" },
-    { name = "kt-hatchet" },
-    { name = "kt-models" },
-    { name = "kt-providers" },
-    { name = "kt-worker-orchestrator" },
-    { name = "langchain-core" },
-    { name = "langgraph" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "kt-agents-core", editable = "libs/kt-agents-core" },
-    { name = "kt-config", editable = "libs/kt-config" },
-    { name = "kt-db", editable = "libs/kt-db" },
-    { name = "kt-graph", editable = "libs/kt-graph" },
-    { name = "kt-hatchet", editable = "libs/kt-hatchet" },
-    { name = "kt-models", editable = "libs/kt-models" },
-    { name = "kt-providers", editable = "libs/kt-providers" },
-    { name = "kt-worker-orchestrator", editable = "services/worker-orchestrator" },
+    { name = "kt-worker-bottomup", editable = "services/worker-bottomup" },
     { name = "langchain-core", specifier = ">=0.3.0" },
     { name = "langgraph", specifier = ">=1.0.8" },
 ]
@@ -2192,6 +2127,35 @@ requires-dist = [
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
+]
+
+[[package]]
+name = "kt-worker-synthesis"
+version = "0.1.0"
+source = { editable = "services/worker-synthesis" }
+dependencies = [
+    { name = "kt-agents-core" },
+    { name = "kt-config" },
+    { name = "kt-db" },
+    { name = "kt-graph" },
+    { name = "kt-hatchet" },
+    { name = "kt-models" },
+    { name = "kt-qdrant" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kt-agents-core", editable = "libs/kt-agents-core" },
+    { name = "kt-config", editable = "libs/kt-config" },
+    { name = "kt-db", editable = "libs/kt-db" },
+    { name = "kt-graph", editable = "libs/kt-graph" },
+    { name = "kt-hatchet", editable = "libs/kt-hatchet" },
+    { name = "kt-models", editable = "libs/kt-models" },
+    { name = "kt-qdrant", editable = "libs/kt-qdrant" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=1.0.8" },
 ]
 
 [[package]]

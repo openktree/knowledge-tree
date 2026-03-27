@@ -4,7 +4,6 @@ import type { ConvergenceResponse } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ConfidenceIndicator } from "@/components/answer/ConfidenceIndicator";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -45,10 +44,9 @@ export function ConvergenceTab({
       <Card>
         <CardContent className="pt-6 flex items-center justify-center">
           <div className="text-center space-y-2">
-            <ConfidenceIndicator
-              score={convergence.convergence_score}
-              label="Overall Convergence"
-            />
+            <Badge variant="outline" className="text-lg px-4 py-2">
+              Convergence: {(convergence.convergence_score * 100).toFixed(0)}%
+            </Badge>
             <p className="text-xs text-muted-foreground">
               {convergence.convergence_score >= 0.8
                 ? "Strong consensus across models"
