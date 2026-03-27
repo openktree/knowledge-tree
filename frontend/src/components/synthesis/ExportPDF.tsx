@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Printer, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSynthesis, getSentenceFacts } from "@/lib/api";
 import type {
@@ -24,7 +24,20 @@ interface ExportPDFProps {
   concept: string;
 }
 
-export function ExportPDFButton({ documentId, concept }: ExportPDFProps) {
+export function ExportButtons({ documentId, concept }: ExportPDFProps) {
+  return (
+    <div className="flex items-center gap-1">
+      <ExportButton documentId={documentId} concept={concept} mode="html" />
+      <ExportButton documentId={documentId} concept={concept} mode="pdf" />
+    </div>
+  );
+}
+
+function ExportButton({
+  documentId,
+  concept,
+  mode,
+}: ExportPDFProps & { mode: "html" | "pdf" }) {
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
@@ -84,9 +97,13 @@ export function ExportPDFButton({ documentId, concept }: ExportPDFProps) {
         // prompts section will be empty
       }
 
-      // 5. Generate and download
+      // 5. Generate and export
       const html = buildExportHTML(doc, factMap, nodeDefinitions, prompts);
-      downloadAsHTML(html, concept);
+      if (mode === "pdf") {
+        printHTML(html);
+      } else {
+        downloadAsHTML(html, concept);
+      }
     } catch (err) {
       console.error("Export failed:", err);
     } finally {
@@ -104,10 +121,12 @@ export function ExportPDFButton({ documentId, concept }: ExportPDFProps) {
     >
       {exporting ? (
         <Loader2 className="mr-2 size-4 animate-spin" />
+      ) : mode === "pdf" ? (
+        <Printer className="mr-2 size-4" />
       ) : (
         <Download className="mr-2 size-4" />
       )}
-      Export
+      {mode === "pdf" ? "PDF" : "HTML"}
     </Button>
   );
 }
@@ -532,4 +551,15 @@ function downloadAsHTML(html: string, concept: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function printHTML(html: string) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return;
+  printWindow.document.write(html);
+  printWindow.document.close();
+  // Wait for content to render then trigger print
+  printWindow.onload = () => {
+    printWindow.print();
+  };
 }

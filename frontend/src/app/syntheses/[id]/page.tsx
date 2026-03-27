@@ -7,7 +7,7 @@ import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSynthesis, deleteSynthesis } from "@/lib/api";
 import { SynthesisDocument } from "@/components/synthesis/SynthesisDocument";
-import { ExportPDFButton } from "@/components/synthesis/ExportPDF";
+import { ExportButtons } from "@/components/synthesis/ExportPDF";
 import type { SynthesisDocumentResponse } from "@/types";
 
 export default function SynthesisDetailPage() {
@@ -83,7 +83,7 @@ export default function SynthesisDetailPage() {
           </Link>
         </Button>
         <div className="flex items-center gap-2">
-          <ExportPDFButton documentId={id} concept={document.concept} />
+          <ExportButtons documentId={id} concept={document.concept} />
           <Button
             variant="ghost"
             size="sm"
