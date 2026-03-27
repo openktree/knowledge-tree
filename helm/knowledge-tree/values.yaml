@@ -262,7 +262,7 @@ wikiFrontend:
 # Workers
 # =============================================================================
 workers:
-  orchestrator:
+  bottomup:
     replicas: 1
     image:
       repository: ""
@@ -298,18 +298,6 @@ workers:
       limits:
         memory: 2Gi
 
-  query:
-    replicas: 1
-    image:
-      repository: ""
-      tag: ""
-    resources:
-      requests:
-        memory: 256Mi
-        cpu: 100m
-      limits:
-        memory: 1Gi
-
   ingest:
     replicas: 1
     image:
@@ -322,7 +310,7 @@ workers:
       limits:
         memory: 2Gi
 
-  conversations:
+  synthesis:
     replicas: 1
     image:
       repository: ""
@@ -352,9 +340,6 @@ workers:
 configYaml:
   models:
     default: "openrouter/x-ai/grok-4.1-fast"
-
-  orchestrator:
-    model: "openrouter/minimax/minimax-m2.5:nitro"
 
   decomposition:
     model: "openrouter/x-ai/grok-4.1-fast"
