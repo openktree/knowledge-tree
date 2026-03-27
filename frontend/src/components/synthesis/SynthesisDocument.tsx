@@ -205,7 +205,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
 
     return (
       <Tag
-        className={`${baseClass} rounded-sm transition-colors ${
+        className={`${baseClass} rounded-sm transition-colors flex items-start gap-2 ${
           isSelected
             ? "bg-primary/5 ring-1 ring-primary/20 px-2 -mx-2"
             : hasInfo
@@ -223,17 +223,14 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
             : undefined
         }
       >
-        {children}
+        <span className="flex-1">{children}</span>
         {hasInfo && badgeText && (
-          <>
-            {" "}
-            <Badge
-              variant={isSelected ? "default" : "outline"}
-              className="text-[10px] px-1 py-0 align-super"
-            >
-              {badgeText}
-            </Badge>
-          </>
+          <Badge
+            variant={isSelected ? "default" : "outline"}
+            className="text-[10px] px-1 py-0 shrink-0 mt-1"
+          >
+            {badgeText}
+          </Badge>
         )}
       </Tag>
     );
