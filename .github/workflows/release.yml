@@ -38,22 +38,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: semantic-release version --push --tag --changelog --vcs-release
-
-      - name: Sync Chart.yaml version
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: |
-          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          CHART_VERSION=$(grep '^version:' helm/knowledge-tree/Chart.yaml | awk '{print $2}')
-          if [ "$VERSION" != "$CHART_VERSION" ]; then
-            sed -i "s/^version: .*/version: ${VERSION}/" helm/knowledge-tree/Chart.yaml
-            sed -i "s/^appVersion: .*/appVersion: \"${VERSION}\"/" helm/knowledge-tree/Chart.yaml
-            git config user.name "semantic-release"
-            git config user.email "semantic-release@users.noreply.github.com"
-            git add helm/knowledge-tree/Chart.yaml
-            git commit --amend --no-edit
-            git push --force-with-lease origin main
-            # Move the tag to the amended commit so it stays in main's history
-            git tag -f "v${VERSION}"
-            git push --force origin "v${VERSION}"
-          fi
