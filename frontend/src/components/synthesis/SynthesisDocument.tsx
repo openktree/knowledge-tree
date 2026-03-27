@@ -404,15 +404,25 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               type="button"
               onClick={toggleVisibility}
               disabled={togglingVisibility}
-              className="transition-colors"
-              title={`Click to make ${visibility === "public" ? "private" : "public"}`}
+              className="flex items-center gap-1.5 text-[0.72rem] text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition-colors"
+              title={`Switch to ${visibility === "public" ? "private" : "public"}`}
             >
-              <Badge
-                variant={visibility === "public" ? "default" : "secondary"}
-                className="text-[0.65rem] uppercase tracking-wider px-2 py-0.5 cursor-pointer hover:opacity-80"
+              <div
+                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                  visibility === "public"
+                    ? "bg-blue-500"
+                    : "bg-stone-300 dark:bg-stone-600"
+                }`}
               >
+                <span
+                  className={`inline-block size-3 rounded-full bg-white shadow-sm transition-transform ${
+                    visibility === "public" ? "translate-x-3.5" : "translate-x-0.5"
+                  }`}
+                />
+              </div>
+              <span className="uppercase tracking-wider font-medium">
                 {togglingVisibility ? "..." : visibility}
-              </Badge>
+              </span>
             </button>
           </div>
           <h1 className="text-[2rem] font-semibold leading-tight text-stone-900 dark:text-stone-100 mb-1">
