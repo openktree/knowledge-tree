@@ -45,7 +45,7 @@ export function CreateSynthesisDialog({
   const [mode, setMode] = useState<SynthesisMode>("synthesis");
   const [topic, setTopic] = useState("");
   const [budget, setBudget] = useState(20);
-  const [scopeCount, setScopeCount] = useState(0);
+  const [scopeCount, setScopeCount] = useState(5);
   const [visibility, setVisibility] = useState("public");
   const [creating, setCreating] = useState(false);
 

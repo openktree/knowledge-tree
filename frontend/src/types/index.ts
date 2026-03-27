@@ -1232,6 +1232,7 @@ export interface SynthesisListItem {
   node_type: string;
   visibility: string;
   sentence_count: number;
+  sub_synthesis_ids: string[];
   created_at: string | null;
 }
 

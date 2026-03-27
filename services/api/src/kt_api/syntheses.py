@@ -80,6 +80,7 @@ class SynthesisListItem(BaseModel):
     node_type: str
     visibility: str = "public"
     sentence_count: int = 0
+    sub_synthesis_ids: list[str] = Field(default_factory=list)
     created_at: str | None = None
 
 
@@ -201,6 +202,7 @@ async def list_syntheses(
             node_type=n.node_type,
             visibility=n.visibility,
             sentence_count=_get_sentence_count(n),
+            sub_synthesis_ids=_get_synthesis_doc(n).get("sub_synthesis_ids", []),
             created_at=n.created_at.isoformat() if n.created_at else None,
         )
         for n in nodes
