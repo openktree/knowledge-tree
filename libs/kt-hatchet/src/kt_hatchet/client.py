@@ -65,8 +65,7 @@ async def dispatch_workflow(
     except Exception as exc:
         logger.error("Failed to dispatch workflow %s: %s", workflow_name, exc)
         raise RuntimeError(
-            f"Failed to dispatch workflow '{workflow_name}'. "
-            f"Ensure the worker is running (just worker). Error: {exc}"
+            f"Failed to dispatch workflow '{workflow_name}'. Ensure the worker is running (just worker). Error: {exc}"
         ) from exc
 
 
@@ -101,6 +100,5 @@ async def run_workflow(
     except Exception as exc:
         logger.error("Failed to run workflow %s: %s", workflow_name, exc)
         raise RuntimeError(
-            f"Failed to run workflow '{workflow_name}'. "
-            f"Ensure the worker is running (just worker). Error: {exc}"
+            f"Failed to run workflow '{workflow_name}'. Ensure the worker is running (just worker). Error: {exc}"
         ) from exc

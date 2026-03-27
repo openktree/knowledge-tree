@@ -354,9 +354,7 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
 
                 row = (
                     await write_session.execute(
-                        sa_select(WriteNode.metadata_).where(
-                            WriteNode.node_uuid == supersynthesis_node_id
-                        )
+                        sa_select(WriteNode.metadata_).where(WriteNode.node_uuid == supersynthesis_node_id)
                     )
                 ).scalar_one_or_none()
                 existing_meta = row if isinstance(row, dict) else {}

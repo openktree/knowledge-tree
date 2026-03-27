@@ -135,12 +135,15 @@ async def create_synthesis(
     from kt_hatchet.client import dispatch_workflow
 
     try:
-        run_id = await dispatch_workflow("synthesizer_wf", {
-            "topic": body.topic,
-            "starting_node_ids": body.starting_node_ids,
-            "exploration_budget": body.exploration_budget,
-            "visibility": body.visibility,
-        })
+        run_id = await dispatch_workflow(
+            "synthesizer_wf",
+            {
+                "topic": body.topic,
+                "starting_node_ids": body.starting_node_ids,
+                "exploration_budget": body.exploration_budget,
+                "visibility": body.visibility,
+            },
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return {"status": "pending", "workflow_run_id": run_id, "topic": body.topic}
@@ -164,14 +167,17 @@ async def create_super_synthesis(
         for c in body.sub_configs
     ]
     try:
-        run_id = await dispatch_workflow("super_synthesizer_wf", {
-            "topic": body.topic,
-            "sub_configs": sub_configs,
-            "existing_synthesis_ids": body.existing_synthesis_ids,
-            "scope_count": body.scope_count,
-            "visibility": body.visibility,
-            "distance_threshold": body.distance_threshold,
-        })
+        run_id = await dispatch_workflow(
+            "super_synthesizer_wf",
+            {
+                "topic": body.topic,
+                "sub_configs": sub_configs,
+                "existing_synthesis_ids": body.existing_synthesis_ids,
+                "scope_count": body.scope_count,
+                "visibility": body.visibility,
+                "distance_threshold": body.distance_threshold,
+            },
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return {"status": "pending", "workflow_run_id": run_id, "topic": body.topic}
@@ -253,15 +259,15 @@ async def get_synthesis(
     if sub_ids:
         for sid in sub_ids:
             try:
-                sub_node = (
-                    await session.execute(select(Node).where(Node.id == uuid.UUID(sid)))
-                ).scalar_one_or_none()
+                sub_node = (await session.execute(select(Node).where(Node.id == uuid.UUID(sid)))).scalar_one_or_none()
                 if sub_node:
-                    sub_syntheses.append(SynthesisNodeResponse(
-                        node_id=str(sub_node.id),
-                        concept=sub_node.concept,
-                        node_type=sub_node.node_type,
-                    ))
+                    sub_syntheses.append(
+                        SynthesisNodeResponse(
+                            node_id=str(sub_node.id),
+                            concept=sub_node.concept,
+                            node_type=sub_node.node_type,
+                        )
+                    )
             except Exception:
                 pass
 
@@ -311,9 +317,7 @@ async def get_sentence_facts(
     fact_ids = [uuid.UUID(fl["fact_id"]) for fl in fact_links if fl.get("fact_id")]
     distance_map = {fl["fact_id"]: fl.get("distance", 0.0) for fl in fact_links}
 
-    facts_result = await session.execute(
-        select(Fact).where(Fact.id.in_(fact_ids))
-    )
+    facts_result = await session.execute(select(Fact).where(Fact.id.in_(fact_ids)))
     facts_by_id = {str(f.id): f for f in facts_result.scalars().all()}
 
     # Get first source for each fact

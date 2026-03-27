@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useNodeDetail } from "@/hooks/useNodeDetail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -609,8 +609,8 @@ async def build_ingest(
 
     await session.commit()
 
-    from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
     from kt_hatchet.client import dispatch_workflow
+    from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
 
     confirmed_nodes = [
         ConfirmedNode(
@@ -918,7 +918,7 @@ async def agent_select(
         )
 
     # Parse proposed nodes from metadata
-    from kt_hatchet.models import AgentSelectInput, ProposedNode, ProposedPerspective
+    from kt_hatchet.models import ProposedNode, ProposedPerspective
 
     proposed_nodes = []
     for n in metadata.get("proposed_nodes", []):

@@ -164,9 +164,7 @@ async def link_facts_by_embedding(
             if results:
                 links[i] = [(str(r.fact_id), r.score) for r in results]
         except Exception:
-            logger.warning(
-                "Fact embedding search failed for sentence %d", i, exc_info=True
-            )
+            logger.warning("Fact embedding search failed for sentence %d", i, exc_info=True)
 
     return links
 
@@ -233,9 +231,7 @@ async def process_synthesis_document(
         fact_links_map = await link_facts_by_embedding(
             sentence_embeddings,
             qdrant_client,
-            referenced_node_ids=list(all_referenced_node_ids)
-            if all_referenced_node_ids
-            else None,
+            referenced_node_ids=list(all_referenced_node_ids) if all_referenced_node_ids else None,
         )
         total_fact_links = sum(len(fl) for fl in fact_links_map.values())
 
@@ -243,10 +239,7 @@ async def process_synthesis_document(
     sentence_records = []
     for i, text in enumerate(sentences):
         node_ids = [nid for nid, _ in node_links_map.get(i, [])]
-        fact_links = [
-            {"fact_id": fid, "distance": round(dist, 4)}
-            for fid, dist in fact_links_map.get(i, [])
-        ]
+        fact_links = [{"fact_id": fid, "distance": round(dist, 4)} for fid, dist in fact_links_map.get(i, [])]
         sentence_records.append(
             {
                 "text": text,

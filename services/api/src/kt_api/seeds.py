@@ -192,11 +192,17 @@ async def synthesize_perspective(seed_key: str) -> SynthesizeResponse:
 
         # Build thesis
         try:
-            await run_workflow("build_composite_task", {
-                "node_type": "perspective", "concept": claim,
-                "source_node_ids": source_node_ids, "query_context": claim,
-                "parent_concept": "", "metadata": {"dialectic_role": "thesis"},
-            })
+            await run_workflow(
+                "build_composite_task",
+                {
+                    "node_type": "perspective",
+                    "concept": claim,
+                    "source_node_ids": source_node_ids,
+                    "query_context": claim,
+                    "parent_concept": "",
+                    "metadata": {"dialectic_role": "thesis"},
+                },
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
@@ -206,11 +212,17 @@ async def synthesize_perspective(seed_key: str) -> SynthesizeResponse:
         # Build antithesis
         if antithesis:
             try:
-                await run_workflow("build_composite_task", {
-                    "node_type": "perspective", "concept": antithesis,
-                    "source_node_ids": source_node_ids, "query_context": antithesis,
-                    "parent_concept": "", "metadata": {"dialectic_role": "antithesis"},
-                })
+                await run_workflow(
+                    "build_composite_task",
+                    {
+                        "node_type": "perspective",
+                        "concept": antithesis,
+                        "source_node_ids": source_node_ids,
+                        "query_context": antithesis,
+                        "parent_concept": "",
+                        "metadata": {"dialectic_role": "antithesis"},
+                    },
+                )
             except Exception as exc:
                 raise HTTPException(
                     status_code=500,
@@ -314,16 +326,19 @@ async def promote_seed_to_node(
     api_key = require_api_key(user)
 
     try:
-        run_id = await dispatch_workflow("node_pipeline_wf", {
-            "scope_id": scope_id,
-            "concept": seed.name,
-            "node_type": seed.node_type,
-            "entity_subtype": seed.entity_subtype,
-            "seed_key": seed_key,
-            "message_id": scope_id,
-            "conversation_id": scope_id,
-            "api_key": api_key,
-        })
+        run_id = await dispatch_workflow(
+            "node_pipeline_wf",
+            {
+                "scope_id": scope_id,
+                "concept": seed.name,
+                "node_type": seed.node_type,
+                "entity_subtype": seed.entity_subtype,
+                "seed_key": seed_key,
+                "message_id": scope_id,
+                "conversation_id": scope_id,
+                "api_key": api_key,
+            },
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=500,

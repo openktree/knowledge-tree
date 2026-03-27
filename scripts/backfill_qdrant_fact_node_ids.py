@@ -12,7 +12,7 @@ import logging
 from collections import defaultdict
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from kt_config.settings import get_settings
@@ -32,16 +32,12 @@ async def main() -> None:
 
     # 1. Count total facts with node links
     async with AsyncSession(engine) as session:
-        total = (await session.execute(
-            select(func.count(func.distinct(NodeFact.fact_id)))
-        )).scalar_one()
+        total = (await session.execute(select(func.count(func.distinct(NodeFact.fact_id))))).scalar_one()
         logger.info("Total facts with node links: %d", total)
 
         # 2. Build fact_id -> [node_id, ...] mapping
         logger.info("Loading NodeFact mappings...")
-        result = await session.execute(
-            select(NodeFact.fact_id, NodeFact.node_id)
-        )
+        result = await session.execute(select(NodeFact.fact_id, NodeFact.node_id))
         fact_nodes: dict[str, list[str]] = defaultdict(list)
         row_count = 0
         for fact_id, node_id in result.all():

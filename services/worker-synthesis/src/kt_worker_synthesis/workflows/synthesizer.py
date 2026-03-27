@@ -118,7 +118,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 synthesis_text = "Synthesis completed but no document was produced."
 
             # Create synthesis node — append timestamp for unique key
-            from datetime import datetime, UTC
+            from datetime import UTC, datetime
 
             ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             concept = f"{input.topic or 'Synthesis'} [{ts}]"
@@ -175,9 +175,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
 
                 row = (
                     await write_session.execute(
-                        sa_select(WriteNode.metadata_).where(
-                            WriteNode.node_uuid == synthesis_node_id
-                        )
+                        sa_select(WriteNode.metadata_).where(WriteNode.node_uuid == synthesis_node_id)
                     )
                 ).scalar_one_or_none()
                 if row and isinstance(row, dict):
@@ -185,9 +183,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
 
                 existing_meta["synthesis_document"] = doc
                 await write_session.execute(
-                    update(WriteNode)
-                    .where(WriteNode.node_uuid == synthesis_node_id)
-                    .values(metadata_=existing_meta)
+                    update(WriteNode).where(WriteNode.node_uuid == synthesis_node_id).values(metadata_=existing_meta)
                 )
                 await write_session.commit()
 

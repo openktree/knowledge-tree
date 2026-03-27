@@ -14,9 +14,7 @@ import {
   ChevronRight,
   CircleDot,
   ExternalLink,
-  FileText,
   Loader2,
-  X,
 } from "lucide-react";
 import { formatSynthesisConcept } from "./utils";
 import type {

@@ -63,9 +63,7 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
             # Send nudge only once — scan history to avoid loop
             # (pattern from old query agent that worked correctly)
             already_nudged = any(
-                isinstance(m, HumanMessage)
-                and isinstance(m.content, str)
-                and "BUDGET EXHAUSTED" in m.content
+                isinstance(m, HumanMessage) and isinstance(m.content, str) and "BUDGET EXHAUSTED" in m.content
                 for m in state.messages
             )
             if not already_nudged:
@@ -99,9 +97,7 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
             return {
                 "messages": [
                     response,
-                    HumanMessage(
-                        content="Call finish_synthesis(text) with your complete markdown document."
-                    ),
+                    HumanMessage(content="Call finish_synthesis(text) with your complete markdown document."),
                 ]
             }
         return None

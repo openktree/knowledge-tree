@@ -91,16 +91,13 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
                 return f"No facts found for query: {query}"
 
             # Look up fact content from DB for richer output
-            import uuid as _uuid
             from sqlalchemy import select
+
             from kt_db.models import Fact, NodeFact
 
             fact_ids = [r.fact_id for r in results]
-            score_map = {str(r.fact_id): r.score for r in results}
 
-            facts_result = await ctx.session.execute(
-                select(Fact).where(Fact.id.in_(fact_ids))
-            )
+            facts_result = await ctx.session.execute(select(Fact).where(Fact.id.in_(fact_ids)))
             facts_by_id = {str(f.id): f for f in facts_result.scalars().all()}
 
             # Get node links for each fact
@@ -117,10 +114,7 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
                 fact = facts_by_id.get(fid)
                 content = fact.content[:200] if fact else "?"
                 nids = node_links.get(fid, [])
-                lines.append(
-                    f"- [{r.fact_type or '?'}] (score={r.score:.3f}) {content}"
-                    f"\n  nodes: {nids}"
-                )
+                lines.append(f"- [{r.fact_type or '?'}] (score={r.score:.3f}) {content}\n  nodes: {nids}")
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("search_facts failed: %s", exc)

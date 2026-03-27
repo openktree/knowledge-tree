@@ -615,10 +615,16 @@ async def rebuild_node(
     mode = (body or {}).get("mode", "full")
     scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
-    await dispatch_workflow("rebuild_node_task", {
-        "node_id": node_id, "mode": mode, "scope": scope,
-        "recalculate_pair": True, "api_key": api_key,
-    })
+    await dispatch_workflow(
+        "rebuild_node_task",
+        {
+            "node_id": node_id,
+            "mode": mode,
+            "scope": scope,
+            "recalculate_pair": True,
+            "api_key": api_key,
+        },
+    )
     return {"status": "started", "node_id": node_id}
 
 
@@ -845,9 +851,15 @@ async def quick_add_node(
         # Trigger full rebuild via Hatchet
         from kt_hatchet.client import dispatch_workflow
 
-        await dispatch_workflow("rebuild_node_task", {
-            "node_id": str(match.id), "mode": "full", "scope": "all", "recalculate_pair": True,
-        })
+        await dispatch_workflow(
+            "rebuild_node_task",
+            {
+                "node_id": str(match.id),
+                "mode": "full",
+                "scope": "all",
+                "recalculate_pair": True,
+            },
+        )
         return QuickAddNodeResponse(
             status="started",
             action="refreshed",
@@ -874,14 +886,17 @@ async def quick_add_node(
         await seed_repo.upsert_seed(seed_key, concept, "concept", None)
         await ws.commit()
 
-    run_id = await dispatch_workflow("node_pipeline_wf", {
-        "scope_id": scope_id,
-        "concept": concept,
-        "node_type": "concept",
-        "seed_key": seed_key,
-        "message_id": scope_id,
-        "conversation_id": scope_id,
-    })
+    run_id = await dispatch_workflow(
+        "node_pipeline_wf",
+        {
+            "scope_id": scope_id,
+            "concept": concept,
+            "node_type": "concept",
+            "seed_key": seed_key,
+            "message_id": scope_id,
+            "conversation_id": scope_id,
+        },
+    )
 
     return QuickAddNodeResponse(
         status="started",
@@ -1046,14 +1061,28 @@ async def quick_add_perspective(
         import asyncio
 
         await asyncio.gather(
-            dispatch_workflow("node_pipeline_wf", {
-                "scope_id": scope_id, "concept": body.thesis, "node_type": "perspective",
-                "seed_key": thesis_key, "message_id": scope_id, "conversation_id": scope_id,
-            }),
-            dispatch_workflow("node_pipeline_wf", {
-                "scope_id": scope_id, "concept": body.antithesis, "node_type": "perspective",
-                "seed_key": antithesis_key, "message_id": scope_id, "conversation_id": scope_id,
-            }),
+            dispatch_workflow(
+                "node_pipeline_wf",
+                {
+                    "scope_id": scope_id,
+                    "concept": body.thesis,
+                    "node_type": "perspective",
+                    "seed_key": thesis_key,
+                    "message_id": scope_id,
+                    "conversation_id": scope_id,
+                },
+            ),
+            dispatch_workflow(
+                "node_pipeline_wf",
+                {
+                    "scope_id": scope_id,
+                    "concept": body.antithesis,
+                    "node_type": "perspective",
+                    "seed_key": antithesis_key,
+                    "message_id": scope_id,
+                    "conversation_id": scope_id,
+                },
+            ),
         )
     except Exception:
         logger.warning("Failed to trigger node pipeline for perspective pair", exc_info=True)
