@@ -89,52 +89,30 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
         remaining = state.exploration_budget - state.nodes_visited_count
         used_ratio = state.nodes_visited_count / max(state.exploration_budget, 1)
 
-        # If trying to end without calling finish_synthesis
+        # If trying to end without tool calls and no synthesis submitted
         if not response.tool_calls and not state.synthesis_text and state.phase != "done":
-            if used_ratio < 0.7:
+            if used_ratio < 0.5:
+                # Strong nudge: way too early
                 return {
                     "messages": [
                         response,
                         HumanMessage(
                             content=(
                                 f"You have only visited {state.nodes_visited_count}/{state.exploration_budget} nodes "
-                                f"({remaining} remaining). You are NOT done investigating. "
-                                "Use get_edges() on the nodes you've visited to discover their neighbors, "
-                                "then visit the most relevant ones. The graph has rich connections you haven't "
-                                "explored yet. Keep going — do NOT write until you've used most of your budget."
+                                f"({remaining} remaining). Keep investigating — use get_edges() to discover "
+                                "neighbors of the nodes you've visited, then visit the most relevant ones."
                             )
                         ),
                     ]
                 }
+            # Otherwise just remind to call finish_synthesis
             return {
                 "messages": [
                     response,
                     HumanMessage(
-                        content=(
-                            "You must call finish_synthesis(text) with your complete markdown document. "
-                            "Do not end without submitting the synthesis."
-                        )
+                        content="Call finish_synthesis(text) with your complete markdown document."
                     ),
                 ]
             }
-
-        # If calling finish_synthesis too early (less than 60% budget used)
-        if response.tool_calls and used_ratio < 0.6:
-            is_finishing = any(tc.get("name") == "finish_synthesis" for tc in response.tool_calls)
-            if is_finishing:
-                return {
-                    "messages": [
-                        HumanMessage(
-                            content=(
-                                f"WAIT — you still have {remaining} node visits remaining "
-                                f"(only {state.nodes_visited_count}/{state.exploration_budget} used). "
-                                "Your synthesis will be much stronger with more evidence. "
-                                "Before writing, use get_edges() on your visited nodes to find neighbors, "
-                                "then visit the most relevant ones to deepen your investigation. "
-                                "A node typically has 10-50+ neighbors — explore them."
-                            )
-                        ),
-                    ]
-                }
 
         return None

@@ -103,7 +103,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
             graph, _ = agent.build_graph()
             compiled = graph.compile()
 
-            recursion_limit = max(input.exploration_budget * 60, 1000)
+            recursion_limit = max(input.exploration_budget * 100, 2000)
             final = await compiled.ainvoke(initial_state, config={"recursion_limit": recursion_limit})
 
             if isinstance(final, dict):
