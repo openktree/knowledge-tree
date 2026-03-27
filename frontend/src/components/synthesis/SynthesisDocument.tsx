@@ -53,10 +53,24 @@ function buildParagraphSentenceMap(
   const map = new Map<string, SynthesisSentenceResponse[]>();
   if (!definition || sentences.length === 0) return map;
 
-  const paragraphs = definition
+  // Split into blocks, then further split list blocks into individual items
+  // so each list item can match its own sentence (the sentence splitter
+  // splits list items into individual sentences for better embedding quality)
+  const rawBlocks = definition
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
+
+  const paragraphs: string[] = [];
+  for (const block of rawBlocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    const isList = lines.length > 1 && lines.every((l) => /^(\d+\.\s|[-*]\s)/.test(l));
+    if (isList) {
+      for (const line of lines) paragraphs.push(line);
+    } else {
+      paragraphs.push(block);
+    }
+  }
 
   for (const para of paragraphs) {
     const plainPara = para
@@ -255,7 +269,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   );
 
   const interactiveSection = (
-    Tag: "p" | "h1" | "h2" | "h3",
+    Tag: "p" | "h1" | "h2" | "h3" | "li",
     children: React.ReactNode,
     baseClass: string
   ) => {
@@ -269,6 +283,38 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       .join(" ");
 
     const plainText = extractText(children);
+
+    // List items: render without the flex gutter wrapper to preserve indentation
+    if (Tag === "li") {
+      return (
+        <li
+          className={`${baseClass} transition-colors ${
+            isSelected
+              ? "bg-blue-50 dark:bg-blue-950/30"
+              : hasInfo
+                ? "hover:bg-stone-50 dark:hover:bg-stone-900/30 cursor-pointer"
+                : ""
+          }`}
+          onClick={
+            hasInfo && sentences
+              ? (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  handleSectionClick(key, sentences, plainText);
+                }
+              : undefined
+          }
+        >
+          {children}
+          {hasInfo && countParts && (
+            <span className={`text-[10px] font-mono ml-1.5 ${
+              isSelected ? "text-blue-500" : "text-stone-400"
+            }`}>
+              {countParts}
+            </span>
+          )}
+        </li>
+      );
+    }
 
     return (
       <div className="flex items-stretch group">
@@ -331,55 +377,18 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           children,
           "text-[1.05rem] font-medium mt-5 mb-2 text-stone-800 dark:text-stone-200"
         ),
-      ol: ({ children }: { children?: React.ReactNode }) => {
-        const { key, sentences, hasInfo, isSelected } = getSectionInfo(children);
-        const plainText = extractText(children);
-        return (
-          <ol
-            className={`list-decimal pl-6 mb-4 space-y-1 rounded transition-colors ${
-              isSelected
-                ? "bg-blue-50 dark:bg-blue-950/30"
-                : hasInfo
-                  ? "hover:bg-stone-50 dark:hover:bg-stone-900/30 cursor-pointer"
-                  : ""
-            }`}
-            onClick={
-              hasInfo && sentences
-                ? () => handleSectionClick(key, sentences, plainText)
-                : undefined
-            }
-          >
-            {children}
-          </ol>
-        );
-      },
-      ul: ({ children }: { children?: React.ReactNode }) => {
-        const { key, sentences, hasInfo, isSelected } = getSectionInfo(children);
-        const plainText = extractText(children);
-        return (
-          <ul
-            className={`list-disc pl-6 mb-4 space-y-1 rounded transition-colors ${
-              isSelected
-                ? "bg-blue-50 dark:bg-blue-950/30"
-                : hasInfo
-                  ? "hover:bg-stone-50 dark:hover:bg-stone-900/30 cursor-pointer"
-                  : ""
-            }`}
-            onClick={
-              hasInfo && sentences
-                ? () => handleSectionClick(key, sentences, plainText)
-                : undefined
-            }
-          >
-            {children}
-          </ul>
-        );
-      },
-      li: ({ children }: { children?: React.ReactNode }) => (
-        <li className="text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200 pointer-events-none [&_a]:pointer-events-auto">
-          {children}
-        </li>
+      ol: ({ children }: { children?: React.ReactNode }) => (
+        <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>
       ),
+      ul: ({ children }: { children?: React.ReactNode }) => (
+        <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>
+      ),
+      li: ({ children }: { children?: React.ReactNode }) =>
+        interactiveSection(
+          "li",
+          children,
+          "text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200 rounded-sm py-0.5 px-1 -mx-1"
+        ),
       a: ({
         href,
         children,
