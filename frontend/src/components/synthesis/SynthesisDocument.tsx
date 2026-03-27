@@ -304,9 +304,9 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const hasDefinition = document.definition && document.definition.trim();
 
   return (
-    <div className="flex gap-2">
+    <div className={`flex transition-all duration-200 ${hasSidePanel ? "gap-2" : "gap-0"}`}>
       {/* Main document */}
-      <div className="flex-1 min-w-0">
+      <div className={`flex-1 min-w-0 transition-all duration-200 ${hasSidePanel ? "" : "mx-auto max-w-4xl"}`}>
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
