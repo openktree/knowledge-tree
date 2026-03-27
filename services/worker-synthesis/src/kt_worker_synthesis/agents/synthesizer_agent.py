@@ -58,6 +58,11 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
         if state.nodes_visited_count >= state.exploration_budget:
             if state.synthesis_text:
                 return {"phase": "done"}
+            # Only nudge once — check if the last message is already our nudge
+            if state.messages and isinstance(state.messages[-1], HumanMessage):
+                last_content = state.messages[-1].content
+                if isinstance(last_content, str) and "budget is exhausted" in last_content:
+                    return None  # Already nudged, let the LLM respond
             return {
                 "messages": [
                     HumanMessage(
@@ -69,18 +74,7 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
                     )
                 ]
             }
-        remaining = state.exploration_budget - state.nodes_visited_count
-        if remaining <= 3 and remaining > 0:
-            return {
-                "messages": [
-                    HumanMessage(
-                        content=(
-                            f"Budget warning: only {remaining} node visits remaining. "
-                            "Start wrapping up your investigation and prepare to write."
-                        )
-                    )
-                ]
-            }
+        # No nudge for remaining budget — let the prompt handle it
         return None
 
     def propagate_state(self, state: SynthesizerState) -> dict[str, Any]:
@@ -93,27 +87,20 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
         }
 
     def post_llm_hook(self, state: SynthesizerState, response: AIMessage) -> dict[str, Any] | None:
-        """Nudge the agent to keep exploring or to finish properly."""
-        remaining = state.exploration_budget - state.nodes_visited_count
-        used_ratio = state.nodes_visited_count / max(state.exploration_budget, 1)
-
-        # If trying to end without tool calls and no synthesis submitted
+        """Nudge the agent to finish properly. Avoid nudge loops."""
+        # Only nudge if the LLM responded without tool calls and hasn't submitted
         if not response.tool_calls and not state.synthesis_text and state.phase != "done":
-            if used_ratio < 0.5:
-                # Strong nudge: way too early
-                return {
-                    "messages": [
-                        response,
-                        HumanMessage(
-                            content=(
-                                f"You have only visited {state.nodes_visited_count}/{state.exploration_budget} nodes "
-                                f"({remaining} remaining). Keep investigating — use get_edges() to discover "
-                                "neighbors of the nodes you've visited, then visit the most relevant ones."
-                            )
-                        ),
-                    ]
-                }
-            # Otherwise just remind to call finish_synthesis
+            # Check if the last few messages are already nudges to avoid looping
+            recent_nudges = 0
+            for msg in reversed(state.messages[-6:]):
+                if isinstance(msg, HumanMessage):
+                    recent_nudges += 1
+                else:
+                    break
+            if recent_nudges >= 2:
+                # Already nudged multiple times — let it end naturally
+                return None
+
             return {
                 "messages": [
                     response,
