@@ -17,6 +17,7 @@ COPY services/worker-nodes/pyproject.toml services/worker-nodes/pyproject.toml
 COPY services/worker-bottomup/pyproject.toml services/worker-bottomup/pyproject.toml
 COPY services/worker-search/pyproject.toml services/worker-search/pyproject.toml
 COPY services/worker-sync/pyproject.toml services/worker-sync/pyproject.toml
+COPY services/worker-synthesis/pyproject.toml services/worker-synthesis/pyproject.toml
 
 # Copy this service's source
 COPY services/worker-bottomup/ services/worker-bottomup/
