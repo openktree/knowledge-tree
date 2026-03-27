@@ -413,7 +413,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       {hasSidePanel && (
         <div
           className={`shrink-0 transition-all duration-200 ${
-            factsVisible ? "w-72" : "w-8"
+            factsVisible ? "w-96" : "w-8"
           }`}
         >
           {factsVisible ? (
