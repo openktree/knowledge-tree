@@ -286,6 +286,38 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
 
     const plainText = extractText(children);
 
+    // List items: no outer flex wrapper / gutter to avoid breaking list indentation
+    if (Tag === "li") {
+      return (
+        <li
+          className={`${baseClass} transition-colors ${
+            isSelected
+              ? "bg-blue-50 dark:bg-blue-950/30"
+              : hasInfo
+                ? "hover:bg-stone-50 dark:hover:bg-stone-900/30 cursor-pointer"
+                : ""
+          }`}
+          onClick={
+            hasInfo && sentences
+              ? (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  handleSectionClick(key, sentences, plainText);
+                }
+              : undefined
+          }
+        >
+          {children}
+          {hasInfo && countParts && (
+            <span className={`text-[10px] font-mono ml-1.5 ${
+              isSelected ? "text-blue-500" : "text-stone-400"
+            }`}>
+              {countParts}
+            </span>
+          )}
+        </li>
+      );
+    }
+
     return (
       <div className="flex items-stretch group">
         <Tag
@@ -298,12 +330,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           }`}
           onClick={
             hasInfo && sentences
-              ? Tag === "li"
-                ? (e: React.MouseEvent) => {
-                    e.stopPropagation();
-                    handleSectionClick(key, sentences, plainText);
-                  }
-                : () => handleSectionClick(key, sentences, plainText)
+              ? () => handleSectionClick(key, sentences, plainText)
               : undefined
           }
         >
