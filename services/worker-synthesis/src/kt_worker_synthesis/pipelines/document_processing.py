@@ -131,6 +131,7 @@ async def link_facts_by_embedding(
             results = await fact_repo.search_similar(
                 embedding,
                 limit=search_limit,
+                score_threshold=0.6,
             )
             if results:
                 filtered = []
