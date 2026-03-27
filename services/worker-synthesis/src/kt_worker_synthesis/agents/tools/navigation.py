@@ -90,13 +90,8 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
             if not results:
                 return f"No facts found for query: {query}"
             lines = [f"Found {len(results)} facts:"]
-            for point in results:
-                fact_id = point.id
-                score = point.score
-                payload = point.payload or {}
-                content_preview = str(payload.get("content", ""))[:200]
-                node_ids = payload.get("node_ids", [])
-                lines.append(f"- fact:{fact_id} (score={score:.3f}) nodes={node_ids}\n    {content_preview}")
+            for r in results:
+                lines.append(f"- fact:{r.fact_id} (score={r.score:.3f}, type={r.fact_type or '?'})")
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("search_facts failed: %s", exc)
