@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSynthesis, deleteSynthesis } from "@/lib/api";
 import { SynthesisDocument } from "@/components/synthesis/SynthesisDocument";
+import { ExportPDFButton } from "@/components/synthesis/ExportPDF";
 import type { SynthesisDocumentResponse } from "@/types";
 
 export default function SynthesisDetailPage() {
@@ -81,20 +82,23 @@ export default function SynthesisDetailPage() {
             Back to Syntheses
           </Link>
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-destructive"
-          onClick={handleDelete}
-          disabled={deleting}
-        >
-          {deleting ? (
-            <Loader2 className="mr-2 size-4 animate-spin" />
-          ) : (
-            <Trash2 className="mr-2 size-4" />
-          )}
-          Delete
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportPDFButton documentId={id} concept={document.concept} />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-destructive"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Trash2 className="mr-2 size-4" />
+            )}
+            Delete
+          </Button>
+        </div>
       </div>
       <SynthesisDocument document={document} />
     </div>
