@@ -28,6 +28,7 @@ from kt_api.schemas import (
     BottomUpProposedPerspective,
     BottomUpSourceUrl,
     ChunkInfoResponse,
+    ConversationMessageResponse,
     ConversationResponse,
     IngestBuildRequest,
     IngestBuildResponse,
@@ -40,6 +41,7 @@ from kt_api.schemas import (
     ProposedNodeAmbiguityResponse,
     ResearchSeedResponse,
     ResearchSummaryResponse,
+    SubgraphResponse,
 )
 from kt_config.settings import get_settings
 from kt_db.models import User
@@ -79,11 +81,42 @@ def _resolve_mime(upload: UploadFile) -> str | None:
     return None
 
 
+def _message_to_response(msg: Any) -> ConversationMessageResponse:
+    """Convert a ConversationMessage ORM model to response schema."""
+    subgraph = None
+    if msg.subgraph:
+        subgraph = SubgraphResponse(**msg.subgraph)
+    return ConversationMessageResponse(
+        id=str(msg.id),
+        turn_number=msg.turn_number,
+        role=msg.role,
+        content=msg.content,
+        nav_budget=msg.nav_budget,
+        explore_budget=msg.explore_budget,
+        nav_used=msg.nav_used,
+        explore_used=msg.explore_used,
+        visited_nodes=msg.visited_nodes,
+        created_nodes=msg.created_nodes,
+        created_edges=msg.created_edges,
+        subgraph=subgraph,
+        status=msg.status,
+        error=msg.error,
+        workflow_run_id=getattr(msg, "workflow_run_id", None),
+        created_at=msg.created_at,
+    )
+
+
 def _conversation_to_response(conv: Any, messages: list[Any] | None = None) -> ConversationResponse:
     """Convert a Conversation ORM model to response schema."""
-    from kt_api.conversations import _conversation_to_response as _orig
-
-    return _orig(conv, messages)
+    msgs = messages if messages is not None else getattr(conv, "messages", [])
+    return ConversationResponse(
+        id=str(conv.id),
+        title=conv.title,
+        mode=getattr(conv, "mode", "research"),
+        messages=[_message_to_response(m) for m in msgs],
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+    )
 
 
 # ── Endpoints ────────────────────────────────────────────────────────

@@ -170,7 +170,7 @@ async def _fetch_embeddings(
 
 
 def _conv_to_response(conv: object) -> ConversationResponse:
-    from kt_api.conversations import _conversation_to_response
+    from kt_api.research import _conversation_to_response
 
     return _conversation_to_response(conv)
 
