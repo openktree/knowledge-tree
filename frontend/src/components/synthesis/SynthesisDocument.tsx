@@ -379,11 +379,17 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           children,
           "text-[1.05rem] font-medium mt-5 mb-2 text-stone-800 dark:text-stone-200"
         ),
+      ol: ({ children }: { children?: React.ReactNode }) => (
+        <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>
+      ),
+      ul: ({ children }: { children?: React.ReactNode }) => (
+        <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>
+      ),
       li: ({ children }: { children?: React.ReactNode }) =>
         interactiveSection(
           "li",
           children,
-          "mb-1.5 text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200"
+          "text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200 rounded-sm py-0.5 px-1 -mx-1"
         ),
       a: ({
         href,
