@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { Plus, FileText, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listSyntheses, deleteSynthesis } from "@/lib/api";
 import { CreateSynthesisDialog } from "@/components/synthesis/CreateSynthesisDialog";
 import type { SynthesisListItem } from "@/types";
@@ -53,52 +52,78 @@ export default function SynthesesPage() {
   }, [fetchSyntheses]);
 
   return (
-    <div className="mx-auto max-w-4xl py-8 px-4 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-3xl py-12 px-4">
+      {/* Header */}
+      <div className="flex items-end justify-between mb-10">
         <div>
-          <h1 className="text-2xl font-bold">Syntheses</h1>
-          <p className="text-sm text-muted-foreground">
-            {total} synthesis document{total !== 1 ? "s" : ""}
+          <p className="text-[0.68rem] uppercase tracking-[0.12em] font-bold text-stone-400 mb-1">
+            Research Documents
+          </p>
+          <h1 className="text-[2rem] font-semibold text-stone-900 dark:text-stone-100 leading-tight">
+            Syntheses
+          </h1>
+          <p className="text-[0.85rem] text-stone-500 dark:text-stone-400 mt-1">
+            {total} document{total !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button
+          onClick={() => setCreateOpen(true)}
+          className="rounded-full px-5"
+        >
           <Plus className="mr-2 size-4" />
           New Synthesis
         </Button>
       </div>
 
+      {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="size-5 animate-spin text-stone-400" />
         </div>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <FileText className="size-12 text-muted-foreground mb-4" />
-            <h3 className="font-medium mb-1">No syntheses yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Create a synthesis to explore and analyze your knowledge graph.
-            </p>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 size-4" />
-              Create First Synthesis
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="rounded-full bg-stone-100 dark:bg-stone-900 p-6 mb-5">
+            <FileText className="size-8 text-stone-400" />
+          </div>
+          <h3 className="text-[1.1rem] font-medium text-stone-700 dark:text-stone-300 mb-1">
+            No syntheses yet
+          </h3>
+          <p className="text-[0.85rem] text-stone-500 dark:text-stone-400 mb-6 max-w-sm">
+            Create a synthesis to explore and analyze topics across your
+            knowledge graph.
+          </p>
+          <Button
+            onClick={() => setCreateOpen(true)}
+            className="rounded-full px-5"
+          >
+            <Plus className="mr-2 size-4" />
+            Create First Synthesis
+          </Button>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {items.map((item) => (
-            <a key={item.id} href={`/syntheses/${item.id}`}>
-              <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
-                <CardHeader className="py-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-base">
-                        {formatSynthesisConcept(item.concept).title}
-                      </CardTitle>
-                      <Badge variant="outline" className="text-[10px]">
+        <div className="space-y-4">
+          {items.map((item) => {
+            const { title, date } = formatSynthesisConcept(item.concept);
+            return (
+              <a
+                key={item.id}
+                href={`/syntheses/${item.id}`}
+                className="block rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 hover:border-stone-300 dark:hover:border-stone-700 hover:shadow-sm transition-all px-5 py-4"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    {/* Title row */}
+                    <h2 className="text-[1.05rem] font-medium text-stone-800 dark:text-stone-200 mb-1.5 truncate">
+                      {title}
+                    </h2>
+                    {/* Meta row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge
+                        variant="outline"
+                        className="text-[0.6rem] uppercase tracking-wider font-semibold px-2 py-0"
+                      >
                         {item.node_type === "supersynthesis"
-                          ? "Super"
+                          ? "Super-Synthesis"
                           : "Synthesis"}
                       </Badge>
                       <Badge
@@ -107,37 +132,51 @@ export default function SynthesesPage() {
                             ? "default"
                             : "secondary"
                         }
-                        className="text-[10px]"
+                        className="text-[0.6rem] uppercase tracking-wider px-2 py-0"
                       >
                         {item.visibility}
                       </Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>{item.sentence_count} sentences</span>
-                      {item.created_at && (
-                        <span>
-                          {new Date(item.created_at).toLocaleDateString()}
-                        </span>
+                      <span className="text-[0.78rem] text-stone-400">
+                        {item.sentence_count} sentences
+                      </span>
+                      {(date || item.created_at) && (
+                        <>
+                          <span className="text-stone-300 dark:text-stone-700">
+                            ·
+                          </span>
+                          <span className="text-[0.78rem] text-stone-400">
+                            {date ??
+                              (item.created_at &&
+                                new Date(
+                                  item.created_at
+                                ).toLocaleDateString(undefined, {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }))}
+                          </span>
+                        </>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={(e) => handleDelete(e, item.id)}
-                        disabled={deleting === item.id}
-                      >
-                        {deleting === item.id ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="size-3.5" />
-                        )}
-                      </Button>
                     </div>
                   </div>
-                </CardHeader>
-              </Card>
-            </a>
-          ))}
+                  {/* Delete */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 shrink-0 text-stone-400 hover:text-red-500 dark:hover:text-red-400 mt-0.5"
+                    onClick={(e) => handleDelete(e, item.id)}
+                    disabled={deleting === item.id}
+                  >
+                    {deleting === item.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+                  </Button>
+                </div>
+              </a>
+            );
+          })}
         </div>
       )}
 
