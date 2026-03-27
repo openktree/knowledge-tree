@@ -507,55 +507,50 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
 
   return (
     <div className="space-y-1">
+      {/* Source provenance header */}
       <button
         type="button"
-        className="flex items-center gap-1.5 w-full text-left text-[11px] hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
+        className="w-full text-left hover:bg-muted/30 rounded px-1.5 py-1 transition-colors"
         onClick={() => setOpen(!open)}
       >
-        <PanelRightClose
-          className={`size-3 text-muted-foreground shrink-0 transition-transform ${
-            open ? "" : "rotate-180"
-          }`}
-        />
-        <span className="flex items-center gap-1.5 min-w-0 flex-1">
-          {group.author && (
-            <span className="font-medium truncate">{group.author}</span>
-          )}
-          {group.author && group.title && (
-            <span className="text-muted-foreground">—</span>
-          )}
-          {group.title && (
-            <span className="text-muted-foreground truncate">
-              {group.title}
-            </span>
-          )}
-        </span>
-        <span className="text-[10px] text-muted-foreground shrink-0">
-          {group.facts.length}
-        </span>
-        <span className="text-[10px] text-muted-foreground shrink-0">
-          {(group.bestDistance * 100).toFixed(0)}%
-        </span>
+        <div className="flex items-center gap-1.5">
+          <PanelRightClose
+            className={`size-3 text-muted-foreground shrink-0 transition-transform ${
+              open ? "" : "rotate-180"
+            }`}
+          />
+          <span className="text-[11px] font-medium truncate flex-1">
+            {group.title || "Unknown source"}
+          </span>
+          <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">
+            {group.facts.length}
+          </Badge>
+          <span className="text-[10px] text-muted-foreground shrink-0">
+            {(group.bestDistance * 100).toFixed(0)}%
+          </span>
+        </div>
+        {group.author && (
+          <div className="text-[10px] text-muted-foreground pl-[18px] mt-0.5">
+            by {group.author}
+          </div>
+        )}
+        {group.facts[0]?.source_uri && (
+          <div className="text-[10px] text-muted-foreground pl-[18px] mt-0.5 truncate">
+            {group.facts[0].source_uri}
+          </div>
+        )}
       </button>
-      {/* Source link */}
+      {/* Open source link */}
       {group.facts[0]?.source_uri && (
         <a
           href={group.facts[0].source_uri}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary pl-5 -mt-0.5 mb-0.5"
+          className="flex items-center gap-1 text-[10px] text-primary hover:underline pl-[18px] -mt-0.5 mb-0.5"
           onClick={(e) => e.stopPropagation()}
         >
-          <ExternalLink className="size-2.5" />
-          <span className="truncate">
-            {(() => {
-              try {
-                return new URL(group.facts[0].source_uri).hostname;
-              } catch {
-                return group.facts[0].source_uri.slice(0, 30);
-              }
-            })()}
-          </span>
+          <ExternalLink className="size-2.5 shrink-0" />
+          Open source
         </a>
       )}
       {open &&
