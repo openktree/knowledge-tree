@@ -38,6 +38,7 @@ class CreateSynthesisRequest(BaseModel):
 class CreateSuperSynthesisRequest(BaseModel):
     topic: str = ""
     sub_configs: list[CreateSynthesisRequest] = Field(default_factory=list)
+    existing_synthesis_ids: list[str] = Field(default_factory=list)
     visibility: str = "public"
     distance_threshold: float = 0.7
 
@@ -164,6 +165,7 @@ async def create_super_synthesis(
         run_id = await dispatch_workflow("super_synthesizer_wf", {
             "topic": body.topic,
             "sub_configs": sub_configs,
+            "existing_synthesis_ids": body.existing_synthesis_ids,
             "visibility": body.visibility,
             "distance_threshold": body.distance_threshold,
         })

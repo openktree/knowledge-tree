@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, FileText, Layers } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Loader2, FileText, Layers, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,7 +21,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { createSynthesis, createSuperSynthesis } from "@/lib/api";
+import {
+  createSynthesis,
+  createSuperSynthesis,
+  listSyntheses,
+} from "@/lib/api";
+import { formatSynthesisConcept } from "./utils";
+import type { SynthesisListItem } from "@/types";
 
 type SynthesisMode = "synthesis" | "super";
 
@@ -42,6 +48,35 @@ export function CreateSynthesisDialog({
   const [visibility, setVisibility] = useState("public");
   const [creating, setCreating] = useState(false);
 
+  // Existing syntheses for super-synthesis inclusion
+  const [existingSyntheses, setExistingSyntheses] = useState<
+    SynthesisListItem[]
+  >([]);
+  const [selectedExisting, setSelectedExisting] = useState<Set<string>>(
+    new Set()
+  );
+  const [loadingExisting, setLoadingExisting] = useState(false);
+
+  // Load existing syntheses when super mode is selected
+  useEffect(() => {
+    if (mode === "super" && open) {
+      setLoadingExisting(true);
+      listSyntheses(0, 50)
+        .then((data) => setExistingSyntheses(data.items))
+        .catch(() => setExistingSyntheses([]))
+        .finally(() => setLoadingExisting(false));
+    }
+  }, [mode, open]);
+
+  const toggleExisting = (id: string) => {
+    setSelectedExisting((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleSubmit = async () => {
     if (!topic.trim()) return;
     setCreating(true);
@@ -49,6 +84,7 @@ export function CreateSynthesisDialog({
       if (mode === "super") {
         await createSuperSynthesis({
           topic: topic.trim(),
+          existing_synthesis_ids: Array.from(selectedExisting),
           visibility,
         });
       } else {
@@ -60,6 +96,7 @@ export function CreateSynthesisDialog({
       }
       onOpenChange(false);
       setTopic("");
+      setSelectedExisting(new Set());
       onCreated();
     } catch (err) {
       console.error("Failed to create synthesis:", err);
@@ -150,11 +187,85 @@ export function CreateSynthesisDialog({
           )}
 
           {mode === "super" && (
-            <p className="text-xs text-muted-foreground rounded-md bg-muted p-3">
-              The super-synthesizer will automatically search the graph, plan
-              3-7 thematic scopes, run a separate synthesis agent for each, and
-              then combine all findings into a comprehensive meta-synthesis.
-            </p>
+            <>
+              <p className="text-xs text-muted-foreground rounded-md bg-muted p-3">
+                The super-synthesizer will automatically search the graph, plan
+                3-7 thematic scopes, run a separate synthesis agent for each,
+                and then combine all findings into a comprehensive
+                meta-synthesis.
+              </p>
+
+              {/* Include existing syntheses */}
+              <div className="space-y-2">
+                <Label>
+                  Include Existing Research{" "}
+                  <span className="text-muted-foreground font-normal">
+                    (optional)
+                  </span>
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Select previous syntheses to include in the meta-synthesis.
+                </p>
+                {loadingExisting ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                    <Loader2 className="size-3 animate-spin" />
+                    Loading...
+                  </div>
+                ) : existingSyntheses.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic py-1">
+                    No existing syntheses available.
+                  </p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto space-y-1 rounded-md border p-1">
+                    {existingSyntheses.map((item) => {
+                      const isSelected = selectedExisting.has(item.id);
+                      const { title } = formatSynthesisConcept(item.concept);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => toggleExisting(item.id)}
+                          className={cn(
+                            "flex items-center gap-2 w-full text-left rounded px-2 py-1.5 text-xs transition-colors",
+                            isSelected
+                              ? "bg-primary/10 text-primary"
+                              : "hover:bg-muted"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "size-4 rounded border flex items-center justify-center shrink-0",
+                              isSelected
+                                ? "bg-primary border-primary"
+                                : "border-muted-foreground/30"
+                            )}
+                          >
+                            {isSelected && (
+                              <Check className="size-3 text-primary-foreground" />
+                            )}
+                          </div>
+                          <span className="truncate">{title}</span>
+                          {item.created_at && (
+                            <span className="text-muted-foreground ml-auto shrink-0">
+                              {new Date(
+                                item.created_at
+                              ).toLocaleDateString()}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {selectedExisting.size > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedExisting.size} existing{" "}
+                    {selectedExisting.size === 1 ? "synthesis" : "syntheses"}{" "}
+                    selected
+                  </p>
+                )}
+              </div>
+            </>
           )}
 
           <div className="space-y-2">

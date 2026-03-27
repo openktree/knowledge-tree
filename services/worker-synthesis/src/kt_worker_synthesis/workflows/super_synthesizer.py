@@ -180,6 +180,10 @@ async def run_sub_syntheses(input: SuperSynthesizerInput, ctx: Context) -> dict[
         except Exception:
             logger.warning("Sub-synthesis failed", exc_info=True)
 
+    # Include existing synthesis IDs provided by the user
+    if input.existing_synthesis_ids:
+        synthesis_node_ids.extend(input.existing_synthesis_ids)
+
     return {"synthesis_node_ids": synthesis_node_ids}
 
 
