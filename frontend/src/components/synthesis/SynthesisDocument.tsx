@@ -4,13 +4,19 @@ import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ChevronRight,
   CircleDot,
   ExternalLink,
   FileText,
   Loader2,
+  X,
 } from "lucide-react";
 import { formatSynthesisConcept } from "./utils";
 import type {
@@ -67,10 +73,9 @@ function buildParagraphSentenceMap(
         .replace(/\*([^*]+)\*/g, "$1")
         .trim();
       if (plainSentence.length < 10) continue;
-      // Match if sentence start appears in paragraph OR paragraph start appears in sentence
-      // Also try matching a mid-section of the sentence (for sentences that start differently)
       const sentStart = plainSentence.slice(0, 40);
-      const sentMid = plainSentence.length > 50 ? plainSentence.slice(10, 50) : "";
+      const sentMid =
+        plainSentence.length > 50 ? plainSentence.slice(10, 50) : "";
       if (
         plainPara.includes(sentStart) ||
         (sentMid && plainPara.includes(sentMid)) ||
@@ -130,16 +135,14 @@ function groupFactsBySource(facts: SentenceFactLink[]): FactGroup[] {
 
 export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const [selectedParaKey, setSelectedParaKey] = useState<string | null>(null);
+  const [selectedParaText, setSelectedParaText] = useState<string>("");
   const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
-  const [selectedSentences, setSelectedSentences] = useState<
-    SynthesisSentenceResponse[]
-  >([]);
   const [factLinks, setFactLinks] = useState<SentenceFactLink[]>([]);
   const [loadingFacts, setLoadingFacts] = useState(false);
-  const [nodesVisible, setNodesVisible] = useState(true);
-  const [factsVisible, setFactsVisible] = useState(true);
+  const [nodesOpen, setNodesOpen] = useState(true);
+  const [factsOpen, setFactsOpen] = useState(true);
 
-  const hasSidePanel = selectedParaKey !== null;
+  const dialogOpen = selectedParaKey !== null;
   const { title, date } = formatSynthesisConcept(document.concept);
 
   const nodeMap = useMemo(() => {
@@ -151,21 +154,24 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   }, [document.referenced_nodes]);
 
   const paragraphMap = useMemo(
-    () => buildParagraphSentenceMap(document.definition || "", document.sentences),
+    () =>
+      buildParagraphSentenceMap(
+        document.definition || "",
+        document.sentences
+      ),
     [document.definition, document.sentences]
   );
 
   const handleSectionClick = useCallback(
-    async (key: string, sentences: SynthesisSentenceResponse[]) => {
-      if (selectedParaKey === key) {
-        setSelectedParaKey(null);
-        setSelectedNodes([]);
-        setSelectedSentences([]);
-        setFactLinks([]);
-        return;
-      }
+    async (
+      key: string,
+      sentences: SynthesisSentenceResponse[],
+      paraText: string
+    ) => {
       setSelectedParaKey(key);
-      setSelectedSentences(sentences);
+      setSelectedParaText(paraText);
+      setNodesOpen(true);
+      setFactsOpen(true);
 
       const nodeIds = new Set<string>();
       for (const s of sentences) {
@@ -199,34 +205,51 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         setFactLinks([]);
       }
     },
-    [selectedParaKey, document.id]
+    [document.id]
   );
+
+  const closeDialog = () => {
+    setSelectedParaKey(null);
+    setSelectedParaText("");
+    setSelectedNodes([]);
+    setFactLinks([]);
+  };
 
   const getSectionInfo = useCallback(
     (children: React.ReactNode) => {
       const text = extractText(children);
       const key = text.slice(0, 60).trim();
       const sentences = paragraphMap.get(key);
-      const hasInfo = sentences && sentences.some((s) => s.node_ids.length > 0 || s.fact_count > 0);
-      const totalNodes = sentences ? new Set(sentences.flatMap((s) => s.node_ids)).size : 0;
-      const totalFacts = sentences ? sentences.reduce((sum, s) => sum + s.fact_count, 0) : 0;
+      const hasInfo =
+        sentences &&
+        sentences.some((s) => s.node_ids.length > 0 || s.fact_count > 0);
+      const totalNodes = sentences
+        ? new Set(sentences.flatMap((s) => s.node_ids)).size
+        : 0;
+      const totalFacts = sentences
+        ? sentences.reduce((sum, s) => sum + s.fact_count, 0)
+        : 0;
       const isSelected = selectedParaKey === key;
       return { key, sentences, hasInfo, totalNodes, totalFacts, isSelected };
     },
     [paragraphMap, selectedParaKey]
   );
 
-  // Interactive section wrapper
   const interactiveSection = (
     Tag: "p" | "h1" | "h2" | "h3" | "li",
     children: React.ReactNode,
     baseClass: string
   ) => {
-    const { key, sentences, hasInfo, totalNodes, totalFacts, isSelected } = getSectionInfo(children);
+    const { key, sentences, hasInfo, totalNodes, totalFacts, isSelected } =
+      getSectionInfo(children);
     const countParts = [
       totalNodes > 0 ? `${totalNodes}n` : "",
       totalFacts > 0 ? `${totalFacts}f` : "",
-    ].filter(Boolean).join(" ");
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const plainText = extractText(children);
 
     return (
       <div className="flex items-stretch group">
@@ -241,8 +264,11 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           onClick={
             hasInfo && sentences
               ? Tag === "li"
-                ? (e: React.MouseEvent) => { e.stopPropagation(); handleSectionClick(key, sentences); }
-                : () => handleSectionClick(key, sentences)
+                ? (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    handleSectionClick(key, sentences, plainText);
+                  }
+                : () => handleSectionClick(key, sentences, plainText)
               : undefined
           }
         >
@@ -250,9 +276,13 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         </Tag>
         <div className="w-10 shrink-0 flex flex-col items-center justify-center">
           {countParts && (
-            <span className={`text-[10px] font-mono leading-tight ${
-              isSelected ? "text-blue-500 font-medium" : "text-stone-400 group-hover:text-stone-500"
-            }`}>
+            <span
+              className={`text-[10px] font-mono leading-tight ${
+                isSelected
+                  ? "text-blue-500 font-medium"
+                  : "text-stone-400 group-hover:text-stone-500"
+              }`}
+            >
               {countParts}
             </span>
           )}
@@ -264,34 +294,74 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const markdownComponents = useMemo(
     () => ({
       p: ({ children }: { children?: React.ReactNode }) =>
-        interactiveSection("p", children, "mb-4 text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200"),
+        interactiveSection(
+          "p",
+          children,
+          "mb-4 text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200"
+        ),
       h1: ({ children }: { children?: React.ReactNode }) =>
-        interactiveSection("h1", children, "text-[1.5rem] font-semibold mt-8 mb-3 text-stone-900 dark:text-stone-100"),
+        interactiveSection(
+          "h1",
+          children,
+          "text-[1.5rem] font-semibold mt-8 mb-3 text-stone-900 dark:text-stone-100"
+        ),
       h2: ({ children }: { children?: React.ReactNode }) =>
-        interactiveSection("h2", children, "text-[1.2rem] font-semibold mt-6 mb-2 text-stone-900 dark:text-stone-100"),
+        interactiveSection(
+          "h2",
+          children,
+          "text-[1.2rem] font-semibold mt-6 mb-2 text-stone-900 dark:text-stone-100"
+        ),
       h3: ({ children }: { children?: React.ReactNode }) =>
-        interactiveSection("h3", children, "text-[1.05rem] font-medium mt-5 mb-2 text-stone-800 dark:text-stone-200"),
+        interactiveSection(
+          "h3",
+          children,
+          "text-[1.05rem] font-medium mt-5 mb-2 text-stone-800 dark:text-stone-200"
+        ),
       li: ({ children }: { children?: React.ReactNode }) =>
-        interactiveSection("li", children, "mb-1.5 text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200"),
-      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+        interactiveSection(
+          "li",
+          children,
+          "mb-1.5 text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200"
+        ),
+      a: ({
+        href,
+        children,
+      }: {
+        href?: string;
+        children?: React.ReactNode;
+      }) => {
         if (href?.startsWith("/nodes/") || href?.startsWith("/facts/")) {
           return (
-            <Link href={href} className="text-blue-700 dark:text-blue-400 underline decoration-dotted underline-offset-2 hover:decoration-solid" onClick={(e) => e.stopPropagation()}>
+            <Link
+              href={href}
+              className="text-blue-700 dark:text-blue-400 underline decoration-dotted underline-offset-2 hover:decoration-solid"
+              onClick={(e) => e.stopPropagation()}
+            >
               {children}
             </Link>
           );
         }
         return (
-          <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-700 dark:text-blue-400 underline decoration-dotted underline-offset-2 hover:decoration-solid" onClick={(e) => e.stopPropagation()}>
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-700 dark:text-blue-400 underline decoration-dotted underline-offset-2 hover:decoration-solid"
+            onClick={(e) => e.stopPropagation()}
+          >
             {children}
           </a>
         );
       },
       strong: ({ children }: { children?: React.ReactNode }) => (
-        <strong className="font-semibold text-stone-900 dark:text-stone-100">{children}</strong>
+        <strong className="font-semibold text-stone-900 dark:text-stone-100">
+          {children}
+        </strong>
       ),
       em: ({ children }: { children?: React.ReactNode }) => (
-        <em className="italic text-stone-600 dark:text-stone-400">{children}</em>
+        <em className="italic text-stone-600 dark:text-stone-400">
+          {children}
+        </em>
       ),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -301,9 +371,9 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const hasDefinition = document.definition && document.definition.trim();
 
   return (
-    <div className={`flex transition-all duration-200 ${hasSidePanel ? "gap-3" : "gap-0"}`}>
-      {/* ── Main Document ── */}
-      <div className={`min-w-0 transition-all duration-200 ${hasSidePanel ? "basis-2/3" : "flex-1 mx-auto max-w-4xl"}`}>
+    <>
+      {/* ── Document ── */}
+      <div className="mx-auto max-w-4xl">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
@@ -311,10 +381,14 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               variant="outline"
               className="text-[0.65rem] uppercase tracking-wider font-semibold px-2 py-0.5"
             >
-              {document.node_type === "supersynthesis" ? "Super-Synthesis" : "Synthesis"}
+              {document.node_type === "supersynthesis"
+                ? "Super-Synthesis"
+                : "Synthesis"}
             </Badge>
             <Badge
-              variant={document.visibility === "public" ? "default" : "secondary"}
+              variant={
+                document.visibility === "public" ? "default" : "secondary"
+              }
               className="text-[0.65rem] uppercase tracking-wider px-2 py-0.5"
             >
               {document.visibility}
@@ -325,14 +399,18 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           </h1>
           {(date || document.created_at) && (
             <p className="text-[0.82rem] text-stone-500 dark:text-stone-400">
-              {date ?? (document.created_at && new Date(document.created_at).toLocaleDateString(undefined, {
-                year: "numeric", month: "long", day: "numeric",
-              }))}
+              {date ??
+                (document.created_at &&
+                  new Date(document.created_at).toLocaleDateString(undefined, {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  }))}
             </p>
           )}
         </div>
 
-        {/* Document body */}
+        {/* Body */}
         <div className="mb-8">
           {hasDefinition ? (
             <Markdown components={markdownComponents}>
@@ -351,59 +429,85 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         )}
       </div>
 
-      {/* ── Evidence Sidebar ── */}
-      {hasSidePanel && (
-        <div className="basis-1/3 shrink-0 min-w-0">
-          <div className="sticky top-4 space-y-4">
-            {/* Nodes Section */}
-            <div className="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 overflow-hidden">
-              <button
-                type="button"
-                className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-stone-50 dark:hover:bg-stone-900 transition-colors"
-                onClick={() => setNodesVisible(!nodesVisible)}
-              >
-                <ChevronRight className={`size-3.5 text-stone-400 transition-transform ${nodesVisible ? "rotate-90" : ""}`} />
-                <span className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-500 dark:text-stone-400">
-                  Nodes
-                </span>
-                <span className="text-[0.68rem] text-stone-400 ml-auto">{selectedNodes.length}</span>
-              </button>
-              {nodesVisible && selectedNodes.length > 0 && (
-                <div className="px-2 pb-2 space-y-0.5 max-h-[30vh] overflow-y-auto">
-                  {selectedNodes.map((nid) => {
-                    const nodeInfo = nodeMap.get(nid);
-                    return (
-                      <a
-                        key={nid}
-                        href={`/nodes/${nid}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 rounded px-2 py-1.5 text-[0.82rem] hover:bg-stone-50 dark:hover:bg-stone-900 transition-colors group/node"
-                      >
-                        <CircleDot className="size-3 text-blue-500 shrink-0" />
-                        <span className="truncate text-stone-700 dark:text-stone-300 group-hover/node:text-blue-700 dark:group-hover/node:text-blue-400">
-                          {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
-                        </span>
-                        {nodeInfo?.node_type && (
-                          <span className="text-[0.65rem] uppercase tracking-wider text-stone-400 shrink-0 ml-auto">
-                            {nodeInfo.node_type}
-                          </span>
-                        )}
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
+      {/* ── Evidence Dialog ── */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-400">
+              Section Evidence
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="overflow-y-auto flex-1 space-y-5 pr-1">
+            {/* Selected paragraph */}
+            <div className="border-l-2 border-blue-400 pl-4 py-1">
+              <p className="text-[0.9rem] leading-[1.7] text-stone-700 dark:text-stone-300 italic">
+                {selectedParaText.slice(0, 300)}
+                {selectedParaText.length > 300 ? "..." : ""}
+              </p>
             </div>
 
-            {/* Facts Section */}
-            <div className="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 overflow-hidden">
+            {/* Nodes section */}
+            {selectedNodes.length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 w-full text-left mb-2"
+                  onClick={() => setNodesOpen(!nodesOpen)}
+                >
+                  <ChevronRight
+                    className={`size-3.5 text-stone-400 transition-transform ${
+                      nodesOpen ? "rotate-90" : ""
+                    }`}
+                  />
+                  <span className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-500 dark:text-stone-400">
+                    Nodes
+                  </span>
+                  <span className="text-[0.68rem] text-stone-400 ml-auto">
+                    {selectedNodes.length}
+                  </span>
+                </button>
+                {nodesOpen && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedNodes.map((nid) => {
+                      const nodeInfo = nodeMap.get(nid);
+                      return (
+                        <a
+                          key={nid}
+                          href={`/nodes/${nid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 rounded-md border border-stone-200 dark:border-stone-800 px-3 py-2 text-[0.82rem] hover:bg-stone-50 dark:hover:bg-stone-900 hover:border-stone-300 transition-all group/node"
+                        >
+                          <CircleDot className="size-3 text-blue-500 shrink-0" />
+                          <span className="truncate text-stone-700 dark:text-stone-300 group-hover/node:text-blue-700 dark:group-hover/node:text-blue-400">
+                            {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
+                          </span>
+                          {nodeInfo?.node_type && (
+                            <span className="text-[0.6rem] uppercase tracking-wider text-stone-400 shrink-0 ml-auto">
+                              {nodeInfo.node_type}
+                            </span>
+                          )}
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Facts section */}
+            <div>
               <button
                 type="button"
-                className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-stone-50 dark:hover:bg-stone-900 transition-colors"
-                onClick={() => setFactsVisible(!factsVisible)}
+                className="flex items-center gap-2 w-full text-left mb-2"
+                onClick={() => setFactsOpen(!factsOpen)}
               >
-                <ChevronRight className={`size-3.5 text-stone-400 transition-transform ${factsVisible ? "rotate-90" : ""}`} />
+                <ChevronRight
+                  className={`size-3.5 text-stone-400 transition-transform ${
+                    factsOpen ? "rotate-90" : ""
+                  }`}
+                />
                 <span className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-500 dark:text-stone-400">
                   Evidence
                 </span>
@@ -411,19 +515,19 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                   {loadingFacts ? "..." : factLinks.length}
                 </span>
               </button>
-              {factsVisible && (
-                <div className="px-2 pb-2 max-h-[50vh] overflow-y-auto">
+              {factsOpen && (
+                <div>
                   {loadingFacts ? (
-                    <div className="flex items-center gap-2 text-[0.82rem] text-stone-400 py-4 justify-center">
-                      <Loader2 className="size-3.5 animate-spin" />
+                    <div className="flex items-center gap-2 text-[0.82rem] text-stone-400 py-6 justify-center">
+                      <Loader2 className="size-4 animate-spin" />
                       Loading evidence...
                     </div>
                   ) : factLinks.length === 0 ? (
-                    <p className="text-[0.82rem] text-stone-400 italic py-3 text-center">
+                    <p className="text-[0.82rem] text-stone-400 italic py-4 text-center">
                       No evidence for this section.
                     </p>
                   ) : (
-                    <div className="space-y-3 pt-1">
+                    <div className="space-y-4">
                       {groupFactsBySource(factLinks).map((group) => (
                         <SourceFactGroup key={group.key} group={group} />
                       ))}
@@ -433,9 +537,9 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               )}
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -446,14 +550,17 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
 
   return (
     <div>
-      {/* Source header */}
       <button
         type="button"
         className="w-full text-left px-2 py-1.5 rounded hover:bg-stone-50 dark:hover:bg-stone-900 transition-colors"
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-1.5">
-          <ChevronRight className={`size-3 text-stone-400 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+          <ChevronRight
+            className={`size-3 text-stone-400 shrink-0 transition-transform ${
+              open ? "rotate-90" : ""
+            }`}
+          />
           <span
             className="text-[0.82rem] font-medium text-stone-700 dark:text-stone-300 truncate flex-1"
             title={group.sourceUri || group.title}
@@ -483,34 +590,30 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
         )}
       </button>
 
-      {/* Facts */}
-      {open && (
-        <div className="space-y-1 mt-1 ml-[18px]">
-          {group.facts.map((fl) => (
-            <a
-              key={fl.fact_id}
-              href={`/facts/${fl.fact_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block border-l-2 border-stone-200 dark:border-stone-700 hover:border-blue-400 pl-3 py-1.5 transition-colors group/fact"
-            >
-              <p className="text-[0.82rem] leading-[1.6] text-stone-700 dark:text-stone-300 line-clamp-3 group-hover/fact:text-stone-900 dark:group-hover/fact:text-stone-100">
-                {fl.content || fl.fact_id.slice(0, 12) + "..."}
-              </p>
-              <div className="flex items-center gap-2 mt-1">
-                {fl.fact_type && (
-                  <span className="text-[0.65rem] uppercase tracking-wider font-medium text-stone-400">
-                    {fl.fact_type}
-                  </span>
-                )}
-                <span className="text-[0.65rem] font-mono text-stone-400 ml-auto">
-                  {(fl.embedding_distance * 100).toFixed(0)}%
+      {open &&
+        group.facts.map((fl) => (
+          <a
+            key={fl.fact_id}
+            href={`/facts/${fl.fact_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block border-l-2 border-stone-200 dark:border-stone-700 hover:border-blue-400 ml-[18px] pl-3 py-2 transition-colors group/fact"
+          >
+            <p className="text-[0.82rem] leading-[1.6] text-stone-700 dark:text-stone-300 line-clamp-3 group-hover/fact:text-stone-900 dark:group-hover/fact:text-stone-100">
+              {fl.content || fl.fact_id.slice(0, 12) + "..."}
+            </p>
+            <div className="flex items-center gap-2 mt-1">
+              {fl.fact_type && (
+                <span className="text-[0.65rem] uppercase tracking-wider font-medium text-stone-400">
+                  {fl.fact_type}
                 </span>
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
+              )}
+              <span className="text-[0.65rem] font-mono text-stone-400 ml-auto">
+                {(fl.embedding_distance * 100).toFixed(0)}%
+              </span>
+            </div>
+          </a>
+        ))}
     </div>
   );
 }
