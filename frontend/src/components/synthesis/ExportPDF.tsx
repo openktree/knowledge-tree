@@ -285,7 +285,7 @@ function buildExportHTML(
     background: #f8f5f0; border: 1px solid #e8e3d8; border-radius: 4px;
     padding: 0.6rem 0.8rem; line-height: 1.45;
     white-space: pre-wrap; word-wrap: break-word;
-    color: #3d3830; max-height: 300px; overflow-y: auto;
+    color: #3d3830;
   }
 
   @media print {
@@ -439,17 +439,12 @@ User-specific context (the topic, node data, facts) is appended at runtime but i
     html += `<h3 style="color: #5a5248; font-size: 12pt; margin-top: 1.5rem; margin-bottom: 0.8rem;">${escapeHTML(stage)}</h3>\n`;
 
     for (const p of stagePrompts) {
-      // Truncate very long prompts for readability
-      const promptText = p.prompt.length > 3000
-        ? p.prompt.slice(0, 3000) + "\n\n[... truncated for brevity — full prompt available via API at /api/v1/prompts]"
-        : p.prompt;
-
       html += `<div class="prompt-entry">
 <div class="prompt-header">
   <span class="prompt-name">${escapeHTML(p.name)}</span>
 </div>
 <div class="prompt-purpose">${escapeHTML(p.purpose)}</div>
-<div class="prompt-text">${escapeHTML(promptText)}</div>
+<div class="prompt-text">${escapeHTML(p.prompt)}</div>
 </div>\n`;
     }
   }
