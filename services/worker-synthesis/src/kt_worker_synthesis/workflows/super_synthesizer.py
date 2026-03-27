@@ -88,6 +88,31 @@ async def reconnaissance(input: SuperSynthesizerInput, ctx: Context) -> dict[str
                         }
                     )
 
+        # Read existing syntheses the user wants to include
+        existing_summaries = ""
+        if input.existing_synthesis_ids:
+            import uuid as _uuid
+
+            summaries = []
+            for sid in input.existing_synthesis_ids:
+                try:
+                    node = await graph_engine.get_node(_uuid.UUID(sid))
+                    if node and node.definition:
+                        # Show title + first 500 chars of definition
+                        preview = node.definition[:500]
+                        if len(node.definition) > 500:
+                            preview += "..."
+                        summaries.append(f"- **{node.concept}**: {preview}")
+                except Exception:
+                    pass
+            if summaries:
+                existing_summaries = (
+                    "\n\n## Existing Research (already covered — DO NOT overlap)\n"
+                    "The user has selected the following existing synthesis documents to include. "
+                    "Your new scopes should COMPLEMENT these, not duplicate their coverage.\n\n"
+                    + "\n\n".join(summaries)
+                )
+
         # Use LLM to plan scopes
         node_list = "\n".join(
             f"- {n['concept']} [{n['node_type']}] ({n['fact_count']} facts) id={n['node_id']}"
@@ -98,9 +123,12 @@ async def reconnaissance(input: SuperSynthesizerInput, ctx: Context) -> dict[str
 
 Available nodes in the knowledge graph:
 {node_list}
+{existing_summaries}
 
-Design 3-7 non-overlapping thematic scopes. Each scope should:
+Design 3-7 non-overlapping thematic scopes that COMPLEMENT any existing research listed above.
+Each scope should:
 - Have a clear thematic focus
+- NOT duplicate topics already covered by existing syntheses
 - Include 3-8 specific starting node IDs from the list above
 - Have an exploration budget of 10-20 nodes
 
