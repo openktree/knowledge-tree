@@ -53,14 +53,32 @@ function buildParagraphSentenceMap(
   const map = new Map<string, SynthesisSentenceResponse[]>();
   if (!definition || sentences.length === 0) return map;
 
-  const paragraphs = definition
+  // Split into blocks, then further split list blocks into individual items
+  const rawBlocks = definition
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
 
+  const paragraphs: string[] = [];
+  for (const block of rawBlocks) {
+    // Check if this block is a list (lines starting with 1. 2. - * etc)
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    const isList = lines.length > 1 && lines.every((l) => /^(\d+\.\s|[-*]\s)/.test(l));
+    if (isList) {
+      // Add each list item as a separate paragraph
+      for (const line of lines) {
+        paragraphs.push(line);
+      }
+    } else {
+      paragraphs.push(block);
+    }
+  }
+
   for (const para of paragraphs) {
     const plainPara = para
       .replace(/^#{1,6}\s+/, "")
+      .replace(/^\d+\.\s+/, "")  // strip list number prefix
+      .replace(/^[-*]\s+/, "")   // strip bullet prefix
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
       .replace(/\*\*([^*]+)\*\*/g, "$1")
       .replace(/\*([^*]+)\*/g, "$1");
