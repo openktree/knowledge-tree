@@ -10,7 +10,6 @@ import {
   CircleDot,
   FileText,
   Loader2,
-  PanelLeftClose,
   PanelRightClose,
 } from "lucide-react";
 import { formatSynthesisConcept } from "./utils";
@@ -306,7 +305,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   return (
     <div className={`flex transition-all duration-200 ${hasSidePanel ? "gap-2" : "gap-0"}`}>
       {/* Main document */}
-      <div className={`flex-1 min-w-0 transition-all duration-200 ${hasSidePanel ? "" : "mx-auto max-w-4xl"}`}>
+      <div className={`min-w-0 transition-all duration-200 ${hasSidePanel ? "basis-2/3" : "flex-1 mx-auto max-w-4xl"}`}>
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -354,161 +353,141 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         )}
       </div>
 
-      {/* Nodes panel */}
+      {/* Evidence sidebar — single panel with collapsible Nodes and Facts sections */}
       {hasSidePanel && (
-        <div
-          className={`shrink-0 transition-all duration-200 ${
-            nodesVisible ? "w-60" : "w-8"
-          }`}
-        >
-          {nodesVisible ? (
-            <Card className="sticky top-4">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-xs font-medium flex items-center gap-1.5">
-                  <CircleDot className="size-3" />
-                  Nodes ({selectedNodes.length})
-                </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-5"
-                  onClick={() => setNodesVisible(false)}
-                  title="Minimize"
+        <div className="basis-1/3 shrink-0 min-w-0">
+          <Card className="sticky top-4">
+            <CardContent className="p-3 space-y-3 max-h-[85vh] overflow-y-auto">
+              {/* Nodes section */}
+              <div>
+                <button
+                  type="button"
+                  className="flex items-center justify-between w-full text-xs font-medium mb-1.5"
+                  onClick={() => setNodesVisible(!nodesVisible)}
                 >
-                  <PanelRightClose className="size-3.5" />
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-1 max-h-[70vh] overflow-y-auto pt-0">
-                {selectedNodes.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No nodes in this section.
-                  </p>
-                ) : (
-                  selectedNodes.map((nid) => {
-                    const nodeInfo = nodeMap.get(nid);
-                    return (
-                      <a
-                        key={nid}
-                        href={`/nodes/${nid}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded border px-2 py-1.5 text-xs hover:bg-accent transition-colors"
-                      >
-                        <CircleDot className="size-3 text-primary shrink-0" />
-                        <span className="truncate">
-                          {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
-                        </span>
-                        {nodeInfo?.node_type && (
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] px-1 py-0 shrink-0 ml-auto"
-                          >
-                            {nodeInfo.node_type}
-                          </Badge>
-                        )}
-                      </a>
-                    );
-                  })
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Button
-              variant="outline"
-              size="icon"
-              className="sticky top-4 size-8"
-              onClick={() => setNodesVisible(true)}
-              title="Show nodes"
-            >
-              <CircleDot className="size-3.5" />
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Facts panel */}
-      {hasSidePanel && (
-        <div
-          className={`shrink-0 transition-all duration-200 ${
-            factsVisible ? "w-[28rem]" : "w-8"
-          }`}
-        >
-          {factsVisible ? (
-            <Card className="sticky top-4">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-xs font-medium flex items-center gap-1.5">
-                  <FileText className="size-3" />
-                  Facts ({loadingFacts ? "..." : factLinks.length})
-                </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-5"
-                  onClick={() => setFactsVisible(false)}
-                  title="Minimize"
-                >
-                  <PanelRightClose className="size-3.5" />
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-1 max-h-[70vh] overflow-y-auto pt-0">
-                {loadingFacts ? (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-2">
-                    <Loader2 className="size-3 animate-spin" />
-                    Loading facts...
-                  </div>
-                ) : factLinks.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No facts in this section.
-                  </p>
-                ) : (
-                  factLinks.map((fl) => (
-                    <a
-                      key={fl.fact_id}
-                      href={`/facts/${fl.fact_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block rounded border px-2.5 py-2 text-xs hover:bg-accent transition-colors space-y-1"
-                    >
-                      <p className="leading-relaxed line-clamp-3">
-                        {fl.content || fl.fact_id.slice(0, 12) + "..."}
+                  <span className="flex items-center gap-1.5">
+                    <CircleDot className="size-3" />
+                    Nodes ({selectedNodes.length})
+                  </span>
+                  <PanelRightClose
+                    className={`size-3.5 text-muted-foreground transition-transform ${
+                      nodesVisible ? "" : "rotate-180"
+                    }`}
+                  />
+                </button>
+                {nodesVisible && (
+                  <div className="space-y-1">
+                    {selectedNodes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        No nodes in this section.
                       </p>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        {fl.fact_type && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[9px] px-1 py-0"
+                    ) : (
+                      selectedNodes.map((nid) => {
+                        const nodeInfo = nodeMap.get(nid);
+                        return (
+                          <a
+                            key={nid}
+                            href={`/nodes/${nid}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 rounded border px-2 py-1.5 text-xs hover:bg-accent transition-colors"
                           >
-                            {fl.fact_type}
-                          </Badge>
-                        )}
-                        {fl.author && (
-                          <span className="truncate font-medium">
-                            {fl.author}
-                          </span>
-                        )}
-                        {fl.source_title && (
-                          <span className="truncate">{fl.source_title}</span>
-                        )}
-                        <span className="shrink-0 ml-auto">
-                          {(fl.embedding_distance * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    </a>
-                  ))
+                            <CircleDot className="size-3 text-primary shrink-0" />
+                            <span className="truncate">
+                              {nodeInfo?.concept ??
+                                nid.slice(0, 8) + "..."}
+                            </span>
+                            {nodeInfo?.node_type && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] px-1 py-0 shrink-0 ml-auto"
+                              >
+                                {nodeInfo.node_type}
+                              </Badge>
+                            )}
+                          </a>
+                        );
+                      })
+                    )}
+                  </div>
                 )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Button
-              variant="outline"
-              size="icon"
-              className="sticky top-4 size-8"
-              onClick={() => setFactsVisible(true)}
-              title="Show facts"
-            >
-              <FileText className="size-3.5" />
-            </Button>
-          )}
+              </div>
+
+              {/* Divider */}
+              <div className="border-t" />
+
+              {/* Facts section */}
+              <div>
+                <button
+                  type="button"
+                  className="flex items-center justify-between w-full text-xs font-medium mb-1.5"
+                  onClick={() => setFactsVisible(!factsVisible)}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="size-3" />
+                    Facts ({loadingFacts ? "..." : factLinks.length})
+                  </span>
+                  <PanelRightClose
+                    className={`size-3.5 text-muted-foreground transition-transform ${
+                      factsVisible ? "" : "rotate-180"
+                    }`}
+                  />
+                </button>
+                {factsVisible && (
+                  <div className="space-y-1.5">
+                    {loadingFacts ? (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-2">
+                        <Loader2 className="size-3 animate-spin" />
+                        Loading facts...
+                      </div>
+                    ) : factLinks.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        No facts in this section.
+                      </p>
+                    ) : (
+                      factLinks.map((fl) => (
+                        <a
+                          key={fl.fact_id}
+                          href={`/facts/${fl.fact_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block rounded border px-2.5 py-2 text-xs hover:bg-accent transition-colors space-y-1"
+                        >
+                          <p className="leading-relaxed line-clamp-3">
+                            {fl.content ||
+                              fl.fact_id.slice(0, 12) + "..."}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            {fl.fact_type && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[9px] px-1 py-0"
+                              >
+                                {fl.fact_type}
+                              </Badge>
+                            )}
+                            {fl.author && (
+                              <span className="truncate font-medium">
+                                {fl.author}
+                              </span>
+                            )}
+                            {fl.source_title && (
+                              <span className="truncate">
+                                {fl.source_title}
+                              </span>
+                            )}
+                            <span className="shrink-0 ml-auto">
+                              {(fl.embedding_distance * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        </a>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
