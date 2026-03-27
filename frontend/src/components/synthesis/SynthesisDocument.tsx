@@ -66,9 +66,15 @@ function buildParagraphSentenceMap(
         .replace(/\*\*([^*]+)\*\*/g, "$1")
         .replace(/\*([^*]+)\*/g, "$1")
         .trim();
+      if (plainSentence.length < 10) continue;
+      // Match if sentence start appears in paragraph OR paragraph start appears in sentence
+      // Also try matching a mid-section of the sentence (for sentences that start differently)
+      const sentStart = plainSentence.slice(0, 40);
+      const sentMid = plainSentence.length > 50 ? plainSentence.slice(10, 50) : "";
       if (
-        plainSentence.length > 10 &&
-        plainPara.includes(plainSentence.slice(0, 40))
+        plainPara.includes(sentStart) ||
+        (sentMid && plainPara.includes(sentMid)) ||
+        plainSentence.includes(plainPara.slice(0, 40))
       ) {
         matched.push(s);
       }
