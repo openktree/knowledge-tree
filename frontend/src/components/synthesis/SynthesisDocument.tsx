@@ -286,7 +286,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const hasDefinition = document.definition && document.definition.trim();
 
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-2">
       {/* Main document */}
       <div className="flex-1 min-w-0">
         <Card>
@@ -340,7 +340,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       {hasSidePanel && (
         <div
           className={`shrink-0 transition-all duration-200 ${
-            nodesVisible ? "w-72" : "w-8"
+            nodesVisible ? "w-60" : "w-8"
           }`}
         >
           {nodesVisible ? (
@@ -410,7 +410,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       {hasSidePanel && (
         <div
           className={`shrink-0 transition-all duration-200 ${
-            factsVisible ? "w-96" : "w-8"
+            factsVisible ? "w-[28rem]" : "w-8"
           }`}
         >
           {factsVisible ? (

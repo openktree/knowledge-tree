@@ -73,7 +73,7 @@ export default function SynthesisDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl py-8 px-4">
+    <div className="mx-auto max-w-[1600px] py-8 px-2">
       <div className="flex items-center justify-between mb-4">
         <Button variant="ghost" asChild>
           <Link href="/syntheses">
