@@ -204,7 +204,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       .join(" ");
 
     return (
-      <div className="flex items-start group">
+      <div className="flex items-stretch group">
         <Tag
           className={`${baseClass} flex-1 rounded-sm transition-colors ${
             isSelected
@@ -226,7 +226,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         >
           {children}
         </Tag>
-        <div className="w-8 shrink-0 flex flex-col items-center pt-0.5 gap-0">
+        <div className="w-8 shrink-0 flex flex-col items-center justify-center gap-0">
           {totalNodes > 0 && (
             <span
               className={`text-[10px] leading-tight ${
