@@ -17,6 +17,7 @@ from kt_api.graph_builder import router as graph_builder_router
 from kt_api.import_router import router as import_router
 from kt_api.members import router as members_router
 from kt_api.nodes import router as nodes_router
+from kt_api.prompt_transparency import router as prompts_router
 from kt_api.research import router as research_router
 from kt_api.seeds import router as seeds_router
 from kt_api.sources import router as sources_router
@@ -47,3 +48,5 @@ api_router.include_router(usage_router, dependencies=_auth_dep)
 api_router.include_router(members_router, dependencies=_auth_dep)
 api_router.include_router(syntheses_router, dependencies=_auth_dep)
 api_router.include_router(system_settings_router, dependencies=_auth_dep)
+# Prompt transparency is public — supports research credibility
+api_router.include_router(prompts_router)

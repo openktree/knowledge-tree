@@ -11,6 +11,14 @@ import type {
 } from "@/types";
 import { formatSynthesisConcept } from "./utils";
 
+interface PromptEntry {
+  id: string;
+  name: string;
+  stage: string;
+  purpose: string;
+  prompt: string;
+}
+
 interface ExportPDFProps {
   documentId: string;
   concept: string;
@@ -61,8 +69,23 @@ export function ExportPDFButton({ documentId, concept }: ExportPDFProps) {
         }
       }
 
-      // 4. Generate and download
-      const html = buildExportHTML(doc, factMap, nodeDefinitions);
+      // 4. Load prompts for transparency section
+      let prompts: PromptEntry[] = [];
+      try {
+        const baseUrl =
+          process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+          "http://localhost:8000";
+        const resp = await fetch(`${baseUrl}/api/v1/prompts`);
+        if (resp.ok) {
+          const data = await resp.json();
+          prompts = data.prompts || [];
+        }
+      } catch {
+        // prompts section will be empty
+      }
+
+      // 5. Generate and download
+      const html = buildExportHTML(doc, factMap, nodeDefinitions, prompts);
       downloadAsHTML(html, concept);
     } catch (err) {
       console.error("Export failed:", err);
@@ -94,7 +117,8 @@ export function ExportPDFButton({ documentId, concept }: ExportPDFProps) {
 function buildExportHTML(
   doc: SynthesisDocumentResponse,
   factMap: Map<number, SentenceFactLink[]>,
-  nodeDefinitions: Map<string, string>
+  nodeDefinitions: Map<string, string>,
+  prompts: PromptEntry[] = []
 ): string {
   const { title, date } = formatSynthesisConcept(doc.concept);
 
@@ -173,6 +197,9 @@ function buildExportHTML(
   // Build node annexes
   const annexes = buildNodeAnnexes(doc.referenced_nodes, nodeIndex, nodeDefinitions);
 
+  // Build prompt transparency section
+  const promptSection = buildPromptTransparency(prompts);
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -235,6 +262,30 @@ function buildExportHTML(
   .annex-name { font-weight: 600; font-size: 11pt; }
   .annex-def { font-size: 10pt; color: #3d3830; margin-top: 0.3rem; line-height: 1.6; }
 
+  .prompts-section { margin-top: 2rem; page-break-before: always; }
+  .prompts-section h2 { color: #5a5248; }
+  .prompts-intro {
+    font-size: 9.5pt; color: #6a6059; margin-bottom: 1rem; line-height: 1.5;
+  }
+  .prompt-entry { margin-bottom: 1.5rem; }
+  .prompt-header { margin-bottom: 0.3rem; }
+  .prompt-name { font-weight: 600; font-size: 10.5pt; }
+  .prompt-stage {
+    font-size: 8pt; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #6a6059; font-family: sans-serif; margin-left: 0.5rem;
+  }
+  .prompt-purpose {
+    font-size: 9.5pt; color: #6a6059; font-style: italic;
+    margin-bottom: 0.4rem; line-height: 1.5;
+  }
+  .prompt-text {
+    font-size: 8.5pt; font-family: 'Courier New', monospace;
+    background: #f8f5f0; border: 1px solid #e8e3d8; border-radius: 4px;
+    padding: 0.6rem 0.8rem; line-height: 1.45;
+    white-space: pre-wrap; word-wrap: break-word;
+    color: #3d3830; max-height: 300px; overflow-y: auto;
+  }
+
   @media print {
     body { padding: 0; }
     .no-print { display: none; }
@@ -256,6 +307,8 @@ ${body}
 ${factsSection}
 
 ${annexes}
+
+${promptSection}
 
 </body>
 </html>`;
@@ -352,6 +405,53 @@ with provenance-tracked facts from external sources.
     }
 
     html += `</div>\n`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// ── Prompt Transparency ──────────────────────────────────────────
+
+function buildPromptTransparency(prompts: PromptEntry[]): string {
+  if (prompts.length === 0) return "";
+
+  // Group prompts by stage
+  const stages = new Map<string, PromptEntry[]>();
+  for (const p of prompts) {
+    if (!stages.has(p.stage)) stages.set(p.stage, []);
+    stages.get(p.stage)!.push(p);
+  }
+
+  let html = `<div class="prompts-section">
+<h2>Prompt Transparency</h2>
+<div class="prompts-intro">
+<p>This section discloses all LLM system prompts used in the knowledge pipeline that produced this document.
+Every piece of AI-generated content — from fact extraction to synthesis writing — was guided by these instructions.
+Prompt transparency supports research credibility: readers can evaluate not just the evidence, but the reasoning
+framework the AI was given to process it.</p>
+<p>The prompts below are the <strong>exact system instructions</strong> sent to the language model at each pipeline stage.
+User-specific context (the topic, node data, facts) is appended at runtime but is not shown here as it varies per run.</p>
+</div>
+`;
+
+  for (const [stage, stagePrompts] of stages) {
+    html += `<h3 style="color: #5a5248; font-size: 12pt; margin-top: 1.5rem; margin-bottom: 0.8rem;">${escapeHTML(stage)}</h3>\n`;
+
+    for (const p of stagePrompts) {
+      // Truncate very long prompts for readability
+      const promptText = p.prompt.length > 3000
+        ? p.prompt.slice(0, 3000) + "\n\n[... truncated for brevity — full prompt available via API at /api/v1/prompts]"
+        : p.prompt;
+
+      html += `<div class="prompt-entry">
+<div class="prompt-header">
+  <span class="prompt-name">${escapeHTML(p.name)}</span>
+</div>
+<div class="prompt-purpose">${escapeHTML(p.purpose)}</div>
+<div class="prompt-text">${escapeHTML(promptText)}</div>
+</div>\n`;
+    }
   }
 
   html += `</div>`;
