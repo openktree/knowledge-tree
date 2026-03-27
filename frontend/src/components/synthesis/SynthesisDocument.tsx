@@ -508,9 +508,8 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
   return (
     <div className="space-y-1">
       {/* Source provenance header */}
-      <button
-        type="button"
-        className="w-full text-left hover:bg-muted/30 rounded px-1.5 py-1 transition-colors"
+      <div
+        className="w-full text-left hover:bg-muted/30 rounded px-1.5 py-1 transition-colors cursor-pointer group/source"
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-1.5">
@@ -522,6 +521,18 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
           <span className="text-[11px] font-medium truncate flex-1">
             {group.title || "Unknown source"}
           </span>
+          {group.facts[0]?.source_uri && (
+            <a
+              href={group.facts[0].source_uri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-muted-foreground hover:text-primary"
+              onClick={(e) => e.stopPropagation()}
+              title={group.facts[0].source_uri}
+            >
+              <ExternalLink className="size-3" />
+            </a>
+          )}
           <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">
             {group.facts.length}
           </Badge>
@@ -535,24 +546,11 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
           </div>
         )}
         {group.facts[0]?.source_uri && (
-          <div className="text-[10px] text-muted-foreground pl-[18px] mt-0.5 truncate">
+          <div className="text-[10px] text-muted-foreground pl-[18px] mt-0.5 truncate hidden group-hover/source:block">
             {group.facts[0].source_uri}
           </div>
         )}
-      </button>
-      {/* Open source link */}
-      {group.facts[0]?.source_uri && (
-        <a
-          href={group.facts[0].source_uri}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] text-primary hover:underline pl-[18px] -mt-0.5 mb-0.5"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ExternalLink className="size-2.5 shrink-0" />
-          Open source
-        </a>
-      )}
+      </div>
       {open &&
         group.facts.map((fl) => (
           <a
