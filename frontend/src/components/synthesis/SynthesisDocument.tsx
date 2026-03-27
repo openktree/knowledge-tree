@@ -86,7 +86,9 @@ function buildParagraphSentenceMap(
     }
 
     if (matched.length > 0) {
-      map.set(para.slice(0, 60).trim(), matched);
+      // Use stripped plain text as key — must match what extractText()
+      // returns from react-markdown rendered children
+      map.set(plainPara.slice(0, 60).trim(), matched);
     }
   }
   return map;
