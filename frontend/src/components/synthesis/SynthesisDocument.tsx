@@ -434,7 +434,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                   />
                 </button>
                 {factsVisible && (
-                  <div className="space-y-1.5">
+                  <div className="space-y-3">
                     {loadingFacts ? (
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-2">
                         <Loader2 className="size-3 animate-spin" />
@@ -445,42 +445,59 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                         No facts in this section.
                       </p>
                     ) : (
-                      factLinks.map((fl) => (
-                        <a
-                          key={fl.fact_id}
-                          href={`/facts/${fl.fact_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block rounded border px-2.5 py-2 text-xs hover:bg-accent transition-colors space-y-1"
-                        >
-                          <p className="leading-relaxed line-clamp-3">
-                            {fl.content ||
-                              fl.fact_id.slice(0, 12) + "..."}
-                          </p>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                            {fl.fact_type && (
-                              <Badge
-                                variant="secondary"
-                                className="text-[9px] px-1 py-0"
-                              >
-                                {fl.fact_type}
-                              </Badge>
-                            )}
-                            {fl.author && (
-                              <span className="truncate font-medium">
-                                {fl.author}
+                      groupFactsBySource(factLinks).map((group) => (
+                        <div key={group.key} className="space-y-1">
+                          {/* Source header */}
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            {group.author && (
+                              <span className="font-medium truncate">
+                                {group.author}
                               </span>
                             )}
-                            {fl.source_title && (
-                              <span className="truncate">
-                                {fl.source_title}
+                            {group.author && group.title && (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                            {group.title && (
+                              <span className="text-muted-foreground truncate">
+                                {group.title}
                               </span>
                             )}
-                            <span className="shrink-0 ml-auto">
-                              {(fl.embedding_distance * 100).toFixed(0)}%
-                            </span>
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1 py-0 shrink-0 ml-auto"
+                            >
+                              {group.facts.length}
+                            </Badge>
                           </div>
-                        </a>
+                          {/* Facts in this source */}
+                          {group.facts.map((fl) => (
+                            <a
+                              key={fl.fact_id}
+                              href={`/facts/${fl.fact_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block rounded border px-2.5 py-1.5 text-xs hover:bg-accent transition-colors"
+                            >
+                              <p className="leading-relaxed line-clamp-3">
+                                {fl.content ||
+                                  fl.fact_id.slice(0, 12) + "..."}
+                              </p>
+                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                                {fl.fact_type && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[9px] px-1 py-0"
+                                  >
+                                    {fl.fact_type}
+                                  </Badge>
+                                )}
+                                <span className="shrink-0 ml-auto">
+                                  {(fl.embedding_distance * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
                       ))
                     )}
                   </div>
@@ -491,5 +508,34 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         </div>
       )}
     </div>
+  );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+
+interface FactGroup {
+  key: string;
+  title: string;
+  author: string;
+  facts: SentenceFactLink[];
+}
+
+function groupFactsBySource(facts: SentenceFactLink[]): FactGroup[] {
+  const groups = new Map<string, FactGroup>();
+  for (const fl of facts) {
+    const key = fl.source_title || fl.source_uri || "Unknown source";
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        title: fl.source_title,
+        author: fl.author,
+        facts: [],
+      });
+    }
+    groups.get(key)!.facts.push(fl);
+  }
+  // Sort groups by number of facts descending
+  return Array.from(groups.values()).sort(
+    (a, b) => b.facts.length - a.facts.length
   );
 }
