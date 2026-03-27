@@ -47,6 +47,14 @@ class SynthesizerAgent(BaseAgent[SynthesizerState]):
 
     def check_budget_exhaustion(self, state: SynthesizerState) -> dict[str, Any] | None:
         """Nudge the agent when exploration budget is exhausted."""
+        remaining = state.exploration_budget - state.nodes_visited_count
+        logger.info(
+            "[synthesizer] budget: %d/%d visited (%d remaining), messages: %d",
+            state.nodes_visited_count,
+            state.exploration_budget,
+            remaining,
+            len(state.messages),
+        )
         if state.nodes_visited_count >= state.exploration_budget:
             if state.synthesis_text:
                 return {"phase": "done"}

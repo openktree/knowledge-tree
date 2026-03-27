@@ -238,6 +238,17 @@ class BaseAgent(ABC, Generic[S]):
                 include_system=True,
             )
 
+            total_msgs = len(state.messages)
+            trimmed_msgs = len(trimmed)
+            token_est = approx_tokens(trimmed)
+            logger.info(
+                "[%s] LLM call: %d/%d messages, ~%dk tokens",
+                agent.emit_tool_label,
+                trimmed_msgs,
+                total_msgs,
+                token_est // 1000,
+            )
+
             try:
                 response = await llm_with_tools.ainvoke(trimmed)
             except Exception:
