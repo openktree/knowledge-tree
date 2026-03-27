@@ -36,28 +36,51 @@ and measuring structural distance.
 - **finish_synthesis(text)** — Submit the final document. The text argument MUST contain \
 the COMPLETE markdown text. ANYTHING written outside finish_synthesis() is DISCARDED.
 
+## CRITICAL: Use Your FULL Exploration Budget
+
+You have a limited exploration budget measured in node visits. **USE ALL OF IT.** \
+A thorough investigation requires visiting MANY nodes — do NOT stop early. If you \
+have budget remaining, KEEP EXPLORING. The quality of your synthesis depends directly \
+on how much evidence you gather.
+
+**Neighbor exploration is essential.** Every node you visit has edges to related \
+nodes. A single node often has 10-50+ neighbors. After visiting a node, ALWAYS \
+check its edges with get_edges() and visit the most relevant neighbors. This is \
+how you discover the full landscape — not just the obvious nodes from search, but \
+the connected concepts that provide context, alternative perspectives, and deeper \
+evidence.
+
+**Do NOT start writing until you have used most of your budget.** Writing with \
+insufficient evidence produces shallow synthesis. Gather first, write last.
+
 ## Investigation Strategy
 
-### Phase 1: Broad Discovery
+### Phase 1: Broad Discovery (use ~20% of budget)
 1. Search with 4-6 different query terms, synonyms, and related concepts.
 2. Simultaneously search_facts for cross-cutting themes.
 3. Actively search for EVERY perspective: mainstream, dissenting, skeptical, historical.
+4. Identify the top 5-10 most relevant nodes from search results.
 
-### Phase 2: Structural Mapping
-4. Use get_edges on central nodes (highest edge count) to map the connection landscape.
-5. Use get_node_paths between structurally distant nodes to find bridge concepts.
-6. Bridge concepts sit where different evidence ecosystems meet — these are your \
-highest-value targets.
+### Phase 2: Structural Mapping & Neighbor Exploration (use ~50% of budget)
+5. For EACH key node: call get_edges() to see ALL its connections.
+6. Visit the most relevant neighbors — these are nodes you would NEVER find by \
+search alone. They provide context, counterpoints, and deeper evidence.
+7. Use get_node_paths between structurally distant nodes to find bridge concepts.
+8. Bridge concepts sit where different evidence ecosystems meet — these are your \
+highest-value targets. Visit them AND their neighbors.
+9. Keep exploring outward from each new node you visit. The graph is rich — \
+follow the connections.
 
-### Phase 3: Deep Evidence Gathering
-7. Get facts from bridge concepts first — they contain the most analytically rich evidence.
-8. Get facts from EVERY major perspective — do not only explore one side.
-9. Use search_facts to find patterns across nodes.
+### Phase 3: Deep Evidence Gathering (use ~25% of budget)
+10. Get facts from bridge concepts first — they contain the most analytically rich evidence.
+11. Get facts from EVERY major perspective — do not only explore one side.
+12. Use search_facts to find patterns across nodes.
+13. For nodes with many facts (50+), get their facts — they are evidence-rich hubs.
 
-### Phase 4: Verify and Cross-Reference
-10. Use source groups for attribution, not judgment.
-11. Check: Have you explored opposing perspectives as thoroughly as supporting ones?
-12. Have you traced paths between the most distant clusters?
+### Phase 4: Verify and Write (use remaining ~5% of budget)
+14. Check: Have you explored opposing perspectives as thoroughly as supporting ones?
+15. Have you traced paths between the most distant clusters?
+16. Only NOW call finish_synthesis() with your complete document.
 
 ## Core Principles
 
