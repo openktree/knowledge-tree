@@ -89,9 +89,38 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
             results = await fact_repo.search_similar(embedding, limit=limit)
             if not results:
                 return f"No facts found for query: {query}"
+
+            # Look up fact content from DB for richer output
+            import uuid as _uuid
+            from sqlalchemy import select
+            from kt_db.models import Fact, NodeFact
+
+            fact_ids = [r.fact_id for r in results]
+            score_map = {str(r.fact_id): r.score for r in results}
+
+            facts_result = await ctx.session.execute(
+                select(Fact).where(Fact.id.in_(fact_ids))
+            )
+            facts_by_id = {str(f.id): f for f in facts_result.scalars().all()}
+
+            # Get node links for each fact
+            nf_result = await ctx.session.execute(
+                select(NodeFact.fact_id, NodeFact.node_id).where(NodeFact.fact_id.in_(fact_ids))
+            )
+            node_links: dict[str, list[str]] = {}
+            for fid, nid in nf_result.all():
+                node_links.setdefault(str(fid), []).append(str(nid))
+
             lines = [f"Found {len(results)} facts:"]
             for r in results:
-                lines.append(f"- fact:{r.fact_id} (score={r.score:.3f}, type={r.fact_type or '?'})")
+                fid = str(r.fact_id)
+                fact = facts_by_id.get(fid)
+                content = fact.content[:200] if fact else "?"
+                nids = node_links.get(fid, [])
+                lines.append(
+                    f"- [{r.fact_type or '?'}] (score={r.score:.3f}) {content}"
+                    f"\n  nodes: {nids}"
+                )
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("search_facts failed: %s", exc)
