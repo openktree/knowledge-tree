@@ -15,6 +15,7 @@ from kt_api.facts import router as facts_router
 from kt_api.graph import router as graph_router
 from kt_api.graph_builder import router as graph_builder_router
 from kt_api.import_router import router as import_router
+from kt_api.invites import router as invites_router
 from kt_api.members import router as members_router
 from kt_api.nodes import router as nodes_router
 from kt_api.prompt_transparency import router as prompts_router
@@ -24,6 +25,7 @@ from kt_api.sources import router as sources_router
 from kt_api.syntheses import router as syntheses_router
 from kt_api.system_settings import router as system_settings_router
 from kt_api.usage import router as usage_router
+from kt_api.waitlist import router as waitlist_router
 
 _auth_dep = [Depends(require_auth)]
 
@@ -48,5 +50,8 @@ api_router.include_router(usage_router, dependencies=_auth_dep)
 api_router.include_router(members_router, dependencies=_auth_dep)
 api_router.include_router(syntheses_router, dependencies=_auth_dep)
 api_router.include_router(system_settings_router, dependencies=_auth_dep)
+# Waitlist + invites: public + admin (auth enforced per-endpoint)
+api_router.include_router(waitlist_router)
+api_router.include_router(invites_router)
 # Prompt transparency is public — supports research credibility
 api_router.include_router(prompts_router)
