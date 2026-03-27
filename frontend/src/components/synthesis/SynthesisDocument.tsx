@@ -431,7 +431,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
 
       {/* ── Evidence Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader className="shrink-0">
             <DialogTitle className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-400">
               Section Evidence
