@@ -204,35 +204,53 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
       .join(" ");
 
     return (
-      <Tag
-        className={`${baseClass} rounded-sm transition-colors flex items-start gap-2 ${
-          isSelected
-            ? "bg-primary/5 ring-1 ring-primary/20 px-2 -mx-2"
-            : hasInfo
-              ? "hover:bg-muted/30 cursor-pointer px-2 -mx-2"
-              : ""
-        }`}
-        onClick={
-          hasInfo && sentences
-            ? Tag === "li"
-              ? (e: React.MouseEvent) => {
-                  e.stopPropagation();
-                  handleSectionClick(key, sentences);
-                }
-              : () => handleSectionClick(key, sentences)
-            : undefined
-        }
-      >
-        <span className="flex-1">{children}</span>
-        {hasInfo && badgeText && (
-          <Badge
-            variant={isSelected ? "default" : "outline"}
-            className="text-[10px] px-1 py-0 shrink-0 mt-1"
-          >
-            {badgeText}
-          </Badge>
-        )}
-      </Tag>
+      <div className="flex items-start group">
+        <Tag
+          className={`${baseClass} flex-1 rounded-sm transition-colors ${
+            isSelected
+              ? "bg-primary/5 ring-1 ring-primary/20 px-2 -mx-2"
+              : hasInfo
+                ? "hover:bg-muted/30 cursor-pointer px-2 -mx-2"
+                : ""
+          }`}
+          onClick={
+            hasInfo && sentences
+              ? Tag === "li"
+                ? (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    handleSectionClick(key, sentences);
+                  }
+                : () => handleSectionClick(key, sentences)
+              : undefined
+          }
+        >
+          {children}
+        </Tag>
+        <div className="w-8 shrink-0 flex flex-col items-center pt-0.5 gap-0">
+          {totalNodes > 0 && (
+            <span
+              className={`text-[10px] leading-tight ${
+                isSelected
+                  ? "text-primary font-medium"
+                  : "text-muted-foreground/60 group-hover:text-muted-foreground"
+              }`}
+            >
+              {totalNodes}n
+            </span>
+          )}
+          {totalFacts > 0 && (
+            <span
+              className={`text-[10px] leading-tight ${
+                isSelected
+                  ? "text-primary font-medium"
+                  : "text-muted-foreground/60 group-hover:text-muted-foreground"
+              }`}
+            >
+              {totalFacts}f
+            </span>
+          )}
+        </div>
+      </div>
     );
   };
 
