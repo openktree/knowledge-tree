@@ -518,7 +518,10 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
               open ? "" : "rotate-180"
             }`}
           />
-          <span className="text-[11px] font-medium truncate flex-1">
+          <span
+            className="text-[11px] font-medium truncate flex-1"
+            title={group.facts[0]?.source_uri || group.title || ""}
+          >
             {group.title || "Unknown source"}
           </span>
           {group.facts[0]?.source_uri && (
@@ -543,11 +546,6 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
         {group.author && (
           <div className="text-[10px] text-muted-foreground pl-[18px] mt-0.5">
             by {group.author}
-          </div>
-        )}
-        {group.facts[0]?.source_uri && (
-          <div className="text-[10px] text-muted-foreground pl-[18px] mt-0.5 truncate hidden group-hover/source:block">
-            {group.facts[0].source_uri}
           </div>
         )}
       </div>
