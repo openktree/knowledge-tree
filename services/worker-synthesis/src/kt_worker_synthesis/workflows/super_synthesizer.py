@@ -125,7 +125,7 @@ Available nodes in the knowledge graph:
 {node_list}
 {existing_summaries}
 
-Design 3-7 non-overlapping thematic scopes that COMPLEMENT any existing research listed above.
+Design exactly {input.scope_count if input.scope_count > 0 else "3-7"} non-overlapping thematic scopes that COMPLEMENT any existing research listed above.
 Each scope should:
 - Have a clear thematic focus
 - NOT duplicate topics already covered by existing syntheses

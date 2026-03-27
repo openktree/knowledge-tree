@@ -1267,6 +1267,7 @@ export interface CreateSuperSynthesisRequest {
   topic: string;
   sub_configs?: CreateSynthesisRequest[];
   existing_synthesis_ids?: string[];
+  scope_count?: number;
   visibility?: string;
   distance_threshold?: number;
 }

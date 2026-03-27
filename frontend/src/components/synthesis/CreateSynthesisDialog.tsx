@@ -45,6 +45,7 @@ export function CreateSynthesisDialog({
   const [mode, setMode] = useState<SynthesisMode>("synthesis");
   const [topic, setTopic] = useState("");
   const [budget, setBudget] = useState(20);
+  const [scopeCount, setScopeCount] = useState(0);
   const [visibility, setVisibility] = useState("public");
   const [creating, setCreating] = useState(false);
 
@@ -85,6 +86,7 @@ export function CreateSynthesisDialog({
         await createSuperSynthesis({
           topic: topic.trim(),
           existing_synthesis_ids: Array.from(selectedExisting),
+          scope_count: scopeCount,
           visibility,
         });
       } else {
@@ -189,11 +191,28 @@ export function CreateSynthesisDialog({
           {mode === "super" && (
             <>
               <p className="text-xs text-muted-foreground rounded-md bg-muted p-3">
-                The super-synthesizer will automatically search the graph, plan
-                3-7 thematic scopes, run a separate synthesis agent for each,
-                and then combine all findings into a comprehensive
-                meta-synthesis.
+                The super-synthesizer will search the graph, plan thematic
+                scopes, run a separate synthesis agent for each, and combine
+                all findings into a comprehensive meta-synthesis.
               </p>
+
+              <div className="space-y-2">
+                <Label htmlFor="scopeCount">Number of Scopes</Label>
+                <Input
+                  id="scopeCount"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={scopeCount}
+                  onChange={(e) =>
+                    setScopeCount(parseInt(e.target.value) || 0)
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  0 = let the AI decide (3-7 scopes). Set a number to
+                  enforce exactly that many sub-investigations.
+                </p>
+              </div>
 
               {/* Include existing syntheses */}
               <div className="space-y-2">

@@ -726,6 +726,7 @@ class SuperSynthesizerInput(BaseModel):
     topic: str = ""
     sub_configs: list[SynthesizerInput] = Field(default_factory=list)
     existing_synthesis_ids: list[str] = Field(default_factory=list)
+    scope_count: int = 0  # 0 = let the LLM decide (3-7)
     visibility: str = "public"
     creator_id: str | None = None
     distance_threshold: float = 0.7
