@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   CircleDot,
+  ExternalLink,
   FileText,
   Loader2,
   PanelRightClose,
@@ -446,58 +447,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                       </p>
                     ) : (
                       groupFactsBySource(factLinks).map((group) => (
-                        <div key={group.key} className="space-y-1">
-                          {/* Source header */}
-                          <div className="flex items-center gap-1.5 text-[11px]">
-                            {group.author && (
-                              <span className="font-medium truncate">
-                                {group.author}
-                              </span>
-                            )}
-                            {group.author && group.title && (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                            {group.title && (
-                              <span className="text-muted-foreground truncate">
-                                {group.title}
-                              </span>
-                            )}
-                            <Badge
-                              variant="outline"
-                              className="text-[9px] px-1 py-0 shrink-0 ml-auto"
-                            >
-                              {group.facts.length}
-                            </Badge>
-                          </div>
-                          {/* Facts in this source */}
-                          {group.facts.map((fl) => (
-                            <a
-                              key={fl.fact_id}
-                              href={`/facts/${fl.fact_id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="block rounded border px-2.5 py-1.5 text-xs hover:bg-accent transition-colors"
-                            >
-                              <p className="leading-relaxed line-clamp-3">
-                                {fl.content ||
-                                  fl.fact_id.slice(0, 12) + "..."}
-                              </p>
-                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
-                                {fl.fact_type && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-[9px] px-1 py-0"
-                                  >
-                                    {fl.fact_type}
-                                  </Badge>
-                                )}
-                                <span className="shrink-0 ml-auto">
-                                  {(fl.embedding_distance * 100).toFixed(0)}%
-                                </span>
-                              </div>
-                            </a>
-                          ))}
-                        </div>
+                        <SourceFactGroup key={group.key} group={group} />
                       ))
                     )}
                   </div>
@@ -517,6 +467,7 @@ interface FactGroup {
   key: string;
   title: string;
   author: string;
+  bestDistance: number;
   facts: SentenceFactLink[];
 }
 
@@ -529,13 +480,108 @@ function groupFactsBySource(facts: SentenceFactLink[]): FactGroup[] {
         key,
         title: fl.source_title,
         author: fl.author,
+        bestDistance: fl.embedding_distance,
         facts: [],
       });
     }
-    groups.get(key)!.facts.push(fl);
+    const group = groups.get(key)!;
+    group.facts.push(fl);
+    if (fl.embedding_distance > group.bestDistance) {
+      group.bestDistance = fl.embedding_distance;
+    }
   }
-  // Sort groups by number of facts descending
+  // Sort each group's facts by embedding distance descending (closest first)
+  for (const group of groups.values()) {
+    group.facts.sort((a, b) => b.embedding_distance - a.embedding_distance);
+  }
+  // Sort groups by best embedding distance descending (closest first)
   return Array.from(groups.values()).sort(
-    (a, b) => b.facts.length - a.facts.length
+    (a, b) => b.bestDistance - a.bestDistance
+  );
+}
+
+// ── Collapsible source group ─────────────────────────────────────
+
+function SourceFactGroup({ group }: { group: FactGroup }) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 w-full text-left text-[11px] hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
+        onClick={() => setOpen(!open)}
+      >
+        <PanelRightClose
+          className={`size-3 text-muted-foreground shrink-0 transition-transform ${
+            open ? "" : "rotate-180"
+          }`}
+        />
+        <span className="flex items-center gap-1.5 min-w-0 flex-1">
+          {group.author && (
+            <span className="font-medium truncate">{group.author}</span>
+          )}
+          {group.author && group.title && (
+            <span className="text-muted-foreground">—</span>
+          )}
+          {group.title && (
+            <span className="text-muted-foreground truncate">
+              {group.title}
+            </span>
+          )}
+        </span>
+        <span className="text-[10px] text-muted-foreground shrink-0">
+          {group.facts.length}
+        </span>
+        <span className="text-[10px] text-muted-foreground shrink-0">
+          {(group.bestDistance * 100).toFixed(0)}%
+        </span>
+      </button>
+      {/* Source link */}
+      {group.facts[0]?.source_uri && (
+        <a
+          href={group.facts[0].source_uri}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary pl-5 -mt-0.5 mb-0.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink className="size-2.5" />
+          <span className="truncate">
+            {(() => {
+              try {
+                return new URL(group.facts[0].source_uri).hostname;
+              } catch {
+                return group.facts[0].source_uri.slice(0, 30);
+              }
+            })()}
+          </span>
+        </a>
+      )}
+      {open &&
+        group.facts.map((fl) => (
+          <a
+            key={fl.fact_id}
+            href={`/facts/${fl.fact_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded border px-2.5 py-1.5 text-xs hover:bg-accent transition-colors"
+          >
+            <p className="leading-relaxed line-clamp-3">
+              {fl.content || fl.fact_id.slice(0, 12) + "..."}
+            </p>
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+              {fl.fact_type && (
+                <Badge variant="secondary" className="text-[9px] px-1 py-0">
+                  {fl.fact_type}
+                </Badge>
+              )}
+              <span className="shrink-0 ml-auto">
+                {(fl.embedding_distance * 100).toFixed(0)}%
+              </span>
+            </div>
+          </a>
+        ))}
+    </div>
   );
 }
