@@ -25,7 +25,7 @@ import type {
   SynthesisNodeResponse,
   SentenceFactLink,
 } from "@/types";
-import { getSentenceFacts } from "@/lib/api";
+import { getSentenceFacts, updateSynthesisVisibility } from "@/lib/api";
 import { SynthesisNodeList } from "./SynthesisNodeList";
 import { SubSynthesisList } from "./SubSynthesisList";
 
@@ -141,6 +141,8 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   const [loadingFacts, setLoadingFacts] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(true);
   const [factsOpen, setFactsOpen] = useState(true);
+  const [visibility, setVisibility] = useState(document.visibility);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
 
   const dialogOpen = selectedParaKey !== null;
   const { title, date } = formatSynthesisConcept(document.concept);
@@ -207,6 +209,19 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
     },
     [document.id]
   );
+
+  const toggleVisibility = useCallback(async () => {
+    const newVisibility = visibility === "public" ? "private" : "public";
+    setTogglingVisibility(true);
+    try {
+      await updateSynthesisVisibility(document.id, newVisibility);
+      setVisibility(newVisibility);
+    } catch {
+      // revert on error
+    } finally {
+      setTogglingVisibility(false);
+    }
+  }, [visibility, document.id]);
 
   const closeDialog = () => {
     setSelectedParaKey(null);
@@ -385,14 +400,20 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 ? "Super-Synthesis"
                 : "Synthesis"}
             </Badge>
-            <Badge
-              variant={
-                document.visibility === "public" ? "default" : "secondary"
-              }
-              className="text-[0.65rem] uppercase tracking-wider px-2 py-0.5"
+            <button
+              type="button"
+              onClick={toggleVisibility}
+              disabled={togglingVisibility}
+              className="transition-colors"
+              title={`Click to make ${visibility === "public" ? "private" : "public"}`}
             >
-              {document.visibility}
-            </Badge>
+              <Badge
+                variant={visibility === "public" ? "default" : "secondary"}
+                className="text-[0.65rem] uppercase tracking-wider px-2 py-0.5 cursor-pointer hover:opacity-80"
+              >
+                {togglingVisibility ? "..." : visibility}
+              </Badge>
+            </button>
           </div>
           <h1 className="text-[2rem] font-semibold leading-tight text-stone-900 dark:text-stone-100 mb-1">
             {title}
