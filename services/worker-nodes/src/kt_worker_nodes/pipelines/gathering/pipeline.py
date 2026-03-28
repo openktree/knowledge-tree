@@ -150,8 +150,8 @@ class GatherFactsPipeline:
         all_super_sources: list[dict[str, object]] = []
 
         # ── Phase 1: Store sources for all queries & prepare inputs ────
+        from kt_hatchet.client import run_workflow
         from kt_hatchet.models import DecomposeSourcesInput, DecomposeSourcesOutput
-        from kt_worker_search.workflows.decompose import decompose_sources_wf
 
         # Per-query tracking for post-reconciliation
         @dataclasses.dataclass
@@ -307,7 +307,7 @@ class GatherFactsPipeline:
 
         for i, plan in enumerate(query_plans):
             if plan.text_input:
-                text_coros.append((i, decompose_sources_wf.aio_run(plan.text_input)))
+                text_coros.append((i, run_workflow("decompose_sources", plan.text_input.model_dump())))
             if plan.image_sources:
                 img_pipeline = DecompositionPipeline(ctx.model_gateway)
                 image_coros.append(
@@ -402,20 +402,21 @@ class GatherFactsPipeline:
         # Dispatch seed dedup as independent Hatchet tasks (non-fatal)
         if all_seed_keys:
             try:
-                from kt_hatchet.models import SeedDedupBatchInput
-                from kt_worker_search.workflows.seed_dedup import seed_dedup_task
+                from kt_hatchet.client import dispatch_workflow
 
                 unique_keys = list(dict.fromkeys(all_seed_keys))
                 batch_size = 10
                 batches = [unique_keys[i : i + batch_size] for i in range(0, len(unique_keys), batch_size)]
                 scope_id = getattr(state, "scope_id", "") or ""
-                bulk_items = [
-                    seed_dedup_task.create_bulk_run_item(
-                        input=SeedDedupBatchInput(seed_keys=b, scope_id=scope_id),
-                    )
-                    for b in batches
-                ]
-                await seed_dedup_task.aio_run_many(bulk_items)
+                await asyncio.gather(
+                    *[
+                        dispatch_workflow(
+                            "seed_dedup_batch",
+                            {"seed_keys": b, "scope_id": scope_id},
+                        )
+                        for b in batches
+                    ]
+                )
                 logger.info(
                     "gather_facts: dispatched %d seed dedup tasks (%d seeds)",
                     len(batches),
