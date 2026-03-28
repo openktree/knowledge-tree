@@ -178,7 +178,7 @@ async def enrich_edge(
     from kt_hatchet.client import dispatch_workflow
 
     api_key = require_api_key(user)
-    await dispatch_workflow("enrich_edge_task", {"edge_id": edge_id, "api_key": api_key})
+    await dispatch_workflow("enrich_edge", {"edge_id": edge_id, "api_key": api_key})
     return {"status": "started", "edge_id": edge_id}
 
 

@@ -183,7 +183,7 @@ async def reingest_source(
     from kt_hatchet.client import run_workflow
     from kt_hatchet.models import ReingestSourceOutput
 
-    result = await run_workflow("reingest_source_wf", {"raw_source_id": source_id})
+    result = await run_workflow("reingest_source", {"raw_source_id": source_id})
     output = ReingestSourceOutput.model_validate(result)
 
     # Refresh source detail after workflow completion
