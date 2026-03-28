@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Loader2, FileText, Layers, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ import {
   listSyntheses,
 } from "@/lib/api";
 import { formatSynthesisConcept } from "./utils";
+import { SynthesisProgress } from "./SynthesisProgress";
 import type { SynthesisListItem } from "@/types";
 
 type SynthesisMode = "synthesis" | "super";
@@ -48,6 +49,7 @@ export function CreateSynthesisDialog({
   const [scopeCount, setScopeCount] = useState(5);
   const [visibility, setVisibility] = useState("public");
   const [creating, setCreating] = useState(false);
+  const [workflowRunId, setWorkflowRunId] = useState<string | null>(null);
 
   // Existing syntheses for super-synthesis inclusion
   const [existingSyntheses, setExistingSyntheses] = useState<
@@ -82,24 +84,22 @@ export function CreateSynthesisDialog({
     if (!topic.trim()) return;
     setCreating(true);
     try {
+      let result;
       if (mode === "super") {
-        await createSuperSynthesis({
+        result = await createSuperSynthesis({
           topic: topic.trim(),
           existing_synthesis_ids: Array.from(selectedExisting),
           scope_count: scopeCount,
           visibility,
         });
       } else {
-        await createSynthesis({
+        result = await createSynthesis({
           topic: topic.trim(),
           exploration_budget: budget,
           visibility,
         });
       }
-      onOpenChange(false);
-      setTopic("");
-      setSelectedExisting(new Set());
-      onCreated();
+      setWorkflowRunId(result.workflow_run_id);
     } catch (err) {
       console.error("Failed to create synthesis:", err);
     } finally {
@@ -107,15 +107,35 @@ export function CreateSynthesisDialog({
     }
   };
 
+  const handleProgressComplete = useCallback(() => {
+    onOpenChange(false);
+    setWorkflowRunId(null);
+    setTopic("");
+    setSelectedExisting(new Set());
+    onCreated();
+  }, [onOpenChange, onCreated]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New Synthesis</DialogTitle>
+          <DialogTitle>{workflowRunId ? "Synthesis Progress" : "New Synthesis"}</DialogTitle>
           <DialogDescription>
-            Create a research document from the knowledge graph.
+            {workflowRunId
+              ? "Your synthesis is being generated."
+              : "Create a research document from the knowledge graph."}
           </DialogDescription>
         </DialogHeader>
+
+        {workflowRunId ? (
+          <div className="py-4">
+            <SynthesisProgress
+              workflowRunId={workflowRunId}
+              onComplete={handleProgressComplete}
+            />
+          </div>
+        ) : (
+        <>
         <div className="space-y-4 py-4">
           {/* Mode selector */}
           <div className="space-y-2">
@@ -309,6 +329,8 @@ export function CreateSynthesisDialog({
             {mode === "super" ? "Create Super-Synthesis" : "Create Synthesis"}
           </Button>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );

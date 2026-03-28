@@ -27,6 +27,25 @@ def get_hatchet() -> Hatchet:
     return Hatchet()
 
 
+async def get_workflow_run_details(workflow_run_id: str) -> object:
+    """Fetch full workflow run details (status + task tree) from Hatchet.
+
+    Returns a ``V1WorkflowRunDetails`` object with ``.run`` (status, timestamps),
+    ``.tasks`` (list of ``V1TaskSummary``), and ``.task_events``.
+
+    Raises ``RuntimeError`` if the Hatchet API is unreachable.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    h = get_hatchet()
+    try:
+        return await h.runs.aio_get(workflow_run_id)
+    except Exception as exc:
+        logger.warning("Failed to fetch workflow run %s: %s", workflow_run_id, exc)
+        raise RuntimeError(f"Failed to fetch workflow run '{workflow_run_id}': {exc}") from exc
+
+
 async def dispatch_workflow(
     workflow_name: str,
     input: dict,
