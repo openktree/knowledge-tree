@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { UserMenu } from "@/components/auth/UserMenu";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
@@ -128,8 +129,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           )}
         </nav>
 
-        {/* User menu + collapse toggle */}
+        {/* User menu + theme + collapse toggle */}
         <div className="border-t p-2 flex flex-col gap-1">
+          <ThemeToggle collapsed={collapsed} />
           <UserMenu collapsed={collapsed} />
           <Button
             variant="ghost"

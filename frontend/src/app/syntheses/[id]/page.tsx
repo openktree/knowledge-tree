@@ -74,15 +74,16 @@ export default function SynthesisDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1600px] py-8 px-2">
-      <div className="flex items-center justify-between mb-4">
-        <Button variant="ghost" asChild>
+    <div className="mx-auto max-w-[1600px] py-8 px-4 sm:px-6">
+      {/* Top bar */}
+      <div className="flex items-center justify-between mb-6 max-w-4xl mx-auto">
+        <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground -ml-2">
           <Link href="/syntheses">
-            <ArrowLeft className="mr-2 size-4" />
-            Back to Syntheses
+            <ArrowLeft className="mr-1.5 size-3.5" />
+            Syntheses
           </Link>
         </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <ExportButtons documentId={id} concept={document.concept} />
           <Button
             variant="ghost"
@@ -92,14 +93,15 @@ export default function SynthesisDetailPage() {
             disabled={deleting}
           >
             {deleting ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
             ) : (
-              <Trash2 className="mr-2 size-4" />
+              <Trash2 className="mr-1.5 size-3.5" />
             )}
             Delete
           </Button>
         </div>
       </div>
+
       <SynthesisDocument document={document} />
     </div>
   );

@@ -51,9 +51,6 @@ function buildParagraphSentenceMap(
   const map = new Map<string, SynthesisSentenceResponse[]>();
   if (!definition || sentences.length === 0) return map;
 
-  // Split into blocks, then further split list blocks into individual items
-  // so each list item can match its own sentence (the sentence splitter
-  // splits list items into individual sentences for better embedding quality)
   const rawBlocks = definition
     .split(/\n{2,}/)
     .map((p) => p.trim())
@@ -100,8 +97,6 @@ function buildParagraphSentenceMap(
     }
 
     if (matched.length > 0) {
-      // Use stripped plain text as key — must match what extractText()
-      // returns from react-markdown rendered children
       map.set(plainPara.slice(0, 60).trim(), matched);
     }
   }
@@ -283,15 +278,14 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
 
     const plainText = extractText(children);
 
-    // List items: render without the flex gutter wrapper to preserve indentation
     if (Tag === "li") {
       return (
         <li
           className={`${baseClass} transition-colors ${
             isSelected
-              ? "bg-blue-50 dark:bg-blue-950/30"
+              ? "bg-ocean-dim/50 dark:bg-ocean-dark/20"
               : hasInfo
-                ? "hover:bg-stone-50 dark:hover:bg-stone-900/30 cursor-pointer"
+                ? "hover:bg-secondary cursor-pointer"
                 : ""
           }`}
           onClick={
@@ -306,7 +300,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           {children}
           {hasInfo && countParts && (
             <span className={`text-[10px] font-mono ml-1.5 ${
-              isSelected ? "text-blue-500" : "text-stone-400"
+              isSelected ? "text-ocean" : "text-muted-foreground"
             }`}>
               {countParts}
             </span>
@@ -320,9 +314,9 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         <Tag
           className={`${baseClass} flex-1 transition-colors ${
             isSelected
-              ? "bg-blue-50 dark:bg-blue-950/30 border-l-2 border-blue-400 pl-3"
+              ? "bg-ocean-dim/40 dark:bg-ocean-dark/20 border-l-2 border-ocean pl-3"
               : hasInfo
-                ? "hover:bg-stone-50 dark:hover:bg-stone-900/30 cursor-pointer border-l-2 border-transparent hover:border-stone-300 pl-3"
+                ? "hover:bg-secondary cursor-pointer border-l-2 border-transparent hover:border-border pl-3"
                 : "pl-3 border-l-2 border-transparent"
           }`}
           onClick={
@@ -338,8 +332,8 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
             <span
               className={`text-[10px] font-mono leading-tight ${
                 isSelected
-                  ? "text-blue-500 font-medium"
-                  : "text-stone-400 group-hover:text-stone-500"
+                  ? "text-ocean font-medium"
+                  : "text-muted-foreground/60 group-hover:text-muted-foreground"
               }`}
             >
               {countParts}
@@ -356,25 +350,25 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         interactiveSection(
           "p",
           children,
-          "mb-4 text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200"
+          "mb-4 text-[0.95rem] leading-[1.8] text-foreground/85"
         ),
       h1: ({ children }: { children?: React.ReactNode }) =>
         interactiveSection(
           "h1",
           children,
-          "text-[1.5rem] font-semibold mt-8 mb-3 text-stone-900 dark:text-stone-100"
+          "text-[1.5rem] font-semibold mt-10 mb-3 text-foreground"
         ),
       h2: ({ children }: { children?: React.ReactNode }) =>
         interactiveSection(
           "h2",
           children,
-          "text-[1.2rem] font-semibold mt-6 mb-2 text-stone-900 dark:text-stone-100"
+          "text-[1.2rem] font-semibold mt-8 mb-2 text-foreground border-b border-border/50 pb-1"
         ),
       h3: ({ children }: { children?: React.ReactNode }) =>
         interactiveSection(
           "h3",
           children,
-          "text-[1.05rem] font-medium mt-5 mb-2 text-stone-800 dark:text-stone-200"
+          "text-[1.05rem] font-medium mt-6 mb-2 text-foreground/90"
         ),
       ol: ({ children }: { children?: React.ReactNode }) => (
         <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>
@@ -386,7 +380,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         interactiveSection(
           "li",
           children,
-          "text-[0.95rem] leading-[1.75] text-stone-800 dark:text-stone-200 rounded-sm py-0.5 px-1 -mx-1"
+          "text-[0.95rem] leading-[1.8] text-foreground/85 rounded-sm py-0.5 px-1 -mx-1"
         ),
       a: ({
         href,
@@ -399,7 +393,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           return (
             <Link
               href={href}
-              className="text-blue-700 dark:text-blue-400 underline decoration-dotted underline-offset-2 hover:decoration-solid"
+              className="text-ocean dark:text-ocean-mid underline decoration-dotted underline-offset-2 hover:decoration-solid hover:text-earth dark:hover:text-earth-mid"
               onClick={(e) => e.stopPropagation()}
             >
               {children}
@@ -411,7 +405,7 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-700 dark:text-blue-400 underline decoration-dotted underline-offset-2 hover:decoration-solid"
+            className="text-ocean dark:text-ocean-mid underline decoration-dotted underline-offset-2 hover:decoration-solid hover:text-earth dark:hover:text-earth-mid"
             onClick={(e) => e.stopPropagation()}
           >
             {children}
@@ -419,12 +413,12 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         );
       },
       strong: ({ children }: { children?: React.ReactNode }) => (
-        <strong className="font-semibold text-stone-900 dark:text-stone-100">
+        <strong className="font-semibold text-foreground">
           {children}
         </strong>
       ),
       em: ({ children }: { children?: React.ReactNode }) => (
-        <em className="italic text-stone-600 dark:text-stone-400">
+        <em className="italic text-muted-foreground">
           {children}
         </em>
       ),
@@ -438,13 +432,13 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
   return (
     <>
       {/* ── Document ── */}
-      <div className="mx-auto max-w-4xl">
+      <article className="mx-auto max-w-4xl">
         {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
+        <header className="mb-8 pb-6 border-b border-border/50">
+          <div className="flex items-center gap-2.5 mb-3">
             <Badge
               variant="outline"
-              className="text-[0.65rem] uppercase tracking-wider font-semibold px-2 py-0.5"
+              className="text-[0.6rem] uppercase tracking-[0.1em] font-semibold px-2.5 py-0.5 border-ocean/30 text-ocean dark:text-ocean-mid"
             >
               {document.node_type === "supersynthesis"
                 ? "Super-Synthesis"
@@ -454,14 +448,14 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               type="button"
               onClick={toggleVisibility}
               disabled={togglingVisibility}
-              className="flex items-center gap-1.5 text-[0.72rem] text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition-colors"
+              className="flex items-center gap-1.5 text-[0.72rem] text-muted-foreground hover:text-foreground transition-colors"
               title={`Switch to ${visibility === "public" ? "private" : "public"}`}
             >
               <div
                 className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
                   visibility === "public"
-                    ? "bg-blue-500"
-                    : "bg-stone-300 dark:bg-stone-600"
+                    ? "bg-ocean"
+                    : "bg-border"
                 }`}
               >
                 <span
@@ -475,30 +469,44 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               </span>
             </button>
           </div>
-          <h1 className="text-[2rem] font-semibold leading-tight text-stone-900 dark:text-stone-100 mb-1">
+          <h1 className="text-[2.1rem] font-semibold leading-tight text-foreground mb-2">
             {title}
           </h1>
-          {(date || document.created_at) && (
-            <p className="text-[0.82rem] text-stone-500 dark:text-stone-400">
-              {date ??
-                (document.created_at &&
-                  new Date(document.created_at).toLocaleDateString(undefined, {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  }))}
-            </p>
-          )}
-        </div>
+          <div className="flex items-center gap-3 text-[0.82rem] text-muted-foreground">
+            {(date || document.created_at) && (
+              <span>
+                {date ??
+                  (document.created_at &&
+                    new Date(document.created_at).toLocaleDateString(undefined, {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    }))}
+              </span>
+            )}
+            {document.sentences.length > 0 && (
+              <>
+                <span className="text-border">|</span>
+                <span>{document.sentences.length} sections</span>
+              </>
+            )}
+            {document.referenced_nodes.length > 0 && (
+              <>
+                <span className="text-border">|</span>
+                <span>{document.referenced_nodes.length} nodes</span>
+              </>
+            )}
+          </div>
+        </header>
 
         {/* Body */}
-        <div className="mb-8">
+        <div className="mb-10">
           {hasDefinition ? (
             <Markdown components={markdownComponents}>
               {document.definition!}
             </Markdown>
           ) : (
-            <p className="text-stone-500 italic">No content available.</p>
+            <p className="text-muted-foreground italic">No content available.</p>
           )}
         </div>
 
@@ -508,20 +516,20 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
         {document.referenced_nodes.length > 0 && (
           <SynthesisNodeList nodes={document.referenced_nodes} />
         )}
-      </div>
+      </article>
 
       {/* ── Evidence Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="sm:max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-400">
+            <DialogTitle className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-muted-foreground">
               Section Evidence
             </DialogTitle>
           </DialogHeader>
 
-          {/* Selected paragraph — stays visible while scrolling */}
-          <div className="shrink-0 border-l-2 border-blue-400 pl-4 py-1 bg-stone-50/50 dark:bg-stone-900/30 rounded-r">
-            <p className="text-[0.85rem] leading-[1.6] text-stone-600 dark:text-stone-400 italic max-h-24 overflow-y-auto">
+          {/* Selected paragraph */}
+          <div className="shrink-0 border-l-2 border-ocean pl-4 py-2 bg-ocean-dim/20 dark:bg-ocean-dark/10 rounded-r">
+            <p className="text-[0.85rem] leading-[1.65] text-muted-foreground italic max-h-24 overflow-y-auto">
               {selectedParaText.slice(0, 400)}
               {selectedParaText.length > 400 ? "..." : ""}
             </p>
@@ -537,14 +545,14 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                   onClick={() => setNodesOpen(!nodesOpen)}
                 >
                   <ChevronRight
-                    className={`size-3.5 text-stone-400 transition-transform ${
+                    className={`size-3.5 text-muted-foreground transition-transform ${
                       nodesOpen ? "rotate-90" : ""
                     }`}
                   />
-                  <span className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-500 dark:text-stone-400">
+                  <span className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-muted-foreground">
                     Nodes
                   </span>
-                  <span className="text-[0.68rem] text-stone-400 ml-auto">
+                  <span className="text-[0.68rem] text-muted-foreground/60 ml-auto">
                     {selectedNodes.length}
                   </span>
                 </button>
@@ -558,14 +566,14 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                           href={`/nodes/${nid}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-2 rounded-md border border-stone-200 dark:border-stone-800 px-3 py-2 text-[0.82rem] hover:bg-stone-50 dark:hover:bg-stone-900 hover:border-stone-300 transition-all group/node"
+                          className="flex items-center gap-2 rounded-md border px-3 py-2 text-[0.82rem] hover:bg-accent hover:border-ocean/30 transition-all group/node"
                         >
-                          <CircleDot className="size-3 text-blue-500 shrink-0" />
-                          <span className="truncate text-stone-700 dark:text-stone-300 group-hover/node:text-blue-700 dark:group-hover/node:text-blue-400">
+                          <CircleDot className="size-3 text-ocean shrink-0" />
+                          <span className="truncate text-foreground/80 group-hover/node:text-ocean dark:group-hover/node:text-ocean-mid">
                             {nodeInfo?.concept ?? nid.slice(0, 8) + "..."}
                           </span>
                           {nodeInfo?.node_type && (
-                            <span className="text-[0.6rem] uppercase tracking-wider text-stone-400 shrink-0 ml-auto">
+                            <span className="text-[0.6rem] uppercase tracking-wider text-muted-foreground/60 shrink-0 ml-auto">
                               {nodeInfo.node_type}
                             </span>
                           )}
@@ -585,26 +593,26 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 onClick={() => setFactsOpen(!factsOpen)}
               >
                 <ChevronRight
-                  className={`size-3.5 text-stone-400 transition-transform ${
+                  className={`size-3.5 text-muted-foreground transition-transform ${
                     factsOpen ? "rotate-90" : ""
                   }`}
                 />
-                <span className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-stone-500 dark:text-stone-400">
+                <span className="text-[0.68rem] uppercase tracking-[0.1em] font-bold text-muted-foreground">
                   Evidence
                 </span>
-                <span className="text-[0.68rem] text-stone-400 ml-auto">
+                <span className="text-[0.68rem] text-muted-foreground/60 ml-auto">
                   {loadingFacts ? "..." : factLinks.length}
                 </span>
               </button>
               {factsOpen && (
                 <div>
                   {loadingFacts ? (
-                    <div className="flex items-center gap-2 text-[0.82rem] text-stone-400 py-6 justify-center">
+                    <div className="flex items-center gap-2 text-[0.82rem] text-muted-foreground py-6 justify-center">
                       <Loader2 className="size-4 animate-spin" />
                       Loading evidence...
                     </div>
                   ) : factLinks.length === 0 ? (
-                    <p className="text-[0.82rem] text-stone-400 italic py-4 text-center">
+                    <p className="text-[0.82rem] text-muted-foreground italic py-4 text-center">
                       No evidence for this section.
                     </p>
                   ) : (
@@ -633,17 +641,17 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
     <div>
       <button
         type="button"
-        className="w-full text-left px-2 py-1.5 rounded hover:bg-stone-50 dark:hover:bg-stone-900 transition-colors"
+        className="w-full text-left px-2 py-1.5 rounded hover:bg-accent transition-colors"
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-1.5">
           <ChevronRight
-            className={`size-3 text-stone-400 shrink-0 transition-transform ${
+            className={`size-3 text-muted-foreground shrink-0 transition-transform ${
               open ? "rotate-90" : ""
             }`}
           />
           <span
-            className="text-[0.82rem] font-medium text-stone-700 dark:text-stone-300 truncate flex-1"
+            className="text-[0.82rem] font-medium text-foreground/80 truncate flex-1"
             title={group.sourceUri || group.title}
           >
             {group.title || "Unknown source"}
@@ -653,19 +661,19 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
               href={group.sourceUri}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 text-stone-400 hover:text-blue-500 transition-colors"
+              className="shrink-0 text-muted-foreground hover:text-ocean transition-colors"
               onClick={(e) => e.stopPropagation()}
               title={group.sourceUri}
             >
               <ExternalLink className="size-3" />
             </a>
           )}
-          <span className="text-[0.68rem] font-mono text-stone-400 shrink-0">
+          <span className="text-[0.68rem] font-mono text-muted-foreground/60 shrink-0">
             {group.facts.length}
           </span>
         </div>
         {group.author && (
-          <p className="text-[0.75rem] text-stone-500 dark:text-stone-400 pl-[18px] mt-0.5 italic">
+          <p className="text-[0.75rem] text-muted-foreground pl-[18px] mt-0.5 italic">
             {group.author}
           </p>
         )}
@@ -678,18 +686,18 @@ function SourceFactGroup({ group }: { group: FactGroup }) {
             href={`/facts/${fl.fact_id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="block border-l-2 border-stone-200 dark:border-stone-700 hover:border-blue-400 ml-[18px] pl-3 py-2 transition-colors group/fact"
+            className="block border-l-2 border-border hover:border-ocean ml-[18px] pl-3 py-2 transition-colors group/fact"
           >
-            <p className="text-[0.82rem] leading-[1.6] text-stone-700 dark:text-stone-300 line-clamp-3 group-hover/fact:text-stone-900 dark:group-hover/fact:text-stone-100">
+            <p className="text-[0.82rem] leading-[1.65] text-foreground/70 line-clamp-3 group-hover/fact:text-foreground">
               {fl.content || fl.fact_id.slice(0, 12) + "..."}
             </p>
             <div className="flex items-center gap-2 mt-1">
               {fl.fact_type && (
-                <span className="text-[0.65rem] uppercase tracking-wider font-medium text-stone-400">
+                <span className="text-[0.65rem] uppercase tracking-wider font-medium text-earth dark:text-earth-mid">
                   {fl.fact_type}
                 </span>
               )}
-              <span className="text-[0.65rem] font-mono text-stone-400 ml-auto">
+              <span className="text-[0.65rem] font-mono text-muted-foreground/60 ml-auto">
                 {(fl.embedding_distance * 100).toFixed(0)}%
               </span>
             </div>

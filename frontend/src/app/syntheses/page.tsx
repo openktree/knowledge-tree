@@ -56,13 +56,13 @@ export default function SynthesesPage() {
       {/* Header */}
       <div className="flex items-end justify-between mb-10">
         <div>
-          <p className="text-[0.68rem] uppercase tracking-[0.12em] font-bold text-stone-400 mb-1">
+          <p className="text-[0.68rem] uppercase tracking-[0.12em] font-bold text-muted-foreground mb-1">
             Research Documents
           </p>
-          <h1 className="text-[2rem] font-semibold text-stone-900 dark:text-stone-100 leading-tight">
+          <h1 className="text-[2rem] font-semibold text-foreground leading-tight">
             Syntheses
           </h1>
-          <p className="text-[0.85rem] text-stone-500 dark:text-stone-400 mt-1">
+          <p className="text-[0.85rem] text-muted-foreground mt-1">
             {total} document{total !== 1 ? "s" : ""}
           </p>
         </div>
@@ -78,17 +78,17 @@ export default function SynthesesPage() {
       {/* Content */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="size-5 animate-spin text-stone-400" />
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="rounded-full bg-stone-100 dark:bg-stone-900 p-6 mb-5">
-            <FileText className="size-8 text-stone-400" />
+          <div className="rounded-full bg-muted p-6 mb-5">
+            <FileText className="size-8 text-muted-foreground" />
           </div>
-          <h3 className="text-[1.1rem] font-medium text-stone-700 dark:text-stone-300 mb-1">
+          <h3 className="text-[1.1rem] font-medium text-foreground/80 mb-1">
             No syntheses yet
           </h3>
-          <p className="text-[0.85rem] text-stone-500 dark:text-stone-400 mb-6 max-w-sm">
+          <p className="text-[0.85rem] text-muted-foreground mb-6 max-w-sm">
             Create a synthesis to explore and analyze topics across your
             knowledge graph.
           </p>
@@ -130,7 +130,7 @@ export default function SynthesesPage() {
                     />
                     {/* Nested children */}
                     {children.length > 0 && (
-                      <div className="ml-6 mt-1 space-y-1 border-l-2 border-stone-200 dark:border-stone-800 pl-4">
+                      <div className="ml-6 mt-1 space-y-1 border-l-2 border-border pl-4">
                         {children.map((child) => (
                           <SynthesisCard
                             key={child.id}
@@ -176,14 +176,14 @@ function SynthesisCard({
   return (
     <a
       href={`/syntheses/${item.id}`}
-      className={`block rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 hover:border-stone-300 dark:hover:border-stone-700 hover:shadow-sm transition-all ${
+      className={`block rounded-lg border bg-card hover:border-ocean/30 hover:shadow-sm transition-all ${
         compact ? "px-3 py-2" : "px-5 py-4"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h2
-            className={`font-medium text-stone-800 dark:text-stone-200 truncate ${
+            className={`font-medium text-foreground/85 truncate ${
               compact ? "text-[0.88rem] mb-0.5" : "text-[1.05rem] mb-1.5"
             }`}
           >
@@ -193,7 +193,7 @@ function SynthesisCard({
             {!compact && (
               <Badge
                 variant="outline"
-                className="text-[0.6rem] uppercase tracking-wider font-semibold px-2 py-0"
+                className="text-[0.6rem] uppercase tracking-wider font-semibold px-2 py-0 border-ocean/30 text-ocean dark:text-ocean-mid"
               >
                 {item.node_type === "supersynthesis"
                   ? "Super-Synthesis"
@@ -208,13 +208,13 @@ function SynthesisCard({
             >
               {item.visibility}
             </Badge>
-            <span className="text-[0.78rem] text-stone-400">
+            <span className="text-[0.78rem] text-muted-foreground">
               {item.sentence_count} sentences
             </span>
             {(date || item.created_at) && (
               <>
-                <span className="text-stone-300 dark:text-stone-700">·</span>
-                <span className="text-[0.78rem] text-stone-400">
+                <span className="text-border">·</span>
+                <span className="text-[0.78rem] text-muted-foreground">
                   {date ??
                     (item.created_at &&
                       new Date(item.created_at).toLocaleDateString(
@@ -226,8 +226,8 @@ function SynthesisCard({
             )}
             {!compact && item.sub_synthesis_ids.length > 0 && (
               <>
-                <span className="text-stone-300 dark:text-stone-700">·</span>
-                <span className="text-[0.78rem] text-stone-400">
+                <span className="text-border">·</span>
+                <span className="text-[0.78rem] text-muted-foreground">
                   {item.sub_synthesis_ids.length} sub-syntheses
                 </span>
               </>
@@ -237,7 +237,7 @@ function SynthesisCard({
         <Button
           variant="ghost"
           size="icon"
-          className={`shrink-0 text-stone-400 hover:text-red-500 dark:hover:text-red-400 ${
+          className={`shrink-0 text-muted-foreground hover:text-destructive ${
             compact ? "size-6" : "size-8 mt-0.5"
           }`}
           onClick={(e) => onDelete(e, item.id)}
