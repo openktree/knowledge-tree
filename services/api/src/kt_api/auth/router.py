@@ -187,6 +187,7 @@ async def api_key_status(
 
 class RegistrationStatusResponse(BaseModel):
     registration_open: bool
+    waitlist_enabled: bool = False
     reason: str | None = None
 
 
@@ -199,6 +200,7 @@ async def registration_status(
     if settings.disable_self_registration:
         return RegistrationStatusResponse(
             registration_open=False,
+            waitlist_enabled=True,
             reason="Registration is disabled by the administrator.",
         )
 
@@ -206,6 +208,7 @@ async def registration_status(
     if await repo.get_bool("disable_self_registration"):
         return RegistrationStatusResponse(
             registration_open=False,
+            waitlist_enabled=True,
             reason="Registration is disabled by the administrator.",
         )
 

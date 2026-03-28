@@ -70,6 +70,13 @@ import type {
   SystemSettingsResponse,
   UpdateSystemSettingsRequest,
   RegistrationStatusResponse,
+  WaitlistSubmitRequest,
+  WaitlistSubmitResponse,
+  WaitlistEntryResponse,
+  WaitlistReviewResponse,
+  InviteCreateRequest,
+  InviteResponse,
+  InviteValidateResponse,
   CreateSynthesisRequest,
   CreateSuperSynthesisRequest,
   SynthesisDocumentResponse,
@@ -1034,6 +1041,69 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify(data),
         },
+      );
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // Waitlist
+  // -------------------------------------------------------------------------
+  waitlist: {
+    submit(data: WaitlistSubmitRequest): Promise<WaitlistSubmitResponse> {
+      return request<WaitlistSubmitResponse>("/waitlist", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+
+    list(status?: string): Promise<WaitlistEntryResponse[]> {
+      const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+      return request<WaitlistEntryResponse[]>(`/waitlist${qs}`);
+    },
+
+    review(
+      entryId: string,
+      data: { status: string; expires_in_days?: number },
+    ): Promise<WaitlistReviewResponse> {
+      return request<WaitlistReviewResponse>(
+        `/waitlist/${encodeURIComponent(entryId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        },
+      );
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // Invites
+  // -------------------------------------------------------------------------
+  invites: {
+    create(data: InviteCreateRequest): Promise<InviteResponse> {
+      return request<InviteResponse>("/invites", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+
+    list(): Promise<InviteResponse[]> {
+      return request<InviteResponse[]>("/invites");
+    },
+
+    validate(
+      email: string,
+      code: string,
+    ): Promise<InviteValidateResponse> {
+      return request<InviteValidateResponse>("/invites/validate", {
+        method: "POST",
+        body: JSON.stringify({ email, code }),
+      });
+    },
+
+    revoke(inviteId: string): Promise<void> {
+      return request<void>(
+        `/invites/${encodeURIComponent(inviteId)}`,
+        { method: "DELETE" },
       );
     },
   },

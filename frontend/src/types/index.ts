@@ -1025,7 +1025,73 @@ export interface UpdateSystemSettingsRequest {
 
 export interface RegistrationStatusResponse {
   registration_open: boolean;
+  waitlist_enabled?: boolean;
   reason?: string;
+}
+
+// ── Waitlist ────────────────────────────────────────────────────────────
+
+export interface WaitlistSubmitRequest {
+  email: string;
+  display_name?: string;
+  message?: string;
+}
+
+export interface WaitlistSubmitResponse {
+  status: string;
+}
+
+export interface WaitlistEntryResponse {
+  id: string;
+  email: string;
+  display_name: string | null;
+  message: string | null;
+  status: string;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+// ── Invites ─────────────────────────────────────────────────────────────
+
+export interface InviteCreateRequest {
+  email: string;
+  expires_in_days?: number;
+}
+
+export interface InviteResponse {
+  id: string;
+  email: string;
+  code: string;
+  expires_at: string;
+  redeemed_at: string | null;
+  created_at: string;
+}
+
+export interface InviteValidateRequest {
+  email: string;
+  code: string;
+}
+
+export interface InviteValidateResponse {
+  valid: boolean;
+  email: string;
+}
+
+export interface InviteInfo {
+  id: string;
+  email: string;
+  code: string;
+  expires_at: string;
+}
+
+export interface WaitlistReviewRequest {
+  status: string;
+  expires_in_days?: number;
+}
+
+export interface WaitlistReviewResponse {
+  entry: WaitlistEntryResponse;
+  invite: InviteInfo | null;
 }
 
 // ── Seeds ──────────────────────────────────────────────────────────────

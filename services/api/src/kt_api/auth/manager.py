@@ -39,20 +39,40 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
         if user_count > 0:
             settings = get_settings()
-            if settings.disable_self_registration:
-                raise HTTPException(status_code=403, detail="Registration is disabled by the administrator.")
+            registration_disabled = settings.disable_self_registration
+            if not registration_disabled:
+                repo = SystemSettingsRepository(session)
+                registration_disabled = await repo.get_bool("disable_self_registration")
 
-            repo = SystemSettingsRepository(session)
-            if await repo.get_bool("disable_self_registration"):
-                raise HTTPException(status_code=403, detail="Registration is disabled by the administrator.")
+            if registration_disabled:
+                # Allow registration if the user has a valid invite
+                from kt_db.repositories.invites import InviteRepository
+
+                invite_repo = InviteRepository(session)
+                invite = await invite_repo.get_any_valid_for_email(user_create.email)
+                if invite is None:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Registration is disabled by the administrator.",
+                    )
 
         return await super().create(user_create, safe=safe, request=request)
 
     async def on_after_register(self, user: User, request=None) -> None:  # type: ignore[override]
         logger.info("New user registered: %s (%s)", user.email, user.id)
 
-        # Auto-promote the first registered user to admin
         session = self.user_db.session
+
+        # Mark any matching invite as redeemed
+        from kt_db.repositories.invites import InviteRepository
+
+        invite_repo = InviteRepository(session)
+        invite = await invite_repo.get_any_valid_for_email(user.email)
+        if invite is not None:
+            await invite_repo.redeem(invite.id, user.id)
+            logger.info("Invite %s redeemed by user %s", invite.id, user.email)
+
+        # Auto-promote the first registered user to admin
         result = await session.execute(select(func.count()).select_from(User))
         user_count = result.scalar_one()
         if user_count == 1:

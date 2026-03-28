@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth";
 import { api } from "@/lib/api";
+import { WaitlistForm } from "@/components/auth/WaitlistForm";
 
 export function RegisterForm() {
   const { login } = useAuth();
@@ -35,14 +36,7 @@ export function RegisterForm() {
   }
 
   if (registrationClosed) {
-    return (
-      <div className="flex flex-col gap-4 items-center text-center">
-        <p className="text-sm text-muted-foreground">{registrationClosed}</p>
-        <a href="/login" className="text-sm underline hover:text-foreground">
-          Back to sign in
-        </a>
-      </div>
-    );
+    return <WaitlistForm closedMessage={registrationClosed} />;
   }
 
   async function handleSubmit(e: React.FormEvent) {
