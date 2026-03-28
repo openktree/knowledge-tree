@@ -875,6 +875,13 @@ export interface PipelineTaskItem {
   children: PipelineTaskItem[];
 }
 
+export interface PipelineSnapshotResponse {
+  message_id: string;
+  workflow_run_id: string | null;
+  status: string; // "pending" | "running" | "completed" | "failed"
+  tasks: PipelineTaskItem[];
+}
+
 export interface ProgressResponse {
   message_id: string;
   status: string; // "pending" | "running" | "completed" | "failed"

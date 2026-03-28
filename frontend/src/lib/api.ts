@@ -76,6 +76,7 @@ import type {
   PaginatedSynthesesResponse,
   SentenceFactLink,
   SynthesisNodeResponse,
+  PipelineSnapshotResponse,
 } from "@/types";
 
 const BASE_URL =
@@ -1146,6 +1147,12 @@ export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
   return request<{ status: string; workflow_run_id: string; topic: string }>(
     "/super-syntheses",
     { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function getWorkflowProgress(workflowRunId: string) {
+  return request<PipelineSnapshotResponse>(
+    `/workflows/${encodeURIComponent(workflowRunId)}/progress`
   );
 }
 
