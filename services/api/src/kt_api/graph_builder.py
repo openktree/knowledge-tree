@@ -23,5 +23,5 @@ async def auto_build_graph() -> dict[str, str]:
     """
     from kt_hatchet.client import dispatch_workflow
 
-    run_id = await dispatch_workflow("auto_build_task", {})
+    run_id = await dispatch_workflow("auto_build_graph", {})
     return {"status": "started", "workflow_run_id": run_id}

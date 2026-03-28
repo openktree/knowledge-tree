@@ -193,7 +193,7 @@ async def synthesize_perspective(seed_key: str) -> SynthesizeResponse:
         # Build thesis
         try:
             await run_workflow(
-                "build_composite_task",
+                "build_composite",
                 {
                     "node_type": "perspective",
                     "concept": claim,
@@ -213,7 +213,7 @@ async def synthesize_perspective(seed_key: str) -> SynthesizeResponse:
         if antithesis:
             try:
                 await run_workflow(
-                    "build_composite_task",
+                    "build_composite",
                     {
                         "node_type": "perspective",
                         "concept": antithesis,
@@ -327,7 +327,7 @@ async def promote_seed_to_node(
 
     try:
         run_id = await dispatch_workflow(
-            "node_pipeline_wf",
+            "node_pipeline",
             {
                 "scope_id": scope_id,
                 "concept": seed.name,

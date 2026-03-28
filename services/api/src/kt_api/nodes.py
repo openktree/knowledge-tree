@@ -616,7 +616,7 @@ async def rebuild_node(
     scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
     await dispatch_workflow(
-        "rebuild_node_task",
+        "rebuild_node",
         {
             "node_id": node_id,
             "mode": mode,
@@ -818,7 +818,7 @@ async def enrich_node(
 
     from kt_hatchet.client import dispatch_workflow
 
-    await dispatch_workflow("rebuild_node_task", {"node_id": node_id, "mode": "full", "scope": "all"})
+    await dispatch_workflow("rebuild_node", {"node_id": node_id, "mode": "full", "scope": "all"})
     return {"status": "started", "node_id": node_id}
 
 
@@ -852,7 +852,7 @@ async def quick_add_node(
         from kt_hatchet.client import dispatch_workflow
 
         await dispatch_workflow(
-            "rebuild_node_task",
+            "rebuild_node",
             {
                 "node_id": str(match.id),
                 "mode": "full",
@@ -887,7 +887,7 @@ async def quick_add_node(
         await ws.commit()
 
     run_id = await dispatch_workflow(
-        "node_pipeline_wf",
+        "node_pipeline",
         {
             "scope_id": scope_id,
             "concept": concept,
@@ -1062,7 +1062,7 @@ async def quick_add_perspective(
 
         await asyncio.gather(
             dispatch_workflow(
-                "node_pipeline_wf",
+                "node_pipeline",
                 {
                     "scope_id": scope_id,
                     "concept": body.thesis,
@@ -1073,7 +1073,7 @@ async def quick_add_perspective(
                 },
             ),
             dispatch_workflow(
-                "node_pipeline_wf",
+                "node_pipeline",
                 {
                     "scope_id": scope_id,
                     "concept": body.antithesis,
@@ -1129,7 +1129,7 @@ async def regenerate_composite(
 
     from kt_hatchet.client import dispatch_workflow
 
-    await dispatch_workflow("regenerate_composite_task", {"node_id": node_id})
+    await dispatch_workflow("regenerate_composite", {"node_id": node_id})
     return {"status": "started", "node_id": node_id}
 
 

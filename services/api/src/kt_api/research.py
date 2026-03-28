@@ -350,7 +350,7 @@ async def confirm_ingest(
 
     api_key = require_api_key(user)
     run_id = await dispatch_workflow(
-        "ingest_confirm_wf",
+        "ingest_confirm",
         {
             "nav_budget": body.nav_budget,
             "selected_chunks": body.selected_chunks,
@@ -493,7 +493,7 @@ async def decompose_ingest(
 
     api_key = require_api_key(user)
     run_id = await dispatch_workflow(
-        "ingest_decompose_wf",
+        "ingest_decompose",
         {
             "conversation_id": conversation_id,
             "message_id": str(assistant_msg.id),
@@ -659,7 +659,7 @@ async def build_ingest(
 
     api_key = require_api_key(user)
     run_id = await dispatch_workflow(
-        "ingest_build_wf",
+        "ingest_build",
         IngestBuildInput(
             selected_nodes=confirmed_nodes,
             conversation_id=str(conv_uuid),
@@ -725,7 +725,7 @@ async def bottom_up_prepare(
 
     api_key = require_api_key(user)
     run_id = await dispatch_workflow(
-        "bottom_up_prepare_wf",
+        "bottom_up_prepare",
         {
             "query": body.query,
             "explore_budget": body.explore_budget,
@@ -992,7 +992,7 @@ async def agent_select(
 
     api_key = require_api_key(user)
     await dispatch_workflow(
-        "agent_select_wf",
+        "agent_select",
         {
             "proposed_nodes": proposed_nodes,
             "max_select": body.max_select,
