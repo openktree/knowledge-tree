@@ -1,5 +1,6 @@
 ---
 import WikiLayout from "../../layouts/WikiLayout.astro";
+import RichSegments from "../../components/RichSegments.astro";
 import { getSynthesis, nodeHref } from "../../lib/api.js";
 import { parseMarkdownBlocks } from "../../lib/justification.js";
 import { formatSynthesisConcept, buildParagraphSentenceMap } from "../../lib/synthesis-utils.js";
@@ -87,41 +88,34 @@ const blockMetas: BlockMeta[] = blocks.map((block) => {
           {blocks.map((block, i) => {
             const meta = blockMetas[i];
             const hasEvidence = meta.paraKey && (meta.nodeCount > 0 || meta.factCount > 0);
+            const blockCls = `synthesis-block ${hasEvidence ? "synthesis-block--clickable" : ""}`;
+            const dataAttrs = {
+              "data-para-key": meta.paraKey ?? undefined,
+              "data-sentence-positions": meta.sentencePositions.length > 0 ? JSON.stringify(meta.sentencePositions) : undefined,
+              "data-node-ids": meta.nodeIds.length > 0 ? JSON.stringify(meta.nodeIds) : undefined,
+            };
+            const badge = hasEvidence ? <span class="synthesis-para-badge">{meta.nodeCount}n {meta.factCount}f</span> : null;
             if (block.kind === "heading") {
               const Tag = block.level === 1 ? "h2" : block.level === 2 ? "h3" : "h4";
               return (
-                <Tag
-                  class={`synthesis-block ${hasEvidence ? "synthesis-block--clickable" : ""}`}
-                  data-para-key={meta.paraKey ?? undefined}
-                  data-sentence-positions={meta.sentencePositions.length > 0 ? JSON.stringify(meta.sentencePositions) : undefined}
-                  data-node-ids={meta.nodeIds.length > 0 ? JSON.stringify(meta.nodeIds) : undefined}
-                >
-                  {block.segments.map((s) =>
-                    s.kind === "text" ? s.text :
-                    s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                    <a href={s.href}>{s.text}</a>
-                  )}
-                  {hasEvidence && (
-                    <span class="synthesis-para-badge">{meta.nodeCount}n {meta.factCount}f</span>
-                  )}
+                <Tag class={blockCls} {...dataAttrs}>
+                  <RichSegments segments={block.segments} />
+                  {badge}
                 </Tag>
               );
             }
+            if (block.kind === "list-item") {
+              return (
+                <li class={blockCls} {...dataAttrs}>
+                  <RichSegments segments={block.segments} />
+                  {badge}
+                </li>
+              );
+            }
             return (
-              <p
-                class={`synthesis-block ${hasEvidence ? "synthesis-block--clickable" : ""}`}
-                data-para-key={meta.paraKey ?? undefined}
-                data-sentence-positions={meta.sentencePositions.length > 0 ? JSON.stringify(meta.sentencePositions) : undefined}
-                data-node-ids={meta.nodeIds.length > 0 ? JSON.stringify(meta.nodeIds) : undefined}
-              >
-                {block.segments.map((s) =>
-                  s.kind === "text" ? s.text :
-                  s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                  <a href={s.href}>{s.text}</a>
-                )}
-                {hasEvidence && (
-                  <span class="synthesis-para-badge">{meta.nodeCount}n {meta.factCount}f</span>
-                )}
+              <p class={blockCls} {...dataAttrs}>
+                <RichSegments segments={block.segments} />
+                {badge}
               </p>
             );
           })}

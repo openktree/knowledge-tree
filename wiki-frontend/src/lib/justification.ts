@@ -18,8 +18,14 @@ export interface LinkSegment {
   href: string;
 }
 
+/** Bold text segment. */
+export interface BoldSegment {
+  kind: "bold";
+  text: string;
+}
+
 export type JustificationSegment = TextSegment | CitationSegment;
-export type RichTextSegment = TextSegment | CitationSegment | LinkSegment;
+export type RichTextSegment = TextSegment | CitationSegment | LinkSegment | BoldSegment;
 
 /**
  * Convert a justification string to plain text, replacing {fact:uuid}
@@ -108,8 +114,8 @@ export function parseRichText(
   const seen = new Map<string, number>();
   let counter = 1;
 
-  // Match {{fact:uuid|label}}, {fact:uuid}, or [text](url) markdown links
-  const pattern = /\{\{fact:([0-9a-f-]+)\|[^}]*\}\}|\{fact:([0-9a-f-]+)\}|\[([^\]]+)\]\(([^)]+)\)/gi;
+  // Match {{fact:uuid|label}}, {fact:uuid}, **bold**, or [text](url) markdown links
+  const pattern = /\{\{fact:([0-9a-f-]+)\|[^}]*\}\}|\{fact:([0-9a-f-]+)\}|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -127,6 +133,9 @@ export function parseRichText(
       const factId = match[2];
       if (!seen.has(factId)) seen.set(factId, counter++);
       segments.push({ kind: "citation", factId, num: seen.get(factId)! });
+    } else if (match[5]) {
+      // **bold** format
+      segments.push({ kind: "bold", text: match[5] });
     } else {
       segments.push({ kind: "link", text: match[3], href: match[4] });
     }
@@ -139,9 +148,9 @@ export function parseRichText(
   return segments;
 }
 
-/** A block of parsed markdown content (header or paragraph). */
+/** A block of parsed markdown content (header, paragraph, or list item). */
 export interface MarkdownBlock {
-  kind: "heading" | "paragraph";
+  kind: "heading" | "paragraph" | "list-item";
   level?: number; // 1-6 for headings
   segments: RichTextSegment[];
 }
@@ -171,6 +180,7 @@ export function parseMarkdownBlocks(
 
   for (const line of lines) {
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    const listMatch = line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
     if (headingMatch) {
       flushParagraph();
       const level = headingMatch[1].length;
@@ -178,6 +188,12 @@ export function parseMarkdownBlocks(
         kind: "heading",
         level,
         segments: parseRichText(headingMatch[2]),
+      });
+    } else if (listMatch) {
+      flushParagraph();
+      blocks.push({
+        kind: "list-item",
+        segments: parseRichText(listMatch[3]),
       });
     } else if (line.trim() === "") {
       flushParagraph();
