@@ -1,0 +1,90 @@
+---
+---
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>Services</h4>
+        <a href="https://research.openktree.com">Research App</a>
+        <a href="https://docs.openktree.com">Documentation</a>
+        <a href="https://wiki.openktree.com">Wiki</a>
+        <a href="https://mcp.openktree.com">MCP Server</a>
+        <a href="https://api.openktree.com">API</a>
+      </div>
+      <div class="footer-col">
+        <h4>Documentation</h4>
+        <a href="https://docs.openktree.com/how-it-works/values-and-principles"
+          >How It Works</a
+        >
+        <a href="https://docs.openktree.com/mcp/overview">MCP Integration</a>
+        <a href="https://docs.openktree.com/contributing/architecture-overview"
+          >Contributing</a
+        >
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="https://github.com/openktree/knowledge-tree">GitHub</a>
+        <a
+          href="https://docs.openktree.com/contributing/development-setup"
+          >Development Setup</a
+        >
+      </div>
+    </div>
+    <div class="footer-bottom">
+      Knowledge Tree — Open Knowledge Commons for Humanity
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    background: var(--color-nav-bg);
+    padding: 3rem 2rem 2rem;
+    color: var(--color-nav-text);
+  }
+
+  .footer-inner {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+
+  .footer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .footer-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .footer-col h4 {
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    color: #fff;
+    margin-bottom: 0.25rem;
+  }
+
+  .footer-col a {
+    color: var(--color-nav-text-dim);
+    font-size: 0.85rem;
+    text-decoration: none;
+    transition: color var(--t-fast);
+  }
+
+  .footer-col a:hover {
+    color: #fff;
+  }
+
+  .footer-bottom {
+    text-align: center;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-nav-border);
+    font-size: 0.85rem;
+    color: var(--color-nav-text-dim);
+  }
+</style>

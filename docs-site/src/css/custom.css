@@ -1,0 +1,154 @@
+/* Earth theme — derived from wiki-frontend/src/styles/global.css
+ * Keep in sync with the canonical source when tokens change.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ── Light mode ── */
+:root {
+  /* Primary (ocean) */
+  --ifm-color-primary: #1e63a8;
+  --ifm-color-primary-dark: #153e6e;
+  --ifm-color-primary-darker: #12345d;
+  --ifm-color-primary-darkest: #0e264a;
+  --ifm-color-primary-light: #3b82c4;
+  --ifm-color-primary-lighter: #5a9ad4;
+  --ifm-color-primary-lightest: #dbeef8;
+
+  /* Surfaces */
+  --ifm-background-color: #f8f5f0;
+  --ifm-background-surface-color: #ffffff;
+  --ifm-font-color-base: #1c1915;
+  --ifm-font-color-secondary: #6a6059;
+
+  /* Typography */
+  --ifm-heading-font-family: "Lora", Georgia, serif;
+  --ifm-font-family-base: "Inter", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --ifm-font-family-monospace: "JetBrains Mono", "Fira Code", "Courier New",
+    monospace;
+  --ifm-code-font-size: 85%;
+
+  /* Layout */
+  --ifm-global-radius: 8px;
+  --ifm-border-color: #d4cdc2;
+
+  /* Links */
+  --ifm-link-color: #1e63a8;
+  --ifm-link-hover-color: #7c4e28;
+
+  /* Navbar (always dark) */
+  --ifm-navbar-background-color: #111009;
+  --ifm-navbar-link-color: #ddd8cf;
+  --ifm-navbar-link-hover-color: #ffffff;
+
+  /* Footer (dark) */
+  --ifm-footer-background-color: #111009;
+  --ifm-footer-color: #ddd8cf;
+  --ifm-footer-link-color: #ddd8cf;
+  --ifm-footer-link-hover-color: #ffffff;
+
+  /* Earth accent palette */
+  --ocean: #1e63a8;
+  --ocean-mid: #3b82c4;
+  --ocean-dim: #dbeef8;
+  --forest: #1a6b42;
+  --forest-mid: #28a464;
+  --forest-dim: #d4f0e2;
+  --earth: #7c4e28;
+  --earth-mid: #b07040;
+  --earth-dim: #fae4cc;
+  --stone: #5a5248;
+  --stone-mid: #8a7f72;
+}
+
+/* ── Dark mode ── */
+[data-theme="dark"] {
+  --ifm-background-color: #0e0d0a;
+  --ifm-background-surface-color: #181611;
+  --ifm-font-color-base: #e8e3d8;
+  --ifm-font-color-secondary: #9a9082;
+  --ifm-border-color: #2c2922;
+
+  --ifm-link-color: #6daee0;
+  --ifm-link-hover-color: #d4884e;
+
+  --ifm-color-primary: #6daee0;
+  --ifm-color-primary-dark: #4d9ad8;
+  --ifm-color-primary-darker: #3d8fd3;
+  --ifm-color-primary-darkest: #1e63a8;
+  --ifm-color-primary-light: #8dc0e8;
+  --ifm-color-primary-lighter: #a0ccee;
+  --ifm-color-primary-lightest: #c8e4f6;
+
+  --ocean-dim: #162d4a;
+  --forest-dim: #122a1e;
+  --earth-dim: #2e1c0e;
+}
+
+/* ── Navbar rainbow gradient (matching wiki) ── */
+.navbar {
+  position: relative;
+}
+
+.navbar::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(110, 174, 224, 0.25) 30%,
+    rgba(93, 160, 112, 0.2) 60%,
+    rgba(176, 112, 64, 0.2) 80%,
+    transparent
+  );
+}
+
+/* ── Sidebar ── */
+.theme-doc-sidebar-container {
+  border-right-color: var(--ifm-border-color) !important;
+}
+
+nav.menu {
+  background-color: var(--ifm-background-color);
+}
+
+/* ── Admonitions ── */
+.alert--info {
+  --ifm-alert-background-color: var(--ocean-dim);
+  --ifm-alert-border-color: var(--ocean);
+}
+
+.alert--success {
+  --ifm-alert-background-color: var(--forest-dim);
+  --ifm-alert-border-color: var(--forest);
+}
+
+.alert--warning {
+  --ifm-alert-background-color: var(--earth-dim);
+  --ifm-alert-border-color: var(--earth);
+}
+
+/* ── Table of Contents ── */
+.table-of-contents__link--active {
+  color: var(--ifm-color-primary);
+}
+
+/* ── Code blocks ── */
+.prism-code {
+  font-family: var(--ifm-font-family-monospace);
+}
+
+/* ── Heading anchors ── */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--ifm-heading-font-family);
+}

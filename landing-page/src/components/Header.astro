@@ -1,0 +1,123 @@
+---
+---
+
+<header class="header">
+  <a href="/" class="header-logo">
+    <span class="logo-icon" aria-hidden="true">🌿</span>
+    Knowledge Tree
+  </a>
+
+  <nav class="header-nav">
+    <a href="https://research.openktree.com" class="nav-link">Research</a>
+    <a href="https://docs.openktree.com" class="nav-link">Docs</a>
+    <a href="https://wiki.openktree.com" class="nav-link">Wiki</a>
+    <a href="https://github.com/openktree/knowledge-tree" class="nav-link"
+      >GitHub</a
+    >
+    <button
+      class="theme-toggle"
+      id="theme-toggle"
+      aria-label="Toggle dark mode"
+      title="Toggle dark / light mode"
+    >
+      <span class="icon-sun" aria-hidden="true">☀️</span>
+      <span class="icon-moon" aria-hidden="true">🌙</span>
+    </button>
+  </nav>
+</header>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 58px;
+    background: var(--color-nav-bg);
+    border-bottom: 1px solid var(--color-nav-border);
+  }
+
+  .header::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(110, 174, 224, 0.25) 30%,
+      rgba(93, 160, 112, 0.2) 60%,
+      rgba(176, 112, 64, 0.2) 80%,
+      transparent
+    );
+  }
+
+  .header-logo {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--color-nav-text);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .header-logo:hover {
+    color: #fff;
+  }
+
+  .logo-icon {
+    font-size: 1.3rem;
+  }
+
+  .header-nav {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .nav-link {
+    color: var(--color-nav-text);
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: color var(--t-fast);
+  }
+
+  .nav-link:hover {
+    color: #fff;
+  }
+
+  .theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.25rem;
+    line-height: 1;
+  }
+
+  :global([data-theme="light"]) .icon-moon {
+    display: none;
+  }
+  :global([data-theme="dark"]) .icon-sun {
+    display: none;
+  }
+
+  @media (max-width: 640px) {
+    .header {
+      padding: 0 1rem;
+    }
+    .header-nav {
+      gap: 0.75rem;
+    }
+    .nav-link {
+      font-size: 0.8rem;
+    }
+  }
+</style>

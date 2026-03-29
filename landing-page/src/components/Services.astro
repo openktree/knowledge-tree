@@ -1,0 +1,138 @@
+---
+const services = [
+  {
+    name: "Research App",
+    url: "https://research.openktree.com",
+    description:
+      "Ingest sources, create synthesis documents, and explore the knowledge graph with AI-powered navigation.",
+    accent: "forest",
+  },
+  {
+    name: "Documentation",
+    url: "https://docs.openktree.com",
+    description:
+      "Developer documentation explaining the system architecture, MCP integration, and how to contribute.",
+    accent: "ocean",
+  },
+  {
+    name: "Wiki",
+    url: "https://wiki.openktree.com",
+    description:
+      "Browse the knowledge graph in a Wikipedia-style read-only interface. Explore nodes, facts, and relationships.",
+    accent: "earth",
+  },
+  {
+    name: "MCP Server",
+    url: "https://mcp.openktree.com",
+    description:
+      "Connect your AI tools directly to the knowledge graph via the Model Context Protocol.",
+    accent: "stone",
+  },
+];
+---
+
+<section class="services">
+  <div class="services-inner">
+    <h2 class="section-title">Services</h2>
+    <div class="services-grid">
+      {
+        services.map((s) => (
+          <a href={s.url} class={`service-card accent-${s.accent}`}>
+            <h3>{s.name}</h3>
+            <p>{s.description}</p>
+            <span class="service-link">
+              Visit {s.name} <span aria-hidden="true">&rarr;</span>
+            </span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .services {
+    padding: 5rem 2rem;
+    background: var(--color-bg);
+  }
+
+  .services-inner {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+
+  .section-title {
+    text-align: center;
+    font-size: 2rem;
+    margin-bottom: 3rem;
+    color: var(--color-text);
+  }
+
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .service-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    text-decoration: none;
+    border-top: 3px solid transparent;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--t-base);
+  }
+
+  .service-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  .service-card h3 {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    margin-bottom: 0.75rem;
+    color: var(--color-text);
+  }
+
+  .service-card p {
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    flex: 1;
+  }
+
+  .service-link {
+    margin-top: 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .accent-ocean {
+    border-top-color: var(--ocean);
+  }
+  .accent-ocean .service-link {
+    color: var(--ocean);
+  }
+  .accent-forest {
+    border-top-color: var(--forest);
+  }
+  .accent-forest .service-link {
+    color: var(--forest);
+  }
+  .accent-earth {
+    border-top-color: var(--earth);
+  }
+  .accent-earth .service-link {
+    color: var(--earth);
+  }
+  .accent-stone {
+    border-top-color: var(--stone);
+  }
+  .accent-stone .service-link {
+    color: var(--stone);
+  }
+</style>

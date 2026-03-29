@@ -1,0 +1,31 @@
+{{- if and .Values.docsSite.enabled .Values.docsSite.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-docs-site
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "docs-site") | nindent 4 }}
+  {{- with .Values.docsSite.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.docsSite.ingress.className }}
+  ingressClassName: {{ .Values.docsSite.ingress.className }}
+  {{- end }}
+  {{- if .Values.docsSite.ingress.tls }}
+  tls:
+    {{- toYaml .Values.docsSite.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.docsSite.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "knowledge-tree.fullname" . }}-docs-site
+                port:
+                  number: {{ .Values.docsSite.port }}
+{{- end }}

@@ -259,6 +259,52 @@ wikiFrontend:
     tls: []
 
 # =============================================================================
+# Docs Site (Docusaurus — static nginx)
+# =============================================================================
+docsSite:
+  enabled: true
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  port: 80
+  resources:
+    requests:
+      memory: 32Mi
+      cpu: 10m
+    limits:
+      memory: 64Mi
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: docs.knowledge-tree.local
+    tls: []
+
+# =============================================================================
+# Landing Page (Astro — static nginx)
+# =============================================================================
+landingPage:
+  enabled: true
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  port: 80
+  resources:
+    requests:
+      memory: 32Mi
+      cpu: 10m
+    limits:
+      memory: 64Mi
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: knowledge-tree.local
+    tls: []
+
+# =============================================================================
 # Workers
 # =============================================================================
 workers:

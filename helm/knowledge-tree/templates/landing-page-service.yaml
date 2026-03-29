@@ -1,0 +1,16 @@
+{{- if .Values.landingPage.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-landing-page
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "landing-page") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.landingPage.port }}
+      targetPort: {{ .Values.landingPage.port }}
+      protocol: TCP
+  selector:
+    {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "landing-page") | nindent 4 }}
+{{- end }}

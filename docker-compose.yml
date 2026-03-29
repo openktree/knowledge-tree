@@ -295,6 +295,20 @@ services:
         limits:
           memory: 1G
 
+  docs-site:
+    build:
+      context: ./docs-site
+      dockerfile: Dockerfile
+    ports:
+      - "3001:80"
+
+  landing-page:
+    build:
+      context: ./landing-page
+      dockerfile: Dockerfile
+    ports:
+      - "3002:80"
+
 volumes:
   pgdata:
   pgdata_write:

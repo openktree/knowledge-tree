@@ -1,0 +1,108 @@
+---
+const benefits = [
+  {
+    title: "Complete Knowledge Integration",
+    description:
+      "No data is removed or ignored. Every source contributes to the graph. Contradictory evidence produces perspectives, not suppression.",
+    accent: "ocean",
+  },
+  {
+    title: "Multi-Model Convergence",
+    description:
+      "Multiple AI models analyze the same evidence independently. Where they converge, you find genuine consensus. Where they diverge, you find bias.",
+    accent: "forest",
+  },
+  {
+    title: "Transparent Provenance",
+    description:
+      "Every claim traces through facts back to original sources with full attribution. Nothing is hidden. Every connection is auditable.",
+    accent: "earth",
+  },
+  {
+    title: "Living Knowledge Graph",
+    description:
+      "The graph grows richer with every query and every source ingested. Frequently explored topics accumulate deep factual bases over time.",
+    accent: "stone",
+  },
+];
+---
+
+<section class="benefits">
+  <div class="benefits-inner">
+    <h2 class="section-title">Why Knowledge Tree</h2>
+    <div class="benefits-grid">
+      {
+        benefits.map((b) => (
+          <div class={`benefit-card accent-${b.accent}`}>
+            <h3>{b.title}</h3>
+            <p>{b.description}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .benefits {
+    padding: 5rem 2rem;
+    background: var(--color-bg);
+  }
+
+  .benefits-inner {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+
+  .section-title {
+    text-align: center;
+    font-size: 2rem;
+    margin-bottom: 3rem;
+    color: var(--color-text);
+  }
+
+  .benefits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .benefit-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    border-left: 4px solid transparent;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--t-base);
+  }
+
+  .benefit-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  .benefit-card h3 {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    margin-bottom: 0.75rem;
+    color: var(--color-text);
+  }
+
+  .benefit-card p {
+    font-size: 0.95rem;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+  }
+
+  .accent-ocean {
+    border-left-color: var(--ocean);
+  }
+  .accent-forest {
+    border-left-color: var(--forest);
+  }
+  .accent-earth {
+    border-left-color: var(--earth);
+  }
+  .accent-stone {
+    border-left-color: var(--stone);
+  }
+</style>
