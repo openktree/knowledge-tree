@@ -245,13 +245,33 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                     )}
                   </div>
                 ) : (
-                  <p class="node-definition">
-                    {parseRichText(node.definition).map((s) =>
-                      s.kind === "text" ? s.text :
-                      s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                      <a href={s.href}>{s.text}</a>
+                  <div class="node-definition">
+                    {parseMarkdownBlocks(node.definition).map((block) =>
+                      block.kind === "heading" ? (
+                        block.level === 1 ? <h2>{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</h2> :
+                        block.level === 2 ? <h3>{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</h3> :
+                        <h4>{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</h4>
+                      ) : (
+                        <p>{block.segments.map((s) =>
+                          s.kind === "text" ? s.text :
+                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                          <a href={s.href}>{s.text}</a>
+                        )}</p>
+                      )
                     )}
-                  </p>
+                  </div>
                 )}
               </>
             ) : dimensions.length > 0 ? (

@@ -5,6 +5,9 @@ import type {
   FactResponse,
   DimensionResponse,
   FactNodeInfo,
+  SynthesisListItem,
+  SynthesisDocumentResponse,
+  SentenceFactResponse,
 } from "../types/index.js";
 
 const API_BASE_URL =
@@ -122,4 +125,31 @@ export async function searchNodes(
   return get<NodeResponse[]>(
     `/api/v1/nodes/search?query=${encoded}&limit=${limit}`
   );
+}
+
+export async function listSyntheses(
+  limit = 50,
+  visibility = "public"
+): Promise<SynthesisListItem[]> {
+  const data = await get<{ items: SynthesisListItem[]; total: number }>(
+    `/api/v1/syntheses?limit=${limit}&visibility=${visibility}`
+  );
+  return data.items;
+}
+
+export async function getSynthesis(id: string): Promise<SynthesisDocumentResponse> {
+  return get<SynthesisDocumentResponse>(`/api/v1/syntheses/${id}`);
+}
+
+export async function getSentenceFacts(
+  synthesisId: string,
+  position: number
+): Promise<SentenceFactResponse[]> {
+  return get<SentenceFactResponse[]>(
+    `/api/v1/syntheses/${synthesisId}/sentences/${position}/facts`
+  );
+}
+
+export function synthesisHref(synthesis: { id: string }): string {
+  return `/syntheses/${synthesis.id}`;
 }
