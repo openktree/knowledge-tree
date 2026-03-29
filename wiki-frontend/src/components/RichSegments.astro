@@ -1,0 +1,16 @@
+---
+import type { RichTextSegment } from "../lib/justification.js";
+
+interface Props {
+  segments: RichTextSegment[];
+}
+
+const { segments } = Astro.props;
+---
+
+{segments.map((s) =>
+  s.kind === "text" ? s.text :
+  s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+  s.kind === "bold" ? <strong>{s.text}</strong> :
+  <a href={s.href}>{s.text}</a>
+)}

@@ -11,6 +11,14 @@ let nodes: NodeResponse[] = [];
 let syntheses: SynthesisListItem[] = [];
 let error: string | null = null;
 
+// Grouped synthesis data for investigations tab
+interface SynthesisGroup {
+  parent: SynthesisListItem;
+  children: SynthesisListItem[];
+}
+let synthGroups: SynthesisGroup[] = [];
+let standaloneSyntheses: SynthesisListItem[] = [];
+
 try {
   if (q) {
     nodes = await searchNodes(q);
@@ -23,6 +31,26 @@ try {
   }
 } catch (e) {
   error = e instanceof Error ? e.message : String(e);
+}
+
+// Group syntheses: super-syntheses with their children, standalone at top level
+if (syntheses.length > 0) {
+  const byId = new Map(syntheses.map((s) => [s.id, s]));
+  const childIds = new Set<string>();
+  for (const s of syntheses) {
+    for (const cid of s.sub_synthesis_ids) childIds.add(cid);
+  }
+  for (const s of syntheses) {
+    if (childIds.has(s.id)) continue; // skip children at top level
+    if (s.sub_synthesis_ids.length > 0) {
+      const children = s.sub_synthesis_ids
+        .map((cid) => byId.get(cid))
+        .filter((c): c is SynthesisListItem => !!c);
+      synthGroups.push({ parent: s, children });
+    } else {
+      standaloneSyntheses.push(s);
+    }
+  }
 }
 ---
 
@@ -80,24 +108,64 @@ try {
         syntheses.length === 0 ? (
           <p class="empty-state">No public investigations yet.</p>
         ) : (
-          <ul class="node-flat-list synthesis-list">
-            {syntheses.map((syn) => {
-              const { title, date } = formatSynthesisConcept(syn.concept);
-              const typeLabel = syn.node_type === "supersynthesis" ? "super-synthesis" : "synthesis";
+          <div class="synthesis-list">
+            {/* Super-syntheses with grouped children */}
+            {synthGroups.map((group) => {
+              const { title, date } = formatSynthesisConcept(group.parent.concept);
               return (
-                <li>
-                  <a href={synthesisHref(syn)} class="node-flat-link" title={title}>
-                    {title}
-                  </a>
-                  <span class="type-badge synthesis">{typeLabel}</span>
-                  <span class="synthesis-meta">
-                    {syn.sentence_count} sentence{syn.sentence_count !== 1 ? "s" : ""}
-                    {date && <> &middot; {date}</>}
-                  </span>
-                </li>
+                <details class="synthesis-group" open>
+                  <summary class="synthesis-group-header">
+                    <span class="synthesis-group-chevron">&#9656;</span>
+                    <a href={synthesisHref(group.parent)} class="node-flat-link" title={title}>
+                      {title}
+                    </a>
+                    <span class="type-badge synthesis">super-synthesis</span>
+                    <span class="synthesis-meta">
+                      {group.children.length} sub-synthes{group.children.length !== 1 ? "es" : "is"}
+                      {date && <> &middot; {date}</>}
+                    </span>
+                  </summary>
+                  <ul class="synthesis-group-children">
+                    {group.children.map((child) => {
+                      const { title: childTitle, date: childDate } = formatSynthesisConcept(child.concept);
+                      return (
+                        <li>
+                          <a href={synthesisHref(child)} class="node-flat-link" title={childTitle}>
+                            {childTitle}
+                          </a>
+                          <span class="synthesis-meta">
+                            {child.sentence_count} sentence{child.sentence_count !== 1 ? "s" : ""}
+                            {childDate && <> &middot; {childDate}</>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </details>
               );
             })}
-          </ul>
+
+            {/* Standalone syntheses */}
+            {standaloneSyntheses.length > 0 && (
+              <ul class="node-flat-list">
+                {standaloneSyntheses.map((syn) => {
+                  const { title, date } = formatSynthesisConcept(syn.concept);
+                  return (
+                    <li>
+                      <a href={synthesisHref(syn)} class="node-flat-link" title={title}>
+                        {title}
+                      </a>
+                      <span class="type-badge synthesis">synthesis</span>
+                      <span class="synthesis-meta">
+                        {syn.sentence_count} sentence{syn.sentence_count !== 1 ? "s" : ""}
+                        {date && <> &middot; {date}</>}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         )
       ) : (
         nodes.length === 0 ? (

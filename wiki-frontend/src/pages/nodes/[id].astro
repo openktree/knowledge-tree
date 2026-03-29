@@ -1,6 +1,7 @@
 ---
 import WikiLayout from "../../layouts/WikiLayout.astro";
 import FactsSection from "../../components/FactsSection.astro";
+import RichSegments from "../../components/RichSegments.astro";
 import {
   getNode,
   getSubgraph,
@@ -220,27 +221,13 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                   <div class="perspective-definition">
                     {parseMarkdownBlocks(node.definition).map((block) =>
                       block.kind === "heading" ? (
-                        block.level === 1 ? <h2 class="perspective-h1">{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</h2> :
-                        block.level === 2 ? <h3 class="perspective-h2">{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</h3> :
-                        <h4 class="perspective-h3">{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</h4>
+                        block.level === 1 ? <h2 class="perspective-h1"><RichSegments segments={block.segments} /></h2> :
+                        block.level === 2 ? <h3 class="perspective-h2"><RichSegments segments={block.segments} /></h3> :
+                        <h4 class="perspective-h3"><RichSegments segments={block.segments} /></h4>
+                      ) : block.kind === "list-item" ? (
+                        <li class="perspective-paragraph"><RichSegments segments={block.segments} /></li>
                       ) : (
-                        <p class="perspective-paragraph">{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</p>
+                        <p class="perspective-paragraph"><RichSegments segments={block.segments} /></p>
                       )
                     )}
                   </div>
@@ -248,27 +235,13 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                   <div class="node-definition">
                     {parseMarkdownBlocks(node.definition).map((block) =>
                       block.kind === "heading" ? (
-                        block.level === 1 ? <h2>{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</h2> :
-                        block.level === 2 ? <h3>{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</h3> :
-                        <h4>{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</h4>
+                        block.level === 1 ? <h2><RichSegments segments={block.segments} /></h2> :
+                        block.level === 2 ? <h3><RichSegments segments={block.segments} /></h3> :
+                        <h4><RichSegments segments={block.segments} /></h4>
+                      ) : block.kind === "list-item" ? (
+                        <li><RichSegments segments={block.segments} /></li>
                       ) : (
-                        <p>{block.segments.map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}</p>
+                        <p><RichSegments segments={block.segments} /></p>
                       )
                     )}
                   </div>
@@ -283,11 +256,7 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                   No definition has been generated yet — showing the first model analysis as a summary.
                 </p>
                 <p class="node-definition">
-                  {parseRichText(dimensions[0].content).map((s) =>
-                    s.kind === "text" ? s.text :
-                    s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                    <a href={s.href}>{s.text}</a>
-                  )}
+                  <RichSegments segments={parseRichText(dimensions[0].content)} />
                 </p>
               </>
             ) : null}
@@ -310,11 +279,7 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                         </span>
                       </div>
                       <div class="dimension-card-body">
-                        {parseRichText(dim.content).map((s) =>
-                          s.kind === "text" ? s.text :
-                          s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
-                          <a href={s.href}>{s.text}</a>
-                        )}
+                        <RichSegments segments={parseRichText(dim.content)} />
                       </div>
                     </div>
                   ))}
