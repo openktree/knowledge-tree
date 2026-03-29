@@ -10,6 +10,7 @@ export interface NodeResponse {
   definition_source: string | null;
   edge_count: number;
   child_count: number;
+  fact_count: number;
   richness: number;
   metadata?: Record<string, unknown> | null;
 }
@@ -67,4 +68,49 @@ export interface FactNodeInfo {
 export interface SubgraphResponse {
   nodes: NodeResponse[];
   edges: EdgeResponse[];
+}
+
+export interface SynthesisListItem {
+  id: string;
+  concept: string;
+  node_type: string;
+  visibility: string;
+  sentence_count: number;
+  sub_synthesis_ids: string[];
+  created_at: string | null;
+}
+
+export interface SynthesisSentenceResponse {
+  position: number;
+  text: string;
+  fact_count: number;
+  node_ids: string[];
+}
+
+export interface SynthesisNodeResponse {
+  node_id: string;
+  concept: string;
+  node_type: string;
+}
+
+export interface SynthesisDocumentResponse {
+  id: string;
+  concept: string;
+  node_type: string;
+  visibility: string;
+  definition: string | null;
+  sentences: SynthesisSentenceResponse[];
+  referenced_nodes: SynthesisNodeResponse[];
+  sub_syntheses: SynthesisNodeResponse[];
+  created_at: string | null;
+}
+
+export interface SentenceFactResponse {
+  fact_id: string;
+  content: string;
+  fact_type: string;
+  embedding_distance: number;
+  source_title: string;
+  source_uri: string;
+  author: string;
 }

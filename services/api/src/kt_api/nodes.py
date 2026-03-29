@@ -367,7 +367,7 @@ async def list_nodes(
     limit: int = Query(20, ge=1, le=100),
     search: str | None = Query(None, description="Search by concept name"),
     node_type: str | None = Query(None, description="Filter by node type: concept, perspective, entity, event"),
-    sort: str = Query("updated_at", description="Sort order: updated_at, edge_count, or pending_facts"),
+    sort: str = Query("updated_at", description="Sort order: updated_at, edge_count, fact_count, or pending_facts"),
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedNodesResponse:
     """List nodes with pagination, optional search, and optional node_type filter."""

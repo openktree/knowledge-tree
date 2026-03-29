@@ -1,0 +1,384 @@
+---
+import WikiLayout from "../../layouts/WikiLayout.astro";
+import { getSynthesis, nodeHref } from "../../lib/api.js";
+import { parseMarkdownBlocks } from "../../lib/justification.js";
+import { formatSynthesisConcept, buildParagraphSentenceMap } from "../../lib/synthesis-utils.js";
+import type { SynthesisDocumentResponse } from "../../types/index.js";
+
+const { id } = Astro.params as { id: string };
+
+let synthesis: SynthesisDocumentResponse | null = null;
+let error: string | null = null;
+
+try {
+  synthesis = await getSynthesis(id);
+} catch (e) {
+  error = e instanceof Error ? e.message : String(e);
+}
+
+const { title, date } = synthesis
+  ? formatSynthesisConcept(synthesis.concept)
+  : { title: "Synthesis not found", date: null };
+
+import type { SynthesisSentenceResponse } from "../../types/index.js";
+
+const paragraphMap: Map<string, SynthesisSentenceResponse[]> = synthesis
+  ? buildParagraphSentenceMap(synthesis.definition ?? "", synthesis.sentences)
+  : new Map();
+
+const typeLabel = synthesis?.node_type === "supersynthesis" ? "Super-Synthesis" : "Synthesis";
+
+// Helper: strip markdown for plain-text key matching
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^\d+\.\s+/, "")
+    .replace(/^[-*]\s+/, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1");
+}
+
+// Build block metadata for the template
+interface BlockMeta {
+  paraKey: string | null;
+  nodeCount: number;
+  factCount: number;
+  sentencePositions: number[];
+  nodeIds: string[];
+}
+
+const blocks = parseMarkdownBlocks(synthesis?.definition);
+const blockMetas: BlockMeta[] = blocks.map((block) => {
+  const plainText = stripMarkdown(
+    block.segments.map((s) => ("text" in s ? s.text : "")).join("")
+  );
+  const key = plainText.slice(0, 60).trim();
+  const sentences = paragraphMap.get(key);
+  if (!sentences || sentences.length === 0) {
+    return { paraKey: null, nodeCount: 0, factCount: 0, sentencePositions: [], nodeIds: [] };
+  }
+  const allNodeIds: string[] = [...new Set(sentences.flatMap((s) => s.node_ids))];
+  const totalFacts: number = sentences.reduce((sum, s) => sum + s.fact_count, 0);
+  const positions: number[] = sentences.filter((s) => s.fact_count > 0).map((s) => s.position);
+  return { paraKey: key, nodeCount: allNodeIds.length, factCount: totalFacts, sentencePositions: positions, nodeIds: allNodeIds };
+});
+---
+
+<WikiLayout title={title}>
+  {error && <div class="error-banner">{error}</div>}
+
+  {synthesis && (
+    <>
+      <div class="synthesis-header">
+        <div class="node-meta">
+          <span class="type-badge synthesis">{typeLabel}</span>
+          {date && <span class="synthesis-date">{date}</span>}
+        </div>
+        <h1 class="node-title">{title}</h1>
+        <p class="synthesis-stats">
+          {synthesis.sentences.length} sentence{synthesis.sentences.length !== 1 ? "s" : ""}
+          &middot; {synthesis.referenced_nodes.length} node{synthesis.referenced_nodes.length !== 1 ? "s" : ""} referenced
+        </p>
+      </div>
+
+      <div class="synthesis-layout">
+        <div class="synthesis-body" data-synthesis-id={synthesis.id}>
+          {blocks.map((block, i) => {
+            const meta = blockMetas[i];
+            const hasEvidence = meta.paraKey && (meta.nodeCount > 0 || meta.factCount > 0);
+            if (block.kind === "heading") {
+              const Tag = block.level === 1 ? "h2" : block.level === 2 ? "h3" : "h4";
+              return (
+                <Tag
+                  class={`synthesis-block ${hasEvidence ? "synthesis-block--clickable" : ""}`}
+                  data-para-key={meta.paraKey ?? undefined}
+                  data-sentence-positions={meta.sentencePositions.length > 0 ? JSON.stringify(meta.sentencePositions) : undefined}
+                  data-node-ids={meta.nodeIds.length > 0 ? JSON.stringify(meta.nodeIds) : undefined}
+                >
+                  {block.segments.map((s) =>
+                    s.kind === "text" ? s.text :
+                    s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                    <a href={s.href}>{s.text}</a>
+                  )}
+                  {hasEvidence && (
+                    <span class="synthesis-para-badge">{meta.nodeCount}n {meta.factCount}f</span>
+                  )}
+                </Tag>
+              );
+            }
+            return (
+              <p
+                class={`synthesis-block ${hasEvidence ? "synthesis-block--clickable" : ""}`}
+                data-para-key={meta.paraKey ?? undefined}
+                data-sentence-positions={meta.sentencePositions.length > 0 ? JSON.stringify(meta.sentencePositions) : undefined}
+                data-node-ids={meta.nodeIds.length > 0 ? JSON.stringify(meta.nodeIds) : undefined}
+              >
+                {block.segments.map((s) =>
+                  s.kind === "text" ? s.text :
+                  s.kind === "citation" ? <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a> :
+                  <a href={s.href}>{s.text}</a>
+                )}
+                {hasEvidence && (
+                  <span class="synthesis-para-badge">{meta.nodeCount}n {meta.factCount}f</span>
+                )}
+              </p>
+            );
+          })}
+        </div>
+
+        <aside class="synthesis-sidebar">
+          {/* Sub-syntheses for super-syntheses */}
+          {synthesis.sub_syntheses.length > 0 && (
+            <div class="sidebar-box">
+              <div class="sidebar-box-header">Sub-syntheses ({synthesis.sub_syntheses.length})</div>
+              <ul class="sidebar-box-list">
+                {synthesis.sub_syntheses.map((sub) => {
+                  const { title: subTitle } = formatSynthesisConcept(sub.concept);
+                  return (
+                    <li class="relation-row">
+                      <a href={`/syntheses/${sub.node_id}`} class="relation-row-main" title={subTitle}>{subTitle}</a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* Referenced nodes */}
+          {synthesis.referenced_nodes.length > 0 && (
+            <div class="sidebar-box">
+              <div class="sidebar-box-header sidebar-box-toggle">
+                Referenced Nodes ({synthesis.referenced_nodes.length}) <span class="sidebar-toggle-icon">&#9662;</span>
+              </div>
+              {synthesis.referenced_nodes.length > 5 && (
+                <input type="search" class="sidebar-search" data-sidebar-search placeholder="Filter nodes..." autocomplete="off" />
+              )}
+              <ul class="sidebar-box-list">
+                {synthesis.referenced_nodes.map((n) => (
+                  <li class="relation-row" data-search-text={n.concept.toLowerCase()}>
+                    <a href={nodeHref({ id: n.node_id, node_type: n.node_type, concept: n.concept, key: "" })} class="relation-row-main" title={n.concept}>
+                      {n.concept}
+                    </a>
+                    <span class={`type-badge ${n.node_type}`}>{n.node_type}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </aside>
+      </div>
+
+      {/* Evidence dialog */}
+      <dialog id="evidence-dialog" class="evidence-dialog">
+        <div class="evidence-dialog-inner">
+          <p class="evidence-dialog-excerpt" id="evidence-excerpt"></p>
+
+          <div class="evidence-nodes" id="evidence-nodes-section" style="display:none">
+            <h3>Referenced Nodes</h3>
+            <div class="evidence-node-grid" id="evidence-node-grid"></div>
+          </div>
+
+          <div class="evidence-facts" id="evidence-facts-section" style="display:none">
+            <h3>Evidence</h3>
+            <div id="evidence-facts-list"></div>
+          </div>
+
+          <div class="evidence-dialog-footer">
+            <button class="relation-dialog-close" data-close>Close</button>
+          </div>
+        </div>
+      </dialog>
+
+      {/* Embed node map as JSON for client-side evidence dialog */}
+      <script is:inline define:vars={{ nodeMapJson: JSON.stringify(
+        Object.fromEntries(
+          (synthesis?.referenced_nodes ?? []).map((n) => [
+            n.node_id,
+            { concept: n.concept, node_type: n.node_type, href: nodeHref({ id: n.node_id, node_type: n.node_type, concept: n.concept, key: "" }) }
+          ])
+        )
+      ) }}>
+        window.__nodeMap = JSON.parse(nodeMapJson);
+      </script>
+
+      <script>
+        const nodeMap: Record<string, { concept: string; node_type: string; href: string }> = (window as any).__nodeMap ?? {};
+        const synthId = document.querySelector<HTMLElement>("[data-synthesis-id]")?.dataset.synthesisId ?? "";
+
+        const dialog = document.getElementById("evidence-dialog") as HTMLDialogElement;
+        const excerptEl = document.getElementById("evidence-excerpt")!;
+        const nodesSection = document.getElementById("evidence-nodes-section")!;
+        const nodeGrid = document.getElementById("evidence-node-grid")!;
+        const factsSection = document.getElementById("evidence-facts-section")!;
+        const factsList = document.getElementById("evidence-facts-list")!;
+
+        // Close handlers
+        dialog.addEventListener("click", (e) => {
+          if (e.target === dialog) dialog.close();
+        });
+        dialog.querySelector("[data-close]")?.addEventListener("click", () => dialog.close());
+
+        // Click handler for synthesis blocks
+        document.querySelectorAll<HTMLElement>(".synthesis-block--clickable").forEach((block) => {
+          block.addEventListener("click", async (e) => {
+            // Don't intercept link clicks
+            if ((e.target as HTMLElement).closest("a")) return;
+
+            const positions: number[] = JSON.parse(block.dataset.sentencePositions ?? "[]");
+            const nodeIds: string[] = JSON.parse(block.dataset.nodeIds ?? "[]");
+
+            // Set excerpt
+            const text = block.textContent?.trim() ?? "";
+            excerptEl.textContent = text.length > 400 ? text.slice(0, 400) + "..." : text;
+
+            // Show referenced nodes
+            nodeGrid.innerHTML = "";
+            if (nodeIds.length > 0) {
+              nodesSection.style.display = "";
+              for (const nid of nodeIds) {
+                const match = nodeMap[nid];
+                if (!match) continue;
+                const pill = document.createElement("a");
+                pill.href = match.href;
+                pill.className = `evidence-node-pill type-badge ${match.node_type}`;
+                pill.textContent = match.concept;
+                nodeGrid.appendChild(pill);
+              }
+              if (nodeGrid.children.length === 0) nodesSection.style.display = "none";
+            } else {
+              nodesSection.style.display = "none";
+            }
+
+            // Load facts
+            factsList.innerHTML = "";
+            if (positions.length > 0) {
+              factsSection.style.display = "";
+              factsList.innerHTML = '<p class="evidence-loading">Loading evidence...</p>';
+              dialog.showModal();
+
+              try {
+                const allFacts: Array<{
+                  fact_id: string;
+                  content: string;
+                  fact_type: string;
+                  embedding_distance: number;
+                  source_title: string;
+                  source_uri: string;
+                  author: string;
+                }> = [];
+                const seen = new Set<string>();
+
+                await Promise.all(
+                  positions.map(async (pos) => {
+                    const res = await fetch(`/api/sentence-facts?synthesisId=${synthId}&position=${pos}`);
+                    if (!res.ok) return;
+                    const facts = await res.json();
+                    for (const f of facts) {
+                      if (!seen.has(f.fact_id)) {
+                        seen.add(f.fact_id);
+                        allFacts.push(f);
+                      }
+                    }
+                  })
+                );
+
+                // Group by source
+                const groups = new Map<string, { title: string; uri: string; author: string; bestDistance: number; facts: typeof allFacts }>();
+                for (const f of allFacts) {
+                  const key = f.source_title || f.source_uri || "Unknown source";
+                  const group = groups.get(key) ?? { title: f.source_title, uri: f.source_uri, author: f.author, bestDistance: 0, facts: [] };
+                  group.facts.push(f);
+                  if (f.embedding_distance > group.bestDistance) group.bestDistance = f.embedding_distance;
+                  groups.set(key, group);
+                }
+
+                // Sort groups by best distance
+                const sorted = [...groups.entries()].sort((a, b) => b[1].bestDistance - a[1].bestDistance);
+
+                factsList.innerHTML = "";
+                if (sorted.length === 0) {
+                  factsList.innerHTML = '<p class="evidence-empty">No evidence found for this section.</p>';
+                } else {
+                  for (const [, group] of sorted) {
+                    const groupEl = document.createElement("details");
+                    groupEl.className = "evidence-source-group";
+                    groupEl.open = true;
+
+                    const summary = document.createElement("summary");
+                    summary.className = "evidence-source-header";
+                    const titleText = group.title || new URL(group.uri || "https://unknown").hostname;
+                    summary.innerHTML = `
+                      <span class="evidence-source-title">${escapeHtml(titleText)}</span>
+                      ${group.author ? `<span class="evidence-source-author">${escapeHtml(group.author)}</span>` : ""}
+                      <span class="evidence-source-count">${group.facts.length}</span>
+                    `;
+                    groupEl.appendChild(summary);
+
+                    for (const fact of group.facts.sort((a, b) => b.embedding_distance - a.embedding_distance)) {
+                      const card = document.createElement("div");
+                      card.className = "evidence-fact-card";
+                      const pct = Math.round(fact.embedding_distance * 100);
+                      card.innerHTML = `
+                        <p class="evidence-fact-content">${escapeHtml(fact.content)}</p>
+                        <div class="evidence-fact-meta">
+                          <span class="type-badge">${escapeHtml(fact.fact_type)}</span>
+                          <span class="evidence-fact-distance">${pct}%</span>
+                          <a href="/facts/${fact.fact_id}" class="evidence-fact-link">view fact</a>
+                        </div>
+                      `;
+                      groupEl.appendChild(card);
+                    }
+
+                    factsList.appendChild(groupEl);
+                  }
+                }
+              } catch {
+                factsList.innerHTML = '<p class="evidence-error">Failed to load evidence.</p>';
+              }
+              return;
+            } else {
+              factsSection.style.display = "none";
+            }
+
+            dialog.showModal();
+          });
+        });
+
+        // Sidebar collapse toggle
+        document.querySelectorAll<HTMLElement>(".sidebar-box-toggle").forEach((header) => {
+          header.style.cursor = "pointer";
+          header.addEventListener("click", () => {
+            const box = header.closest(".sidebar-box");
+            if (box) box.classList.toggle("sidebar-box--collapsed");
+          });
+        });
+
+        // Sidebar search
+        document.querySelectorAll<HTMLInputElement>("[data-sidebar-search]").forEach((input) => {
+          const box = input.closest(".sidebar-box");
+          if (!box) return;
+          const list = box.querySelector(".sidebar-box-list");
+          if (!list) return;
+          input.addEventListener("input", () => {
+            const q = input.value.toLowerCase().trim();
+            list.querySelectorAll<HTMLLIElement>("[data-search-text]").forEach((li) => {
+              const text = li.dataset.searchText ?? "";
+              li.style.display = !q || text.includes(q) ? "" : "none";
+            });
+          });
+        });
+
+        function escapeHtml(str: string): string {
+          const div = document.createElement("div");
+          div.textContent = str;
+          return div.innerHTML;
+        }
+      </script>
+    </>
+  )}
+
+  {!error && !synthesis && (
+    <p class="empty-state">Synthesis not found.</p>
+  )}
+</WikiLayout>

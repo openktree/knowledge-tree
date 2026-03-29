@@ -5,7 +5,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_db.models import Edge, Node, NodeCounter, _utcnow
+from kt_db.models import Edge, Node, NodeCounter, NodeFact, _utcnow
 
 
 class NodeRepository:
@@ -184,6 +184,18 @@ class NodeRepository:
                 .outerjoin(source_count, Node.id == source_count.c.node_id)
                 .outerjoin(target_count, Node.id == target_count.c.node_id)
                 .order_by(edge_total.desc(), Node.updated_at.desc())
+            )
+        elif sort == "fact_count":
+            # Count facts linked to each node via node_facts junction table
+            fact_count_sub = (
+                select(NodeFact.node_id.label("node_id"), func.count(NodeFact.fact_id).label("cnt"))
+                .group_by(NodeFact.node_id)
+                .subquery()
+            )
+            stmt = (
+                select(Node)
+                .outerjoin(fact_count_sub, Node.id == fact_count_sub.c.node_id)
+                .order_by(func.coalesce(fact_count_sub.c.cnt, 0).desc(), Node.updated_at.desc())
             )
         else:
             stmt = select(Node).order_by(Node.updated_at.desc())

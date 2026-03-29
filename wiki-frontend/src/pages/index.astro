@@ -1,16 +1,23 @@
 ---
 import WikiLayout from "../layouts/WikiLayout.astro";
-import { listNodes, searchNodes, nodeHref } from "../lib/api.js";
-import type { NodeResponse } from "../types/index.js";
+import { listNodes, searchNodes, nodeHref, listSyntheses, synthesisHref } from "../lib/api.js";
+import { formatSynthesisConcept } from "../lib/synthesis-utils.js";
+import type { NodeResponse, SynthesisListItem } from "../types/index.js";
 
 const q = Astro.url.searchParams.get("q")?.trim() ?? "";
+const tab = q ? "" : (Astro.url.searchParams.get("tab") ?? "connected");
 
 let nodes: NodeResponse[] = [];
+let syntheses: SynthesisListItem[] = [];
 let error: string | null = null;
 
 try {
   if (q) {
     nodes = await searchNodes(q);
+  } else if (tab === "investigations") {
+    syntheses = await listSyntheses(50, "public");
+  } else if (tab === "facts") {
+    nodes = await listNodes(50, "fact_count");
   } else {
     nodes = await listNodes(50, "edge_count");
   }
@@ -36,30 +43,83 @@ try {
 
   {error && <div class="error-banner">{error}</div>}
 
-  {!error && nodes.length === 0 && (
-    <p class="empty-state">
-      {q ? `No nodes found matching "${q}".` : "No nodes in the graph yet."}
-    </p>
+  {!error && q && (
+    <>
+      {nodes.length === 0 ? (
+        <p class="empty-state">No nodes found matching "{q}".</p>
+      ) : (
+        <>
+          <p class="search-results-label">
+            {nodes.length} result{nodes.length !== 1 ? "s" : ""} for "{q}"
+          </p>
+          <ul class="node-flat-list">
+            {nodes.map((node) => (
+              <li>
+                <a href={nodeHref(node)} class="node-flat-link" title={node.concept}>
+                  {node.concept}
+                </a>
+                <span class={`type-badge ${node.node_type}`}>{node.node_type}</span>
+                <span class="node-edge-count" title="number of relations">{node.edge_count + node.child_count} rel</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </>
   )}
 
-  {!error && nodes.length > 0 && (
+  {!error && !q && (
     <>
-      {q && (
-        <p class="search-results-label">
-          {nodes.length} result{nodes.length !== 1 ? "s" : ""} for "{q}"
-        </p>
+      <div class="tab-bar">
+        <a href="/?tab=connected" class={`tab ${tab === "connected" ? "tab--active" : ""}`}>Most Connected</a>
+        <a href="/?tab=facts" class={`tab ${tab === "facts" ? "tab--active" : ""}`}>Most Facts</a>
+        <a href="/?tab=investigations" class={`tab ${tab === "investigations" ? "tab--active" : ""}`}>Investigations</a>
+      </div>
+
+      {tab === "investigations" ? (
+        syntheses.length === 0 ? (
+          <p class="empty-state">No public investigations yet.</p>
+        ) : (
+          <ul class="node-flat-list synthesis-list">
+            {syntheses.map((syn) => {
+              const { title, date } = formatSynthesisConcept(syn.concept);
+              const typeLabel = syn.node_type === "supersynthesis" ? "super-synthesis" : "synthesis";
+              return (
+                <li>
+                  <a href={synthesisHref(syn)} class="node-flat-link" title={title}>
+                    {title}
+                  </a>
+                  <span class="type-badge synthesis">{typeLabel}</span>
+                  <span class="synthesis-meta">
+                    {syn.sentence_count} sentence{syn.sentence_count !== 1 ? "s" : ""}
+                    {date && <> &middot; {date}</>}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      ) : (
+        nodes.length === 0 ? (
+          <p class="empty-state">No nodes in the graph yet.</p>
+        ) : (
+          <ul class="node-flat-list">
+            {nodes.map((node) => (
+              <li>
+                <a href={nodeHref(node)} class="node-flat-link" title={node.concept}>
+                  {node.concept}
+                </a>
+                <span class={`type-badge ${node.node_type}`}>{node.node_type}</span>
+                {tab === "facts" ? (
+                  <span class="node-edge-count" title="number of facts">{node.fact_count} facts</span>
+                ) : (
+                  <span class="node-edge-count" title="number of relations">{node.edge_count + node.child_count} rel</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )
       )}
-      <ul class="node-flat-list">
-        {nodes.map((node) => (
-          <li>
-            <a href={nodeHref(node)} class="node-flat-link" title={node.concept}>
-              {node.concept}
-            </a>
-            <span class={`type-badge ${node.node_type}`}>{node.node_type}</span>
-            <span class="node-edge-count" title="number of relations">{node.edge_count + node.child_count} rel</span>
-          </li>
-        ))}
-      </ul>
     </>
   )}
 </WikiLayout>
