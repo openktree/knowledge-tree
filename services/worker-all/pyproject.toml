@@ -5,6 +5,7 @@ description = "Knowledge Tree all-in-one worker (dev mode)"
 requires-python = ">=3.12"
 dependencies = [
     "kt-hatchet",
+    "kt-plugins",
     "kt-worker-bottomup",
     "kt-worker-search",
     "kt-worker-nodes",
@@ -19,6 +20,7 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 kt-hatchet = { workspace = true }
+kt-plugins = { workspace = true }
 kt-worker-bottomup = { workspace = true }
 kt-worker-search = { workspace = true }
 kt-worker-nodes = { workspace = true }

@@ -17,6 +17,19 @@ from kt_db.repositories.system_settings import SystemSettingsRepository
 logger = logging.getLogger(__name__)
 
 
+async def _fire_hook(hook_name: str, request: object | None, **kwargs: object) -> None:
+    """Fire a plugin hook if the hook registry is available on the app."""
+    try:
+        if request is not None:
+            app = getattr(request, "app", None)
+            if app is not None:
+                hook_registry = getattr(getattr(app, "state", None), "hook_registry", None)
+                if hook_registry is not None:
+                    await hook_registry.trigger(hook_name, **kwargs)
+    except Exception:
+        logger.warning("Failed to fire hook %s", hook_name, exc_info=True)
+
+
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     @property
     def reset_password_token_secret(self) -> str:
@@ -80,6 +93,26 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             session.add(user)
             await session.flush()
             logger.info("First user %s auto-promoted to admin", user.email)
+
+        # Assign default RBAC role
+        from kt_db.repositories.roles import RoleRepository
+
+        role_repo = RoleRepository(session)
+        if user.is_superuser:
+            admin_role = await role_repo.get_by_name("admin")
+            if admin_role:
+                await role_repo.assign_role(user.id, admin_role.id)
+        else:
+            editor_role = await role_repo.get_by_name("editor")
+            if editor_role:
+                await role_repo.assign_role(user.id, editor_role.id)
+
+        # Fire plugin hook: auth.user_created
+        await _fire_hook("auth.user_created", request, user_id=str(user.id), email=user.email)
+
+    async def on_after_login(self, user: User, request=None, response=None) -> None:  # type: ignore[override]
+        # Fire plugin hook: auth.user_login
+        await _fire_hook("auth.user_login", request, user_id=str(user.id), method="jwt")
 
 
 async def get_user_manager(user_db=Depends(get_user_db)) -> AsyncGenerator[UserManager, None]:

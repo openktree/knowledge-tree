@@ -142,3 +142,28 @@ def require_api_key(user: object) -> str:
             detail="An OpenRouter API key is required. Set one in your profile settings.",
         )
     return key
+
+
+def get_hook_registry() -> object:
+    """Return a new empty hook registry.
+
+    Useful as a fallback in tests or standalone usage when the
+    plugin system is not initialized.
+    """
+    from kt_plugins.hooks import HookRegistry
+
+    return HookRegistry()
+
+
+async def get_hook_registry_from_app(request: object) -> object:
+    """FastAPI dependency that retrieves the hook registry from app state."""
+    from kt_plugins.hooks import HookRegistry
+
+    app = getattr(request, "app", None)
+    if app is not None:
+        state = getattr(app, "state", None)
+        if state is not None:
+            registry = getattr(state, "hook_registry", None)
+            if registry is not None:
+                return registry
+    return HookRegistry()

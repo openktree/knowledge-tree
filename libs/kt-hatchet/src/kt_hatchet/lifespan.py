@@ -30,6 +30,7 @@ class WorkerState:
     content_fetcher: object | None  # ContentFetcher | None
     ontology_registry: object | None = None  # OntologyProviderRegistry | None
     qdrant_client: object | None = None  # AsyncQdrantClient | None
+    hook_registry: object | None = None  # kt_plugins.HookRegistry | None
 
 
 async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
