@@ -1259,3 +1259,10 @@ export async function updateSynthesisVisibility(id: string, visibility: string) 
     { method: "PATCH", body: JSON.stringify({ visibility }) }
   );
 }
+
+export async function regenerateSynthesis(id: string) {
+  return request<{ status: string; workflow_run_id: string; synthesis_id: string }>(
+    `/syntheses/${id}/regenerate`,
+    { method: "POST" }
+  );
+}

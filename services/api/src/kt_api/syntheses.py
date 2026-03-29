@@ -72,6 +72,8 @@ class SynthesisDocumentResponse(BaseModel):
     referenced_nodes: list[SynthesisNodeResponse] = Field(default_factory=list)
     sub_syntheses: list[SynthesisNodeResponse] = Field(default_factory=list)
     created_at: str | None = None
+    status: str = "completed"
+    error_message: str | None = None
 
 
 class SynthesisListItem(BaseModel):
@@ -82,6 +84,7 @@ class SynthesisListItem(BaseModel):
     sentence_count: int = 0
     sub_synthesis_ids: list[str] = Field(default_factory=list)
     created_at: str | None = None
+    status: str = "completed"
 
 
 class PaginatedSynthesesResponse(BaseModel):
@@ -121,6 +124,15 @@ def _get_sentence_count(node: Node) -> int:
     doc = _get_synthesis_doc(node)
     stats = doc.get("stats", {})
     return stats.get("sentences_count", 0)
+
+
+def _get_synthesis_status(node: Node) -> tuple[str, str | None]:
+    """Return (status, error_message) for a synthesis node."""
+    meta = node.metadata_ or {}
+    error = meta.get("synthesis_error")
+    if error:
+        return "error", error.get("message")
+    return "completed", None
 
 
 # ── Endpoints ──────────────────────────────────────────────────────
@@ -201,18 +213,21 @@ async def list_syntheses(
     q = select(Node).where(base_filter).order_by(Node.created_at.desc()).offset(offset).limit(limit)
     nodes = (await session.execute(q)).scalars().all()
 
-    items = [
-        SynthesisListItem(
-            id=str(n.id),
-            concept=n.concept,
-            node_type=n.node_type,
-            visibility=n.visibility,
-            sentence_count=_get_sentence_count(n),
-            sub_synthesis_ids=_get_synthesis_doc(n).get("sub_synthesis_ids", []),
-            created_at=n.created_at.isoformat() if n.created_at else None,
+    items = []
+    for n in nodes:
+        status, _ = _get_synthesis_status(n)
+        items.append(
+            SynthesisListItem(
+                id=str(n.id),
+                concept=n.concept,
+                node_type=n.node_type,
+                visibility=n.visibility,
+                sentence_count=_get_sentence_count(n),
+                sub_synthesis_ids=_get_synthesis_doc(n).get("sub_synthesis_ids", []),
+                created_at=n.created_at.isoformat() if n.created_at else None,
+                status=status,
+            )
         )
-        for n in nodes
-    ]
 
     return PaginatedSynthesesResponse(items=items, total=total, offset=offset, limit=limit)
 
@@ -271,6 +286,8 @@ async def get_synthesis(
             except Exception:
                 pass
 
+    status, error_message = _get_synthesis_status(node)
+
     return SynthesisDocumentResponse(
         id=str(node.id),
         concept=node.concept,
@@ -281,6 +298,8 @@ async def get_synthesis(
         referenced_nodes=referenced_nodes,
         sub_syntheses=sub_syntheses,
         created_at=node.created_at.isoformat() if node.created_at else None,
+        status=status,
+        error_message=error_message,
     )
 
 
@@ -416,3 +435,40 @@ async def update_synthesis(
     await session.commit()
 
     return {"id": synthesis_id, "visibility": node.visibility}
+
+
+@router.post("/syntheses/{synthesis_id}/regenerate")
+async def regenerate_synthesis(
+    synthesis_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Regenerate a failed synthesis by re-running the synthesizer agent.
+
+    For sub-syntheses with a parent super-synthesis, regeneration will
+    also trigger a re-combine of the parent after completion.
+    """
+    try:
+        nid = uuid.UUID(synthesis_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid synthesis ID")
+
+    node = (await session.execute(select(Node).where(Node.id == nid))).scalar_one_or_none()
+    if not node or node.node_type not in ("synthesis", "supersynthesis"):
+        raise HTTPException(status_code=404, detail="Synthesis not found")
+
+    meta = node.metadata_ or {}
+    if "synthesis_error" not in meta:
+        raise HTTPException(status_code=400, detail="Synthesis is not in error state")
+    if "synthesis_input" not in meta:
+        raise HTTPException(status_code=400, detail="No stored input available for regeneration")
+
+    from kt_hatchet.client import dispatch_workflow
+
+    workflow_name = "recombine_supersynthesis_wf" if node.node_type == "supersynthesis" else "regenerate_synthesis_wf"
+
+    try:
+        run_id = await dispatch_workflow(workflow_name, {"node_id": synthesis_id})
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {"status": "pending", "workflow_run_id": run_id, "synthesis_id": synthesis_id}

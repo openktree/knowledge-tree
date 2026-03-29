@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getSynthesis, deleteSynthesis } from "@/lib/api";
+import { getSynthesis, deleteSynthesis, regenerateSynthesis } from "@/lib/api";
 import { SynthesisDocument } from "@/components/synthesis/SynthesisDocument";
+import { SynthesisProgress } from "@/components/synthesis/SynthesisProgress";
 import { ExportButtons } from "@/components/synthesis/ExportPDF";
 import type { SynthesisDocumentResponse } from "@/types";
 
@@ -20,6 +21,8 @@ export default function SynthesisDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [workflowRunId, setWorkflowRunId] = useState<string | null>(null);
 
   const fetchDocument = useCallback(async () => {
     if (!id) return;
@@ -39,6 +42,12 @@ export default function SynthesisDetailPage() {
     fetchDocument();
   }, [fetchDocument]);
 
+  const handleRegenerateComplete = useCallback(async () => {
+    setWorkflowRunId(null);
+    setRegenerating(false);
+    await fetchDocument();
+  }, [fetchDocument]);
+
   const handleDelete = async () => {
     if (!confirm("Delete this synthesis? This cannot be undone.")) return;
     setDeleting(true);
@@ -48,6 +57,17 @@ export default function SynthesisDetailPage() {
     } catch (err) {
       console.error("Failed to delete synthesis:", err);
       setDeleting(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const result = await regenerateSynthesis(id);
+      setWorkflowRunId(result.workflow_run_id);
+    } catch (err) {
+      console.error("Failed to regenerate synthesis:", err);
+      setRegenerating(false);
     }
   };
 
@@ -102,7 +122,17 @@ export default function SynthesisDetailPage() {
         </div>
       </div>
 
-      <SynthesisDocument document={document} />
+      {workflowRunId && (
+        <div className="max-w-4xl mx-auto mb-6">
+          <SynthesisProgress workflowRunId={workflowRunId} onComplete={handleRegenerateComplete} />
+        </div>
+      )}
+
+      <SynthesisDocument
+        document={document}
+        onRegenerate={document.status === "error" ? handleRegenerate : undefined}
+        isRegenerating={regenerating}
+      />
     </div>
   );
 }

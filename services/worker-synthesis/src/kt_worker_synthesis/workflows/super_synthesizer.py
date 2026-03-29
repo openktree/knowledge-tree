@@ -230,14 +230,11 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
 
     worker_state = cast(WorkerState, ctx.lifespan)
 
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    from kt_agents_core.state import AgentContext
     from kt_graph.engine import GraphEngine
-    from kt_worker_synthesis.agents.super_synthesizer_agent import SuperSynthesizerAgent
-    from kt_worker_synthesis.agents.super_synthesizer_state import SuperSynthesizerState
-    from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
-    from kt_worker_synthesis.prompts.super_synthesizer import build_super_synthesizer_system_message
+    from kt_worker_synthesis.workflows._helpers import (
+        run_super_synthesis_combine,
+        store_synthesis_error,
+    )
 
     async with worker_state.session_factory() as session:
         write_session = None
@@ -245,6 +242,11 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
             write_session = worker_state.write_session_factory()
 
         try:
+            from sqlalchemy import select as sa_select
+            from sqlalchemy import update
+
+            from kt_db.write_models import WriteNode
+
             graph_engine = GraphEngine(
                 session,
                 worker_state.embedding_service,
@@ -252,49 +254,18 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 qdrant_client=worker_state.qdrant_client,
             )
 
-            agent_ctx = AgentContext(
+            super_text = await run_super_synthesis_combine(
+                topic=input.topic,
+                synthesis_node_ids=synthesis_node_ids,
                 graph_engine=graph_engine,
-                provider_registry=worker_state.provider_registry,
                 model_gateway=worker_state.model_gateway,
                 embedding_service=worker_state.embedding_service,
                 session=session,
                 session_factory=worker_state.session_factory,
                 write_session_factory=worker_state.write_session_factory,
                 qdrant_client=worker_state.qdrant_client,
+                provider_registry=worker_state.provider_registry,
             )
-
-            system_content = build_super_synthesizer_system_message(
-                topic=input.topic,
-                synthesis_node_ids=synthesis_node_ids,
-            )
-
-            initial_state = SuperSynthesizerState(
-                synthesis_node_ids=synthesis_node_ids,
-                messages=[
-                    SystemMessage(content=system_content),
-                    HumanMessage(
-                        content=(
-                            "Read all sub-syntheses, then produce a comprehensive super-synthesis "
-                            "using finish_super_synthesis(text)."
-                        )
-                    ),
-                ],
-            )
-
-            agent = SuperSynthesizerAgent(agent_ctx)
-            graph, _ = agent.build_graph()
-            compiled = graph.compile()
-
-            recursion_limit = max(len(synthesis_node_ids) * 30, 500)
-            final = await compiled.ainvoke(initial_state, config={"recursion_limit": recursion_limit})
-
-            if isinstance(final, dict):
-                super_text = final.get("super_synthesis_text", "")
-            else:
-                super_text = final.super_synthesis_text
-
-            if not super_text:
-                super_text = "Super-synthesis completed but no document was produced."
 
             # Create supersynthesis node — append timestamp for unique key
             from datetime import UTC, datetime
@@ -306,14 +277,9 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 node_type="supersynthesis",
             )
             supersynthesis_node_id = node.id
-            await graph_engine.set_node_definition(supersynthesis_node_id, super_text)
 
             # Set visibility
             if write_session:
-                from sqlalchemy import update
-
-                from kt_db.write_models import WriteNode
-
                 await write_session.execute(
                     update(WriteNode)
                     .where(WriteNode.node_uuid == supersynthesis_node_id)
@@ -321,8 +287,32 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 )
                 await write_session.flush()
 
+            synthesis_input_data = input.model_dump()
+
+            if not super_text:
+                logger.warning("SuperSynthesizer agent ended without producing text")
+
+                if write_session:
+                    await store_synthesis_error(
+                        synthesis_node_id=supersynthesis_node_id,
+                        write_session=write_session,
+                        synthesis_input_data=synthesis_input_data,
+                        error_message="Super-synthesis agent ended without producing text",
+                        visibility=input.visibility,
+                        creator_id=input.creator_id,
+                    )
+
+                return SuperSynthesizerOutput(
+                    supersynthesis_node_id=str(supersynthesis_node_id),
+                    sub_synthesis_node_ids=synthesis_node_ids,
+                ).model_dump()
+
+            # Success: set definition
+            await graph_engine.set_node_definition(supersynthesis_node_id, super_text)
+
             # Collect node names from all sub-syntheses for text matching
-            # Read from sub-synthesis nodes' metadata (which has synthesis_document)
+            from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
+
             node_names: dict[str, list[str]] = {}
             for sid in synthesis_node_ids:
                 try:
@@ -350,8 +340,6 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
 
             # Store document JSON in node metadata via write-db
             if write_session:
-                from sqlalchemy import select as sa_select
-
                 row = (
                     await write_session.execute(
                         sa_select(WriteNode.metadata_).where(WriteNode.node_uuid == supersynthesis_node_id)
@@ -359,11 +347,34 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 ).scalar_one_or_none()
                 existing_meta = row if isinstance(row, dict) else {}
                 existing_meta["synthesis_document"] = doc
+                existing_meta["synthesis_input"] = synthesis_input_data
+                existing_meta.pop("synthesis_error", None)
                 await write_session.execute(
                     update(WriteNode)
                     .where(WriteNode.node_uuid == supersynthesis_node_id)
                     .values(metadata_=existing_meta)
                 )
+
+                # Write parent_supersynthesis_id back to each sub-synthesis
+                for sid in synthesis_node_ids:
+                    try:
+                        sub_row = (
+                            await write_session.execute(
+                                sa_select(WriteNode.metadata_).where(WriteNode.node_uuid == uuid.UUID(sid))
+                            )
+                        ).scalar_one_or_none()
+                        sub_meta = sub_row if isinstance(sub_row, dict) else {}
+                        sub_meta["parent_supersynthesis_id"] = str(supersynthesis_node_id)
+                        await write_session.execute(
+                            update(WriteNode).where(WriteNode.node_uuid == uuid.UUID(sid)).values(metadata_=sub_meta)
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to set parent_supersynthesis_id on sub-synthesis %s",
+                            sid,
+                            exc_info=True,
+                        )
+
                 await write_session.commit()
 
             stats = doc.get("stats", {})

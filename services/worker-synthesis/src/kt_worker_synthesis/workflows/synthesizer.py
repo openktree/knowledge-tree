@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from datetime import timedelta
 from typing import Any, cast
 
@@ -32,14 +31,12 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
     """Run the full synthesis pipeline."""
     worker_state = cast(WorkerState, ctx.lifespan)
 
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    from kt_agents_core.state import AgentContext
     from kt_graph.engine import GraphEngine
-    from kt_worker_synthesis.agents.synthesizer_agent import SynthesizerAgent
-    from kt_worker_synthesis.agents.synthesizer_state import SynthesizerState
-    from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
-    from kt_worker_synthesis.prompts.synthesizer import build_synthesizer_system_message
+    from kt_worker_synthesis.workflows._helpers import (
+        process_and_store_synthesis,
+        run_synthesis_agent,
+        store_synthesis_error,
+    )
 
     async with worker_state.session_factory() as session:
         write_session = None
@@ -60,62 +57,18 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 except Exception:
                     pass
 
-            agent_ctx = AgentContext(
+            result = await run_synthesis_agent(
+                input=input,
+                model_gateway=worker_state.model_gateway,
                 graph_engine=graph_engine,
                 provider_registry=worker_state.provider_registry,
-                model_gateway=worker_state.model_gateway,
                 embedding_service=worker_state.embedding_service,
                 session=session,
                 session_factory=worker_state.session_factory,
-                emit_event=emit_event,
                 write_session_factory=worker_state.write_session_factory,
                 qdrant_client=worker_state.qdrant_client,
+                emit_event=emit_event,
             )
-
-            # Build system message
-            system_content = build_synthesizer_system_message(
-                topic=input.topic,
-                starting_node_ids=input.starting_node_ids,
-                budget=input.exploration_budget,
-            )
-
-            initial_state = SynthesizerState(
-                topic=input.topic,
-                starting_node_ids=input.starting_node_ids,
-                exploration_budget=input.exploration_budget,
-                messages=[
-                    SystemMessage(content=system_content),
-                    HumanMessage(
-                        content=(
-                            "Investigate the topic using the tools available. When done, "
-                            "call finish_synthesis(text) with your complete markdown document. "
-                            "The text argument must contain the COMPLETE document — anything "
-                            "written outside finish_synthesis() is discarded."
-                        )
-                    ),
-                ],
-            )
-
-            # Run the agent
-            await emit_event("synthesis_agent_started", topic=input.topic)
-
-            agent = SynthesizerAgent(agent_ctx)
-            graph, _ = agent.build_graph()
-            compiled = graph.compile()
-
-            recursion_limit = max(input.exploration_budget * 30, 500)
-            final = await compiled.ainvoke(initial_state, config={"recursion_limit": recursion_limit})
-
-            if isinstance(final, dict):
-                synthesis_text = final.get("synthesis_text", "")
-                nodes_visited = final.get("nodes_visited", [])
-            else:
-                synthesis_text = final.synthesis_text
-                nodes_visited = final.nodes_visited
-
-            if not synthesis_text:
-                logger.warning("Synthesizer agent ended without producing text")
-                synthesis_text = "Synthesis completed but no document was produced."
 
             # Create synthesis node — append timestamp for unique key
             from datetime import UTC, datetime
@@ -127,7 +80,6 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 node_type="synthesis",
             )
             synthesis_node_id = node.id
-            await graph_engine.set_node_definition(synthesis_node_id, synthesis_text)
 
             # Set visibility and creator via write-db
             if write_session:
@@ -145,47 +97,41 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 )
                 await write_session.flush()
 
-            # Build node name/alias lookup for text matching
-            node_names: dict[str, list[str]] = {}
-            for nid in nodes_visited:
-                try:
-                    n = await graph_engine.get_node(uuid.UUID(nid))
-                    if n:
-                        names = [n.concept]
-                        node_names[nid] = names
-                except Exception:
-                    pass
+            synthesis_input_data = input.model_dump()
 
-            # Run document processing pipeline (returns JSON doc)
-            doc = await process_synthesis_document(
-                synthesis_text=synthesis_text,
+            if not result.synthesis_text:
+                logger.warning("Synthesizer agent ended without producing text")
+
+                if write_session:
+                    await store_synthesis_error(
+                        synthesis_node_id=synthesis_node_id,
+                        write_session=write_session,
+                        synthesis_input_data=synthesis_input_data,
+                        visibility=input.visibility,
+                        creator_id=input.creator_id,
+                    )
+
+                await emit_event(
+                    "synthesis_failed",
+                    synthesis_node_id=str(synthesis_node_id),
+                    error="Synthesis agent ended without producing text",
+                )
+
+                return SynthesizerOutput(
+                    synthesis_node_id=str(synthesis_node_id),
+                ).model_dump()
+
+            # Success path: process document and store
+            doc = await process_and_store_synthesis(
+                synthesis_text=result.synthesis_text,
+                synthesis_node_id=synthesis_node_id,
+                nodes_visited=result.nodes_visited,
+                graph_engine=graph_engine,
                 embedding_service=worker_state.embedding_service,
                 qdrant_client=worker_state.qdrant_client,
-                node_names_and_aliases=node_names,
+                write_session=write_session,
+                synthesis_input_data=synthesis_input_data,
             )
-
-            # Store document JSON in node metadata via write-db
-            if write_session:
-                from sqlalchemy import update
-
-                from kt_db.write_models import WriteNode
-
-                existing_meta = {}
-                from sqlalchemy import select as sa_select
-
-                row = (
-                    await write_session.execute(
-                        sa_select(WriteNode.metadata_).where(WriteNode.node_uuid == synthesis_node_id)
-                    )
-                ).scalar_one_or_none()
-                if row and isinstance(row, dict):
-                    existing_meta = row
-
-                existing_meta["synthesis_document"] = doc
-                await write_session.execute(
-                    update(WriteNode).where(WriteNode.node_uuid == synthesis_node_id).values(metadata_=existing_meta)
-                )
-                await write_session.commit()
 
             stats = doc.get("stats", {})
 
