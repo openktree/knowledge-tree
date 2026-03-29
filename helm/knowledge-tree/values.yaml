@@ -8,6 +8,8 @@ global:
   imageTag: "latest"
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
+  # Base domain for cross-service links (e.g., "openktree.com" or "openktree-dev.com")
+  siteDomain: "openktree.com"
 
 # -- Secrets (set via --set or external secret)
 secrets:

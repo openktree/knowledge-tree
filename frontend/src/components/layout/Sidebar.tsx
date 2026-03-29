@@ -33,11 +33,13 @@ const ADMIN_NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
+const SITE_DOMAIN = process.env.NEXT_PUBLIC_SITE_DOMAIN || "openktree.com";
+
 const EXTERNAL_LINKS = [
-  { href: "https://openktree.com", label: "Home" },
-  { href: "https://docs.openktree.com", label: "Docs" },
-  { href: "https://wiki.openktree.com", label: "Wiki" },
-] as const;
+  { href: `https://${SITE_DOMAIN}`, label: "Home" },
+  { href: `https://docs.${SITE_DOMAIN}`, label: "Docs" },
+  { href: `https://wiki.${SITE_DOMAIN}`, label: "Wiki" },
+];
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);

@@ -33,6 +33,8 @@ spec:
               value: {{ .Values.wikiFrontend.port | quote }}
             - name: API_BASE_URL
               value: "http://{{ include "knowledge-tree.fullname" . }}-api:{{ .Values.api.port }}"
+            - name: SITE_DOMAIN
+              value: {{ .Values.wikiFrontend.siteDomain | default .Values.global.siteDomain | default "openktree.com" | quote }}
           livenessProbe:
             httpGet:
               path: /
