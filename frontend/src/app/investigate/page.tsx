@@ -57,13 +57,18 @@ export default function SynthesesPage() {
       <div className="flex items-end justify-between mb-10">
         <div>
           <p className="text-[0.68rem] uppercase tracking-[0.12em] font-bold text-muted-foreground mb-1">
-            Research Documents
+            Graph Investigation
           </p>
           <h1 className="text-[2rem] font-semibold text-foreground leading-tight">
-            Syntheses
+            Investigate
           </h1>
           <p className="text-[0.85rem] text-muted-foreground mt-1">
             {total} document{total !== 1 ? "s" : ""}
+          </p>
+          <p className="text-[0.82rem] text-muted-foreground/70 mt-2 max-w-md">
+            Synthesis agents investigate topics by navigating and integrating
+            information across your knowledge graph into research documents.
+            More investigation modes coming soon.
           </p>
         </div>
         <Button
@@ -71,7 +76,7 @@ export default function SynthesesPage() {
           className="rounded-full px-5"
         >
           <Plus className="mr-2 size-4" />
-          New Synthesis
+          New Investigation
         </Button>
       </div>
 
@@ -86,18 +91,18 @@ export default function SynthesesPage() {
             <FileText className="size-8 text-muted-foreground" />
           </div>
           <h3 className="text-[1.1rem] font-medium text-foreground/80 mb-1">
-            No syntheses yet
+            No investigations yet
           </h3>
           <p className="text-[0.85rem] text-muted-foreground mb-6 max-w-sm">
-            Create a synthesis to explore and analyze topics across your
-            knowledge graph.
+            Start an investigation to have a synthesis agent explore and
+            integrate information across your knowledge graph.
           </p>
           <Button
             onClick={() => setCreateOpen(true)}
             className="rounded-full px-5"
           >
             <Plus className="mr-2 size-4" />
-            Create First Synthesis
+            Start First Investigation
           </Button>
         </div>
       ) : (
@@ -175,7 +180,7 @@ function SynthesisCard({
 
   return (
     <a
-      href={`/syntheses/${item.id}`}
+      href={`/investigate/${item.id}`}
       className={`block rounded-lg border bg-card hover:border-ocean/30 hover:shadow-sm transition-all ${
         compact ? "px-3 py-2" : "px-5 py-4"
       }`}

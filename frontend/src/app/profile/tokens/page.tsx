@@ -275,14 +275,20 @@ export default function TokensPage() {
 
   return (
     <div className="max-w-lg mx-auto px-6 py-10 flex flex-col gap-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <Link
           href="/profile"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          className="rounded-md p-1.5 mt-0.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           <ArrowLeft className="size-4" />
         </Link>
-        <h1 className="text-xl font-semibold">API tokens</h1>
+        <div>
+          <h1 className="text-xl font-semibold">API Tokens</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Generate tokens to authenticate API requests or connect MCP clients
+            (such as Claude Desktop) to your knowledge graph.
+          </p>
+        </div>
       </div>
 
       {newToken && (

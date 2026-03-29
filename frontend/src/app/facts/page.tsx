@@ -9,7 +9,8 @@ export default function FactsPage() {
       <div className="px-6 pt-6 pb-0">
         <h1 className="text-2xl font-bold tracking-tight">Facts</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Browse, search, and manage knowledge facts
+          Facts are atomic claims extracted from ingested sources — the
+          evidence base from which nodes and edges are built.
         </p>
       </div>
 

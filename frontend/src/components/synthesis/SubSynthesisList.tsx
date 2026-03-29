@@ -21,7 +21,7 @@ export function SubSynthesisList({ subSyntheses }: SubSynthesisListProps) {
           {subSyntheses.map((sub) => (
             <a
               key={sub.node_id}
-              href={`/syntheses/${sub.node_id}`}
+              href={`/investigate/${sub.node_id}`}
               className="flex items-center gap-3 rounded-lg border p-3.5 hover:bg-accent hover:border-ocean/30 transition-all group"
             >
               <BookOpen className="size-4 text-ocean/60 group-hover:text-ocean shrink-0" />

@@ -9,7 +9,8 @@ export default function SourcesPage() {
       <div className="px-6 pt-6 pb-0">
         <h1 className="text-2xl font-bold tracking-tight">Sources</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Browse processed raw sources backing knowledge facts
+          Sources are the raw documents and web pages you have ingested. Each
+          source is decomposed into facts that feed the knowledge graph.
         </p>
       </div>
 

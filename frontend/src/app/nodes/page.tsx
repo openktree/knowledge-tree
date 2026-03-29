@@ -140,7 +140,8 @@ export default function NodesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Nodes</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Browse, search, and explore knowledge graph nodes
+            Browse, search, and explore knowledge graph nodes. Use List View
+            for search and filtering, or Graph Explorer for visual navigation.
           </p>
         </div>
         {user?.is_superuser && (

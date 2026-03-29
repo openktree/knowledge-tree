@@ -9,7 +9,9 @@ export default function EdgesPage() {
       <div className="px-6 pt-6 pb-0">
         <h1 className="text-2xl font-bold tracking-tight">Edges</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Browse, search, and manage graph edges
+          Edges represent verified relationships between nodes, weighted by
+          shared evidence. Browse and filter connections in your knowledge
+          graph.
         </p>
       </div>
 

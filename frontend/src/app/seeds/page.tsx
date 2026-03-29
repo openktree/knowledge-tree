@@ -9,8 +9,9 @@ export default function SeedsPage() {
       <div className="px-6 pt-6 pb-0">
         <h1 className="text-2xl font-bold tracking-tight">Seeds</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Proto-nodes extracted from facts. Track entity mentions, deduplication,
-          disambiguation, and promotion to full nodes.
+          Seeds are entities and concepts automatically extracted during
+          ingestion. Review them here and promote promising seeds into full
+          graph nodes.
         </p>
       </div>
 

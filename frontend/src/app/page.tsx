@@ -19,30 +19,37 @@ export default function HomePage() {
             </h1>
           </div>
           <p className="text-muted-foreground">
-            A knowledge integration system that builds understanding from raw
-            external data. Ingest sources, grow the graph, and synthesize
-            research documents.
+            Build and investigate a knowledge graph grounded in real sources.
+            Ingest data to grow the graph, then explore findings through
+            synthesis agents or direct browsing.
+          </p>
+          <p className="text-xs text-muted-foreground/70 mt-2">
+            Suggested flow: Browse existing data → identify gaps → grow the
+            graph with new sources → investigate via synthesis agents or at your
+            own pace using the MCP.
           </p>
         </div>
 
         {/* Navigation cards */}
         <div className="grid gap-4 sm:grid-cols-2">
           <Link
-            href="/syntheses"
+            href="/investigate"
             className="rounded-lg border p-6 hover:bg-accent transition-colors"
           >
-            <h2 className="font-semibold mb-1">Syntheses</h2>
+            <h2 className="font-semibold mb-1">Investigate</h2>
             <p className="text-sm text-muted-foreground">
-              Create and view research synthesis documents from the graph.
+              Launch synthesis agents to explore topics by integrating
+              information across your knowledge graph.
             </p>
           </Link>
           <Link
-            href="/research"
+            href="/grow-graph"
             className="rounded-lg border p-6 hover:bg-accent transition-colors"
           >
-            <h2 className="font-semibold mb-1">Ingest Sources</h2>
+            <h2 className="font-semibold mb-1">Grow Graph</h2>
             <p className="text-sm text-muted-foreground">
-              Upload files or add links to grow the knowledge graph.
+              Upload documents or discover web sources to extract facts and
+              expand the knowledge graph.
             </p>
           </Link>
           <Link
@@ -51,7 +58,7 @@ export default function HomePage() {
           >
             <h2 className="font-semibold mb-1">Browse Graph</h2>
             <p className="text-sm text-muted-foreground">
-              Explore nodes, edges, facts, and seeds in the knowledge graph.
+              Explore nodes, edges, and relationships directly in the graph.
             </p>
           </Link>
           <Link
@@ -60,7 +67,8 @@ export default function HomePage() {
           >
             <h2 className="font-semibold mb-1">Seeds</h2>
             <p className="text-sm text-muted-foreground">
-              View extracted entities and concepts awaiting promotion.
+              Review extracted entities and concepts awaiting promotion to full
+              nodes.
             </p>
           </Link>
         </div>
