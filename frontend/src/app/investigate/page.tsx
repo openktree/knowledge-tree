@@ -68,7 +68,6 @@ export default function SynthesesPage() {
           <p className="text-[0.82rem] text-muted-foreground/70 mt-2 max-w-md">
             Synthesis agents investigate topics by navigating and integrating
             information across your knowledge graph into research documents.
-            More investigation modes coming soon.
           </p>
         </div>
         <Button
