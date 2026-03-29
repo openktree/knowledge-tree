@@ -16,6 +16,11 @@ const siteDomain = import.meta.env.SITE_DOMAIN || "openktree.com";
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title} — Knowledge Tree</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:title" content="Knowledge Tree" />
+    <meta property="og:description" content="An open knowledge commons for humanity" />
+    <meta property="og:image" content="/og-image.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -35,7 +40,7 @@ const siteDomain = import.meta.env.SITE_DOMAIN || "openktree.com";
   <body>
     <header class="site-header">
       <a href="/" class="site-title">
-        <span class="site-title-icon" aria-hidden="true">🌿</span>
+        <img src="/logo.svg" alt="" class="site-title-icon" width="20" height="20" />
         Knowledge Tree
       </a>
 

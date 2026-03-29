@@ -20,6 +20,16 @@ export const metadata: Metadata = {
   title: "Knowledge Tree",
   description:
     "A knowledge integration system that builds understanding from raw external data",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    title: "Knowledge Tree",
+    description:
+      "A knowledge integration system that builds understanding from raw external data",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({

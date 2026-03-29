@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, Search, ExternalLink } from "lucide-react";
@@ -66,7 +67,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       >
         {/* Logo */}
         <div className="flex items-center gap-2 px-3 py-4 border-b">
-          <TreePine className="size-5 text-primary shrink-0" />
+          <Image src="/logo.svg" alt="Knowledge Tree" width={20} height={20} className="size-5 shrink-0" />
           {!collapsed && (
             <span className="text-sm font-semibold truncate">Knowledge Tree</span>
           )}
