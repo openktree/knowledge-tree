@@ -1,0 +1,156 @@
+---
+const steps = [
+  {
+    label: "Sources",
+    description: "Web pages, research papers, uploaded documents",
+  },
+  {
+    label: "Facts",
+    description: "Typed, attributed facts extracted with full provenance",
+  },
+  {
+    label: "Seeds",
+    description: "Proto-nodes accumulate evidence before promotion",
+  },
+  {
+    label: "Nodes",
+    description: "Graph nodes with multi-model dimensional analysis",
+  },
+  {
+    label: "Synthesis",
+    description: "Attribution-grounded research documents",
+  },
+];
+---
+
+<section class="how-it-works">
+  <div class="how-inner">
+    <h2 class="section-title">How It Works</h2>
+    <p class="section-subtitle">
+      Raw external data flows through a pipeline that transforms it into
+      structured, multi-perspective knowledge.
+    </p>
+    <div class="pipeline">
+      {
+        steps.map((step, i) => (
+          <>
+            <div class="pipeline-step">
+              <div class="step-number">{i + 1}</div>
+              <div class="step-label">{step.label}</div>
+              <div class="step-desc">{step.description}</div>
+            </div>
+            {i < steps.length - 1 && (
+              <div class="pipeline-arrow" aria-hidden="true">
+                &#x2192;
+              </div>
+            )}
+          </>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .how-it-works {
+    padding: 5rem 2rem;
+    background: var(--color-surface);
+  }
+
+  .how-inner {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+
+  .section-title {
+    text-align: center;
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+    color: var(--color-text);
+  }
+
+  .section-subtitle {
+    text-align: center;
+    font-size: 1.05rem;
+    color: var(--color-text-muted);
+    margin-bottom: 3rem;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .pipeline {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .pipeline-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 150px;
+    padding: 1.25rem 0.75rem;
+    background: var(--color-bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    transition: border-color var(--t-base);
+  }
+
+  .pipeline-step:hover {
+    border-color: var(--ocean-mid);
+  }
+
+  .step-number {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--ocean);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.6rem;
+  }
+
+  .step-label {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 0.4rem;
+  }
+
+  .step-desc {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+  }
+
+  .pipeline-arrow {
+    display: flex;
+    align-items: center;
+    font-size: 1.5rem;
+    color: var(--color-text-subtle);
+    padding-top: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .pipeline {
+      flex-direction: column;
+      align-items: center;
+    }
+    .pipeline-step {
+      width: 220px;
+    }
+    .pipeline-arrow {
+      transform: rotate(90deg);
+      padding-top: 0;
+    }
+  }
+</style>

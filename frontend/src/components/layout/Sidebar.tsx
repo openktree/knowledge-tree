@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, BookOpen } from "lucide-react";
+import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, BookOpen, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -31,6 +31,12 @@ const ADMIN_NAV_ITEMS = [
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/members", label: "Members", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
+] as const;
+
+const EXTERNAL_LINKS = [
+  { href: "https://openktree.com", label: "Home" },
+  { href: "https://docs.openktree.com", label: "Docs" },
+  { href: "https://wiki.openktree.com", label: "Wiki" },
 ] as const;
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
@@ -128,6 +134,38 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </>
           )}
         </nav>
+
+        {/* External links */}
+        <div className={cn("border-t border-border p-2 flex flex-col gap-1", collapsed && "px-1")}>
+          {EXTERNAL_LINKS.map((item) => {
+            const linkContent = (
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                  collapsed && "justify-center px-0",
+                )}
+              >
+                <ExternalLink className="size-4 shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </a>
+            );
+
+            if (collapsed) {
+              return (
+                <Tooltip key={item.href}>
+                  <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                  <TooltipContent side="right">{item.label}</TooltipContent>
+                </Tooltip>
+              );
+            }
+
+            return <div key={item.href}>{linkContent}</div>;
+          })}
+        </div>
 
         {/* User menu + theme + collapse toggle */}
         <div className="border-t p-2 flex flex-col gap-1">

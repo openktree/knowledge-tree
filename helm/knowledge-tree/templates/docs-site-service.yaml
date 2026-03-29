@@ -1,0 +1,16 @@
+{{- if .Values.docsSite.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-docs-site
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "docs-site") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.docsSite.port }}
+      targetPort: {{ .Values.docsSite.port }}
+      protocol: TCP
+  selector:
+    {{- include "knowledge-tree.componentSelectorLabels" (dict "root" . "component" "docs-site") | nindent 4 }}
+{{- end }}

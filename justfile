@@ -24,6 +24,14 @@ worker-synthesis:
 worker-sync:
     uv run --project services/worker-sync -m kt_worker_sync
 
+# Start docs site locally
+docs-dev:
+    cd docs-site && pnpm dev
+
+# Start landing page locally
+landing-dev:
+    cd landing-page && pnpm dev
+
 # Start API locally (no Docker)
 api-dev:
     uv run --project services/api uvicorn kt_api.main:app --reload --port 8000

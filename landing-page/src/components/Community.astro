@@ -1,0 +1,88 @@
+---
+---
+
+<section class="community">
+  <div class="community-inner">
+    <h2 class="section-title">Open Source</h2>
+    <p class="community-text">
+      Knowledge Tree is open source. The entire system — from fact extraction to
+      multi-model synthesis — is available for inspection, contribution, and
+      self-hosting.
+    </p>
+    <div class="community-actions">
+      <a
+        href="https://github.com/openktree/knowledge-tree"
+        class="btn btn-github"
+      >
+        View on GitHub
+      </a>
+      <a href="https://docs.openktree.com/contributing/architecture-overview" class="btn btn-secondary">
+        Contributing Guide
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .community {
+    padding: 5rem 2rem;
+    background: var(--color-surface);
+    text-align: center;
+  }
+
+  .community-inner {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .section-title {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    color: var(--color-text);
+  }
+
+  .community-text {
+    font-size: 1.05rem;
+    color: var(--color-text-muted);
+    line-height: 1.7;
+    margin-bottom: 2rem;
+  }
+
+  .community-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.75rem 1.75rem;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all var(--t-base);
+  }
+
+  .btn-github {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .btn-github:hover {
+    opacity: 0.9;
+    color: var(--color-bg);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--color-text);
+  }
+</style>

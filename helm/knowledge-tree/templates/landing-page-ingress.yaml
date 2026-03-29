@@ -1,0 +1,31 @@
+{{- if and .Values.landingPage.enabled .Values.landingPage.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "knowledge-tree.fullname" . }}-landing-page
+  labels:
+    {{- include "knowledge-tree.componentLabels" (dict "root" . "component" "landing-page") | nindent 4 }}
+  {{- with .Values.landingPage.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.landingPage.ingress.className }}
+  ingressClassName: {{ .Values.landingPage.ingress.className }}
+  {{- end }}
+  {{- if .Values.landingPage.ingress.tls }}
+  tls:
+    {{- toYaml .Values.landingPage.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.landingPage.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "knowledge-tree.fullname" . }}-landing-page
+                port:
+                  number: {{ .Values.landingPage.port }}
+{{- end }}
