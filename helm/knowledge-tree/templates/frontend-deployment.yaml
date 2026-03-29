@@ -34,6 +34,8 @@ spec:
             - name: NEXT_PUBLIC_API_URL
               value: {{ .Values.frontend.env.NEXT_PUBLIC_API_URL | quote }}
             {{- end }}
+            - name: NEXT_PUBLIC_SITE_DOMAIN
+              value: {{ .Values.frontend.siteDomain | default .Values.global.siteDomain | default "openktree.com" | quote }}
           livenessProbe:
             httpGet:
               path: /

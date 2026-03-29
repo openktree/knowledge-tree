@@ -23,6 +23,9 @@ spec:
         - name: docs-site
           image: {{ include "knowledge-tree.image" (dict "root" . "image" .Values.docsSite.image "defaultName" "openktree-docs-site") }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: SITE_DOMAIN
+              value: {{ .Values.docsSite.siteDomain | default .Values.global.siteDomain | default "openktree.com" | quote }}
           ports:
             - containerPort: {{ .Values.docsSite.port }}
               protocol: TCP
