@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, BookOpen, ExternalLink } from "lucide-react";
+import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, Search, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -15,10 +15,13 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+const WORKFLOW_ITEMS = [
   { href: "/", label: "Home", icon: TreePine },
-  { href: "/syntheses", label: "Syntheses", icon: BookOpen },
-  { href: "/research", label: "Research", icon: Upload },
+  { href: "/investigate", label: "Investigate", icon: Search },
+  { href: "/grow-graph", label: "Grow Graph", icon: Upload },
+] as const;
+
+const DATA_ITEMS = [
   { href: "/nodes", label: "Nodes", icon: CircleDot },
   { href: "/edges", label: "Edges", icon: ArrowLeftRight },
   { href: "/facts", label: "Facts", icon: FileText },
@@ -71,8 +74,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation */}
         <nav className="flex-1 flex flex-col gap-1 p-2">
-          {NAV_ITEMS.map((item) => {
+          {[...WORKFLOW_ITEMS, ...DATA_ITEMS].map((item, index) => {
             const active = isActive(item.href);
+            const showDivider = index === WORKFLOW_ITEMS.length;
             const linkContent = (
               <Link
                 href={item.href}
@@ -89,16 +93,25 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               </Link>
             );
 
-            if (collapsed) {
+            const element = collapsed ? (
+              <Tooltip key={item.href}>
+                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                <TooltipContent side="right">{item.label}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <div key={item.href}>{linkContent}</div>
+            );
+
+            if (showDivider) {
               return (
-                <Tooltip key={item.href}>
-                  <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
+                <div key={item.href}>
+                  <div className={cn("border-t border-border my-1", collapsed && "mx-1")} />
+                  {element}
+                </div>
               );
             }
 
-            return <div key={item.href}>{linkContent}</div>;
+            return element;
           })}
 
           {isAdmin && (

@@ -64,9 +64,16 @@ export default function ResearchPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold">Research</h1>
+        <h1 className="text-2xl font-bold">Grow Graph</h1>
         <p className="text-muted-foreground mt-1">
-          Gather facts from sources, then build them into graph nodes.
+          Add new data to your knowledge graph by uploading documents or
+          discovering web sources.
+        </p>
+        <p className="text-xs text-muted-foreground/70 mt-1">
+          Use &ldquo;From Source&rdquo; to upload files directly, or
+          &ldquo;From the Web&rdquo; to let an agent find and process online
+          sources. Ingested data is decomposed into facts and seeds that feed
+          the graph.
         </p>
       </div>
 
@@ -104,7 +111,7 @@ export default function ResearchPage() {
                 onClick={clearView}
               >
                 <ArrowLeft className="size-3.5" />
-                Back to research
+                Back to ingestion
               </Button>
               <h2 className="text-lg font-semibold">{viewingBuild.title}</h2>
               <ResearchBuildProgress

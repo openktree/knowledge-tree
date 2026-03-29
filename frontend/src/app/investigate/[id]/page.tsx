@@ -44,7 +44,7 @@ export default function SynthesisDetailPage() {
     setDeleting(true);
     try {
       await deleteSynthesis(id);
-      router.push("/syntheses");
+      router.push("/investigate");
     } catch (err) {
       console.error("Failed to delete synthesis:", err);
       setDeleting(false);
@@ -63,9 +63,9 @@ export default function SynthesisDetailPage() {
     return (
       <div className="mx-auto max-w-4xl py-8 px-4">
         <Button variant="ghost" asChild className="mb-4">
-          <Link href="/syntheses">
+          <Link href="/investigate">
             <ArrowLeft className="mr-2 size-4" />
-            Back to Syntheses
+            Back to Investigations
           </Link>
         </Button>
         <p className="text-destructive">{error || "Synthesis not found"}</p>
@@ -78,9 +78,9 @@ export default function SynthesisDetailPage() {
       {/* Top bar */}
       <div className="flex items-center justify-between mb-6 max-w-4xl mx-auto">
         <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground -ml-2">
-          <Link href="/syntheses">
+          <Link href="/investigate">
             <ArrowLeft className="mr-1.5 size-3.5" />
-            Syntheses
+            Investigations
           </Link>
         </Button>
         <div className="flex items-center gap-1">
