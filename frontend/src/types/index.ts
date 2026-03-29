@@ -1297,6 +1297,8 @@ export interface SynthesisDocumentResponse {
   referenced_nodes: SynthesisNodeResponse[];
   sub_syntheses: SynthesisNodeResponse[];
   created_at: string | null;
+  status: "completed" | "error";
+  error_message: string | null;
 }
 
 export interface SynthesisListItem {
@@ -1307,6 +1309,7 @@ export interface SynthesisListItem {
   sentence_count: number;
   sub_synthesis_ids: string[];
   created_at: string | null;
+  status: "completed" | "error";
 }
 
 export interface PaginatedSynthesesResponse {

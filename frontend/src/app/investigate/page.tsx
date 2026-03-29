@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, FileText, Loader2, Trash2 } from "lucide-react";
+import { Plus, FileText, Loader2, Trash2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { listSyntheses, deleteSynthesis } from "@/lib/api";
@@ -202,6 +202,15 @@ function SynthesisCard({
                 {item.node_type === "supersynthesis"
                   ? "Super-Synthesis"
                   : "Synthesis"}
+              </Badge>
+            )}
+            {item.status === "error" && (
+              <Badge
+                variant="destructive"
+                className="text-[0.6rem] uppercase tracking-wider px-2 py-0 gap-1"
+              >
+                <AlertCircle className="size-2.5" />
+                Failed
               </Badge>
             )}
             <Badge

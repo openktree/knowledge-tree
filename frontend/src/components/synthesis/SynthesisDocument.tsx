@@ -31,6 +31,8 @@ import { SubSynthesisList } from "./SubSynthesisList";
 
 interface SynthesisDocumentProps {
   document: SynthesisDocumentResponse;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 }
 
 interface FactGroup {
@@ -145,7 +147,7 @@ function groupFactsBySource(facts: SentenceFactLink[]): FactGroup[] {
 
 // ── Main Component ───────────────────────────────────────────────
 
-export function SynthesisDocument({ document }: SynthesisDocumentProps) {
+export function SynthesisDocument({ document, onRegenerate, isRegenerating }: SynthesisDocumentProps) {
   const [selectedParaKey, setSelectedParaKey] = useState<string | null>(null);
   const [selectedParaText, setSelectedParaText] = useState<string>("");
   const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
@@ -501,7 +503,38 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
 
         {/* Body */}
         <div className="mb-10">
-          {hasDefinition ? (
+          {document.status === "error" ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 size-5 rounded-full bg-destructive/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-destructive text-xs font-bold">!</span>
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-destructive mb-1">Synthesis Failed</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {document.error_message || "The synthesis agent was unable to produce a document."}
+                  </p>
+                  {onRegenerate && (
+                    <button
+                      type="button"
+                      onClick={onRegenerate}
+                      disabled={isRegenerating}
+                      className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    >
+                      {isRegenerating ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          Regenerating...
+                        </>
+                      ) : (
+                        "Regenerate"
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : hasDefinition ? (
             <Markdown components={markdownComponents}>
               {document.definition!}
             </Markdown>

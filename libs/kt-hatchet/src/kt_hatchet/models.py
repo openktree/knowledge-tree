@@ -739,3 +739,15 @@ class SuperSynthesizerOutput(BaseModel):
     sub_synthesis_node_ids: list[str] = Field(default_factory=list)
     total_sentences: int = 0
     total_facts_linked: int = 0
+
+
+class RegenerateSynthesisInput(BaseModel):
+    """Input for regenerating a failed synthesis."""
+
+    node_id: str
+
+
+class RecombineSuperSynthesisInput(BaseModel):
+    """Input for re-combining a super-synthesis from its sub-syntheses."""
+
+    node_id: str
