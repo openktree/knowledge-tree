@@ -35,8 +35,11 @@ def main() -> None:
     except Exception:
         pass
 
+    # Discover plugin-contributed workflows
+    from kt_config.settings import get_settings
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
+    from kt_plugins.manager import PluginManager
     from kt_worker_bottomup.bottom_up import (
         agent_select_wf,
         bottom_up_prepare_scope_wf,
@@ -80,6 +83,24 @@ def main() -> None:
     from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
 
+    plugin_workflows: list[object] = []
+    try:
+        import asyncio
+
+        settings = get_settings()
+        plugin_manager = PluginManager()
+        asyncio.get_event_loop().run_until_complete(
+            plugin_manager.initialize(
+                enabled_plugins=settings.enabled_plugins or None,
+                license_keys=settings.plugin_license_keys,
+            )
+        )
+        plugin_workflows = plugin_manager.get_plugin_workflows()
+        if plugin_workflows:
+            logging.getLogger(__name__).info("Loaded %d plugin workflow(s)", len(plugin_workflows))
+    except Exception:
+        logging.getLogger(__name__).warning("Plugin workflow discovery failed", exc_info=True)
+
     hatchet = get_hatchet()
     worker = hatchet.worker(
         "knowledge-tree-all",
@@ -114,6 +135,7 @@ def main() -> None:
             sync_wf,
             synthesizer_wf,
             super_synthesizer_wf,
+            *plugin_workflows,
         ],
         lifespan=worker_lifespan,
     )

@@ -702,3 +702,38 @@ class LlmUsage(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# RBAC
+# ---------------------------------------------------------------------------
+
+
+class Role(Base):
+    """RBAC role with JSONB permission set."""
+
+    __tablename__ = "roles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    permissions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    user_roles: Mapped[list["UserRole"]] = relationship(back_populates="role", cascade="all, delete-orphan")
+
+
+class UserRole(Base):
+    """Many-to-many link between users and roles."""
+
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    role: Mapped["Role"] = relationship(back_populates="user_roles")

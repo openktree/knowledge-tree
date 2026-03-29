@@ -274,6 +274,15 @@ _register(
     },
 )
 
+# ---- Plugins ---------------------------------------------------------------
+_register(
+    "plugins",
+    {
+        "enabled_plugins": "enabled",
+        "plugin_license_keys": "license_keys",
+    },
+)
+
 
 class YamlSettingsSource(PydanticBaseSettingsSource):
     """Load settings from a sectioned YAML file.
@@ -517,6 +526,10 @@ class Settings(BaseSettings):
 
     # BYOK (Bring Your Own Key) — Fernet encryption key for stored API keys
     byok_encryption_key: str = ""
+
+    # Plugins
+    enabled_plugins: list[str] = []  # empty = all discovered plugins loaded
+    plugin_license_keys: dict[str, str] = {}  # {"billing": "payload.signature", ...}
 
     model_config = {"extra": "ignore"}
 
