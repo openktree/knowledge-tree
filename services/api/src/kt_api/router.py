@@ -15,6 +15,7 @@ from kt_api.export import router as export_router
 from kt_api.facts import router as facts_router
 from kt_api.graph import router as graph_router
 from kt_api.graph_builder import router as graph_builder_router
+from kt_api.health import router as health_router
 from kt_api.import_router import router as import_router
 from kt_api.invites import router as invites_router
 from kt_api.members import router as members_router
@@ -32,6 +33,8 @@ from kt_api.waitlist import router as waitlist_router
 _auth_dep = [Depends(require_auth)]
 
 api_router = APIRouter()
+# Health check is public (no auth)
+api_router.include_router(health_router)
 # Auth routes are public (login, register, etc.)
 api_router.include_router(auth_router)
 # All other routes require authentication
