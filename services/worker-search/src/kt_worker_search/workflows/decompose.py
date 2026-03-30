@@ -463,6 +463,43 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                 embedding_service=embedding_service,
                 qdrant_seed_repo=qdrant_seed_repo,
             )
+
+            # Create author seeds (lightweight, no fact linking).
+            # Previously done inside entity_extraction_task; now batched here
+            # alongside entity seeds to keep all seed writes in one place.
+            if source_authors:
+                from kt_db.keys import make_seed_key
+                from kt_facts.processing.entity_extraction import _is_valid_entity_name
+
+                author_seeds_data: list[dict[str, Any]] = []
+                for author_info in source_authors:
+                    person = author_info.get("author_person") or ""
+                    org = author_info.get("author_org") or ""
+                    for name in person.split(","):
+                        name = name.strip()
+                        if name and _is_valid_entity_name(name):
+                            author_seeds_data.append(
+                                {
+                                    "key": make_seed_key("entity", name),
+                                    "name": name,
+                                    "node_type": "entity",
+                                    "entity_subtype": "person",
+                                }
+                            )
+                    for name in org.split(","):
+                        name = name.strip()
+                        if name and _is_valid_entity_name(name):
+                            author_seeds_data.append(
+                                {
+                                    "key": make_seed_key("entity", name),
+                                    "name": name,
+                                    "node_type": "entity",
+                                    "entity_subtype": "organization",
+                                }
+                            )
+                if author_seeds_data:
+                    await write_seed_repo.upsert_seeds_batch(author_seeds_data)
+
             await write_session.commit()
         except Exception:
             logger.exception("Seed storage failed in decompose_sources")

@@ -584,10 +584,15 @@ class EntityExtractionInput(BaseModel):
 
 
 class EntityExtractionOutput(BaseModel):
-    """Results from entity extraction + seed creation."""
+    """Results from entity extraction.
+
+    Seed storage is deferred to the orchestrator (decompose_sources) which
+    collects results from all extraction tasks and writes seeds in a single
+    batch to avoid hot-row contention on write_seeds.
+    """
 
     extracted_nodes: list[dict[str, Any]] = Field(default_factory=list)
-    seed_keys: list[str] = Field(default_factory=list)
+    seed_keys: list[str] = Field(default_factory=list)  # populated by orchestrator, not extraction task
 
 
 # -- Seed deduplication ---------------------------------------------------
