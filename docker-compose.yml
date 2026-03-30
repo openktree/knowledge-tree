@@ -1,3 +1,6 @@
+# DEVELOPMENT ONLY - Do not use these credentials in production.
+# For production, use environment variables from a secure vault.
+
 services:
   postgres:
     image: pgvector/pgvector:pg16

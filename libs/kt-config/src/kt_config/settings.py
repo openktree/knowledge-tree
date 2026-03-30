@@ -400,7 +400,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     ontology_cache_ttl: int = 604800  # 7 days in seconds
     ontology_model: str = "openrouter/x-ai/grok-4.1-fast"
-    wikidata_user_agent: str = "KnowledgeTree/1.0 (carlosgomezsoza@gmail.com)"
+    wikidata_user_agent: str = "KnowledgeTree/1.0 (example@openktree.com)"
     enable_ontology_ancestry: bool = True
     ontology_similarity_threshold: float = 0.82  # embedding threshold for matching existing nodes
 
