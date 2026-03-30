@@ -180,7 +180,7 @@ edges:
 #   cache_ttl: 604800
 #   enable_ancestry: true
 #   similarity_threshold: 0.85
-#   wikidata_user_agent: "KnowledgeTree/1.0 (carlosgomezsoza@gmail.com)"
+#   wikidata_user_agent: "KnowledgeTree/1.0 (example@openktree.com)"
 #   crystallization_child_threshold: 10
 #   crystallization_child_change_ratio: 0.5
 #   crystallization_model: ""
