@@ -205,7 +205,12 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
     schedule_timeout=_schedule_timeout,
 )
 async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> dict:
-    """Extract entities from facts and create seeds in write-db."""
+    """Extract entities from facts via LLM.
+
+    Seed storage is NOT done here — the orchestrator (decompose_sources)
+    collects results from all extraction tasks and writes seeds in a
+    single batch to avoid hot-row contention on write_seeds.
+    """
     from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_models.usage import start_usage_tracking
 
@@ -214,12 +219,9 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
 
     from kt_db.repositories.write_facts import WriteFactRepository
     from kt_facts.processing.entity_extraction import extract_entities_from_facts
-    from kt_facts.processing.seed_extraction import store_seeds_from_extracted_nodes
-    from kt_models.embeddings import EmbeddingService
     from kt_models.gateway import ModelGateway
 
     model_gateway = cast(ModelGateway, state.model_gateway)
-    embedding_service = cast(EmbeddingService, state.embedding_service)
 
     if not input.fact_ids:
         await flush_usage_to_db(
@@ -227,7 +229,7 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
         )
         return EntityExtractionOutput().model_dump()
 
-    # Load facts from write-db by IDs
+    # Load facts from write-db by IDs (read-only)
     fact_uuids = [uuid.UUID(fid) for fid in input.fact_ids]
     write_session = state.write_session_factory()
     try:
@@ -254,39 +256,17 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
         )
         clear_usage_task()
 
-        # Store seeds from extracted nodes
-        seed_keys: list[str] = []
-        if extracted_nodes:
-            from kt_db.repositories.write_seeds import WriteSeedRepository
+        # Resolve fact_indices (1-indexed into write_facts) to fact UUIDs
+        # so the orchestrator can reconstruct links without reloading facts.
+        for node in extracted_nodes:
+            resolved: list[str] = []
+            for idx in node.get("fact_indices", []):
+                if isinstance(idx, int) and 1 <= idx <= len(write_facts):
+                    resolved.append(str(write_facts[idx - 1].id))
+            node["fact_ids"] = resolved
 
-            write_seed_repo = WriteSeedRepository(write_session)
-
-            # Build Qdrant seed repo — required for embedding dedup
-            if state.qdrant_client is None:
-                raise RuntimeError("Qdrant client is required for seed extraction but was not available on WorkerState")
-
-            from kt_qdrant.repositories.seeds import QdrantSeedRepository
-
-            qdrant_seed_repo = QdrantSeedRepository(state.qdrant_client)
-
-            try:
-                _link_count, seed_keys = await store_seeds_from_extracted_nodes(
-                    extracted_nodes,
-                    write_facts,
-                    write_seed_repo,
-                    embedding_service=embedding_service,
-                    qdrant_seed_repo=qdrant_seed_repo,
-                )
-                await write_session.commit()
-            except Exception:
-                logger.exception("Seed storage failed in entity_extraction_task")
-                try:
-                    await write_session.rollback()
-                except Exception:
-                    pass
-                seed_keys = []
-
-        # Serialize extracted_nodes for output
+        # Serialize extracted_nodes for output (include fact_ids, aliases,
+        # extraction_role so the orchestrator can pass them to seed storage)
         serializable_nodes: list[dict[str, Any]] = []
         for node in extracted_nodes:
             serializable_nodes.append(
@@ -295,14 +275,16 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
                     "node_type": node.get("node_type", "concept"),
                     "entity_subtype": node.get("entity_subtype"),
                     "fact_indices": node.get("fact_indices", []),
+                    "fact_ids": node.get("fact_ids", []),
+                    "aliases": node.get("aliases", []),
+                    "extraction_role": node.get("extraction_role", "mentioned"),
                 }
             )
 
         logger.info(
-            "entity_extraction completed: facts=%d entities=%d seeds=%d",
+            "entity_extraction completed: facts=%d entities=%d",
             len(write_facts),
             len(serializable_nodes),
-            len(seed_keys),
         )
 
         await flush_usage_to_db(
@@ -311,7 +293,6 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
 
         return EntityExtractionOutput(
             extracted_nodes=serializable_nodes,
-            seed_keys=seed_keys,
         ).model_dump()
 
     finally:
@@ -407,7 +388,6 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
             )
             entity_output = EntityExtractionOutput.model_validate(entity_result)
             extracted_nodes = entity_output.extracted_nodes
-            seed_keys = entity_output.seed_keys
         else:
             # Multiple chunks — fan out in parallel
             logger.info(
@@ -433,14 +413,66 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
             chunk_results = await entity_extraction_task.aio_run_many(bulk_items)
 
             # Merge results across chunks
-            seen_seeds: set[str] = set()
             for result in chunk_results:
                 entity_output = EntityExtractionOutput.model_validate(result)
                 extracted_nodes.extend(entity_output.extracted_nodes)
-                for sk in entity_output.seed_keys:
-                    if sk not in seen_seeds:
-                        seen_seeds.add(sk)
-                        seed_keys.append(sk)
+
+    # ── Seed storage: single writer, zero contention ──────────────
+    # Entity extraction tasks return extracted_nodes with resolved
+    # fact_ids (UUIDs). We load the referenced facts once, remap to
+    # fact_indices, and call store_seeds_from_extracted_nodes in a
+    # single transaction — eliminating the N-writer lock storm.
+    if extracted_nodes:
+        all_referenced_fact_ids: set[str] = set()
+        for node in extracted_nodes:
+            all_referenced_fact_ids.update(node.get("fact_ids", []))
+
+        write_session = state.write_session_factory()
+        try:
+            from kt_db.repositories.write_facts import WriteFactRepository
+            from kt_db.repositories.write_seeds import WriteSeedRepository
+            from kt_facts.processing.seed_extraction import store_seeds_from_extracted_nodes
+            from kt_models.embeddings import EmbeddingService
+            from kt_qdrant.repositories.seeds import QdrantSeedRepository
+
+            embedding_service = cast(EmbeddingService, state.embedding_service)
+
+            # Load all referenced facts (single SELECT query)
+            write_fact_repo = WriteFactRepository(write_session)
+            fact_uuids = [uuid.UUID(fid) for fid in all_referenced_fact_ids]
+            write_facts = await write_fact_repo.get_by_ids(fact_uuids)
+
+            # Build unified facts list and remap fact_ids → fact_indices
+            # (store_seeds_from_extracted_nodes expects 1-indexed positions)
+            fact_id_to_pos = {str(f.id): i + 1 for i, f in enumerate(write_facts)}
+            for node in extracted_nodes:
+                node["fact_indices"] = [
+                    fact_id_to_pos[fid] for fid in node.get("fact_ids", []) if fid in fact_id_to_pos
+                ]
+
+            write_seed_repo = WriteSeedRepository(write_session)
+
+            if state.qdrant_client is None:
+                raise RuntimeError("Qdrant client is required for seed extraction but was not available on WorkerState")
+            qdrant_seed_repo = QdrantSeedRepository(state.qdrant_client)
+
+            _link_count, seed_keys = await store_seeds_from_extracted_nodes(
+                extracted_nodes,
+                write_facts,
+                write_seed_repo,
+                embedding_service=embedding_service,
+                qdrant_seed_repo=qdrant_seed_repo,
+            )
+            await write_session.commit()
+        except Exception:
+            logger.exception("Seed storage failed in decompose_sources")
+            try:
+                await write_session.rollback()
+            except Exception:
+                pass
+            seed_keys = []
+        finally:
+            await write_session.close()
 
     logger.info(
         "decompose_sources completed: sources=%d facts=%d entities=%d seeds=%d",
