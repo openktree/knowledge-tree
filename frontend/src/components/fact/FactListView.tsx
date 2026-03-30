@@ -124,8 +124,8 @@ export function FactListView() {
   return (
     <div className="flex flex-col h-full relative">
       {/* Search + filter + count */}
-      <div className="flex items-center gap-3 p-4 border-b">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap items-center gap-3 p-4 border-b">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search facts..."
@@ -178,7 +178,7 @@ export function FactListView() {
           ) : (
             <Upload className="size-4" />
           )}
-          <span className="ml-1">Import JSON</span>
+          <span className="ml-1 hidden sm:inline">Import JSON</span>
         </Button>
         <Button
           variant="outline"
@@ -191,7 +191,7 @@ export function FactListView() {
           ) : (
             <Download className="size-4" />
           )}
-          <span className="ml-1">Export JSON</span>
+          <span className="ml-1 hidden sm:inline">Export JSON</span>
         </Button>
       </div>
 

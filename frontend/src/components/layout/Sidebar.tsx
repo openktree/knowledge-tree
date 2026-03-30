@@ -4,16 +4,22 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, Search, ExternalLink } from "lucide-react";
+import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, Search, ExternalLink, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useAuth } from "@/contexts/auth";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 
 const WORKFLOW_ITEMS = [
@@ -45,16 +51,194 @@ const EXTERNAL_LINKS = [
   { href: `https://wiki.${SITE_DOMAIN}`, label: "Wiki" },
 ];
 
+function NavContent({
+  collapsed,
+  isAdmin,
+  isActive,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  isAdmin: boolean;
+  isActive: (href: string) => boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
+      {/* Navigation */}
+      <nav className="flex-1 flex flex-col gap-1 p-2">
+        {[...WORKFLOW_ITEMS, ...DATA_ITEMS].map((item, index) => {
+          const active = isActive(item.href);
+          const showDivider = index === WORKFLOW_ITEMS.length;
+          const linkContent = (
+            <Link
+              href={item.href}
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                active
+                  ? "bg-accent text-accent-foreground font-medium"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                collapsed && "justify-center px-0",
+              )}
+            >
+              <item.icon className="size-4 shrink-0" />
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+
+          const element = collapsed ? (
+            <Tooltip key={item.href}>
+              <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <div key={item.href}>{linkContent}</div>
+          );
+
+          if (showDivider) {
+            return (
+              <div key={item.href}>
+                <div className={cn("border-t border-border my-1", collapsed && "mx-1")} />
+                {element}
+              </div>
+            );
+          }
+
+          return element;
+        })}
+
+        {isAdmin && (
+          <>
+            <div className={cn("border-t border-border my-1", collapsed && "mx-1")} />
+            {ADMIN_NAV_ITEMS.map((item) => {
+              const active = isActive(item.href);
+              const linkContent = (
+                <Link
+                  href={item.href}
+                  onClick={onNavigate}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                    collapsed && "justify-center px-0",
+                  )}
+                >
+                  <item.icon className="size-4 shrink-0" />
+                  {!collapsed && <span>{item.label}</span>}
+                </Link>
+              );
+
+              if (collapsed) {
+                return (
+                  <Tooltip key={item.href}>
+                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return <div key={item.href}>{linkContent}</div>;
+            })}
+          </>
+        )}
+      </nav>
+
+      {/* External links */}
+      <div className={cn("border-t border-border p-2 flex flex-col gap-1", collapsed && "px-1")}>
+        {EXTERNAL_LINKS.map((item) => {
+          const linkContent = (
+            <a
+              key={item.href}
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                collapsed && "justify-center px-0",
+              )}
+            >
+              <ExternalLink className="size-4 shrink-0" />
+              {!collapsed && <span>{item.label}</span>}
+            </a>
+          );
+
+          if (collapsed) {
+            return (
+              <Tooltip key={item.href}>
+                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                <TooltipContent side="right">{item.label}</TooltipContent>
+              </Tooltip>
+            );
+          }
+
+          return <div key={item.href}>{linkContent}</div>;
+        })}
+      </div>
+    </>
+  );
+}
+
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
   const { user } = useAuth();
   const isAdmin = user?.is_superuser ?? false;
+  const isMobile = useIsMobile();
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   };
+
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-screen">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-card shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMobileOpen(true)}
+            className="px-2"
+          >
+            <Menu className="size-5" />
+          </Button>
+          <Image src="/logo.svg" alt="Knowledge Tree" width={20} height={20} className="size-5 shrink-0" />
+          <span className="text-sm font-semibold truncate">Knowledge Tree</span>
+        </div>
+
+        {/* Mobile drawer */}
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetContent side="left" className="w-[260px] p-0 flex flex-col">
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            {/* Logo */}
+            <div className="flex items-center gap-2 px-3 py-4 border-b">
+              <Image src="/logo.svg" alt="Knowledge Tree" width={20} height={20} className="size-5 shrink-0" />
+              <span className="text-sm font-semibold truncate">Knowledge Tree</span>
+            </div>
+
+            <NavContent
+              collapsed={false}
+              isAdmin={isAdmin}
+              isActive={isActive}
+              onNavigate={() => setMobileOpen(false)}
+            />
+
+            {/* User menu + theme */}
+            <div className="border-t p-2 flex flex-col gap-1">
+              <ThemeToggle collapsed={false} />
+              <UserMenu collapsed={false} />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Main content */}
+        <main className="flex-1 min-w-0 overflow-auto">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen">
@@ -73,115 +257,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 flex flex-col gap-1 p-2">
-          {[...WORKFLOW_ITEMS, ...DATA_ITEMS].map((item, index) => {
-            const active = isActive(item.href);
-            const showDivider = index === WORKFLOW_ITEMS.length;
-            const linkContent = (
-              <Link
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                  collapsed && "justify-center px-0",
-                )}
-              >
-                <item.icon className="size-4 shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-
-            const element = collapsed ? (
-              <Tooltip key={item.href}>
-                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                <TooltipContent side="right">{item.label}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <div key={item.href}>{linkContent}</div>
-            );
-
-            if (showDivider) {
-              return (
-                <div key={item.href}>
-                  <div className={cn("border-t border-border my-1", collapsed && "mx-1")} />
-                  {element}
-                </div>
-              );
-            }
-
-            return element;
-          })}
-
-          {isAdmin && (
-            <>
-              <div className={cn("border-t border-border my-1", collapsed && "mx-1")} />
-              {ADMIN_NAV_ITEMS.map((item) => {
-                const active = isActive(item.href);
-                const linkContent = (
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                      active
-                        ? "bg-accent text-accent-foreground font-medium"
-                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                      collapsed && "justify-center px-0",
-                    )}
-                  >
-                    <item.icon className="size-4 shrink-0" />
-                    {!collapsed && <span>{item.label}</span>}
-                  </Link>
-                );
-
-                if (collapsed) {
-                  return (
-                    <Tooltip key={item.href}>
-                      <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                      <TooltipContent side="right">{item.label}</TooltipContent>
-                    </Tooltip>
-                  );
-                }
-
-                return <div key={item.href}>{linkContent}</div>;
-              })}
-            </>
-          )}
-        </nav>
-
-        {/* External links */}
-        <div className={cn("border-t border-border p-2 flex flex-col gap-1", collapsed && "px-1")}>
-          {EXTERNAL_LINKS.map((item) => {
-            const linkContent = (
-              <a
-                key={item.href}
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                  collapsed && "justify-center px-0",
-                )}
-              >
-                <ExternalLink className="size-4 shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </a>
-            );
-
-            if (collapsed) {
-              return (
-                <Tooltip key={item.href}>
-                  <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            return <div key={item.href}>{linkContent}</div>;
-          })}
-        </div>
+        <NavContent
+          collapsed={collapsed}
+          isAdmin={isAdmin}
+          isActive={isActive}
+        />
 
         {/* User menu + theme + collapse toggle */}
         <div className="border-t p-2 flex flex-col gap-1">
