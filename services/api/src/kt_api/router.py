@@ -8,6 +8,7 @@ from kt_api.admin import router as admin_router
 from kt_api.auth.router import router as auth_router
 from kt_api.auth.tokens import require_auth
 from kt_api.config_api import router as config_router
+from kt_api.conversations import router as conversations_router
 from kt_api.edge_candidates import router as edge_candidates_router
 from kt_api.edges import router as edges_router
 from kt_api.export import router as export_router
@@ -34,6 +35,7 @@ api_router = APIRouter()
 # Auth routes are public (login, register, etc.)
 api_router.include_router(auth_router)
 # All other routes require authentication
+api_router.include_router(conversations_router, dependencies=_auth_dep)
 api_router.include_router(nodes_router, dependencies=_auth_dep)
 api_router.include_router(edges_router, dependencies=_auth_dep)
 api_router.include_router(graph_router, dependencies=_auth_dep)
