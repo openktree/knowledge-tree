@@ -337,7 +337,7 @@ bottom_up_wf = hatchet.workflow(
     input_validator=BottomUpInput,
     concurrency=ConcurrencyExpression(
         expression="input.conversation_id",
-        max_runs=1,
+        max_runs=get_settings().bottom_up_max_runs,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),
 )
@@ -839,7 +839,7 @@ bottom_up_prepare_wf = hatchet.workflow(
     input_validator=BottomUpPrepareInput,
     concurrency=ConcurrencyExpression(
         expression="input.conversation_id",
-        max_runs=1,
+        max_runs=get_settings().bottom_up_prepare_max_runs,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),
 )
@@ -1164,7 +1164,7 @@ agent_select_wf = hatchet.workflow(
     input_validator=AgentSelectInput,
     concurrency=ConcurrencyExpression(
         expression="input.conversation_id",
-        max_runs=1,
+        max_runs=get_settings().agent_select_max_runs,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),
 )

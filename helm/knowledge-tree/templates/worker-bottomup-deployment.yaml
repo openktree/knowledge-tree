@@ -29,6 +29,26 @@ spec:
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           env:
             {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+            {{- if .Values.workers.bottomup.bottomUpMaxRuns }}
+            - name: BOTTOM_UP_MAX_RUNS
+              value: {{ .Values.workers.bottomup.bottomUpMaxRuns | quote }}
+            {{- end }}
+            {{- if .Values.workers.bottomup.bottomUpPrepareMaxRuns }}
+            - name: BOTTOM_UP_PREPARE_MAX_RUNS
+              value: {{ .Values.workers.bottomup.bottomUpPrepareMaxRuns | quote }}
+            {{- end }}
+            {{- if .Values.workers.bottomup.agentSelectMaxRuns }}
+            - name: AGENT_SELECT_MAX_RUNS
+              value: {{ .Values.workers.bottomup.agentSelectMaxRuns | quote }}
+            {{- end }}
+            {{- if .Values.workers.bottomup.workerBottomupSlots }}
+            - name: WORKER_BOTTOMUP_SLOTS
+              value: {{ .Values.workers.bottomup.workerBottomupSlots | quote }}
+            {{- end }}
+            {{- if .Values.workers.bottomup.workerBottomupDurableSlots }}
+            - name: WORKER_BOTTOMUP_DURABLE_SLOTS
+              value: {{ .Values.workers.bottomup.workerBottomupDurableSlots | quote }}
+            {{- end }}
           volumeMounts:
             {{- include "knowledge-tree.configVolumeMount" . | nindent 12 }}
           resources:

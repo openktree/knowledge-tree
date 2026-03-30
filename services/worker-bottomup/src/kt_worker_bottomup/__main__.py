@@ -5,6 +5,7 @@ Usage: python -m kt_worker_bottomup
 
 import logging
 
+from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import worker_lifespan
 from kt_worker_bottomup.bottom_up import (
@@ -25,10 +26,11 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     hatchet = get_hatchet()
+    settings = get_settings()
     worker = hatchet.worker(
         "orchestrator",
-        slots=10,
-        durable_slots=20,
+        slots=settings.worker_bottomup_slots,
+        durable_slots=settings.worker_bottomup_durable_slots,
         workflows=[
             agent_select_wf,
             bottom_up_wf,

@@ -255,6 +255,18 @@ _register(
     },
 )
 
+# ---- Hatchet concurrency ---------------------------------------------------
+_register(
+    "hatchet_concurrency",
+    {
+        "bottom_up_max_runs": "bottom_up_max_runs",
+        "bottom_up_prepare_max_runs": "bottom_up_prepare_max_runs",
+        "agent_select_max_runs": "agent_select_max_runs",
+        "worker_bottomup_slots": "worker_bottomup_slots",
+        "worker_bottomup_durable_slots": "worker_bottomup_durable_slots",
+    },
+)
+
 # ---- Seeds -----------------------------------------------------------------
 _register(
     "seeds",
@@ -477,6 +489,13 @@ class Settings(BaseSettings):
 
     # Wave pipeline
     default_wave_count: int = 2
+
+    # Hatchet concurrency limits
+    bottom_up_max_runs: int = 3
+    bottom_up_prepare_max_runs: int = 3
+    agent_select_max_runs: int = 3
+    worker_bottomup_slots: int = 20
+    worker_bottomup_durable_slots: int = 40
 
     # Timeouts
     agent_inactivity_timeout_seconds: int = 300  # stall detection: no tool/emit activity for 5 min
