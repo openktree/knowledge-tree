@@ -6,7 +6,7 @@ title: Welcome
 
 # Knowledge Tree Documentation
 
-Knowledge Tree is a **knowledge integration system** that builds understanding exclusively from raw external data — never from AI model internal knowledge. It constructs and evolves a knowledge graph where every node is grounded in provenance-tracked facts decomposed from real sources.
+Knowledge Tree is a **knowledge integration system** that builds understanding exclusively from raw external data. It constructs and evolves a knowledge graph where every node is grounded in provenance-tracked facts decomposed from real sources. It aims to make the underlying data and sources visible enabling the comprehension,  understanding and integration of complex data and seemingly oposing ideas. 
 
 ## What makes Knowledge Tree different
 
@@ -40,3 +40,13 @@ Dive into the architecture, core objects, services, and development setup. Every
 | **Docs** | [docs.openktree.com](https://docs.openktree.com) | Developer documentation (you are here) |
 | **MCP Server** | [mcp.openktree.com](https://mcp.openktree.com) | Model Context Protocol endpoint |
 | **API** | [api.openktree.com](https://api.openktree.com) | REST + SSE API |
+
+---
+
+:::note[Early Development]
+Knowledge Tree is currently **under active development** and not yet generally available. Features may change, and the system may experience downtime or instability.
+
+If you'd like to try it out, you can **join the waitlist** on the [Research App](https://research.openktree.com) — it's already deployed and accepting signups.
+
+For any questions, feedback, or collaboration inquiries, please reach out to **carlosgomezsoza@gmail.com**.
+:::

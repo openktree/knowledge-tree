@@ -5,11 +5,15 @@ title: Values & Principles
 
 # System Values & Principles
 
-Knowledge Tree is built on a simple conviction: **humanity deserves a shared, open knowledge commons** — a living World Graph where every piece of evidence is preserved, every source is traceable, and every perspective is represented.
+:::note[Early Development]
+Knowledge Tree is currently **under active development** and not yet generally available. Features may change, and the system may experience downtime or instability. You can **join the waitlist** on the [Research App](https://research.openktree.com) to get early access. For questions or feedback, reach out to **carlosgomezsoza@gmail.com**.
+:::
+
+Knowledge Tree is built on a simple conviction: **humanity deserves a shared, open knowledge commons** — a living cognitive tool that enables the use of AI to creating clarity when overloaded with massive ammounts of information or contradicting information. The world graph is a data commons archive where every piece of evidence is preserved, every source is traceable, and every perspective is represented.
 
 ## The World Graph
 
-The goal of Knowledge Tree is to create the **World Graph** — a global, open knowledge commons for humanity. Not a chatbot. Not a search engine. A persistent, growing graph of interconnected knowledge where:
+One of the goals of Knowledge Tree is to create the **World Graph** — a global, open knowledge commons for humanity. Not a chatbot. Not a search engine. A persistent, growing graph of interconnected knowledge where:
 
 - Every fact is grounded in real, external sources
 - Every connection between ideas is backed by shared evidence
@@ -24,7 +28,7 @@ The World Graph grows richer with every query, every source ingested, and every 
 
 AI models are **reasoning engines**, not knowledge sources. All knowledge in the graph traces back to raw external data — web pages, research papers, uploaded documents, and other real sources.
 
-Models analyze, compare, and synthesize facts. They never inject their own training data as knowledge. This separation is fundamental: it means the graph's knowledge is auditable, updatable, and independent of any single model's biases or training cutoff.
+Models analyze, compare, and synthesize facts. They are discouraged from injecting their own training data as knowledge. This separation is fundamental: it means the graph's knowledge is auditable, updatable, and independent of any single model's biases or training cutoff.
 
 ### 2. Integration, not ignoring
 
