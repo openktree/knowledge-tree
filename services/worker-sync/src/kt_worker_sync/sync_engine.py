@@ -244,7 +244,10 @@ class SyncEngine:
                                     "is_full_text": wrs.is_full_text,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
-                                    "fact_count": wrs.fact_count,
+                                    # fact_count intentionally excluded — managed
+                                    # by _sync_one_fact_source increments only.
+                                    # write-db never updates fact_count, so
+                                    # re-syncing would reset it to 0.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
                                 },
@@ -1796,7 +1799,8 @@ class SyncEngine:
                                     "is_full_text": wrs.is_full_text,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
-                                    "fact_count": wrs.fact_count,
+                                    # fact_count intentionally excluded — managed
+                                    # by _sync_one_fact_source increments only.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
                                 },
