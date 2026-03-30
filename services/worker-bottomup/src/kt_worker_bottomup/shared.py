@@ -18,29 +18,41 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _open_sessions(state: WorkerState) -> AsyncGenerator[tuple[Any, Any], None]:
-    """Open graph-db session and optional write-db session.
+    """Open write-db session for worker pipelines.
 
-    Yields ``(session, write_session)`` — caller must commit as needed.
+    Yields ``(session, write_session)`` where ``session`` is **None**.
+    Workers operate in write-db-only mode — all reads route through
+    write-db or Qdrant, and the sync worker propagates to graph-db.
+
+    Previously this opened a graph-db session that was held for the
+    entire pipeline (hours during bottom-up research), leaking
+    connections from the limited graph-db pool (max_connections=100)
+    and starving the API / wiki-frontend.
     """
-    async with state.session_factory() as session:
-        write_session = None
-        if state.write_session_factory is not None:
-            write_session = state.write_session_factory()
-        try:
-            yield session, write_session
-        finally:
-            if write_session is not None:
-                await write_session.close()
+    write_session = None
+    if state.write_session_factory is not None:
+        write_session = state.write_session_factory()
+    try:
+        yield None, write_session
+    finally:
+        if write_session is not None:
+            await write_session.close()
 
 
 async def _build_agent_context(
     state: WorkerState,
-    session: Any,
+    session: Any | None = None,
     emit_event: Any | None = None,
     write_session: Any | None = None,
     api_key: str | None = None,
 ) -> Any:
-    """Build an AgentContext from WorkerState and an open session.
+    """Build an AgentContext from WorkerState.
+
+    ``session`` (graph-db) defaults to None — workers operate in
+    write-db-only mode.  GraphEngine methods that have write-db
+    fallbacks will use write-db; methods that require graph-db
+    (e.g. search_nodes) will raise RuntimeError, which callers
+    handle gracefully (e.g. scout wraps graph reads in try/except).
 
     Pass ``emit_event`` to wire AgentContext.emit() calls (e.g. from
     PerspectiveBuilder) to the Hatchet stream.  The callback must have

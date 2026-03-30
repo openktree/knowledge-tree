@@ -119,7 +119,6 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         )
         if write_session is not None:
             await write_session.commit()
-        await session.commit()
 
     await emit(
         "pipeline_phase",
@@ -474,7 +473,7 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
                 usage_by_task=None,
                 super_sources=accumulator.super_sources if accumulator.super_sources else None,
             )
-            await session.commit()
+
     except Exception:
         logger.warning(
             "Failed to persist research report for message %s",
@@ -793,7 +792,6 @@ async def bottom_up_prepare_scope(
         )
         if write_session is not None:
             await write_session.commit()
-        await session.commit()
 
     await emit(
         "pipeline_phase",
@@ -1101,7 +1099,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 usage_by_model=None,
                 usage_by_task=None,
             )
-            await session.commit()
+
     except Exception:
         logger.warning("Failed to persist research report for prepare", exc_info=True)
 
@@ -1117,7 +1115,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 status="completed",
                 content=f"Research complete: {total_fact_count} facts gathered, {len(seed_summaries)} seeds created.",
             )
-            await session.commit()
+
     except Exception:
         logger.exception("Failed to store prepare output on message")
 
