@@ -44,11 +44,21 @@ class WriteSourceRepository:
         provider_id: str,
         provider_metadata: dict | None = None,
     ) -> WriteRawSource:
-        """Insert or return existing source by content_hash.
+        """Insert or return existing source, deduplicating by URI then content_hash.
 
-        Uses ON CONFLICT DO UPDATE (no-op style) on content_hash to avoid
-        deadlocks from concurrent inserts of the same source.
+        First checks for an existing source with the same URI to prevent
+        duplicate entries when search engines return different snippets for
+        the same URL across queries.  Falls back to content_hash upsert for
+        genuinely new URLs.
         """
+        # Deduplicate by URI first — same URL should always reuse the
+        # existing source regardless of snippet content.
+        existing = (
+            await self._session.execute(select(WriteRawSource).where(WriteRawSource.uri == uri).limit(1))
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+
         if content_hash is None:
             content_hash = self.compute_hash(raw_content or "")
         if source_id is None:

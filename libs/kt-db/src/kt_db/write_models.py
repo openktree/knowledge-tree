@@ -36,6 +36,7 @@ class WriteRawSource(WriteBase):
     __table_args__ = (
         Index("ix_write_raw_sources_updated_at", "updated_at"),
         Index("ix_write_raw_sources_content_hash", "content_hash", unique=True),
+        Index("ix_write_raw_sources_uri", "uri"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
