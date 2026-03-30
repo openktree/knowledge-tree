@@ -318,6 +318,12 @@ workers:
     image:
       repository: ""
       tag: ""
+    # Hatchet concurrency limits (pydantic-settings auto-reads uppercased env vars)
+    bottomUpMaxRuns: ""          # BOTTOM_UP_MAX_RUNS (default: 3)
+    bottomUpPrepareMaxRuns: ""   # BOTTOM_UP_PREPARE_MAX_RUNS (default: 3)
+    agentSelectMaxRuns: ""       # AGENT_SELECT_MAX_RUNS (default: 3)
+    workerBottomupSlots: ""      # WORKER_BOTTOMUP_SLOTS (default: 20)
+    workerBottomupDurableSlots: ""  # WORKER_BOTTOMUP_DURABLE_SLOTS (default: 40)
     resources:
       requests:
         memory: 512Mi
