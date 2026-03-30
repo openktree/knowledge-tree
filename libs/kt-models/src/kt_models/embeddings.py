@@ -6,6 +6,12 @@ from litellm import aembedding
 
 from kt_config.settings import get_settings
 
+# OpenRouter app identification headers
+_OPENROUTER_HEADERS = {
+    "X-Title": "openktree",
+    "HTTP-Referer": "https://github.com/openktree/knowledge-tree",
+}
+
 logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 2
@@ -65,6 +71,7 @@ class EmbeddingService:
                     api_base="https://openrouter.ai/api/v1",
                     encoding_format="float",
                     timeout=self._timeout,
+                    extra_headers=_OPENROUTER_HEADERS,
                 )
                 _record_embedding_usage(response, self._model)
                 return response.data[0]["embedding"]  # type: ignore[index]
@@ -102,6 +109,7 @@ class EmbeddingService:
                         api_base="https://openrouter.ai/api/v1",
                         encoding_format="float",
                         timeout=self._timeout,
+                        extra_headers=_OPENROUTER_HEADERS,
                     )
                     _record_embedding_usage(response, self._model)
                     results.extend(item["embedding"] for item in response.data)  # type: ignore[index]
