@@ -78,7 +78,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         if user_count == 1:
             user.is_superuser = True
             session.add(user)
-            await session.flush()
+            await session.commit()
             logger.info("First user %s auto-promoted to admin", user.email)
 
 

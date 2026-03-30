@@ -25,9 +25,24 @@ Knowledge Tree is a **knowledge integration system** that builds understanding e
 
 ## Getting Started
 
-### Using the Research App
+### Quickstart (Docker)
 
-The fastest way to try Knowledge Tree is through the [Research App](https://research.openktree.com). Join the waitlist to get access, then:
+Run the full stack locally with a single script — no build step required:
+
+```bash
+cp .env.example .env
+# Edit .env — add OPENROUTER_API_KEY (required) and SERPER_KEY (recommended)
+
+./scripts/quickstart-init.sh
+```
+
+Then open http://localhost:3000 and register your first account (auto-promoted to admin).
+
+See [QUICKSTART.md](QUICKSTART.md) for full instructions, troubleshooting, and management commands.
+
+### Using the Hosted Research App
+
+The fastest way to try Knowledge Tree without running anything is the [Research App](https://research.openktree.com). Join the waitlist to get access, then:
 
 1. **Ingest sources** — paste links or upload documents to feed the knowledge graph
 2. **Explore the graph** — browse nodes, facts, dimensions, and relationships
@@ -41,7 +56,7 @@ See the [MCP docs](https://docs.openktree.com/mcp/connecting) for setup instruct
 
 ### Local Development
 
-Knowledge Tree is a microservices monorepo using **uv** (Python) and **pnpm** (frontend). To run locally:
+Knowledge Tree is a microservices monorepo using **uv** (Python) and **pnpm** (frontend). For development with hot-reloading:
 
 ```bash
 # Prerequisites: Docker, uv, pnpm, just
