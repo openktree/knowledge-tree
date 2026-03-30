@@ -28,6 +28,9 @@ secrets:
   # Auto-generated if empty (preserved across upgrades via lookup)
   jwtSecretKey: ""
 
+  # API token for wiki-frontend → API authentication
+  apiToken: ""
+
   googleOauthClientId: ""
   googleOauthClientSecret: ""
 
