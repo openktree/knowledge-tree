@@ -827,6 +827,127 @@ class GraphEngine:
 
         return SubgraphResult(nodes=nodes, edges=edges, edge_fact_ids=edge_fact_ids)
 
+    # ── Batch query helpers ────────────────────────────────────────
+    #
+    # High-level methods that batch-load related data in a small number
+    # of queries.  Shared by the API, MCP server, and synthesis agent
+    # tools so the optimised patterns live in one place.
+
+    async def get_edges_with_targets(
+        self,
+        node_id: uuid.UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        edge_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Get edges for a node with target-node info and edge fact counts.
+
+        Returns ``{"edges": [...], "total": int}`` where each edge dict has
+        ``edge``, ``other_node_id``, ``other_concept``, ``other_node_type``,
+        and ``fact_count``.  Results are sorted by fact count descending.
+
+        Replaces the N+1 pattern of calling ``get_node()`` per edge and
+        a separate EdgeFact COUNT query.
+        """
+        edges = await self._edge_repo.get_edges(node_id, direction="both")
+
+        if edge_type:
+            edges = [e for e in edges if e.relationship_type == edge_type]
+
+        # Batch edge fact counts
+        edge_ids = [e.id for e in edges]
+        edge_fact_counts: dict[uuid.UUID, int] = {}
+        if edge_ids:
+            stmt = (
+                select(EdgeFact.edge_id, func.count(EdgeFact.fact_id))
+                .where(EdgeFact.edge_id.in_(edge_ids))
+                .group_by(EdgeFact.edge_id)
+            )
+            result = await self._session.execute(stmt)
+            edge_fact_counts = {row[0]: row[1] for row in result.all()}
+
+        # Sort by fact count descending
+        edges.sort(key=lambda e: edge_fact_counts.get(e.id, 0), reverse=True)
+        total = len(edges)
+        page = edges[offset : offset + limit]
+
+        # Batch-fetch target node info for this page
+        target_ids: set[uuid.UUID] = set()
+        for e in page:
+            target_ids.add(e.source_node_id if e.source_node_id != node_id else e.target_node_id)
+
+        target_nodes: dict[uuid.UUID, tuple[str, str]] = {}
+        if target_ids:
+            stmt = select(Node.id, Node.concept, Node.node_type).where(Node.id.in_(list(target_ids)))
+            result = await self._session.execute(stmt)
+            for row in result.all():
+                target_nodes[row.id] = (row.concept, row.node_type)
+
+        items = []
+        for e in page:
+            other_id = e.target_node_id if e.source_node_id == node_id else e.source_node_id
+            concept, node_type = target_nodes.get(other_id, ("unknown", "concept"))
+            items.append(
+                {
+                    "edge": e,
+                    "other_node_id": other_id,
+                    "other_concept": concept,
+                    "other_node_type": node_type,
+                    "fact_count": edge_fact_counts.get(e.id, 0),
+                }
+            )
+
+        return {"edges": items, "total": total}
+
+    async def batch_get_neighbors_with_concepts(
+        self,
+        node_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, list[tuple[uuid.UUID, str, Edge]]]:
+        """For each node, return its neighbors as ``(neighbor_id, concept, edge)``.
+
+        Fetches all edges touching *any* of the given nodes in one query,
+        then batch-loads the neighbor node concepts.  Used by BFS path
+        finding to avoid N+1 ``get_node()`` calls per frontier node.
+        """
+        if not node_ids:
+            return {}
+
+        id_set = set(node_ids)
+        edge_stmt = select(Edge).where((Edge.source_node_id.in_(node_ids)) | (Edge.target_node_id.in_(node_ids)))
+        edge_result = await self._session.execute(edge_stmt)
+        edges = list(edge_result.scalars().all())
+
+        # Collect all neighbor IDs
+        neighbor_ids: set[uuid.UUID] = set()
+        for e in edges:
+            if e.source_node_id not in id_set:
+                neighbor_ids.add(e.source_node_id)
+            if e.target_node_id not in id_set:
+                neighbor_ids.add(e.target_node_id)
+            # Also include nodes in id_set that are neighbors of each other
+            neighbor_ids.add(e.source_node_id)
+            neighbor_ids.add(e.target_node_id)
+
+        # Batch-fetch concepts
+        concept_map: dict[uuid.UUID, str] = {}
+        if neighbor_ids:
+            stmt = select(Node.id, Node.concept).where(Node.id.in_(list(neighbor_ids)))
+            result = await self._session.execute(stmt)
+            concept_map = {row.id: row.concept for row in result.all()}
+
+        # Build adjacency map
+        adjacency: dict[uuid.UUID, list[tuple[uuid.UUID, str, Edge]]] = {nid: [] for nid in node_ids}
+        for e in edges:
+            if e.source_node_id in id_set:
+                neighbor = e.target_node_id
+                adjacency.setdefault(e.source_node_id, []).append((neighbor, concept_map.get(neighbor, "unknown"), e))
+            if e.target_node_id in id_set:
+                neighbor = e.source_node_id
+                adjacency.setdefault(e.target_node_id, []).append((neighbor, concept_map.get(neighbor, "unknown"), e))
+
+        return adjacency
+
     # ── Edge fact linking ──────────────────────────────────────────
 
     async def link_fact_to_edge(
@@ -1112,7 +1233,30 @@ class GraphEngine:
         return list(result.scalars().all())
 
     async def get_dimensions_with_facts(self, node_id: uuid.UUID) -> list[Dimension]:
-        """Get all dimensions for a node with dimension_facts eagerly loaded."""
+        """Get all dimensions for a node with dimension_facts eagerly loaded.
+
+        Routes to write-db when available, converting WriteDimension.fact_ids
+        into DimensionFact stubs so callers (e.g. _batch_facts) work unchanged.
+        """
+        if self._write_dim_repo is not None and self._write_node_repo is not None:
+            wn = await self._write_node_repo.get_by_uuid(node_id)
+            if wn is not None:
+                write_dims = await self._write_dim_repo.get_by_node_key(wn.key)
+                dims: list[Dimension] = []
+                for wd in write_dims:
+                    dim = Dimension(
+                        node_id=node_id,
+                        model_id=wd.model_id,
+                        content=wd.content,
+                        confidence=wd.confidence,
+                        batch_index=wd.batch_index,
+                        is_definitive=wd.is_definitive,
+                        fact_count=wd.fact_count,
+                    )
+                    dim.dimension_facts = [DimensionFact(fact_id=uuid.UUID(fid)) for fid in (wd.fact_ids or [])]
+                    dims.append(dim)
+                return dims
+            return []
         stmt = select(Dimension).where(Dimension.node_id == node_id).options(selectinload(Dimension.dimension_facts))
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

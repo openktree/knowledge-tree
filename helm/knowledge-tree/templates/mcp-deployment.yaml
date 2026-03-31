@@ -35,6 +35,10 @@ spec:
               protocol: TCP
           env:
             {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+            {{- if .Values.mcp.ingress.enabled }}
+            - name: MCP_OAUTH_BASE_URL
+              value: "{{ if .Values.mcp.ingress.tls }}https{{ else }}http{{ end }}://{{ .Values.mcp.ingress.host }}"
+            {{- end }}
           volumeMounts:
             {{- include "knowledge-tree.configVolumeMount" . | nindent 12 }}
           livenessProbe:

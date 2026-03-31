@@ -1,0 +1,27 @@
+[project]
+name = "kt-auth"
+version = "0.1.0"
+description = "Knowledge Tree shared authentication — token hashing, verification, and Redis-cached lookup"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-config",
+    "kt-db",
+    "bcrypt>=4.3.0",
+    "redis>=7.3.0",
+    "sqlalchemy>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-config = { workspace = true }
+kt-db = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_auth"]

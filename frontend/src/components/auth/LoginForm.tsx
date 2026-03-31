@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth";
 import { api } from "@/lib/api";
@@ -12,6 +12,11 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+
+  useEffect(() => {
+    api.auth.authFeatures().then((f) => setGoogleEnabled(f.google_oauth_enabled)).catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,19 +82,23 @@ export function LoginForm() {
         {loading ? "Signing in…" : "Sign in"}
       </button>
 
-      <div className="relative my-2 flex items-center">
-        <div className="flex-1 border-t border-border" />
-        <span className="mx-3 text-xs text-muted-foreground">or</span>
-        <div className="flex-1 border-t border-border" />
-      </div>
+      {googleEnabled && (
+        <>
+          <div className="relative my-2 flex items-center">
+            <div className="flex-1 border-t border-border" />
+            <span className="mx-3 text-xs text-muted-foreground">or</span>
+            <div className="flex-1 border-t border-border" />
+          </div>
 
-      <button
-        type="button"
-        onClick={handleGoogle}
-        className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent"
-      >
-        Continue with Google
-      </button>
+          <button
+            type="button"
+            onClick={handleGoogle}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent"
+          >
+            Continue with Google
+          </button>
+        </>
+      )}
 
       <p className="text-center text-sm text-muted-foreground">
         No account?{" "}

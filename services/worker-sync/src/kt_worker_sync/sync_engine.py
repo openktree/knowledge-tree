@@ -206,7 +206,7 @@ class SyncEngine:
                 UPDATE nodes SET fact_count = COALESCE(sub.cnt, 0)
                 FROM (
                     SELECT u.id AS node_id, COUNT(nf.fact_id) AS cnt
-                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
                     LEFT JOIN node_facts nf ON nf.node_id = u.id
                     GROUP BY u.id
                 ) sub
@@ -223,7 +223,7 @@ class SyncEngine:
                 UPDATE nodes SET edge_count = COALESCE(sub.cnt, 0)
                 FROM (
                     SELECT u.id AS node_id, COALESCE(SUM(e.cnt), 0)::int AS cnt
-                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
                     LEFT JOIN (
                         SELECT source_node_id AS node_id, COUNT(*) AS cnt
                         FROM edges WHERE source_node_id = ANY(:ids)
@@ -248,7 +248,7 @@ class SyncEngine:
                 UPDATE nodes SET child_count = COALESCE(sub.cnt, 0)
                 FROM (
                     SELECT u.id AS node_id, COUNT(c.id) AS cnt
-                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
                     LEFT JOIN nodes c ON c.parent_id = u.id
                     GROUP BY u.id
                 ) sub
@@ -265,7 +265,7 @@ class SyncEngine:
                 UPDATE nodes SET dimension_count = COALESCE(sub.cnt, 0)
                 FROM (
                     SELECT u.id AS node_id, COUNT(d.id) AS cnt
-                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
                     LEFT JOIN dimensions d ON d.node_id = u.id
                     GROUP BY u.id
                 ) sub
@@ -339,6 +339,7 @@ class SyncEngine:
                                 raw_content=wrs.raw_content,
                                 content_hash=wrs.content_hash,
                                 is_full_text=wrs.is_full_text,
+                                is_super_source=wrs.is_super_source,
                                 content_type=wrs.content_type,
                                 provider_id=wrs.provider_id,
                                 provider_metadata=wrs.provider_metadata,
@@ -354,6 +355,7 @@ class SyncEngine:
                                     "raw_content": wrs.raw_content,
                                     "content_hash": wrs.content_hash,
                                     "is_full_text": wrs.is_full_text,
+                                    "is_super_source": wrs.is_super_source,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
                                     # fact_count intentionally excluded — managed
@@ -1917,6 +1919,7 @@ class SyncEngine:
                                 raw_content=wrs.raw_content,
                                 content_hash=wrs.content_hash,
                                 is_full_text=wrs.is_full_text,
+                                is_super_source=wrs.is_super_source,
                                 content_type=wrs.content_type,
                                 provider_id=wrs.provider_id,
                                 provider_metadata=wrs.provider_metadata,
@@ -1932,6 +1935,7 @@ class SyncEngine:
                                     "raw_content": wrs.raw_content,
                                     "content_hash": wrs.content_hash,
                                     "is_full_text": wrs.is_full_text,
+                                    "is_super_source": wrs.is_super_source,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
                                     # fact_count intentionally excluded — managed

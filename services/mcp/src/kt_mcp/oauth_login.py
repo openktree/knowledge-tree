@@ -16,7 +16,6 @@ import secrets
 import time
 from collections import defaultdict
 
-import bcrypt
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from mcp.server.auth.provider import construct_redirect_uri
@@ -166,7 +165,7 @@ async def login_submit(
 
         # Verify user credentials
         result = await session.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
+        user = result.unique().scalar_one_or_none()
 
         if user is None or not _verify_password(password, user.hashed_password):
             _record_failed_attempt(client_ip)
@@ -215,8 +214,13 @@ async def login_submit(
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    """Verify a password against a bcrypt hash (same algorithm as fastapi-users)."""
+    """Verify a password hash using pwdlib (supports argon2id and bcrypt, matching fastapi-users)."""
+    from pwdlib import PasswordHash
+    from pwdlib.hashers.argon2 import Argon2Hasher
+    from pwdlib.hashers.bcrypt import BcryptHasher
+
+    ph = PasswordHash((Argon2Hasher(), BcryptHasher()))
     try:
-        return bcrypt.checkpw(plain.encode(), hashed.encode())
-    except (ValueError, TypeError):
+        return ph.verify(plain, hashed)
+    except Exception:
         return False

@@ -93,6 +93,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
                 raise ValueError(f"Invalid scopes: {', '.join(invalid)}")
 
         metadata = client_info.model_dump(
+            mode="json",
             exclude={"client_id", "client_secret", "client_id_issued_at", "client_secret_expires_at"},
             exclude_none=True,
         )

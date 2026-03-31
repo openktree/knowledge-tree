@@ -1005,6 +1005,10 @@ export const api = {
     registrationStatus(): Promise<RegistrationStatusResponse> {
       return request<RegistrationStatusResponse>("/auth/registration-status");
     },
+
+    authFeatures(): Promise<{ google_oauth_enabled: boolean }> {
+      return request<{ google_oauth_enabled: boolean }>("/auth/features");
+    },
   },
 
   // -------------------------------------------------------------------------

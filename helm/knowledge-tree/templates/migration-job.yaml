@@ -59,12 +59,15 @@ spec:
             - -c
             - |
               set -e
+              echo "Installing alembic..."
+              uv pip install alembic --quiet
+
               echo "Running graph-db migrations..."
               cd /app/libs/kt-db
-              uv run alembic upgrade head
+              uv run alembic upgrade heads
 
               echo "Running write-db migrations..."
-              uv run alembic -c alembic_write.ini upgrade head
+              uv run alembic -c alembic_write.ini upgrade heads
 
               echo "Migrations complete"
           env:
