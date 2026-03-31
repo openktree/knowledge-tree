@@ -5,7 +5,7 @@ from kt_config.types import RawSearchResult
 from kt_db.repositories.sources import SourceRepository
 from kt_providers.brave import BraveSearchProvider
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_brave_search_returns_results() -> None:
@@ -29,6 +29,9 @@ async def test_brave_search_returns_results() -> None:
 
 async def test_brave_provider_is_available() -> None:
     settings = get_settings()
+    if not settings.brave_key:
+        pytest.skip("BRAVE_KEY not set")
+
     provider = BraveSearchProvider(api_key=settings.brave_key)
     assert await provider.is_available() is True
 
