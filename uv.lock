@@ -1629,7 +1629,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.18.1"
+version = "0.20.3"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1880,6 +1880,7 @@ dependencies = [
     { name = "kt-db" },
     { name = "kt-graph" },
     { name = "kt-qdrant" },
+    { name = "pwdlib", extra = ["argon2", "bcrypt"] },
     { name = "uvicorn" },
 ]
 
@@ -1892,6 +1893,7 @@ requires-dist = [
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
+    { name = "pwdlib", extras = ["argon2", "bcrypt"], specifier = ">=0.3.0" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]
 

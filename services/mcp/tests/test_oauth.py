@@ -7,13 +7,15 @@ import secrets
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import bcrypt
 import pytest
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 
 def _hash_password(plain: str) -> str:
-    """Hash a password with bcrypt (matching fastapi-users format)."""
-    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+    """Hash a password with argon2id (matching fastapi-users format)."""
+    ph = PasswordHash((Argon2Hasher(),))
+    return ph.hash(plain)
 
 
 def _hash_token(token: str) -> str:
