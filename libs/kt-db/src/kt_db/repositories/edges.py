@@ -249,6 +249,38 @@ class EdgeRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_edges_for_nodes(
+        self,
+        node_ids: list[uuid.UUID],
+        direction: str = "both",
+    ) -> dict[uuid.UUID, list[Edge]]:
+        """Bulk-load edges for multiple nodes in a single query.
+
+        Returns a mapping of node_id -> list of edges touching that node.
+        """
+        if not node_ids:
+            return {}
+
+        if direction == "outgoing":
+            condition = Edge.source_node_id.in_(node_ids)
+        elif direction == "incoming":
+            condition = Edge.target_node_id.in_(node_ids)
+        else:
+            condition = or_(Edge.source_node_id.in_(node_ids), Edge.target_node_id.in_(node_ids))
+
+        stmt = select(Edge).where(condition)
+        result = await self._session.execute(stmt)
+        edges = list(result.scalars().all())
+
+        id_set = set(node_ids)
+        by_node: dict[uuid.UUID, list[Edge]] = {nid: [] for nid in node_ids}
+        for e in edges:
+            if e.source_node_id in id_set:
+                by_node[e.source_node_id].append(e)
+            if e.target_node_id in id_set and e.target_node_id != e.source_node_id:
+                by_node[e.target_node_id].append(e)
+        return by_node
+
     async def get_neighbors(
         self,
         node_id: uuid.UUID,

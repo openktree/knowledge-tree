@@ -253,23 +253,26 @@ async def get_synthesis(
         for rn in doc.get("referenced_nodes", [])
     ]
 
-    # For supersynthesis, resolve sub-synthesis nodes
+    # For supersynthesis, resolve sub-synthesis nodes in a single batch query
     sub_syntheses: list[SynthesisNodeResponse] = []
     sub_ids = doc.get("sub_synthesis_ids", [])
     if sub_ids:
+        sub_uuids = []
         for sid in sub_ids:
             try:
-                sub_node = (await session.execute(select(Node).where(Node.id == uuid.UUID(sid)))).scalar_one_or_none()
-                if sub_node:
-                    sub_syntheses.append(
-                        SynthesisNodeResponse(
-                            node_id=str(sub_node.id),
-                            concept=sub_node.concept,
-                            node_type=sub_node.node_type,
-                        )
-                    )
-            except Exception:
+                sub_uuids.append(uuid.UUID(sid))
+            except ValueError:
                 pass
+        if sub_uuids:
+            sub_result = await session.execute(select(Node).where(Node.id.in_(sub_uuids)))
+            for sub_node in sub_result.scalars().all():
+                sub_syntheses.append(
+                    SynthesisNodeResponse(
+                        node_id=str(sub_node.id),
+                        concept=sub_node.concept,
+                        node_type=sub_node.node_type,
+                    )
+                )
 
     return SynthesisDocumentResponse(
         id=str(node.id),

@@ -9,6 +9,7 @@ dependencies = [
     "kt-models",
     "kt-config",
     "kt-qdrant",
+    "redis>=7.3.0",
 ]
 
 [build-system]
