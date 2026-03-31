@@ -9,10 +9,19 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from kt_config.settings import Settings
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
+
+    from kt_models.embeddings import EmbeddingService
+    from kt_models.gateway import ModelGateway
+    from kt_providers.fetcher import ContentFetcher
+    from kt_providers.registry import ProviderRegistry
 
 
 @dataclass
@@ -24,12 +33,12 @@ class WorkerState:
     settings: Settings
 
     # Lazy-imported services -- set during lifespan setup
-    model_gateway: object  # ModelGateway
-    embedding_service: object  # EmbeddingService
-    provider_registry: object  # ProviderRegistry
-    content_fetcher: object | None  # ContentFetcher | None
+    model_gateway: ModelGateway
+    embedding_service: EmbeddingService
+    provider_registry: ProviderRegistry
+    content_fetcher: ContentFetcher | None
     ontology_registry: object | None = None  # OntologyProviderRegistry | None
-    qdrant_client: object | None = None  # AsyncQdrantClient | None
+    qdrant_client: AsyncQdrantClient | None = None
 
 
 async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:

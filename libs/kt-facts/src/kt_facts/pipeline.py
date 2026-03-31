@@ -35,6 +35,8 @@ from kt_models.gateway import ModelGateway
 from kt_providers.fetcher import FileDataStore
 
 if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
+
     from kt_db.repositories.write_facts import WriteFactRepository
 
 logger = logging.getLogger(__name__)
@@ -81,7 +83,7 @@ class DecompositionPipeline:
         embedding_service: EmbeddingService | None = None,
         query_context: str | None = None,
         file_data_store: FileDataStore | None = None,
-        qdrant_client: object | None = None,
+        qdrant_client: AsyncQdrantClient | None = None,
         write_session: AsyncSession | None = None,
     ) -> DecompositionResult:
         """Extract facts from raw sources and store them.
@@ -399,7 +401,7 @@ class DecompositionPipeline:
         source: RawSource,
         session: AsyncSession,
         embedding_service: EmbeddingService | None,
-        qdrant_client: object | None = None,
+        qdrant_client: AsyncQdrantClient | None = None,
         write_session: AsyncSession | None = None,
     ) -> list[Fact]:
         """Dedup and store extracted facts for a single source.
@@ -481,7 +483,7 @@ async def _store_extracted_facts_impl(
     repo: FactRepository,
     embedding_service: EmbeddingService | None,
     source_content: str | None = None,
-    qdrant_client: object | None = None,
+    qdrant_client: AsyncQdrantClient | None = None,
     write_fact_repo: WriteFactRepository | None = None,
     source_uri: str | None = None,
     source_title: str | None = None,

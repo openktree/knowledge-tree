@@ -333,16 +333,17 @@ class GatherFactsPipeline:
                 *[coro for _, coro in text_coros],
                 return_exceptions=True,
             )
-            for (plan_idx, _), result in zip(text_coros, raw_results_list):
-                if isinstance(result, BaseException):
+            for (plan_idx, _), raw_result in zip(text_coros, raw_results_list):
+                if isinstance(raw_result, BaseException):
                     logger.exception(
                         "Decompose workflow failed for query '%s': %s",
                         query_plans[plan_idx].query,
-                        result,
+                        raw_result,
                     )
                 else:
                     # Workflow results are wrapped as {"task_name": output_dict};
                     # unwrap by task name before validation.
+                    result = raw_result
                     task_data = result.get("decompose_sources", result) if isinstance(result, dict) else result
                     text_results[plan_idx] = DecomposeSourcesOutput.model_validate(task_data)
 
@@ -353,15 +354,15 @@ class GatherFactsPipeline:
                 *[coro for _, coro in image_coros],
                 return_exceptions=True,
             )
-            for (plan_idx, _), result in zip(image_coros, raw_img_results):
-                if isinstance(result, BaseException):
+            for (plan_idx, _), img_result in zip(image_coros, raw_img_results):
+                if isinstance(img_result, BaseException):
                     logger.exception(
                         "Image decomposition failed for query '%s': %s",
                         query_plans[plan_idx].query,
-                        result,
+                        img_result,
                     )
                 else:
-                    image_results[plan_idx] = result
+                    image_results[plan_idx] = img_result
 
         # ── Phase 3: Reconcile results & refund budgets ───────────────
         for i, plan in enumerate(query_plans):

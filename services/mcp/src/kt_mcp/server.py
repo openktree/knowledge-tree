@@ -21,7 +21,6 @@ from fastmcp import FastMCP
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from kt_config.settings import get_settings
 from kt_db.models import EdgeFact, Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
 from kt_mcp.dependencies import (

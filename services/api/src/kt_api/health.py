@@ -64,8 +64,8 @@ async def health_check() -> HealthResponse | JSONResponse:
 
         settings = get_settings()
         r = aioredis.from_url(settings.redis_url)
-        await r.ping()
-        await r.close()
+        await r.ping()  # type: ignore[misc]
+        await r.close()  # type: ignore[misc]
         components["redis"] = ComponentHealth(status="ok")
     except Exception as exc:
         logger.warning("Health check: redis failed: %s", exc)

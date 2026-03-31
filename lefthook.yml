@@ -21,10 +21,13 @@ pre-commit:
       glob: "frontend/**/*.{ts,tsx,js,jsx}"
       run: cd frontend && pnpm type-check
 
-    - name: python-tests
-      glob: "**/*.py"
-      run: just test-all
-
     - name: frontend-tests
       glob: "frontend/**/*.{ts,tsx,js,jsx}"
       run: cd frontend && pnpm test
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: python-tests
+      glob: "**/*.py"
+      run: just test-all

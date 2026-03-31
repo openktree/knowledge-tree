@@ -12,6 +12,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from kt_graph.engine import GraphEngine
@@ -115,7 +116,7 @@ class AgentContext:
         parent: AgentContext | None = None,
         pipeline_tracker: Any | None = None,
         write_session_factory: async_sessionmaker[AsyncSession] | None = None,
-        qdrant_client: object | None = None,
+        qdrant_client: AsyncQdrantClient | None = None,
     ) -> None:
         self.graph_engine = graph_engine
         self.provider_registry = provider_registry

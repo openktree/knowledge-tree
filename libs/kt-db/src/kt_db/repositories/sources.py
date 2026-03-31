@@ -179,7 +179,7 @@ class SourceRepository:
             .group_by(FactSource.raw_source_id)
         )
         result = await self._session.execute(stmt)
-        return dict(result.all())
+        return dict(result.all())  # type: ignore[arg-type]
 
     async def increment_fact_count(self, source_id: uuid.UUID, delta: int = 1) -> None:
         """Increment the cached fact_count on a RawSource."""
