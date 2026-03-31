@@ -44,6 +44,7 @@ def upgrade() -> None:
         sa.Column("resource", sa.String(500), nullable=True),
         sa.Column("state", sa.String(200), nullable=True),
         sa.Column("expires_at", sa.Float, nullable=False),
+        sa.Column("csrf_token", sa.String(100), nullable=True),
         sa.Column(
             "user_id",
             postgresql.UUID(as_uuid=True),

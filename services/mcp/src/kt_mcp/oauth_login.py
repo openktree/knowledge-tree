@@ -9,14 +9,15 @@ OAuth client (e.g., Claude Web) with the authorization code.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import secrets
 import time
 
+import bcrypt
 from fastapi import APIRouter, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from mcp.server.auth.provider import construct_redirect_uri
-from passlib.hash import bcrypt as passlib_bcrypt
 from sqlalchemy import select
 
 from kt_db.models import OAuthAuthorizationCode, User
@@ -33,18 +34,18 @@ _LOGIN_PAGE_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Knowledge Tree — Authorize</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-  .card { background: #1e293b; border-radius: 12px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
-  h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: #f8fafc; }
-  p { font-size: 0.875rem; color: #94a3b8; margin-bottom: 1.5rem; }
-  label { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; }
-  input[type="email"], input[type="password"] { width: 100%; padding: 0.625rem; border: 1px solid #334155; border-radius: 6px; background: #0f172a; color: #f8fafc; font-size: 0.875rem; margin-bottom: 1rem; }
-  input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
-  button { width: 100%; padding: 0.625rem; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
-  button:hover { background: #2563eb; }
-  .error { background: #7f1d1d; color: #fca5a5; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.875rem; }
-  .footer { text-align: center; margin-top: 1rem; font-size: 0.75rem; color: #64748b; }
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }}
+  .card {{ background: #1e293b; border-radius: 12px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }}
+  h1 {{ font-size: 1.25rem; margin-bottom: 0.5rem; color: #f8fafc; }}
+  p {{ font-size: 0.875rem; color: #94a3b8; margin-bottom: 1.5rem; }}
+  label {{ display: block; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; }}
+  input[type="email"], input[type="password"] {{ width: 100%; padding: 0.625rem; border: 1px solid #334155; border-radius: 6px; background: #0f172a; color: #f8fafc; font-size: 0.875rem; margin-bottom: 1rem; }}
+  input:focus {{ outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }}
+  button {{ width: 100%; padding: 0.625rem; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 500; cursor: pointer; }}
+  button:hover {{ background: #2563eb; }}
+  .error {{ background: #7f1d1d; color: #fca5a5; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.875rem; }}
+  .footer {{ text-align: center; margin-top: 1rem; font-size: 0.75rem; color: #64748b; }}
 </style>
 </head>
 <body>
@@ -54,6 +55,7 @@ _LOGIN_PAGE_HTML = """<!DOCTYPE html>
   {error}
   <form method="POST" action="/oauth/login">
     <input type="hidden" name="code_id" value="{code_id}">
+    <input type="hidden" name="csrf_token" value="{csrf_token}">
     <label for="email">Email</label>
     <input type="email" id="email" name="email" required autofocus>
     <label for="password">Password</label>
@@ -69,7 +71,6 @@ _LOGIN_PAGE_HTML = """<!DOCTYPE html>
 @oauth_login_router.get("/login")
 async def login_page(code_id: str) -> HTMLResponse:
     """Show the login form for OAuth authorization."""
-    # Verify the pending code exists
     factory = get_session_factory_cached()
     async with factory() as session:
         row = await session.get(OAuthAuthorizationCode, code_id)
@@ -79,13 +80,19 @@ async def login_page(code_id: str) -> HTMLResponse:
                 status_code=400,
             )
 
-    html = _LOGIN_PAGE_HTML.format(code_id=code_id, error="")
+        # Generate and persist a CSRF token for this login form
+        csrf_token = secrets.token_urlsafe(32)
+        row.csrf_token = csrf_token
+        await session.commit()
+
+    html = _LOGIN_PAGE_HTML.format(code_id=code_id, csrf_token=csrf_token, error="")
     return HTMLResponse(content=html)
 
 
 @oauth_login_router.post("/login", response_model=None)
 async def login_submit(
     code_id: str = Form(...),
+    csrf_token: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
 ) -> RedirectResponse | HTMLResponse:
@@ -101,6 +108,13 @@ async def login_submit(
                 status_code=400,
             )
 
+        # Verify CSRF token (constant-time comparison)
+        if row.csrf_token is None or not hmac.compare_digest(row.csrf_token, csrf_token):
+            return HTMLResponse(
+                content="<h1>Invalid request.</h1><p>Please try connecting again.</p>",
+                status_code=403,
+            )
+
         # Verify user credentials
         result = await session.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
@@ -108,6 +122,7 @@ async def login_submit(
         if user is None or not _verify_password(password, user.hashed_password):
             html = _LOGIN_PAGE_HTML.format(
                 code_id=code_id,
+                csrf_token=csrf_token,
                 error='<div class="error">Invalid email or password.</div>',
             )
             return HTMLResponse(content=html, status_code=401)
@@ -115,18 +130,32 @@ async def login_submit(
         if not user.is_active:
             html = _LOGIN_PAGE_HTML.format(
                 code_id=code_id,
+                csrf_token=csrf_token,
                 error='<div class="error">Account is disabled.</div>',
             )
             return HTMLResponse(content=html, status_code=403)
 
-        # Generate the real authorization code (replacing the pending one)
+        # Generate the real authorization code: delete pending row, insert new one
         real_code = secrets.token_urlsafe(32)
         redirect_uri = row.redirect_uri
         state = row.state
 
-        # Update the row: set user_id and replace the pending code
-        row.code = real_code
-        row.user_id = user.id
+        new_row = OAuthAuthorizationCode(
+            code=real_code,
+            client_id=row.client_id,
+            redirect_uri=row.redirect_uri,
+            redirect_uri_provided_explicitly=row.redirect_uri_provided_explicitly,
+            scopes=row.scopes,
+            code_challenge=row.code_challenge,
+            resource=row.resource,
+            state=row.state,
+            expires_at=row.expires_at,
+            csrf_token=None,
+            user_id=user.id,
+        )
+        await session.delete(row)
+        await session.flush()
+        session.add(new_row)
         await session.commit()
 
     # Redirect back to the OAuth client with the authorization code
@@ -135,8 +164,8 @@ async def login_submit(
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    """Verify a password against a bcrypt hash (same as fastapi-users)."""
+    """Verify a password against a bcrypt hash (same algorithm as fastapi-users)."""
     try:
-        return passlib_bcrypt.verify(plain, hashed)
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
     except (ValueError, TypeError):
         return False

@@ -589,6 +589,7 @@ class OAuthAuthorizationCode(Base):
     resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
     state: Mapped[str | None] = mapped_column(String(200), nullable=True)
     expires_at: Mapped[float] = mapped_column(Float, nullable=False)
+    csrf_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
     )

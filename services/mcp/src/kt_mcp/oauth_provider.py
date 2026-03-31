@@ -121,6 +121,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
                 resource=getattr(params, "resource", None),
                 state=params.state,
                 expires_at=expires_at,
+                csrf_token=None,  # generated when login page is rendered
                 user_id=None,  # set after login
             )
             session.add(row)
