@@ -101,7 +101,7 @@ async def deduplicate_facts(
 
     # Phase 2 — sequential dedup + create
     results: list[tuple[uuid.UUID, bool]] = []
-    qdrant_batch: list[tuple[uuid.UUID, list[float], str | None]] = []
+    qdrant_batch: list[tuple[uuid.UUID, list[float], str | None, str | None]] = []
 
     for (content, fact_type), embedding in zip(items, embeddings):
         if embedding is not None:
@@ -133,7 +133,7 @@ async def deduplicate_facts(
 
         # Queue Qdrant upsert for new facts with embeddings
         if embedding is not None:
-            qdrant_batch.append((new_id, embedding, fact_type))
+            qdrant_batch.append((new_id, embedding, fact_type, content))
 
     # Batch upsert new fact embeddings to Qdrant
     if qdrant_fact_repo is not None and qdrant_batch:

@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn>=0.40.0",
     "kt-auth",
     "pwdlib[argon2,bcrypt]>=0.3.0",
+    "kt-models",
 ]
 
 [build-system]
@@ -25,6 +26,7 @@ kt-config = { workspace = true }
 kt-graph = { workspace = true }
 kt-qdrant = { workspace = true }
 kt-auth = { workspace = true }
+kt-models = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

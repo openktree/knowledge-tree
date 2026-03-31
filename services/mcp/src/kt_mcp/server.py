@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 from kt_db.models import Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
 from kt_mcp.dependencies import (
+    get_embedding_service_cached,
     get_qdrant_client_cached,
     get_session_factory_cached,
 )
@@ -683,23 +684,46 @@ async def search_facts(
         if not query:
             return {"error": "Either query or node_id must be provided"}
 
-        # Get total count for pagination
-        total = await engine.count_facts(
-            search=query,
-            fact_type=fact_type,
-            author_org=author_org,
-            source_domain=source_domain,
-        )
+        # Hybrid search: vector + keyword via Qdrant RRF fusion
+        embedding_service = get_embedding_service_cached()
+        if embedding_service is not None:
+            try:
+                query_embedding = await embedding_service.embed_text(query)
+                # Fetch more than needed so we can apply post-filters and offset
+                fetch_limit = offset + limit
+                facts = await engine.hybrid_search_facts(
+                    query=query,
+                    embedding=query_embedding,
+                    limit=fetch_limit,
+                    fact_type=fact_type,
+                )
+            except Exception:
+                logger.warning("Hybrid search failed, falling back to ILIKE", exc_info=True)
+                facts = await engine.list_facts(
+                    offset=offset,
+                    limit=limit,
+                    search=query,
+                    fact_type=fact_type,
+                    author_org=author_org,
+                    source_domain=source_domain,
+                )
+        else:
+            # No embedding service — fall back to ILIKE
+            facts = await engine.list_facts(
+                offset=offset,
+                limit=limit,
+                search=query,
+                fact_type=fact_type,
+                author_org=author_org,
+                source_domain=source_domain,
+            )
 
-        # Get paginated results
-        facts = await engine.list_facts(
-            offset=offset,
-            limit=limit,
-            search=query,
-            fact_type=fact_type,
-            author_org=author_org,
-            source_domain=source_domain,
-        )
+        # Apply post-filters for author_org / source_domain (not in Qdrant)
+        total = len(facts)
+        if offset > 0 and embedding_service is not None:
+            facts = facts[offset:]
+        if embedding_service is not None:
+            facts = facts[:limit]
 
         if not facts:
             return {
@@ -758,6 +782,14 @@ async def search_facts(
                             "author_org": fs.author_org,
                         }
                     )
+
+            # Post-filter by author_org / source_domain (not in Qdrant)
+            if author_org and not any(
+                s.get("author_org") and author_org.lower() in s["author_org"].lower() for s in sources
+            ):
+                continue
+            if source_domain and not any(s.get("uri") and source_domain.lower() in s["uri"].lower() for s in sources):
+                continue
 
             items.append(
                 {

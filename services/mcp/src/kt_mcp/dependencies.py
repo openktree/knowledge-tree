@@ -5,9 +5,11 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_db.session import get_session_factory
+from kt_models.embeddings import EmbeddingService
 
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 _qdrant_client: object | None = None
+_embedding_service: EmbeddingService | None = None
 
 
 def get_session_factory_cached() -> async_sessionmaker[AsyncSession]:
@@ -28,8 +30,21 @@ def get_qdrant_client_cached() -> object:
     return _qdrant_client
 
 
+def get_embedding_service_cached() -> EmbeddingService | None:
+    """Return a cached EmbeddingService singleton (None if no API key)."""
+    global _embedding_service  # noqa: PLW0603
+    if _embedding_service is None:
+        from kt_config.settings import get_settings
+
+        settings = get_settings()
+        if settings.openrouter_api_key:
+            _embedding_service = EmbeddingService()
+    return _embedding_service
+
+
 def reset_singletons() -> None:
     """Reset cached singletons (used in tests)."""
-    global _session_factory, _qdrant_client  # noqa: PLW0603
+    global _session_factory, _qdrant_client, _embedding_service  # noqa: PLW0603
     _session_factory = None
     _qdrant_client = None
+    _embedding_service = None

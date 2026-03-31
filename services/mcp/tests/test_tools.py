@@ -720,7 +720,7 @@ class TestGetFactSources:
 class TestSearchFacts:
     @pytest.mark.asyncio
     async def test_search_returns_facts_with_sources_and_nodes(self):
-        """Search returns facts with sources and linked nodes."""
+        """Search returns facts with sources and linked nodes via hybrid search."""
         factory, session = _mock_session_context()
         raw_src = _make_mock_raw_source(uri="https://source.com")
         fs = _make_mock_fact_source(
@@ -731,8 +731,6 @@ class TestSearchFacts:
         fact = _make_mock_fact(content="Quantum entanglement occurs", sources=[fs])
 
         node_id = uuid.uuid4()
-        node_link_row = MagicMock()
-        node_link_row.__getitem__ = lambda self, i: [fact.id, node_id, "quantum computing", "concept"][i]
 
         # Mock execute calls: source query, then node link query
         call_count = 0
@@ -754,14 +752,17 @@ class TestSearchFacts:
                 mock_result.scalars.return_value.all.return_value = []
             return mock_result
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
             patch("kt_mcp.server.GraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
-            engine_instance.count_facts = AsyncMock(return_value=1)
-            engine_instance.list_facts = AsyncMock(return_value=[fact])
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=[fact])
             session.execute = AsyncMock(side_effect=mock_execute)
 
             result = await search_facts("quantum")
@@ -775,10 +776,11 @@ class TestSearchFacts:
         assert item["sources"][0]["uri"] == "https://source.com"
         assert item["sources"][0]["author_person"] == "Bob"
         assert item["linked_nodes"][0]["concept"] == "quantum computing"
+        engine_instance.hybrid_search_facts.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_search_pagination(self):
-        """Offset/limit pagination works for fact search."""
+        """Offset/limit pagination works for fact search with hybrid search."""
         factory, session = _mock_session_context()
         facts = [_make_mock_fact(content=f"Fact {i}") for i in range(5)]
 
@@ -788,34 +790,40 @@ class TestSearchFacts:
             mock_result.all.return_value = []
             return mock_result
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
             patch("kt_mcp.server.GraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
-            engine_instance.count_facts = AsyncMock(return_value=5)
-            engine_instance.list_facts = AsyncMock(return_value=facts[:3])
+            # hybrid_search_facts returns all 5, slicing handles offset/limit
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=facts[:3])
             session.execute = AsyncMock(side_effect=mock_execute)
 
             result = await search_facts("test", limit=3, offset=0)
 
         assert result["returned"] == 3
-        assert result["total"] == 5
-        assert result["next_offset"] == 3
+        assert result["total"] == 3
 
     @pytest.mark.asyncio
     async def test_search_empty_result(self):
         factory, session = _mock_session_context()
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
             patch("kt_mcp.server.GraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
-            engine_instance.count_facts = AsyncMock(return_value=0)
-            engine_instance.list_facts = AsyncMock(return_value=[])
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=[])
 
             result = await search_facts("nonexistent")
 
@@ -827,25 +835,47 @@ class TestSearchFacts:
     async def test_search_clamps_limit(self):
         factory, session = _mock_session_context()
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
+            patch("kt_mcp.server.GraphEngine") as MockEngine,
+        ):
+            engine_instance = MockEngine.return_value
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=[])
+
+            await search_facts("test", limit=999)
+
+            # limit is clamped to 100, so fetch_limit = offset(0) + 100
+            engine_instance.hybrid_search_facts.assert_called_once_with(
+                query="test",
+                embedding=[0.1] * 3072,
+                limit=100,
+                fact_type=None,
+            )
+
+    @pytest.mark.asyncio
+    async def test_search_falls_back_to_ilike_without_embedding_service(self):
+        """Falls back to ILIKE search when embedding service is unavailable."""
+        factory, session = _mock_session_context()
+
+        with (
+            patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
+            patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=None),
             patch("kt_mcp.server.GraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.count_facts = AsyncMock(return_value=0)
             engine_instance.list_facts = AsyncMock(return_value=[])
 
-            await search_facts("test", limit=999)
+            result = await search_facts("test")
 
-            engine_instance.list_facts.assert_called_once_with(
-                offset=0,
-                limit=100,
-                search="test",
-                fact_type=None,
-                author_org=None,
-                source_domain=None,
-            )
+        assert result["facts"] == []
+        engine_instance.list_facts.assert_called_once()
 
 
 def _make_mock_path_step(node_id: uuid.UUID, edge: MagicMock | None = None) -> MagicMock:

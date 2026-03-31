@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,7 +20,20 @@ from kt_api.schemas import (
 from kt_db.repositories.facts import FactRepository
 from kt_graph.engine import GraphEngine
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/facts", tags=["facts"])
+
+
+def _get_embedding_service():  # noqa: ANN202
+    """Lazy-init embedding service singleton."""
+    from kt_config.settings import get_settings
+    from kt_models.embeddings import EmbeddingService
+
+    settings = get_settings()
+    if settings.openrouter_api_key:
+        return EmbeddingService()
+    return None
 
 
 @router.get("", response_model=PaginatedFactsResponse)
@@ -34,20 +48,45 @@ async def list_facts(
 ) -> PaginatedFactsResponse:
     """List facts with pagination and optional filters."""
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
-    facts = await engine.list_facts(
-        offset=offset,
-        limit=limit,
-        search=search,
-        fact_type=fact_type,
-        author_org=author_org,
-        source_domain=source_domain,
-    )
-    total = await engine.count_facts(
-        search=search,
-        fact_type=fact_type,
-        author_org=author_org,
-        source_domain=source_domain,
-    )
+
+    # Use hybrid search when a text query is provided and embeddings are available
+    facts: list = []
+    total: int = 0
+    use_hybrid = False
+    if search:
+        embedding_service = _get_embedding_service()
+        if embedding_service is not None:
+            try:
+                query_embedding = await embedding_service.embed_text(search)
+                fetch_limit = offset + limit
+                facts = await engine.hybrid_search_facts(
+                    query=search,
+                    embedding=query_embedding,
+                    limit=fetch_limit,
+                    fact_type=fact_type,
+                )
+                total = len(facts)
+                facts = facts[offset : offset + limit]
+                use_hybrid = True
+            except Exception:
+                logger.warning("Hybrid search failed, falling back to ILIKE", exc_info=True)
+
+    if not use_hybrid:
+        facts = await engine.list_facts(
+            offset=offset,
+            limit=limit,
+            search=search,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
+        )
+        total = await engine.count_facts(
+            search=search,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
+        )
+
     return PaginatedFactsResponse(
         items=[
             FactResponse(
