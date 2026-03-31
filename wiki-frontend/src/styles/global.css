@@ -1082,6 +1082,40 @@ a:hover {
   margin-top: 0.75rem;
 }
 
+.related-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+  user-select: none;
+  list-style: none;
+  margin-bottom: 0;
+}
+
+.related-summary::-webkit-details-marker { display: none; }
+
+.related-summary::before {
+  content: "›";
+  font-size: 1.1rem;
+  font-weight: 400;
+  line-height: 1;
+  transition: transform var(--t-base);
+  color: var(--color-text-muted);
+}
+
+.related-details[open] .related-summary::before {
+  transform: rotate(90deg);
+}
+
+.related-summary:hover {
+  color: var(--color-text);
+}
+
 .related-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
@@ -2279,12 +2313,38 @@ a.fact-group-title:hover {
   .index-search-form { max-width: 100%; }
 
   /* ── Mobile: Prevent horizontal overflow ── */
-  .page-wrapper {
+  html, body {
     overflow-x: hidden;
   }
 
-  .node-grid {
+  .page-wrapper {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  .node-grid,
+  .node-main,
+  .related-section,
+  .facts-section,
+  .dimensions-details {
+    max-width: 100%;
     overflow: hidden;
+  }
+
+  /* ── Mobile: Global word-wrap safety ── */
+  .node-definition,
+  .perspective-definition,
+  .dimension-card-body,
+  .fact-card-content,
+  .related-card-name,
+  .relation-dialog-text {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* ── Mobile: Node meta row ── */
+  .node-meta {
+    flex-wrap: wrap;
   }
 
   /* ── Mobile: Definitions ── */
@@ -2292,17 +2352,9 @@ a.fact-group-title:hover {
   .perspective-definition {
     padding: 0 0.5rem;
     font-size: 0.95rem;
-    overflow-wrap: break-word;
-    word-break: break-word;
-    max-width: 100%;
   }
 
   /* ── Mobile: Dimensions ── */
-  .dimension-card-body {
-    overflow-wrap: break-word;
-    word-break: break-word;
-  }
-
   .dimension-card-header {
     flex-wrap: wrap;
     gap: 0.35rem;
@@ -2316,15 +2368,35 @@ a.fact-group-title:hover {
   }
 
   /* ── Mobile: Fact lists ── */
+  .fact-group-summary {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.55rem 0.75rem;
+  }
+
   .fact-group-title {
     white-space: normal;
     overflow: visible;
     text-overflow: unset;
+    flex-basis: 100%;
   }
 
-  .fact-group-summary {
-    gap: 0.5rem;
-    padding: 0.55rem 0.75rem;
+  .fact-group-count,
+  .fact-group-summary .source-domain,
+  .fact-source-author,
+  .fact-source-date {
+    flex-shrink: 1;
+    white-space: normal;
+  }
+
+  .facts-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .facts-search-wrapper {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .facts-domains {
@@ -2340,11 +2412,6 @@ a.fact-group-title:hover {
   }
 
   /* ── Mobile: Relations grid ── */
-  .related-section {
-    overflow: hidden;
-    max-width: 100%;
-  }
-
   .related-grid {
     grid-template-columns: 1fr;
     gap: 0.5rem;
@@ -2352,18 +2419,23 @@ a.fact-group-title:hover {
 
   .related-card {
     padding: 0.6rem 0.75rem;
-    max-width: 100%;
-    overflow: hidden;
   }
 
   .related-card-name {
     min-height: auto;
-    overflow-wrap: break-word;
-    word-break: break-word;
   }
 
   .related-card-actions {
     flex-wrap: wrap;
+  }
+
+  .related-card-btn {
+    white-space: normal;
+    min-width: 0;
+  }
+
+  .related-card-fact-count {
+    white-space: normal;
   }
 
   /* ── Mobile: Sidebar relation rows ── */
