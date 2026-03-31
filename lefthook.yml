@@ -30,4 +30,4 @@ pre-push:
   jobs:
     - name: python-tests
       glob: "**/*.py"
-      run: just test-all
+      run: just test-all || { echo ""; echo "Tests failed. Make sure infrastructure is running:"; echo "  just up   # starts postgres, postgres-write, redis, qdrant, hatchet"; echo ""; exit 1; }
