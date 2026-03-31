@@ -7,10 +7,14 @@ title: Connecting
 
 ## Prerequisites
 
-1. An API token generated from the Research App ([research.openktree.com](https://research.openktree.com)) under **Profile > API Tokens**
+1. A Knowledge Tree account at [research.openktree.com](https://research.openktree.com)
 2. An MCP-compatible client (Claude Desktop, Claude Code, or another MCP client)
 
-## Claude Desktop
+## OAuth 2.1 (recommended)
+
+MCP clients that support OAuth handle authentication automatically. You only need to provide the server URL — the client discovers OAuth endpoints, registers itself, and prompts you to log in.
+
+### Claude Desktop
 
 Add the following to your Claude Desktop configuration file:
 
@@ -21,7 +25,72 @@ Add the following to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "knowledge-tree": {
-      "url": "https://mcp.openktree.com/sse",
+      "url": "https://mcp.openktree.com/mcp"
+    }
+  }
+}
+```
+
+On first use, Claude Desktop will open a browser window where you log in with your Knowledge Tree account. Tokens are refreshed automatically.
+
+### Claude Code
+
+Add to your Claude Code settings or project `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "knowledge-tree": {
+      "type": "http",
+      "url": "https://mcp.openktree.com/mcp"
+    }
+  }
+}
+```
+
+Or via the CLI:
+
+```bash
+claude mcp add --transport http --scope user knowledge-tree https://mcp.openktree.com/mcp
+```
+
+### Other MCP clients
+
+Any client that supports MCP OAuth can connect. Point it at:
+
+```
+https://mcp.openktree.com/mcp
+```
+
+The client will discover the OAuth configuration from `/.well-known/oauth-authorization-server` and handle the flow.
+
+## API tokens (fallback)
+
+For scripts, CI pipelines, or clients that don't support OAuth, you can authenticate with a static API token. Generate one from the Research App under **Profile > API Tokens** or via `POST /api/v1/auth/tokens`.
+
+### Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "knowledge-tree": {
+      "url": "https://mcp.openktree.com/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+### Claude Code
+
+```json
+{
+  "mcpServers": {
+    "knowledge-tree": {
+      "type": "http",
+      "url": "https://mcp.openktree.com/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_API_TOKEN"
       }
@@ -32,23 +101,6 @@ Add the following to your Claude Desktop configuration file:
 
 Replace `YOUR_API_TOKEN` with the token from your profile page.
 
-## Claude Code
-
-Add to your Claude Code settings or project `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "knowledge-tree": {
-      "url": "https://mcp.openktree.com/sse",
-      "headers": {
-        "Authorization": "Bearer YOUR_API_TOKEN"
-      }
-    }
-  }
-}
-```
-
 ## Local development
 
 If you're running the Knowledge Tree stack locally, the MCP server runs on port 8001:
@@ -57,26 +109,16 @@ If you're running the Knowledge Tree stack locally, the MCP server runs on port 
 {
   "mcpServers": {
     "knowledge-tree-local": {
-      "url": "http://localhost:8001/sse",
-      "headers": {
-        "Authorization": "Bearer YOUR_LOCAL_TOKEN"
-      }
+      "type": "http",
+      "url": "http://localhost:8001/mcp"
     }
   }
 }
 ```
 
-You can bypass authentication in development by setting `SKIP_AUTH=true` in the MCP server's environment.
+OAuth works the same way locally — you'll be prompted to log in at `http://localhost:8001/oauth/login`.
 
-## Other MCP clients
-
-Any client that supports the MCP SSE transport can connect. The server URL is:
-
-```
-https://mcp.openktree.com/sse
-```
-
-Pass the API token as a Bearer token in the `Authorization` header.
+You can bypass authentication entirely in development by setting `SKIP_AUTH=true` in the MCP server's environment.
 
 ## Verifying the connection
 
