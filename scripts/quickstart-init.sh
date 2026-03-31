@@ -15,7 +15,14 @@ echo "==> Starting infrastructure..."
 docker compose -f "$COMPOSE_FILE" up -d postgres postgres-write pgbouncer-write redis qdrant hatchet-db hatchet
 
 echo "==> Waiting for Hatchet to be ready..."
+RETRIES=0
+MAX_RETRIES=30
 until docker compose -f "$COMPOSE_FILE" exec -T hatchet wget -q --spider http://localhost:8080/api/live 2>/dev/null; do
+    RETRIES=$((RETRIES + 1))
+    if [ "$RETRIES" -ge "$MAX_RETRIES" ]; then
+        echo "ERROR: Hatchet not ready after 60 seconds"
+        exit 1
+    fi
     sleep 2
 done
 
@@ -30,8 +37,9 @@ if [ -z "$TOKEN" ]; then
 fi
 
 # Update .env — replace existing line or append
+# Use a temp file for portability (sed -i behaves differently on macOS)
 if grep -q '^HATCHET_CLIENT_TOKEN=' .env 2>/dev/null; then
-    sed -i "s|^HATCHET_CLIENT_TOKEN=.*|HATCHET_CLIENT_TOKEN=${TOKEN}|" .env
+    sed "s|^HATCHET_CLIENT_TOKEN=.*|HATCHET_CLIENT_TOKEN=${TOKEN}|" .env > .env.tmp && mv .env.tmp .env
 else
     echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> .env
 fi

@@ -191,8 +191,10 @@ services:
     environment:
       <<: *common-env
     depends_on:
-      api:
-        condition: service_started
+      hatchet:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -204,8 +206,10 @@ services:
     environment:
       <<: *common-env
     depends_on:
-      api:
-        condition: service_started
+      hatchet:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -217,8 +221,10 @@ services:
     environment:
       <<: *common-env
     depends_on:
-      api:
-        condition: service_started
+      hatchet:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -230,8 +236,10 @@ services:
     environment:
       <<: *common-env
     depends_on:
-      api:
-        condition: service_started
+      hatchet:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -243,8 +251,10 @@ services:
     environment:
       <<: *common-env
     depends_on:
-      api:
-        condition: service_started
+      hatchet:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -256,8 +266,10 @@ services:
     environment:
       <<: *common-env
     depends_on:
-      api:
-        condition: service_started
+      hatchet:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
