@@ -3,10 +3,14 @@
 Subclasses FastMCP's OAuthProvider with database-backed storage for
 clients, authorization codes, access tokens, and refresh tokens.
 Falls back to legacy API token verification for backward compatibility.
+
+Tokens are stored as SHA-256 hashes — the plaintext token is only ever
+returned to the client and never persisted.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import secrets
 import time
@@ -41,6 +45,11 @@ logger = logging.getLogger(__name__)
 AUTH_CODE_EXPIRY_SECONDS = 5 * 60  # 5 minutes
 ACCESS_TOKEN_EXPIRY_SECONDS = 60 * 60  # 1 hour
 REFRESH_TOKEN_EXPIRY_SECONDS = 30 * 24 * 60 * 60  # 30 days
+
+
+def _hash_token(token: str) -> str:
+    """Return the hex SHA-256 digest of a token for storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 class KnowledgeTreeOAuthProvider(OAuthProvider):
@@ -169,9 +178,11 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
             user_id = row.user_id
             await session.delete(row)
 
-            # Create access + refresh tokens
+            # Create access + refresh tokens (store hashed, return plaintext)
             access_token_value = secrets.token_urlsafe(32)
             refresh_token_value = secrets.token_urlsafe(32)
+            access_hash = _hash_token(access_token_value)
+            refresh_hash = _hash_token(refresh_token_value)
             access_expires = int(time.time() + ACCESS_TOKEN_EXPIRY_SECONDS)
             refresh_expires = int(time.time() + REFRESH_TOKEN_EXPIRY_SECONDS)
 
@@ -180,7 +191,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
 
             session.add(
                 OAuthAccessToken(
-                    token=access_token_value,
+                    token=access_hash,
                     client_id=client.client_id,
                     user_id=user_id,
                     scopes=authorization_code.scopes,
@@ -189,12 +200,12 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
             )
             session.add(
                 OAuthRefreshToken(
-                    token=refresh_token_value,
+                    token=refresh_hash,
                     client_id=client.client_id,
                     user_id=user_id,
                     scopes=authorization_code.scopes,
                     expires_at=refresh_expires,
-                    access_token=access_token_value,
+                    access_token=access_hash,
                 )
             )
             await session.commit()
@@ -210,8 +221,9 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
     # ── Access tokens ──────────────────────────────────────────────────
 
     async def load_access_token(self, token: str) -> AccessToken | None:
+        token_hash = _hash_token(token)
         async with await self._session() as session:
-            row = await session.get(OAuthAccessToken, token)
+            row = await session.get(OAuthAccessToken, token_hash)
             if row is None:
                 return None
             if row.expires_at is not None and row.expires_at < time.time():
@@ -219,7 +231,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
                 await session.commit()
                 return None
             return AccessToken(
-                token=row.token,
+                token=token,
                 client_id=row.client_id,
                 scopes=row.scopes,
                 expires_at=row.expires_at,
@@ -227,7 +239,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
 
     async def verify_token(self, token: str) -> AccessToken | None:
         """Verify bearer token: try OAuth tokens first, then legacy API tokens."""
-        # Try OAuth access token
+        # Try OAuth access token (hashed lookup)
         result = await self.load_access_token(token)
         if result is not None:
             return result
@@ -247,8 +259,9 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
     # ── Refresh tokens ─────────────────────────────────────────────────
 
     async def load_refresh_token(self, client: OAuthClientInformationFull, refresh_token: str) -> RefreshToken | None:
+        token_hash = _hash_token(refresh_token)
         async with await self._session() as session:
-            row = await session.get(OAuthRefreshToken, refresh_token)
+            row = await session.get(OAuthRefreshToken, token_hash)
             if row is None:
                 return None
             if row.client_id != client.client_id:
@@ -258,7 +271,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
                 await session.commit()
                 return None
             return RefreshToken(
-                token=row.token,
+                token=refresh_token,
                 client_id=row.client_id,
                 scopes=row.scopes,
                 expires_at=row.expires_at,
@@ -279,18 +292,23 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
             )
 
         async with await self._session() as session:
-            # Revoke old tokens
-            old_refresh = await session.get(OAuthRefreshToken, refresh_token.token)
+            # Look up old refresh token by hash
+            old_refresh_hash = _hash_token(refresh_token.token)
+            old_refresh = await session.get(OAuthRefreshToken, old_refresh_hash)
+            user_id = None
             if old_refresh is not None:
+                user_id = old_refresh.user_id
                 if old_refresh.access_token:
                     old_access = await session.get(OAuthAccessToken, old_refresh.access_token)
                     if old_access:
                         await session.delete(old_access)
                 await session.delete(old_refresh)
 
-            # Issue new tokens
+            # Issue new tokens (store hashed, return plaintext)
             new_access_value = secrets.token_urlsafe(32)
             new_refresh_value = secrets.token_urlsafe(32)
+            new_access_hash = _hash_token(new_access_value)
+            new_refresh_hash = _hash_token(new_refresh_value)
             access_expires = int(time.time() + ACCESS_TOKEN_EXPIRY_SECONDS)
             refresh_expires = int(time.time() + REFRESH_TOKEN_EXPIRY_SECONDS)
 
@@ -299,19 +317,21 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
 
             session.add(
                 OAuthAccessToken(
-                    token=new_access_value,
+                    token=new_access_hash,
                     client_id=client.client_id,
+                    user_id=user_id,
                     scopes=scopes,
                     expires_at=access_expires,
                 )
             )
             session.add(
                 OAuthRefreshToken(
-                    token=new_refresh_value,
+                    token=new_refresh_hash,
                     client_id=client.client_id,
+                    user_id=user_id,
                     scopes=scopes,
                     expires_at=refresh_expires,
-                    access_token=new_access_value,
+                    access_token=new_access_hash,
                 )
             )
             await session.commit()
@@ -327,19 +347,20 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
     # ── Revocation ─────────────────────────────────────────────────────
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
+        token_hash = _hash_token(token.token)
         async with await self._session() as session:
             if isinstance(token, AccessToken):
-                access_row = await session.get(OAuthAccessToken, token.token)
+                access_row = await session.get(OAuthAccessToken, token_hash)
                 if access_row:
                     # Also revoke associated refresh token
                     result = await session.execute(
-                        select(OAuthRefreshToken).where(OAuthRefreshToken.access_token == token.token)
+                        select(OAuthRefreshToken).where(OAuthRefreshToken.access_token == token_hash)
                     )
                     for rt in result.scalars().all():
                         await session.delete(rt)
                     await session.delete(access_row)
             elif isinstance(token, RefreshToken):
-                refresh_row = await session.get(OAuthRefreshToken, token.token)
+                refresh_row = await session.get(OAuthRefreshToken, token_hash)
                 if refresh_row:
                     if refresh_row.access_token:
                         access_row = await session.get(OAuthAccessToken, refresh_row.access_token)

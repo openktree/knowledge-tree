@@ -10,6 +10,7 @@ OAuth client (e.g., Claude Web) with the authorization code.
 from __future__ import annotations
 
 import hmac
+import html
 import logging
 import secrets
 import time
@@ -85,8 +86,8 @@ async def login_page(code_id: str) -> HTMLResponse:
         row.csrf_token = csrf_token
         await session.commit()
 
-    html = _LOGIN_PAGE_HTML.format(code_id=code_id, csrf_token=csrf_token, error="")
-    return HTMLResponse(content=html)
+    page = _LOGIN_PAGE_HTML.format(code_id=html.escape(code_id), csrf_token=html.escape(csrf_token), error="")
+    return HTMLResponse(content=page)
 
 
 @oauth_login_router.post("/login", response_model=None)
@@ -120,20 +121,20 @@ async def login_submit(
         user = result.scalar_one_or_none()
 
         if user is None or not _verify_password(password, user.hashed_password):
-            html = _LOGIN_PAGE_HTML.format(
-                code_id=code_id,
-                csrf_token=csrf_token,
+            page = _LOGIN_PAGE_HTML.format(
+                code_id=html.escape(code_id),
+                csrf_token=html.escape(csrf_token),
                 error='<div class="error">Invalid email or password.</div>',
             )
-            return HTMLResponse(content=html, status_code=401)
+            return HTMLResponse(content=page, status_code=401)
 
         if not user.is_active:
-            html = _LOGIN_PAGE_HTML.format(
-                code_id=code_id,
-                csrf_token=csrf_token,
+            page = _LOGIN_PAGE_HTML.format(
+                code_id=html.escape(code_id),
+                csrf_token=html.escape(csrf_token),
                 error='<div class="error">Account is disabled.</div>',
             )
-            return HTMLResponse(content=html, status_code=403)
+            return HTMLResponse(content=page, status_code=403)
 
         # Generate the real authorization code: delete pending row, insert new one
         real_code = secrets.token_urlsafe(32)
