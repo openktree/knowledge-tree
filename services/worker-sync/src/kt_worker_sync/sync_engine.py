@@ -339,6 +339,7 @@ class SyncEngine:
                                 raw_content=wrs.raw_content,
                                 content_hash=wrs.content_hash,
                                 is_full_text=wrs.is_full_text,
+                                is_super_source=wrs.is_super_source,
                                 content_type=wrs.content_type,
                                 provider_id=wrs.provider_id,
                                 provider_metadata=wrs.provider_metadata,
@@ -354,6 +355,7 @@ class SyncEngine:
                                     "raw_content": wrs.raw_content,
                                     "content_hash": wrs.content_hash,
                                     "is_full_text": wrs.is_full_text,
+                                    "is_super_source": wrs.is_super_source,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
                                     # fact_count intentionally excluded — managed
@@ -1917,6 +1919,7 @@ class SyncEngine:
                                 raw_content=wrs.raw_content,
                                 content_hash=wrs.content_hash,
                                 is_full_text=wrs.is_full_text,
+                                is_super_source=wrs.is_super_source,
                                 content_type=wrs.content_type,
                                 provider_id=wrs.provider_id,
                                 provider_metadata=wrs.provider_metadata,
@@ -1932,6 +1935,7 @@ class SyncEngine:
                                     "raw_content": wrs.raw_content,
                                     "content_hash": wrs.content_hash,
                                     "is_full_text": wrs.is_full_text,
+                                    "is_super_source": wrs.is_super_source,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
                                     # fact_count intentionally excluded — managed
