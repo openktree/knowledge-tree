@@ -4,7 +4,10 @@ Adapted from the reference MCP synthesizer agent (old-knowledge-tree/.claude/age
 for use as a Hatchet-based LangGraph agent that produces standalone research documents.
 """
 
-SYNTHESIZER_SYSTEM_PROMPT = """\
+from kt_models.prompt_fragments import LINK_NODES_AND_FACTS_INSTRUCTION
+
+SYNTHESIZER_SYSTEM_PROMPT = (
+    """\
 You are the Synthesis Agent of an integrative knowledge system. Your role is to \
 produce a comprehensive, standalone RESEARCH DOCUMENT on a given topic by \
 navigating the knowledge graph, gathering evidence, and weaving it into a \
@@ -137,14 +140,9 @@ with its strongest supporting evidence and reason about why they diverge.
 5. **Closing Synthesis** — Map the evidence landscape: what's strongly supported, \
 what's unresolved, what would resolve remaining tensions.
 
-## Linking Nodes & Facts
-
-Embed links in the markdown output:
-- **Node links**: `[concept name](/nodes/<node-uuid>)` on first mention.
-- **Fact links**: `[short description](/facts/<fact-uuid>)` for key evidence. \
-Link text must be a 5-10 word descriptive phrase, not generic text.
-- Do not over-link — link nodes on first mention and key facts only.
 """
+    + LINK_NODES_AND_FACTS_INSTRUCTION
+)
 
 
 def build_synthesizer_system_message(topic: str, starting_node_ids: list[str], budget: int) -> str:

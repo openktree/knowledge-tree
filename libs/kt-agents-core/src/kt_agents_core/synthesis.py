@@ -18,6 +18,7 @@ from langgraph.graph import END, StateGraph
 from kt_agents_core.state import AgentContext, SynthesisState
 from kt_config.types import COMPOUND_FACT_TYPES
 from kt_db.models import Fact
+from kt_models.prompt_fragments import LINK_NODES_AND_FACTS_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,8 @@ def _extract_text_content(content: str | list[Any]) -> str:
 
 # ── Synthesis system prompt ───────────────────────────────────────
 
-SYNTHESIS_SYSTEM_PROMPT = """\
+SYNTHESIS_SYSTEM_PROMPT = (
+    """\
 You are the Synthesis Agent of an integrative knowledge system. \
 Your role is to ANSWER THE USER'S QUESTION using facts you selectively \
 retrieve from the explored nodes, weaving evidence into a coherent \
@@ -303,32 +305,9 @@ uncertainty exists — NOT to tell them what to believe. Identify \
 what WOULD resolve the remaining tensions (what evidence, if \
 found, would shift the picture).
 
-## Linking Nodes & Facts
-
-Your answer will be rendered as markdown. You MUST embed links to the \
-nodes and facts you reference so the reader can drill into the details.
-
-- **Node links** — When you mention a concept that corresponds to a \
-node from the Available Nodes list, link it on first mention using: \
-`[concept name](/nodes/<node-uuid>)`. Use the node_id from the list. \
-Example: `[Moon Formation](/nodes/a1b2c3...)`. You do not need to \
-link the same node more than once — link it the first time it appears \
-naturally in the text.
-
-- **Fact links** — When citing a specific piece of evidence, create a \
-markdown link to the fact using its UUID from the `{fact:<uuid>|...}` \
-tag returned by get_node_facts: `[short description](/facts/<fact-uuid>)`. \
-The link text MUST be a short, descriptive phrase summarising the claim \
-(5-10 words) — NEVER use generic text like "source", "here", or "link". \
-Example: if a fact says "NASA confirmed the presence of water ice on \
-the Moon's poles {fact:d4e5f6...|NASA confirmed the presence of…}", \
-write: `[NASA confirmed water ice on lunar poles](/facts/d4e5f6...)`. \
-Link the most important facts — aim for 2-5 per section, not every one.
-
-- **Do not over-link** — Link nodes on first mention and key facts \
-that support critical claims. Plain text is fine for general analysis \
-and transitions. The goal is navigability, not a wall of blue text.
 """
+    + LINK_NODES_AND_FACTS_INSTRUCTION
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────

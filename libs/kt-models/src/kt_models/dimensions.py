@@ -6,18 +6,11 @@ from kt_config.types import COMPOUND_FACT_TYPES
 from kt_db.models import Fact, Node
 from kt_models.gateway import ModelGateway
 from kt_models.link_normalizer import normalize_ai_links
+from kt_models.prompt_fragments import CITE_FACTS_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
-_CITATION_INSTRUCTION = """\
-When citing a specific piece of evidence in your analysis, embed a fact citation link. \
-Each fact ends with a {fact:<uuid>|<label>} token. Cite it using a markdown link: \
-[concise description](/facts/<uuid>). The link text must be a brief descriptive phrase \
-(3-8 words) summarising the claim — never use index numbers, "fact 1", or generic text \
-like "this source" or "here". Embed 3-8 citations naturally in your prose where you \
-reference specific evidence. Do NOT reference facts by their index number. \
-IMPORTANT: Your output must use markdown link syntax [description](/facts/<uuid>), \
-NOT the {fact:uuid|label} token format shown in the fact list."""
+_CITATION_INSTRUCTION = CITE_FACTS_INSTRUCTION
 
 DIMENSION_SYSTEM_PROMPT = f"""You are a reasoning engine. You must reason ONLY from the provided facts.
 Do NOT use your training data or prior knowledge. Base your analysis exclusively on the facts given.
