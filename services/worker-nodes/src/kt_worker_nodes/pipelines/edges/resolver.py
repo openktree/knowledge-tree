@@ -8,6 +8,7 @@ strategies — candidates are pre-populated by the seed co-occurrence system.
 from __future__ import annotations
 
 import logging
+import math
 import uuid
 from collections import defaultdict
 from typing import Any
@@ -136,8 +137,8 @@ class EdgeResolver:
                 if decisions and decisions[0] is not None:
                     justification = str(decisions[0].get("justification", ""))
 
-                # Weight = raw fact count (matches auto_build convention)
-                weight = float(len(facts))
+                # Weight = log₂(fact_count + 1): clear signal without overwhelming
+                weight = math.log2(len(facts) + 1)
 
                 # Create/update the edge
                 fact_id_list = [f.id for f in facts]

@@ -273,7 +273,9 @@ class TestResolveFromCandidates:
             result = await EdgeResolver(ctx).resolve_from_candidates(node)
 
         assert result["edges_created"] == 1
-        # Weight = raw fact count = 5.0
+        # Weight = log2(5 + 1) ≈ 2.585
+        import math
+
         call_args = ctx.graph_engine.create_edge.call_args
         weight = call_args[0][3]
-        assert weight == 5.0
+        assert weight == pytest.approx(math.log2(6))
