@@ -70,6 +70,7 @@ class EdgeResolver:
             grouped[other_key].append(row.fact_id)
 
         edge_ids: list[str] = []
+        settings = get_settings()
 
         for other_seed_key, fact_id_strs in grouped.items():
             try:
@@ -98,7 +99,6 @@ class EdgeResolver:
                     continue
 
                 # Enforce minimum shared-fact threshold
-                settings = get_settings()
                 if len(facts) < settings.graph_build_edge_min_shared_facts:
                     logger.debug(
                         "resolve_from_candidates: skipping pair %s <-> %s — %d facts < min %d",
@@ -292,8 +292,8 @@ class EdgeResolver:
                 if decisions and decisions[0] is not None:
                     justification = str(decisions[0].get("justification", ""))
 
-                # Update weight and justification (raw fact count)
-                weight = float(len(facts))
+                # Weight = log₂(fact_count + 1): clear signal without overwhelming
+                weight = math.log2(len(facts) + 1)
                 await edge_repo.upsert(
                     rel_type=edge.relationship_type,
                     source_node_key=edge.source_node_key,
