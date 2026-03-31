@@ -87,7 +87,7 @@ class TestResolveFromCandidates:
 
         source_key = make_seed_key("concept", "quantum mechanics")
         target_key = make_seed_key("entity", "Niels Bohr")
-        fid = uuid.uuid4()
+        fids = [uuid.uuid4() for _ in range(3)]
 
         target_seed = _make_seed(
             target_key,
@@ -97,17 +97,16 @@ class TestResolveFromCandidates:
             promoted_node_key=target_key,
         )
 
-        row = _make_candidate_row(source_key, target_key, fid)
+        rows = [_make_candidate_row(source_key, target_key, fid) for fid in fids]
 
-        mock_fact = MagicMock()
-        mock_fact.id = fid
-        mock_fact.content = "Niels Bohr contributed to quantum mechanics"
-        mock_fact.fact_type = "claim"
-        ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=[mock_fact])
+        mock_facts = [
+            MagicMock(id=fid, content=f"Bohr contributed to QM {i}", fact_type="claim") for i, fid in enumerate(fids)
+        ]
+        ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=mock_facts)
 
         with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.get_candidates_for_seed = AsyncMock(return_value=[row])
+            mock_repo.get_candidates_for_seed = AsyncMock(return_value=rows)
             mock_repo.get_seed_by_key = AsyncMock(return_value=target_seed)
             mock_repo.accept_candidate_facts = AsyncMock()
 
@@ -151,7 +150,7 @@ class TestResolveFromCandidates:
 
         source_key = make_seed_key("concept", "biology")
         target_key = make_seed_key("concept", "genetics")
-        fid = uuid.uuid4()
+        fids = [uuid.uuid4() for _ in range(3)]
 
         target_seed = _make_seed(
             target_key,
@@ -161,17 +160,17 @@ class TestResolveFromCandidates:
             promoted_node_key=target_key,
         )
 
-        row = _make_candidate_row(source_key, target_key, fid)
+        rows = [_make_candidate_row(source_key, target_key, fid) for fid in fids]
 
-        mock_fact = MagicMock()
-        mock_fact.id = fid
-        mock_fact.content = "genetics is a branch of biology"
-        mock_fact.fact_type = "claim"
-        ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=[mock_fact])
+        mock_facts = [
+            MagicMock(id=fid, content=f"genetics is a branch of biology {i}", fact_type="claim")
+            for i, fid in enumerate(fids)
+        ]
+        ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=mock_facts)
 
         with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.get_candidates_for_seed = AsyncMock(return_value=[row])
+            mock_repo.get_candidates_for_seed = AsyncMock(return_value=rows)
             mock_repo.get_seed_by_key = AsyncMock(return_value=target_seed)
             mock_repo.accept_candidate_facts = AsyncMock()
 
@@ -190,7 +189,7 @@ class TestResolveFromCandidates:
 
         source_key = make_seed_key("concept", "math")
         target_key = make_seed_key("concept", "algebra")
-        fid = uuid.uuid4()
+        fids = [uuid.uuid4() for _ in range(3)]
 
         target_seed = _make_seed(
             target_key,
@@ -200,17 +199,17 @@ class TestResolveFromCandidates:
             promoted_node_key=target_key,
         )
 
-        row = _make_candidate_row(source_key, target_key, fid)
+        rows = [_make_candidate_row(source_key, target_key, fid) for fid in fids]
 
-        mock_fact = MagicMock()
-        mock_fact.id = fid
-        mock_fact.content = "algebra is a branch of math"
-        mock_fact.fact_type = "claim"
-        ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=[mock_fact])
+        mock_facts = [
+            MagicMock(id=fid, content=f"algebra is a branch of math {i}", fact_type="claim")
+            for i, fid in enumerate(fids)
+        ]
+        ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=mock_facts)
 
         with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.get_candidates_for_seed = AsyncMock(return_value=[row])
+            mock_repo.get_candidates_for_seed = AsyncMock(return_value=rows)
             mock_repo.get_seed_by_key = AsyncMock(return_value=target_seed)
             mock_repo.accept_candidate_facts = AsyncMock()
 
@@ -274,7 +273,7 @@ class TestResolveFromCandidates:
             result = await EdgeResolver(ctx).resolve_from_candidates(node)
 
         assert result["edges_created"] == 1
-        # Weight = min(1.0, max(0.1, 5/10)) = 0.5
+        # Weight = raw fact count = 5.0
         call_args = ctx.graph_engine.create_edge.call_args
         weight = call_args[0][3]
-        assert weight == 0.5
+        assert weight == 5.0

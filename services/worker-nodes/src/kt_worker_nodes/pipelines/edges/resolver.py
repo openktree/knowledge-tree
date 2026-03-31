@@ -13,6 +13,7 @@ from collections import defaultdict
 from typing import Any
 
 from kt_agents_core.state import AgentContext
+from kt_config.settings import get_settings
 from kt_db.keys import key_to_uuid, make_seed_key
 from kt_db.repositories.write_seeds import WriteSeedRepository
 from kt_worker_nodes.pipelines.edges.classifier import EdgeClassifier
@@ -95,6 +96,18 @@ class EdgeResolver:
                     )
                     continue
 
+                # Enforce minimum shared-fact threshold
+                settings = get_settings()
+                if len(facts) < settings.graph_build_edge_min_shared_facts:
+                    logger.debug(
+                        "resolve_from_candidates: skipping pair %s <-> %s — %d facts < min %d",
+                        seed_key,
+                        other_seed_key,
+                        len(facts),
+                        settings.graph_build_edge_min_shared_facts,
+                    )
+                    continue
+
                 # Determine node IDs
                 source_node_id = node.id if hasattr(node, "id") else key_to_uuid(seed_key)
                 target_node_id = key_to_uuid(other_seed.promoted_node_key)
@@ -123,8 +136,8 @@ class EdgeResolver:
                 if decisions and decisions[0] is not None:
                     justification = str(decisions[0].get("justification", ""))
 
-                # Weight = fact count, normalised to [0.1, 1.0]
-                weight = min(1.0, max(0.1, len(facts) / 10.0))
+                # Weight = raw fact count (matches auto_build convention)
+                weight = float(len(facts))
 
                 # Create/update the edge
                 fact_id_list = [f.id for f in facts]
@@ -278,8 +291,8 @@ class EdgeResolver:
                 if decisions and decisions[0] is not None:
                     justification = str(decisions[0].get("justification", ""))
 
-                # Update weight and justification
-                weight = min(1.0, max(0.1, len(facts) / 10.0))
+                # Update weight and justification (raw fact count)
+                weight = float(len(facts))
                 await edge_repo.upsert(
                     rel_type=edge.relationship_type,
                     source_node_key=edge.source_node_key,
