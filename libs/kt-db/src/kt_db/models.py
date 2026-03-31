@@ -51,6 +51,13 @@ class Node(Base):
         UUID(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Denormalized counters — maintained by sync worker, read by API/MCP
+    fact_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    edge_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    child_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    dimension_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    convergence_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
+
     def __init__(self, **kwargs: object) -> None:
         self._embedding: list[float] | None = kwargs.pop("embedding", None)  # type: ignore[assignment]
         super().__init__(**kwargs)
@@ -95,6 +102,7 @@ class NodeCounter(Base):
     )
     access_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     update_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    seed_fact_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Edge(Base):

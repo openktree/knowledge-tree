@@ -2,7 +2,6 @@ import asyncio
 import logging
 import random
 import uuid
-from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
@@ -1673,43 +1672,56 @@ class GraphEngine:
         max_depth: int = 6,
         limit: int = 5,
     ) -> list[list[PathStep]]:
-        """Find shortest paths between two nodes using BFS."""
+        """Find shortest paths between two nodes using level-order BFS.
+
+        Uses bulk edge loading per BFS level to avoid N+1 queries.
+        Total queries = O(depth) instead of O(nodes_explored).
+        """
         if source_id == target_id:
             return [[PathStep(node_id=source_id, edge=None)]]
 
-        queue: deque[tuple[uuid.UUID, list[PathStep], set[uuid.UUID]]] = deque()
-        queue.append((source_id, [PathStep(node_id=source_id, edge=None)], {source_id}))
+        # Each entry: (current_node_id, path_so_far, visited_set)
+        current_level: list[tuple[uuid.UUID, list[PathStep], set[uuid.UUID]]] = [
+            (source_id, [PathStep(node_id=source_id, edge=None)], {source_id}),
+        ]
 
         results: list[list[PathStep]] = []
         shortest_length: int | None = None
 
-        while queue and len(results) < limit:
-            current_id, path, visited = queue.popleft()
-            depth = len(path) - 1
-
+        for depth in range(max_depth):
+            if not current_level or len(results) >= limit:
+                break
             if shortest_length is not None and depth >= shortest_length:
-                continue
+                break
 
-            if depth >= max_depth:
-                continue
+            # Bulk-load edges for all frontier nodes in one query
+            frontier_ids = list({entry[0] for entry in current_level})
+            edges_by_node = await self._edge_repo.get_edges_for_nodes(frontier_ids, direction="both")
 
-            edges = await self._edge_repo.get_edges(current_id, direction="both")
-            for edge in edges:
-                neighbor_id = edge.target_node_id if edge.source_node_id == current_id else edge.source_node_id
+            next_level: list[tuple[uuid.UUID, list[PathStep], set[uuid.UUID]]] = []
 
-                if neighbor_id in visited:
-                    continue
+            for current_id, path, visited in current_level:
+                if len(results) >= limit:
+                    break
 
-                new_step = PathStep(node_id=neighbor_id, edge=edge)
-                new_path = [*path, new_step]
+                for edge in edges_by_node.get(current_id, []):
+                    neighbor_id = edge.target_node_id if edge.source_node_id == current_id else edge.source_node_id
 
-                if neighbor_id == target_id:
-                    results.append(new_path)
-                    shortest_length = len(new_path) - 1
-                    if len(results) >= limit:
-                        break
-                else:
-                    new_visited = visited | {neighbor_id}
-                    queue.append((neighbor_id, new_path, new_visited))
+                    if neighbor_id in visited:
+                        continue
+
+                    new_step = PathStep(node_id=neighbor_id, edge=edge)
+                    new_path = [*path, new_step]
+
+                    if neighbor_id == target_id:
+                        results.append(new_path)
+                        shortest_length = len(new_path) - 1
+                        if len(results) >= limit:
+                            break
+                    else:
+                        new_visited = visited | {neighbor_id}
+                        next_level.append((neighbor_id, new_path, new_visited))
+
+            current_level = next_level
 
         return results

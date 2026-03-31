@@ -209,6 +209,7 @@ class WriteNodeCounter(WriteBase):
     node_key: Mapped[str] = mapped_column(String(500), primary_key=True)
     access_count: Mapped[int] = mapped_column(Integer, default=0)
     update_count: Mapped[int] = mapped_column(Integer, default=0)
+    seed_fact_count: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 

@@ -35,6 +35,12 @@ def _make_mock_node(
     node.parent_id = parent_id
     node.created_at = None
     node.metadata_ = metadata
+    # Denormalized counters (used by optimized get_node)
+    node.fact_count = 0
+    node.edge_count = 0
+    node.child_count = 0
+    node.dimension_count = 0
+    node.convergence_score = 0.0
     return node
 
 
@@ -217,16 +223,8 @@ class TestGetNode:
         factory, session = _mock_session_context()
         node_id = uuid.uuid4()
         node = _make_mock_node(node_id=node_id, definition=None)
+        node.dimension_count = 1  # Trigger fallback logic
         dim = _make_mock_dimension(content="Fallback content")
-
-        # Mock dim_count to return 1
-        count_results = iter([0, 0, 0, 1])  # fact, edge_src, edge_tgt, dim
-
-        async def mock_execute(stmt):
-            mock_result = MagicMock()
-            mock_result.scalar.return_value = next(count_results)
-            mock_result.all.return_value = []
-            return mock_result
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
@@ -236,7 +234,6 @@ class TestGetNode:
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
             engine_instance.get_dimensions = AsyncMock(return_value=[dim])
-            session.execute = AsyncMock(side_effect=mock_execute)
 
             result = await get_node(str(node_id))
 

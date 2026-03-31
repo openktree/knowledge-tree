@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from kt_config.settings import get_settings
-from kt_db.models import Dimension, Edge, EdgeFact, Fact, FactSource, Node, NodeFact, RawSource
+from kt_db.models import EdgeFact, Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
 from kt_mcp.auth import verify_bearer_token
 from kt_mcp.dependencies import (
@@ -149,19 +149,7 @@ async def get_node(node_id: str) -> dict:
         if not node:
             return {"error": "Node not found"}
 
-        # Counts
-        fact_stmt = select(func.count(NodeFact.fact_id)).where(NodeFact.node_id == uid)
-        fact_count = (await session.execute(fact_stmt)).scalar() or 0
-
-        edge_count = 0
-        for col in (Edge.source_node_id, Edge.target_node_id):
-            stmt = select(func.count(Edge.id)).where(col == uid)
-            edge_count += (await session.execute(stmt)).scalar() or 0
-
-        dim_count_stmt = select(func.count(Dimension.id)).where(Dimension.node_id == uid)
-        dim_count = (await session.execute(dim_count_stmt)).scalar() or 0
-
-        # Extract metadata fields shown in the wiki frontend
+        # Use denormalized counts from Node model — no extra queries
         meta = node.metadata_ or {}
         aliases = meta.get("aliases", [])
         merged_from = meta.get("merged_from", [])
@@ -184,9 +172,9 @@ async def get_node(node_id: str) -> dict:
             "parent_id": str(node.parent_id) if node.parent_id else None,
             "parent_concept": parent_concept,
             "created_at": node.created_at.isoformat() if node.created_at else None,
-            "fact_count": fact_count,
-            "edge_count": edge_count,
-            "dimension_count": dim_count,
+            "fact_count": node.fact_count,
+            "edge_count": node.edge_count,
+            "dimension_count": node.dimension_count,
             "aliases": aliases,
             "merged_from": merged_from,
             "seed_ambiguity": seed_ambiguity,
@@ -195,7 +183,7 @@ async def get_node(node_id: str) -> dict:
         }
 
         # Fallback: include one dimension if no definition
-        if not node.definition and dim_count > 0:
+        if not node.definition and node.dimension_count > 0:
             dims = await engine.get_dimensions(uid)
             if dims:
                 d = dims[0]

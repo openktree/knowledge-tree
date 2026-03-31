@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.dependencies import get_db_session, get_qdrant_client_cached
-from kt_api.nodes import _batch_richness_and_fact_counts
+from kt_api.nodes import _compute_richness
 from kt_api.schemas import (
     EdgeResponse,
     GraphStatsResponse,
@@ -31,17 +31,26 @@ async def get_graph_stats(
     session: AsyncSession = Depends(get_db_session),
 ) -> GraphStatsResponse:
     """Get graph-wide statistics."""
-    node_count_result = await session.execute(select(func.count(Node.id)))
-    edge_count_result = await session.execute(select(func.count(Edge.id)))
-    fact_count_result = await session.execute(select(func.count(Fact.id)))
-    source_count_result = await session.execute(select(func.count(RawSource.id)))
+    from kt_config.cache import cache_get, cache_set
 
-    return GraphStatsResponse(
-        node_count=node_count_result.scalar_one(),
-        edge_count=edge_count_result.scalar_one(),
-        fact_count=fact_count_result.scalar_one(),
-        source_count=source_count_result.scalar_one(),
+    cache_key = "kt:graph:stats"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return GraphStatsResponse(**cached)
+
+    node_count = (await session.execute(select(func.count(Node.id)))).scalar_one()
+    edge_count = (await session.execute(select(func.count(Edge.id)))).scalar_one()
+    fact_count = (await session.execute(select(func.count(Fact.id)))).scalar_one()
+    source_count = (await session.execute(select(func.count(RawSource.id)))).scalar_one()
+
+    result = GraphStatsResponse(
+        node_count=node_count,
+        edge_count=edge_count,
+        fact_count=fact_count,
+        source_count=source_count,
     )
+    await cache_set(cache_key, result.model_dump(), ttl=300)
+    return result
 
 
 @router.get("/subgraph", response_model=SubgraphResponse)
@@ -67,8 +76,6 @@ async def get_subgraph(
     result = await engine.get_subgraph(uuids, depth=depth)
     nodes: list[Node] = result.get("nodes", [])  # type: ignore[assignment]
     edges: list[Edge] = result.get("edges", [])  # type: ignore[assignment]
-    richness_map, _ = await _batch_richness_and_fact_counts(session, nodes)
-
     nodes_by_id = {n.id: n for n in nodes}
     # Resolve parent concepts: parents in the subgraph are already loaded;
     # for parents outside the subgraph, fall back to a batch query.
@@ -102,8 +109,8 @@ async def get_subgraph(
                 updated_at=n.updated_at,
                 update_count=n.update_count,
                 access_count=n.access_count,
-                richness=richness_map.get(n.id, 0.0),
-                convergence_score=n.convergence_report.convergence_score if n.convergence_report else 0.0,
+                richness=_compute_richness(n),
+                convergence_score=n.convergence_score,
                 definition=n.definition,
                 definition_generated_at=n.definition_generated_at.isoformat() if n.definition_generated_at else None,
                 metadata=n.metadata_,

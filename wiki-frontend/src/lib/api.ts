@@ -104,17 +104,9 @@ export async function getEdgesBetween(
   nodeIdA: string,
   nodeIdB: string,
 ): Promise<EdgeDetailResponse[]> {
-  // Use depth=1 like the node page does — guaranteed to find all edges
-  const subgraph = await get<SubgraphResponse>(
-    `/api/v1/graph/subgraph?node_ids=${nodeIdA}&depth=1`,
+  return get<EdgeDetailResponse[]>(
+    `/api/v1/edges/between?source=${nodeIdA}&target=${nodeIdB}`,
   );
-  const matching = subgraph.edges.filter(
-    (e) =>
-      (e.source_node_id === nodeIdA && e.target_node_id === nodeIdB) ||
-      (e.source_node_id === nodeIdB && e.target_node_id === nodeIdA),
-  );
-  // Fetch full details (with facts) for each edge
-  return Promise.all(matching.map((e) => getEdge(e.id)));
 }
 
 export async function searchNodes(

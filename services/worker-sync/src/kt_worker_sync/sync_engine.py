@@ -23,7 +23,8 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update  # noqa: I001
+from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -179,6 +180,81 @@ class SyncEngine:
             )
         )
         await write_session.execute(stmt)
+
+    # ── Denormalized stat refresh ────────────────────────────────────────
+
+    async def _refresh_node_stats(
+        self,
+        gs: AsyncSession,
+        node_ids: set[uuid.UUID],
+    ) -> None:
+        """Recompute denormalized counters for the given nodes.
+
+        Runs efficient aggregate subqueries and batch-updates the nodes table.
+        Called after syncing entities that affect node stats (facts, edges,
+        dimensions, convergence, child relationships).
+        """
+        if not node_ids:
+            return
+
+        id_list = list(node_ids)
+
+        # fact_count
+        fact_sub = (
+            select(NodeFact.node_id, func.count().label("cnt"))
+            .where(NodeFact.node_id.in_(id_list))
+            .group_by(NodeFact.node_id)
+            .subquery()
+        )
+        await gs.execute(update(Node).where(Node.id == fact_sub.c.node_id).values(fact_count=fact_sub.c.cnt))
+
+        # edge_count (source + target) — uses raw SQL for UNION ALL clarity
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET edge_count = sub.cnt
+                FROM (
+                    SELECT node_id, SUM(cnt)::int AS cnt FROM (
+                        SELECT source_node_id AS node_id, COUNT(*) AS cnt
+                        FROM edges WHERE source_node_id = ANY(:ids)
+                        GROUP BY source_node_id
+                        UNION ALL
+                        SELECT target_node_id AS node_id, COUNT(*) AS cnt
+                        FROM edges WHERE target_node_id = ANY(:ids)
+                        GROUP BY target_node_id
+                    ) t GROUP BY node_id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
+        )
+
+        # child_count
+        child_sub = (
+            select(Node.parent_id.label("pid"), func.count().label("cnt"))
+            .where(Node.parent_id.in_(id_list))
+            .group_by(Node.parent_id)
+            .subquery()
+        )
+        await gs.execute(update(Node).where(Node.id == child_sub.c.pid).values(child_count=child_sub.c.cnt))
+
+        # dimension_count
+        dim_sub = (
+            select(Dimension.node_id, func.count().label("cnt"))
+            .where(Dimension.node_id.in_(id_list))
+            .group_by(Dimension.node_id)
+            .subquery()
+        )
+        await gs.execute(update(Node).where(Node.id == dim_sub.c.node_id).values(dimension_count=dim_sub.c.cnt))
+
+        # convergence_score
+        conv_sub = (
+            select(ConvergenceReport.node_id, ConvergenceReport.convergence_score.label("score"))
+            .where(ConvergenceReport.node_id.in_(id_list))
+            .subquery()
+        )
+        await gs.execute(update(Node).where(Node.id == conv_sub.c.node_id).values(convergence_score=conv_sub.c.score))
 
     # ── Raw Sources ──────────────────────────────────────────────────────
 
@@ -660,6 +736,12 @@ class SyncEngine:
             # pass catches ALL such orphans, not just ones in the current batch.
             await self._repair_orphaned_node_refs(ws, gs)
 
+            # Refresh denormalized stats for synced nodes and their parents
+            affected_ids = set(all_node_uuids)
+            for _, _, ref_id in deferred_refs:
+                affected_ids.add(ref_id)
+            await self._refresh_node_stats(gs, affected_ids)
+
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
             if first_failure_ts is not None:
                 failed = len(rows) - count
@@ -857,6 +939,13 @@ class SyncEngine:
                     max_ts = we.updated_at
                 count += 1
 
+            # Refresh edge_count on all affected nodes
+            edge_node_ids: set[uuid.UUID] = set()
+            for we in rows:
+                edge_node_ids.add(key_to_uuid(we.source_node_key))
+                edge_node_ids.add(key_to_uuid(we.target_node_key))
+            await self._refresh_node_stats(gs, edge_node_ids)
+
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
             if first_failure_ts is not None:
                 failed = len(rows) - count
@@ -1041,6 +1130,10 @@ class SyncEngine:
                     max_ts = wd.updated_at
                 count += 1
 
+            # Refresh dimension_count on affected nodes
+            dim_node_ids = {key_to_uuid(wd.node_key) for wd in rows}
+            await self._refresh_node_stats(gs, dim_node_ids)
+
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
             if first_failure_ts is not None:
                 failed = len(rows) - count
@@ -1134,6 +1227,10 @@ class SyncEngine:
                     max_ts = wcr.updated_at
                 count += 1
 
+            # Refresh convergence_score on affected nodes
+            conv_node_ids = {key_to_uuid(wcr.node_key) for wcr in rows}
+            await self._refresh_node_stats(gs, conv_node_ids)
+
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
             if first_failure_ts is not None:
                 failed = len(rows) - count
@@ -1198,12 +1295,14 @@ class SyncEngine:
                                 node_id=node_id,
                                 access_count=wnc.access_count,
                                 update_count=wnc.update_count,
+                                seed_fact_count=wnc.seed_fact_count,
                             )
                             .on_conflict_do_update(
                                 index_elements=[NodeCounter.node_id],
                                 set_={
                                     "access_count": wnc.access_count,
                                     "update_count": wnc.update_count,
+                                    "seed_fact_count": wnc.seed_fact_count,
                                 },
                             )
                         )
