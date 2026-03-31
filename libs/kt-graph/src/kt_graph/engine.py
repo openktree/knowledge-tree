@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, TypedDict, TypeVar
+from typing import TypedDict, TypeVar
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import DBAPIError
