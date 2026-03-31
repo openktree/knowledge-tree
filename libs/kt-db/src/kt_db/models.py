@@ -559,6 +559,73 @@ class ApiToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+# ---- MCP OAuth 2.1 tables -------------------------------------------------
+
+
+class OAuthClient(Base):
+    """Dynamically registered OAuth 2.1 clients (RFC 7591)."""
+
+    __tablename__ = "oauth_clients"
+
+    client_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_secret: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    client_id_issued_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_secret_expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OAuthAuthorizationCode(Base):
+    """OAuth 2.1 authorization codes (short-lived, single-use)."""
+
+    __tablename__ = "oauth_authorization_codes"
+
+    code: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(200), ForeignKey("oauth_clients.client_id", ondelete="CASCADE"))
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uri_provided_explicitly: Mapped[bool] = mapped_column(Boolean, default=True)
+    scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    code_challenge: Mapped[str] = mapped_column(String(200), nullable=False)
+    resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OAuthAccessToken(Base):
+    """OAuth 2.1 access tokens."""
+
+    __tablename__ = "oauth_access_tokens"
+
+    token: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(200), ForeignKey("oauth_clients.client_id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OAuthRefreshToken(Base):
+    """OAuth 2.1 refresh tokens."""
+
+    __tablename__ = "oauth_refresh_tokens"
+
+    token: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(200), ForeignKey("oauth_clients.client_id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    access_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 # ---------------------------------------------------------------------------
 
 

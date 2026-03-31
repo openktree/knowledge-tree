@@ -16,24 +16,22 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastmcp import FastMCP
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from kt_config.settings import get_settings
 from kt_db.models import Dimension, Edge, EdgeFact, Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
-from kt_mcp.auth import verify_bearer_token
 from kt_mcp.dependencies import (
     get_qdrant_client_cached,
     get_session_factory_cached,
 )
+from kt_mcp.oauth_provider import create_oauth_provider
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Knowledge Tree")
+mcp = FastMCP("Knowledge Tree", auth=create_oauth_provider())
 
 
 def _extract_published_date(raw_source: RawSource) -> str | None:
@@ -966,36 +964,16 @@ async def get_node_paths(
         }
 
 
-# ── FastAPI app with auth middleware ─────────────────────────────────
+# ── FastAPI app with OAuth 2.1 ─────────────────────────────────────
 
+from kt_mcp.oauth_login import oauth_login_router  # noqa: E402
 
-mcp_http = mcp.http_app(path="/", stateless_http=True)
+mcp_http = mcp.http_app(path="/mcp", stateless_http=True)
 
 app = FastAPI(title="Knowledge Tree MCP", lifespan=mcp_http.lifespan)
 
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next) -> Response:
-    """Verify bearer token on all MCP requests."""
-    if request.url.path in ("/health", "/healthz"):
-        return await call_next(request)
-
-    settings = get_settings()
-    if settings.skip_auth:
-        return await call_next(request)
-
-    auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
-        return JSONResponse(status_code=401, content={"detail": "Missing bearer token"})
-
-    raw_token = auth_header[7:]
-    factory = get_session_factory_cached()
-    async with factory() as session:
-        valid = await verify_bearer_token(raw_token, session)
-        if not valid:
-            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
-
-    return await call_next(request)
+# Login page for OAuth authorize flow
+app.include_router(oauth_login_router)
 
 
 @app.get("/health")
@@ -1003,5 +981,5 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-# Mount MCP at /mcp — endpoint becomes POST /mcp
-app.mount("/mcp", mcp_http)
+# Mount MCP + OAuth routes (/.well-known/*, /authorize, /token, /register, /mcp)
+app.mount("/", mcp_http)

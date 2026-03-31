@@ -1,0 +1,142 @@
+"""OAuth login page for the MCP server.
+
+Handles user authentication during the OAuth 2.1 authorization flow.
+When the OAuthProvider.authorize() method is called, it stores a pending
+authorization code and redirects here. The user logs in, and on success
+the pending code is finalized and the user is redirected back to the
+OAuth client (e.g., Claude Web) with the authorization code.
+"""
+
+from __future__ import annotations
+
+import logging
+import secrets
+import time
+
+from fastapi import APIRouter, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from mcp.server.auth.provider import construct_redirect_uri
+from passlib.hash import bcrypt as passlib_bcrypt
+from sqlalchemy import select
+
+from kt_db.models import OAuthAuthorizationCode, User
+from kt_mcp.dependencies import get_session_factory_cached
+
+logger = logging.getLogger(__name__)
+
+oauth_login_router = APIRouter(prefix="/oauth", tags=["oauth"])
+
+_LOGIN_PAGE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge Tree — Authorize</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { background: #1e293b; border-radius: 12px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
+  h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: #f8fafc; }
+  p { font-size: 0.875rem; color: #94a3b8; margin-bottom: 1.5rem; }
+  label { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; }
+  input[type="email"], input[type="password"] { width: 100%; padding: 0.625rem; border: 1px solid #334155; border-radius: 6px; background: #0f172a; color: #f8fafc; font-size: 0.875rem; margin-bottom: 1rem; }
+  input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
+  button { width: 100%; padding: 0.625rem; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
+  button:hover { background: #2563eb; }
+  .error { background: #7f1d1d; color: #fca5a5; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.875rem; }
+  .footer { text-align: center; margin-top: 1rem; font-size: 0.75rem; color: #64748b; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Authorize Access</h1>
+  <p>Sign in to grant access to your Knowledge Tree graph.</p>
+  {error}
+  <form method="POST" action="/oauth/login">
+    <input type="hidden" name="code_id" value="{code_id}">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required autofocus>
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required>
+    <button type="submit">Authorize</button>
+  </form>
+  <div class="footer">Knowledge Tree MCP Server</div>
+</div>
+</body>
+</html>"""
+
+
+@oauth_login_router.get("/login")
+async def login_page(code_id: str) -> HTMLResponse:
+    """Show the login form for OAuth authorization."""
+    # Verify the pending code exists
+    factory = get_session_factory_cached()
+    async with factory() as session:
+        row = await session.get(OAuthAuthorizationCode, code_id)
+        if row is None or row.expires_at < time.time():
+            return HTMLResponse(
+                content="<h1>Authorization request expired or invalid.</h1><p>Please try connecting again.</p>",
+                status_code=400,
+            )
+
+    html = _LOGIN_PAGE_HTML.format(code_id=code_id, error="")
+    return HTMLResponse(content=html)
+
+
+@oauth_login_router.post("/login")
+async def login_submit(
+    code_id: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+) -> RedirectResponse | HTMLResponse:
+    """Validate credentials and complete the authorization flow."""
+    factory = get_session_factory_cached()
+
+    async with factory() as session:
+        # Load the pending authorization code
+        row = await session.get(OAuthAuthorizationCode, code_id)
+        if row is None or row.expires_at < time.time():
+            return HTMLResponse(
+                content="<h1>Authorization request expired.</h1><p>Please try connecting again.</p>",
+                status_code=400,
+            )
+
+        # Verify user credentials
+        result = await session.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+        if user is None or not _verify_password(password, user.hashed_password):
+            html = _LOGIN_PAGE_HTML.format(
+                code_id=code_id,
+                error='<div class="error">Invalid email or password.</div>',
+            )
+            return HTMLResponse(content=html, status_code=401)
+
+        if not user.is_active:
+            html = _LOGIN_PAGE_HTML.format(
+                code_id=code_id,
+                error='<div class="error">Account is disabled.</div>',
+            )
+            return HTMLResponse(content=html, status_code=403)
+
+        # Generate the real authorization code (replacing the pending one)
+        real_code = secrets.token_urlsafe(32)
+        redirect_uri = row.redirect_uri
+        state = row.state
+
+        # Update the row: set user_id and replace the pending code
+        row.code = real_code
+        row.user_id = user.id
+        await session.commit()
+
+    # Redirect back to the OAuth client with the authorization code
+    redirect = construct_redirect_uri(redirect_uri, code=real_code, state=state)
+    return RedirectResponse(url=redirect, status_code=302)
+
+
+def _verify_password(plain: str, hashed: str) -> bool:
+    """Verify a password against a bcrypt hash (same as fastapi-users)."""
+    try:
+        return passlib_bcrypt.verify(plain, hashed)
+    except (ValueError, TypeError):
+        return False

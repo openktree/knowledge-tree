@@ -66,6 +66,7 @@ _register(
         "google_oauth_client_id": "google_oauth_client_id",
         "google_oauth_client_secret": "google_oauth_client_secret",
         "byok_encryption_key": "byok_encryption_key",
+        "mcp_oauth_base_url": "mcp_oauth_base_url",
     },
 )
 
@@ -533,6 +534,9 @@ class Settings(BaseSettings):
     # Google OAuth (empty string = disabled)
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
+
+    # MCP OAuth 2.1
+    mcp_oauth_base_url: str = "http://localhost:8001"  # Public URL of MCP server
 
     # BYOK (Bring Your Own Key) — Fernet encryption key for stored API keys
     byok_encryption_key: str = ""
