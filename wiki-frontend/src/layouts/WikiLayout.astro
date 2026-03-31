@@ -55,6 +55,12 @@ const siteDomain = import.meta.env.SITE_DOMAIN || "openktree.com";
         <button type="submit">Search</button>
       </form>
 
+      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
       <div class="header-actions">
         <a href={`https://${siteDomain}`} class="header-about-link">Home</a>
         <a href={`https://research.${siteDomain}`} class="header-about-link">Research</a>
@@ -87,6 +93,13 @@ const siteDomain = import.meta.env.SITE_DOMAIN || "openktree.com";
         const next = current === "dark" ? "light" : "dark";
         document.documentElement.setAttribute("data-theme", next);
         localStorage.setItem("kt-theme", next);
+      });
+
+      const navToggle = document.getElementById("nav-toggle");
+      const header = document.querySelector(".site-header");
+      navToggle?.addEventListener("click", () => {
+        const open = header?.classList.toggle("nav-open");
+        navToggle.setAttribute("aria-expanded", String(!!open));
       });
     </script>
   </body>
