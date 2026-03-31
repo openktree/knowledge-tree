@@ -60,15 +60,23 @@ def _node_to_response(
     )
 
 
-def _edge_to_response(e: object) -> EdgeResponse:
+def _edge_to_response(
+    e: object,
+    edge_fact_ids: dict[uuid.UUID, list[uuid.UUID]] | None = None,
+) -> EdgeResponse:
+    eid = e.id  # type: ignore[attr-defined]
+    if edge_fact_ids is not None:
+        fact_ids = [str(fid) for fid in edge_fact_ids.get(eid, [])]
+    else:
+        fact_ids = [str(ef.fact_id) for ef in e.edge_facts]  # type: ignore[attr-defined]
     return EdgeResponse(
-        id=str(e.id),  # type: ignore[attr-defined]
+        id=str(eid),
         source_node_id=str(e.source_node_id),  # type: ignore[attr-defined]
         target_node_id=str(e.target_node_id),  # type: ignore[attr-defined]
         relationship_type=e.relationship_type,  # type: ignore[attr-defined]
         weight=e.weight,  # type: ignore[attr-defined]
         justification=e.justification,  # type: ignore[attr-defined]
-        supporting_fact_ids=[str(ef.fact_id) for ef in e.edge_facts],  # type: ignore[attr-defined]
+        supporting_fact_ids=fact_ids,
         created_at=e.created_at,  # type: ignore[attr-defined]
     )
 
@@ -306,9 +314,10 @@ async def export_conversation(
 
     # Get subgraph (nodes + edges)
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
-    subgraph = await engine.get_subgraph(node_uuids) if node_uuids else {"nodes": [], "edges": []}
+    subgraph = await engine.get_subgraph(node_uuids) if node_uuids else {"nodes": [], "edges": [], "edge_fact_ids": {}}
     nodes = subgraph["nodes"]
     edges = subgraph["edges"]
+    sg_edge_fact_ids: dict[uuid.UUID, list[uuid.UUID]] = subgraph.get("edge_fact_ids", {})
     # Fetch node-fact links with junction metadata
     conv_node_ids = [n.id for n in nodes]
     node_fact_links = await _get_node_fact_links(session, conv_node_ids)
@@ -323,11 +332,11 @@ async def export_conversation(
             all_fact_ids.append(fid)
 
     # Also collect facts linked to edges (for justification {fact:UUID} tokens)
-    for e in edges:
-        for ef in e.edge_facts:  # type: ignore[attr-defined]
-            if ef.fact_id not in seen_fact_ids:
-                seen_fact_ids.add(ef.fact_id)
-                all_fact_ids.append(ef.fact_id)
+    for fid_list in sg_edge_fact_ids.values():
+        for fid in fid_list:
+            if fid not in seen_fact_ids:
+                seen_fact_ids.add(fid)
+                all_fact_ids.append(fid)
 
     all_facts = []
     if all_fact_ids:
@@ -360,7 +369,7 @@ async def export_conversation(
         ),
         conversation=_conv_to_response(conv),
         nodes=[_node_to_response(n, embedding_map=node_emb_map) for n in nodes],
-        edges=[_edge_to_response(e) for e in edges],
+        edges=[_edge_to_response(e, edge_fact_ids=sg_edge_fact_ids) for e in edges],
         facts=[
             _fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in all_facts
         ],

@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import DBAPIError
@@ -756,7 +756,7 @@ class GraphEngine:
         self,
         node_ids: list[uuid.UUID],
         depth: int = 0,
-    ) -> dict[str, list[Node] | list[Edge]]:
+    ) -> dict[str, Any]:
         """Get a subgraph containing the specified nodes and edges between them."""
         if not node_ids:
             return {"nodes": [], "edges": []}
@@ -794,18 +794,27 @@ class GraphEngine:
             nodes.extend(parent_nodes)
             all_ids |= parent_ids
 
-        edge_stmt = (
-            select(Edge)
-            .where(
-                Edge.source_node_id.in_(list(all_ids)),
-                Edge.target_node_id.in_(list(all_ids)),
-            )
-            .options(selectinload(Edge.edge_facts))
+        id_list_final = list(all_ids)
+        edge_stmt = select(Edge).where(
+            Edge.source_node_id.in_(id_list_final),
+            Edge.target_node_id.in_(id_list_final),
         )
         edge_result = await self._session.execute(edge_stmt)
         edges = list(edge_result.scalars().all())
 
-        return {"nodes": nodes, "edges": edges}
+        # Batch-load edge→fact_id mappings with a lightweight query
+        # instead of selectinload(Edge.edge_facts) which hydrates full ORM objects.
+        edge_fact_ids: dict[uuid.UUID, list[uuid.UUID]] = {}
+        if edges:
+            from kt_db.models import EdgeFact
+
+            edge_ids = [e.id for e in edges]
+            ef_stmt = select(EdgeFact.edge_id, EdgeFact.fact_id).where(EdgeFact.edge_id.in_(edge_ids))
+            ef_result = await self._session.execute(ef_stmt)
+            for row in ef_result.all():
+                edge_fact_ids.setdefault(row.edge_id, []).append(row.fact_id)
+
+        return {"nodes": nodes, "edges": edges, "edge_fact_ids": edge_fact_ids}
 
     # ── Edge fact linking ──────────────────────────────────────────
 

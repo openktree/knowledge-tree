@@ -391,11 +391,18 @@ async def get_node_dimensions(
         uid = uuid.UUID(node_id)
     except ValueError:
         uid = key_to_uuid(url_key_to_node_key(node_id))
+    from kt_config.cache import cache_get, cache_set
+
+    cache_key = f"kt:node:{uid}:dimensions"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return [DimensionResponse(**d) for d in cached]
+
     node = await engine.get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     dims = await engine.get_dimensions(uid)
-    return [
+    result = [
         DimensionResponse(
             id=str(d.id),
             node_id=str(d.node_id),
@@ -410,6 +417,8 @@ async def get_node_dimensions(
         )
         for d in dims
     ]
+    await cache_set(cache_key, [r.model_dump() for r in result], ttl=60)
+    return result
 
 
 @router.get("/{node_id}/facts", response_model=list[FactResponse])
@@ -423,11 +432,18 @@ async def get_node_facts(
         uid = uuid.UUID(node_id)
     except ValueError:
         uid = key_to_uuid(url_key_to_node_key(node_id))
+    from kt_config.cache import cache_get, cache_set
+
+    cache_key = f"kt:node:{uid}:facts"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return [FactResponse(**f) for f in cached]
+
     node = await engine.get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     facts = await engine.get_node_facts_with_sources(uid)
-    return [
+    result = [
         FactResponse(
             id=str(f.id),
             content=f.content,
@@ -438,6 +454,8 @@ async def get_node_facts(
         )
         for f in facts
     ]
+    await cache_set(cache_key, [r.model_dump() for r in result], ttl=60)
+    return result
 
 
 @router.post("/{node_id}/rebuild")

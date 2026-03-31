@@ -73,9 +73,18 @@ async def get_subgraph(
     if not uuids:
         return SubgraphResponse(nodes=[], edges=[])
 
+    from kt_config.cache import cache_get, cache_set, make_cache_key
+
+    sorted_ids = sorted(str(u) for u in uuids)
+    cache_key = make_cache_key("graph:subgraph", ids=",".join(sorted_ids), depth=depth)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return SubgraphResponse(**cached)
+
     result = await engine.get_subgraph(uuids, depth=depth)
     nodes: list[Node] = result.get("nodes", [])  # type: ignore[assignment]
     edges: list[Edge] = result.get("edges", [])  # type: ignore[assignment]
+    edge_fact_ids: dict[uuid.UUID, list[uuid.UUID]] = result.get("edge_fact_ids", {})  # type: ignore[assignment]
     nodes_by_id = {n.id: n for n in nodes}
     # Resolve parent concepts: parents in the subgraph are already loaded;
     # for parents outside the subgraph, fall back to a batch query.
@@ -94,7 +103,7 @@ async def get_subgraph(
             return nodes_by_id[n.parent_id].concept
         return outside_parent_map.get(n.parent_id)
 
-    return SubgraphResponse(
+    response = SubgraphResponse(
         nodes=[
             NodeResponse(
                 id=str(n.id),
@@ -127,12 +136,14 @@ async def get_subgraph(
                 relationship_type=e.relationship_type,
                 weight=e.weight,
                 justification=e.justification,
-                supporting_fact_ids=[str(ef.fact_id) for ef in e.edge_facts],
+                supporting_fact_ids=[str(fid) for fid in edge_fact_ids.get(e.id, [])],
                 created_at=e.created_at,
             )
             for e in edges
         ],
     )
+    await cache_set(cache_key, response.model_dump(), ttl=60)
+    return response
 
 
 @router.get("/paths", response_model=PathsResponse)

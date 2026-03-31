@@ -45,6 +45,12 @@ def verify_token(raw: str, hashed: str) -> bool:
     return bcrypt.checkpw(digest.encode(), hashed.encode())
 
 
+def _token_cache_key(raw: str) -> str:
+    """Redis cache key for a verified API token (keyed by SHA-256 of raw token)."""
+    digest = hashlib.sha256(raw.encode()).hexdigest()
+    return f"kt:auth:token:{digest}"
+
+
 # ---------------------------------------------------------------------------
 # Repository
 # ---------------------------------------------------------------------------
@@ -159,10 +165,22 @@ async def require_auth(
     except Exception:
         pass
 
-    # 2) Try API token
+    # 2) Try API token — check Redis cache first to skip bcrypt
+    from kt_config.cache import cache_get, cache_set
+
+    cache_key = _token_cache_key(raw_token)
+    cached_user_id = await cache_get(cache_key)
+    if cached_user_id is not None:
+        result = await session.execute(select(User).where(User.id == uuid.UUID(cached_user_id)))
+        user = result.unique().scalar_one_or_none()
+        if user is not None and user.is_active:
+            return user
+
     repo = ApiTokenRepository(session)
     api_token = await repo.find_by_raw(raw_token)
     if api_token is not None:
+        # Cache the verified token→user_id mapping for 5 minutes
+        await cache_set(cache_key, str(api_token.user_id), ttl=300)
         await repo.touch_last_used(api_token.id)
         result = await session.execute(select(User).where(User.id == api_token.user_id))
         user = result.unique().scalar_one_or_none()
