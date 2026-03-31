@@ -21,7 +21,6 @@ from fastmcp import FastMCP
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from kt_config.settings import get_settings
 from kt_db.models import EdgeFact, Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
 from kt_mcp.dependencies import (
@@ -93,17 +92,6 @@ async def search_graph(
         if not nodes:
             return {"nodes": [], "total": 0}
 
-        node_ids = [n.id for n in nodes]
-
-        # Batch fact counts
-        fact_stmt = (
-            select(NodeFact.node_id, func.count(NodeFact.fact_id))
-            .where(NodeFact.node_id.in_(node_ids))
-            .group_by(NodeFact.node_id)
-        )
-        fact_result = await session.execute(fact_stmt)
-        fact_counts = {row[0]: row[1] for row in fact_result.all()}
-
         items = []
         for n in nodes:
             meta = n.metadata_ or {}
@@ -114,7 +102,7 @@ async def search_graph(
                 "node_id": str(n.id),
                 "concept": n.concept,
                 "node_type": n.node_type,
-                "fact_count": fact_counts.get(n.id, 0),
+                "fact_count": n.fact_count,
             }
             if also_known_as:
                 item["also_known_as"] = also_known_as
