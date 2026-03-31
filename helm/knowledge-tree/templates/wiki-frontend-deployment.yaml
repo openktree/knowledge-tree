@@ -42,16 +42,19 @@ spec:
                   key: api-token
           livenessProbe:
             httpGet:
-              path: /
+              path: /about
               port: {{ .Values.wikiFrontend.port }}
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
           readinessProbe:
             httpGet:
-              path: /
+              path: /about
               port: {{ .Values.wikiFrontend.port }}
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 5
           resources:
             {{- toYaml .Values.wikiFrontend.resources | nindent 12 }}
 {{- end }}
