@@ -502,9 +502,11 @@ def build_synthesis_graph(ctx: AgentContext) -> StateGraph:
     @tool
     async def finish(answer: str) -> str:
         """Submit the final synthesized answer. Call this when you are done."""
+        from kt_models.link_normalizer import normalize_ai_links
+
         state = _current_state[0]
         assert state is not None
-        state.answer = answer
+        state.answer = normalize_ai_links(answer)
         state.phase = "done"
         return "Answer submitted."
 

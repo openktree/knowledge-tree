@@ -106,9 +106,12 @@ class DefinitionPipeline:
             clear_usage_task()
 
             if definition.strip():
-                await ctx.graph_engine.set_node_definition(node_id, definition.strip())
+                from kt_models.link_normalizer import normalize_ai_links
+
+                definition = normalize_ai_links(definition.strip())
+                await ctx.graph_engine.set_node_definition(node_id, definition)
                 logger.info("Generated definition for '%s' (%d chars)", node_concept, len(definition))
-                return definition.strip()
+                return definition
         except Exception:
             logger.exception("Error generating definition for '%s'", node_concept)
 
@@ -195,7 +198,9 @@ class DefinitionPipeline:
                     )
                     clear_usage_task()
                     if definition.strip():
-                        definitions[t.name] = definition.strip()
+                        from kt_models.link_normalizer import normalize_ai_links
+
+                        definitions[t.name] = normalize_ai_links(definition.strip())
                 except Exception:
                     logger.exception("Error generating definition for '%s'", t.name)
 

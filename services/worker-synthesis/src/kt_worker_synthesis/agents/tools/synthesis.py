@@ -15,7 +15,9 @@ def build_synthesis_tools(state_ref: list[Any]) -> list[BaseTool]:
         """Submit the final synthesis document. The text argument MUST contain the COMPLETE markdown text. Anything written outside this tool is discarded."""
         state = state_ref[0]
         if state is not None:
-            state.synthesis_text = text
+            from kt_models.link_normalizer import normalize_ai_links
+
+            state.synthesis_text = normalize_ai_links(text)
             state.phase = "done"
         return "Synthesis document submitted."
 

@@ -127,6 +127,9 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 node_type="synthesis",
             )
             synthesis_node_id = node.id
+            from kt_models.link_normalizer import normalize_ai_links
+
+            synthesis_text = normalize_ai_links(synthesis_text)
             await graph_engine.set_node_definition(synthesis_node_id, synthesis_text)
 
             # Set visibility and creator via write-db
