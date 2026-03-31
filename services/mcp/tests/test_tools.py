@@ -361,31 +361,17 @@ class TestGetEdges:
         other_ids = [uuid.uuid4() for _ in range(5)]
         edges = [_make_mock_edge(node_id, oid) for oid in other_ids]
 
-        # Mock target node batch query
-        mock_rows = []
-        for oid in other_ids[:3]:  # Only first page
-            row = MagicMock()
-            row.id = oid
-            row.concept = f"concept-{oid}"
-            row.node_type = "concept"
-            mock_rows.append(row)
-
-        mock_result = MagicMock()
-        mock_result.all.return_value = mock_rows
-
-        # Mock edge fact count query (returns empty — no facts)
-        mock_fact_result = MagicMock()
-        mock_fact_result.all.return_value = []
-
-        call_count = 0
-
-        async def mock_execute(stmt):
-            nonlocal call_count
-            call_count += 1
-            # First call is edge fact counts, second is target node batch
-            if call_count == 1:
-                return mock_fact_result
-            return mock_result
+        # Build the engine return value matching get_edges_with_targets format
+        edge_items = [
+            {
+                "edge": e,
+                "other_node_id": oid,
+                "other_concept": f"concept-{oid}",
+                "other_node_type": "concept",
+                "fact_count": 0,
+            }
+            for e, oid in zip(edges[:3], other_ids[:3])
+        ]
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
@@ -394,8 +380,7 @@ class TestGetEdges:
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
-            engine_instance.get_edges = AsyncMock(return_value=edges)
-            session.execute = AsyncMock(side_effect=mock_execute)
+            engine_instance.get_edges_with_targets = AsyncMock(return_value={"edges": edge_items, "total": 5})
 
             result = await get_edges(str(node_id), limit=3, offset=0)
 
@@ -406,39 +391,37 @@ class TestGetEdges:
 
     @pytest.mark.asyncio
     async def test_get_edges_sorted_by_fact_count(self):
-        """Edges are sorted by fact count descending."""
+        """Edges are sorted by fact count descending (done by engine)."""
         factory, session = _mock_session_context()
         node_id = uuid.uuid4()
         node = _make_mock_node(node_id=node_id)
         other_ids = [uuid.uuid4() for _ in range(3)]
         edges = [_make_mock_edge(node_id, oid) for oid in other_ids]
 
-        # Assign fact counts: edge[0]=1, edge[1]=5, edge[2]=3
-        fact_count_map = {edges[0].id: 1, edges[1].id: 5, edges[2].id: 3}
-        fact_rows = [(eid, cnt) for eid, cnt in fact_count_map.items()]
-
-        mock_fact_result = MagicMock()
-        mock_fact_result.all.return_value = fact_rows
-
-        mock_node_rows = []
-        for oid in other_ids:
-            row = MagicMock()
-            row.id = oid
-            row.concept = f"concept-{oid}"
-            row.node_type = "concept"
-            mock_node_rows.append(row)
-
-        mock_node_result = MagicMock()
-        mock_node_result.all.return_value = mock_node_rows
-
-        call_count = 0
-
-        async def mock_execute(stmt):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_fact_result
-            return mock_node_result
+        # Engine returns pre-sorted: 5, 3, 1
+        edge_items = [
+            {
+                "edge": edges[1],
+                "other_node_id": other_ids[1],
+                "other_concept": "c1",
+                "other_node_type": "concept",
+                "fact_count": 5,
+            },
+            {
+                "edge": edges[2],
+                "other_node_id": other_ids[2],
+                "other_concept": "c2",
+                "other_node_type": "concept",
+                "fact_count": 3,
+            },
+            {
+                "edge": edges[0],
+                "other_node_id": other_ids[0],
+                "other_concept": "c0",
+                "other_node_type": "concept",
+                "fact_count": 1,
+            },
+        ]
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
@@ -447,8 +430,7 @@ class TestGetEdges:
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
-            engine_instance.get_edges = AsyncMock(return_value=edges)
-            session.execute = AsyncMock(side_effect=mock_execute)
+            engine_instance.get_edges_with_targets = AsyncMock(return_value={"edges": edge_items, "total": 3})
 
             result = await get_edges(str(node_id), limit=10)
 
@@ -463,7 +445,17 @@ class TestGetEdges:
         node_id = uuid.uuid4()
         node = _make_mock_node(node_id=node_id)
         related_edge = _make_mock_edge(node_id, uuid.uuid4(), relationship_type="related")
-        cross_edge = _make_mock_edge(node_id, uuid.uuid4(), relationship_type="cross_type")
+
+        # Engine handles filtering — returns only related
+        edge_items = [
+            {
+                "edge": related_edge,
+                "other_node_id": related_edge.target_node_id,
+                "other_concept": "c",
+                "other_node_type": "concept",
+                "fact_count": 0,
+            },
+        ]
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
@@ -472,7 +464,7 @@ class TestGetEdges:
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
-            engine_instance.get_edges = AsyncMock(return_value=[related_edge, cross_edge])
+            engine_instance.get_edges_with_targets = AsyncMock(return_value={"edges": edge_items, "total": 1})
 
             result = await get_edges(str(node_id), edge_type="related")
 

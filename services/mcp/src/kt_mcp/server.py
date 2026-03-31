@@ -18,10 +18,10 @@ import uuid
 
 from fastapi import FastAPI
 from fastmcp import FastMCP
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from kt_db.models import EdgeFact, Fact, FactSource, Node, NodeFact, RawSource
+from kt_db.models import Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
 from kt_mcp.dependencies import (
     get_qdrant_client_cached,
@@ -92,17 +92,6 @@ async def search_graph(
         if not nodes:
             return {"nodes": [], "total": 0}
 
-        node_ids = [n.id for n in nodes]
-
-        # Batch fact counts
-        fact_stmt = (
-            select(NodeFact.node_id, func.count(NodeFact.fact_id))
-            .where(NodeFact.node_id.in_(node_ids))
-            .group_by(NodeFact.node_id)
-        )
-        fact_result = await session.execute(fact_stmt)
-        fact_counts = {row[0]: row[1] for row in fact_result.all()}
-
         items = []
         for n in nodes:
             meta = n.metadata_ or {}
@@ -113,7 +102,7 @@ async def search_graph(
                 "node_id": str(n.id),
                 "concept": n.concept,
                 "node_type": n.node_type,
-                "fact_count": fact_counts.get(n.id, 0),
+                "fact_count": n.fact_count,
             }
             if also_known_as:
                 item["also_known_as"] = also_known_as
@@ -284,56 +273,22 @@ async def get_edges(
         if not node:
             return {"error": "Node not found"}
 
-        edges = await engine.get_edges(uid, direction="both")
-
-        # Filter by type if requested
-        if edge_type:
-            edges = [e for e in edges if e.relationship_type == edge_type]
-
-        # Batch fact counts for all edges
-        edge_ids = [e.id for e in edges]
-        edge_fact_counts: dict[uuid.UUID, int] = {}
-        if edge_ids:
-            fact_stmt = (
-                select(EdgeFact.edge_id, func.count(EdgeFact.fact_id))
-                .where(EdgeFact.edge_id.in_(edge_ids))
-                .group_by(EdgeFact.edge_id)
-            )
-            fact_result = await session.execute(fact_stmt)
-            edge_fact_counts = {row[0]: row[1] for row in fact_result.all()}
-
-        # Sort by fact count descending
-        edges.sort(key=lambda e: edge_fact_counts.get(e.id, 0), reverse=True)
-
-        total = len(edges)
-        page = edges[offset : offset + limit]
-
-        # Batch-fetch target nodes for this page
-        target_ids = set()
-        for e in page:
-            target_ids.add(e.source_node_id if e.source_node_id != uid else e.target_node_id)
-
-        target_nodes = {}
-        if target_ids:
-            stmt = select(Node.id, Node.concept, Node.node_type).where(Node.id.in_(list(target_ids)))
-            result = await session.execute(stmt)
-            for row in result.all():
-                target_nodes[row.id] = {"concept": row.concept, "node_type": row.node_type}
+        # Use engine batch method — fetches target nodes + fact counts in 3 queries
+        result = await engine.get_edges_with_targets(uid, limit=limit, offset=offset, edge_type=edge_type)
 
         edge_items = []
-        for e in page:
-            other_id = e.target_node_id if e.source_node_id == uid else e.source_node_id
-            target_info = target_nodes.get(other_id, {})
+        for item in result["edges"]:
+            e = item["edge"]
             edge_items.append(
                 {
                     "edge_id": str(e.id),
-                    "other_node_id": str(other_id),
-                    "other_concept": target_info.get("concept"),
-                    "other_node_type": target_info.get("node_type"),
+                    "other_node_id": str(item["other_node_id"]),
+                    "other_concept": item["other_concept"],
+                    "other_node_type": item["other_node_type"],
                     "relationship_type": e.relationship_type,
                     "weight": e.weight,
                     "justification": e.justification,
-                    "fact_count": edge_fact_counts.get(e.id, 0),
+                    "fact_count": item["fact_count"],
                 }
             )
 
@@ -342,7 +297,7 @@ async def get_edges(
             "concept": node.concept,
             "edges": edge_items,
             "returned": len(edge_items),
-            "total": total,
+            "total": result["total"],
             "offset": offset,
         }
 
