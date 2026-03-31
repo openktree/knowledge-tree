@@ -725,7 +725,7 @@ class TestLoginFlow:
         user.is_active = True
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = user
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
 
         session = _make_mock_session()
         session.get = AsyncMock(return_value=row)
@@ -773,7 +773,7 @@ class TestLoginFlow:
         user.is_active = True
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = user
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
 
         session = _make_mock_session()
         session.get = AsyncMock(return_value=row)
@@ -807,7 +807,7 @@ class TestLoginFlow:
         user.is_active = False
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = user
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
 
         session = _make_mock_session()
         session.get = AsyncMock(return_value=row)

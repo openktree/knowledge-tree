@@ -166,7 +166,7 @@ async def login_submit(
 
         # Verify user credentials
         result = await session.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
+        user = result.unique().scalar_one_or_none()
 
         if user is None or not _verify_password(password, user.hashed_password):
             _record_failed_attempt(client_ip)
