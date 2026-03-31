@@ -30,7 +30,10 @@ All tools are **read-only** — they query the graph but never modify it.
 
 ## Authentication
 
-The MCP server uses **Bearer token authentication**. You generate an API token from the Research App's profile page, then include it in your MCP client configuration.
+The MCP server supports two authentication methods:
+
+- **OAuth 2.1 with PKCE (primary)** — The recommended method for interactive clients like Claude Desktop and Claude Web. Clients that support MCP OAuth handle the entire flow automatically — you just log in with your Knowledge Tree account when prompted. No manual token management required.
+- **API tokens (fallback)** — For scripts, non-interactive clients, or environments that don't support OAuth. Generate a token from the Research App's profile page and pass it as a Bearer token.
 
 ## Getting started
 
