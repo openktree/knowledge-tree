@@ -14,9 +14,10 @@ import html
 import logging
 import secrets
 import time
+from collections import defaultdict
 
 import bcrypt
-from fastapi import APIRouter, Form
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from mcp.server.auth.provider import construct_redirect_uri
 from sqlalchemy import select
@@ -27,6 +28,26 @@ from kt_mcp.dependencies import get_session_factory_cached
 logger = logging.getLogger(__name__)
 
 oauth_login_router = APIRouter(prefix="/oauth", tags=["oauth"])
+
+# ── Simple in-memory rate limiter for login attempts ──────────────────
+_MAX_ATTEMPTS = 5  # max failed attempts per IP
+_WINDOW_SECONDS = 300  # 5-minute window
+_failed_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def _is_rate_limited(ip: str) -> bool:
+    """Check if an IP has exceeded the login attempt limit."""
+    now = time.monotonic()
+    attempts = _failed_attempts[ip]
+    # Prune old entries
+    _failed_attempts[ip] = [t for t in attempts if now - t < _WINDOW_SECONDS]
+    return len(_failed_attempts[ip]) >= _MAX_ATTEMPTS
+
+
+def _record_failed_attempt(ip: str) -> None:
+    """Record a failed login attempt for rate limiting."""
+    _failed_attempts[ip].append(time.monotonic())
+
 
 _LOGIN_PAGE_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -92,12 +113,22 @@ async def login_page(code_id: str) -> HTMLResponse:
 
 @oauth_login_router.post("/login", response_model=None)
 async def login_submit(
+    request: Request,
     code_id: str = Form(...),
     csrf_token: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
 ) -> RedirectResponse | HTMLResponse:
     """Validate credentials and complete the authorization flow."""
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Rate limiting: block after too many failed attempts from this IP
+    if _is_rate_limited(client_ip):
+        return HTMLResponse(
+            content="<h1>Too many login attempts.</h1><p>Please try again later.</p>",
+            status_code=429,
+        )
+
     factory = get_session_factory_cached()
 
     async with factory() as session:
@@ -121,6 +152,7 @@ async def login_submit(
         user = result.scalar_one_or_none()
 
         if user is None or not _verify_password(password, user.hashed_password):
+            _record_failed_attempt(client_ip)
             page = _LOGIN_PAGE_HTML.format(
                 code_id=html.escape(code_id),
                 csrf_token=html.escape(csrf_token),
@@ -129,6 +161,7 @@ async def login_submit(
             return HTMLResponse(content=page, status_code=401)
 
         if not user.is_active:
+            _record_failed_attempt(client_ip)
             page = _LOGIN_PAGE_HTML.format(
                 code_id=html.escape(code_id),
                 csrf_token=html.escape(csrf_token),

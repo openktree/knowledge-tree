@@ -94,9 +94,15 @@ def upgrade() -> None:
         sa.Column("access_token", sa.String(200), nullable=True),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
     )
+    op.create_index(
+        "ix_oauth_refresh_tokens_access_token",
+        "oauth_refresh_tokens",
+        ["access_token"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_oauth_refresh_tokens_access_token", table_name="oauth_refresh_tokens")
     op.drop_table("oauth_refresh_tokens")
     op.drop_table("oauth_access_tokens")
     op.drop_table("oauth_authorization_codes")

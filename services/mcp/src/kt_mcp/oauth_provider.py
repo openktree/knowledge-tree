@@ -55,14 +55,14 @@ def _hash_token(token: str) -> str:
 class KnowledgeTreeOAuthProvider(OAuthProvider):
     """OAuth 2.1 provider backed by PostgreSQL."""
 
-    async def _session(self) -> AsyncSession:
+    def _session(self) -> AsyncSession:
         factory = get_session_factory_cached()
         return factory()
 
     # ── Client management ──────────────────────────────────────────────
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
-        async with await self._session() as session:
+        async with self._session() as session:
             row = await session.get(OAuthClient, client_id)
             if row is None:
                 return None
@@ -97,7 +97,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
             exclude_none=True,
         )
 
-        async with await self._session() as session:
+        async with self._session() as session:
             row = OAuthClient(
                 client_id=client_info.client_id,
                 client_secret=client_info.client_secret,
@@ -119,7 +119,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
 
         scopes_list = params.scopes if params.scopes is not None else []
 
-        async with await self._session() as session:
+        async with self._session() as session:
             row = OAuthAuthorizationCode(
                 code=code_value,
                 client_id=client.client_id,
@@ -146,7 +146,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str
     ) -> AuthorizationCode | None:
-        async with await self._session() as session:
+        async with self._session() as session:
             row = await session.get(OAuthAuthorizationCode, authorization_code)
             if row is None:
                 return None
@@ -169,7 +169,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
     ) -> OAuthToken:
-        async with await self._session() as session:
+        async with self._session() as session:
             row = await session.get(OAuthAuthorizationCode, authorization_code.code)
             if row is None:
                 raise TokenError("invalid_grant", "Authorization code not found or already used.")
@@ -222,7 +222,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
 
     async def load_access_token(self, token: str) -> AccessToken | None:
         token_hash = _hash_token(token)
-        async with await self._session() as session:
+        async with self._session() as session:
             row = await session.get(OAuthAccessToken, token_hash)
             if row is None:
                 return None
@@ -249,7 +249,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
         if settings.skip_auth:
             return AccessToken(token=token, client_id="skip_auth", scopes=[], expires_at=None)
 
-        async with await self._session() as session:
+        async with self._session() as session:
             valid = await verify_bearer_token(token, session)
             if valid:
                 return AccessToken(token=token, client_id="api_token", scopes=[], expires_at=None)
@@ -260,7 +260,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
 
     async def load_refresh_token(self, client: OAuthClientInformationFull, refresh_token: str) -> RefreshToken | None:
         token_hash = _hash_token(refresh_token)
-        async with await self._session() as session:
+        async with self._session() as session:
             row = await session.get(OAuthRefreshToken, token_hash)
             if row is None:
                 return None
@@ -291,7 +291,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
                 "Requested scopes exceed those authorized by the refresh token.",
             )
 
-        async with await self._session() as session:
+        async with self._session() as session:
             # Look up old refresh token by hash
             old_refresh_hash = _hash_token(refresh_token.token)
             old_refresh = await session.get(OAuthRefreshToken, old_refresh_hash)
@@ -348,7 +348,7 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
         token_hash = _hash_token(token.token)
-        async with await self._session() as session:
+        async with self._session() as session:
             if isinstance(token, AccessToken):
                 access_row = await session.get(OAuthAccessToken, token_hash)
                 if access_row:

@@ -90,6 +90,14 @@ def _make_mock_factory(session):
     return factory
 
 
+def _make_mock_request(ip: str = "127.0.0.1") -> MagicMock:
+    """Create a mock FastAPI Request with a client IP."""
+    request = MagicMock()
+    request.client = MagicMock()
+    request.client.host = ip
+    return request
+
+
 class TestOAuthProviderGetClient:
     @pytest.mark.asyncio
     async def test_returns_none_for_unknown_client(self):
@@ -585,6 +593,16 @@ class TestLoginXSSEscaping:
         assert "&lt;script&gt;" in body
 
 
+@pytest.fixture(autouse=True)
+def _clear_rate_limiter():
+    """Reset the in-memory rate limiter between tests."""
+    from kt_mcp.oauth_login import _failed_attempts
+
+    _failed_attempts.clear()
+    yield
+    _failed_attempts.clear()
+
+
 class TestLoginCSRF:
     @pytest.mark.asyncio
     async def test_login_page_sets_csrf_token(self):
@@ -620,6 +638,7 @@ class TestLoginCSRF:
 
         with patch("kt_mcp.oauth_login.get_session_factory_cached", return_value=_make_mock_factory(session)):
             response = await login_submit(
+                request=_make_mock_request(),
                 code_id="pending_test",
                 csrf_token="wrong_token",
                 email="user@test.com",
@@ -641,6 +660,7 @@ class TestLoginCSRF:
 
         with patch("kt_mcp.oauth_login.get_session_factory_cached", return_value=_make_mock_factory(session)):
             response = await login_submit(
+                request=_make_mock_request(),
                 code_id="pending_test",
                 csrf_token="any",
                 email="user@test.com",
@@ -717,6 +737,7 @@ class TestLoginFlow:
 
         with patch("kt_mcp.oauth_login.get_session_factory_cached", return_value=_make_mock_factory(session)):
             response = await login_submit(
+                request=_make_mock_request(),
                 code_id="pending_test",
                 csrf_token=csrf,
                 email="user@test.com",
@@ -758,6 +779,7 @@ class TestLoginFlow:
 
         with patch("kt_mcp.oauth_login.get_session_factory_cached", return_value=_make_mock_factory(session)):
             response = await login_submit(
+                request=_make_mock_request(),
                 code_id="pending_test",
                 csrf_token=csrf,
                 email="user@test.com",
@@ -791,6 +813,7 @@ class TestLoginFlow:
 
         with patch("kt_mcp.oauth_login.get_session_factory_cached", return_value=_make_mock_factory(session)):
             response = await login_submit(
+                request=_make_mock_request(),
                 code_id="pending_test",
                 csrf_token=csrf,
                 email="user@test.com",
@@ -798,3 +821,71 @@ class TestLoginFlow:
             )
 
         assert response.status_code == 403
+
+
+class TestLoginRateLimiting:
+    @pytest.mark.asyncio
+    async def test_blocks_after_max_failed_attempts(self):
+        from kt_mcp.oauth_login import _MAX_ATTEMPTS, _record_failed_attempt, login_submit
+
+        ip = "10.0.0.99"
+
+        # Exhaust the rate limit
+        for _ in range(_MAX_ATTEMPTS):
+            _record_failed_attempt(ip)
+
+        row = MagicMock()
+        row.expires_at = time.time() + 300
+        row.csrf_token = "token"
+
+        session = _make_mock_session()
+        session.get = AsyncMock(return_value=row)
+
+        with patch("kt_mcp.oauth_login.get_session_factory_cached", return_value=_make_mock_factory(session)):
+            response = await login_submit(
+                request=_make_mock_request(ip=ip),
+                code_id="pending_test",
+                csrf_token="token",
+                email="user@test.com",
+                password="pass",
+            )
+
+        assert response.status_code == 429
+        # Should not even hit the database
+        session.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_allows_requests_from_different_ip(self):
+        from kt_mcp.oauth_login import _MAX_ATTEMPTS, _record_failed_attempt, login_submit
+
+        blocked_ip = "10.0.0.100"
+        for _ in range(_MAX_ATTEMPTS):
+            _record_failed_attempt(blocked_ip)
+
+        row = MagicMock()
+        row.expires_at = time.time() + 300
+        row.csrf_token = "token"
+
+        session = _make_mock_session()
+        session.get = AsyncMock(return_value=row)
+
+        # Different IP should not be blocked
+        with patch("kt_mcp.oauth_login.get_session_factory_cached", return_value=_make_mock_factory(session)):
+            response = await login_submit(
+                request=_make_mock_request(ip="10.0.0.101"),
+                code_id="pending_test",
+                csrf_token="wrong",
+                email="user@test.com",
+                password="pass",
+            )
+
+        # Should get past rate limiting (403 = CSRF check, not 429)
+        assert response.status_code == 403
+
+    def test_failed_login_records_attempt(self):
+        from kt_mcp.oauth_login import _failed_attempts, _record_failed_attempt
+
+        ip = "10.0.0.200"
+        assert len(_failed_attempts[ip]) == 0
+        _record_failed_attempt(ip)
+        assert len(_failed_attempts[ip]) == 1
