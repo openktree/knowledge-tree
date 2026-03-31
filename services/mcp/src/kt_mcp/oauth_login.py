@@ -83,7 +83,7 @@ async def login_page(code_id: str) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@oauth_login_router.post("/login")
+@oauth_login_router.post("/login", response_model=None)
 async def login_submit(
     code_id: str = Form(...),
     email: str = Form(...),
