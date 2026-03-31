@@ -1,13 +1,14 @@
 """Auto-build graph from accumulated seeds — zero LLM calls.
 
 Promotes seeds to stub nodes and creates edges from co-occurrence data.
-Edge weight = log10(shared_fact_count), no justification (generated on demand).
+Edge weight = log2(shared_fact_count + 1), no justification (generated on demand).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import timedelta
 from typing import cast
 
@@ -431,7 +432,8 @@ async def _create_cooccurrence_edges(state: WorkerState, settings: object, ctx: 
                 same_type = seed_a.node_type == seed_b.node_type
                 rel_type = "related" if same_type else "cross_type"
 
-                weight = float(shared_count)
+                # log₂(n+1): clear signal without overwhelming
+                weight = math.log2(shared_count + 1)
 
                 await edge_repo.upsert(
                     rel_type=rel_type,

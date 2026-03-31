@@ -680,13 +680,16 @@ async def test_resolve_edges_creates_edge_from_candidates() -> None:
 
     source_key = make_seed_key("concept", "quantum computing")
     target_key = make_seed_key("concept", "quantum mechanics")
-    fact_id = uuid.uuid4()
+    fact_ids = [uuid.uuid4() for _ in range(3)]
 
-    candidate_row = MagicMock()
-    candidate_row.seed_key_a = source_key
-    candidate_row.seed_key_b = target_key
-    candidate_row.fact_id = str(fact_id)
-    candidate_row.status = "pending"
+    candidate_rows = []
+    for fid in fact_ids:
+        row = MagicMock()
+        row.seed_key_a = source_key
+        row.seed_key_b = target_key
+        row.fact_id = str(fid)
+        row.status = "pending"
+        candidate_rows.append(row)
 
     target_seed = MagicMock()
     target_seed.key = target_key
@@ -694,8 +697,8 @@ async def test_resolve_edges_creates_edge_from_candidates() -> None:
     target_seed.node_type = "concept"
     target_seed.promoted_node_key = target_key
 
-    mock_fact = _make_mock_fact(fact_id=fact_id, content="QC uses QM principles")
-    ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=[mock_fact])
+    mock_facts = [_make_mock_fact(fact_id=fid, content=f"QC uses QM principles {i}") for i, fid in enumerate(fact_ids)]
+    ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=mock_facts)
 
     mock_edge = _make_mock_edge()
     ctx.graph_engine.create_edge = AsyncMock(return_value=mock_edge)
@@ -710,7 +713,7 @@ async def test_resolve_edges_creates_edge_from_candidates() -> None:
 
     with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
         mock_repo = MockRepo.return_value
-        mock_repo.get_candidates_for_seed = AsyncMock(return_value=[candidate_row])
+        mock_repo.get_candidates_for_seed = AsyncMock(return_value=candidate_rows)
         mock_repo.get_seed_by_key = AsyncMock(return_value=target_seed)
         mock_repo.accept_candidate_facts = AsyncMock()
 
@@ -770,13 +773,16 @@ async def test_resolve_edges_cross_type_detected() -> None:
 
     source_key = make_seed_key("entity", "Albert Einstein")
     target_key = make_seed_key("concept", "relativity")
-    fact_id = uuid.uuid4()
+    fact_ids = [uuid.uuid4() for _ in range(3)]
 
-    candidate_row = MagicMock()
-    candidate_row.seed_key_a = source_key
-    candidate_row.seed_key_b = target_key
-    candidate_row.fact_id = str(fact_id)
-    candidate_row.status = "pending"
+    candidate_rows = []
+    for fid in fact_ids:
+        row = MagicMock()
+        row.seed_key_a = source_key
+        row.seed_key_b = target_key
+        row.fact_id = str(fid)
+        row.status = "pending"
+        candidate_rows.append(row)
 
     target_seed = MagicMock()
     target_seed.key = target_key
@@ -784,8 +790,10 @@ async def test_resolve_edges_cross_type_detected() -> None:
     target_seed.node_type = "concept"
     target_seed.promoted_node_key = target_key
 
-    mock_fact = _make_mock_fact(fact_id=fact_id, content="Einstein developed relativity")
-    ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=[mock_fact])
+    mock_facts = [
+        _make_mock_fact(fact_id=fid, content=f"Einstein developed relativity {i}") for i, fid in enumerate(fact_ids)
+    ]
+    ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=mock_facts)
 
     mock_edge = _make_mock_edge()
     ctx.graph_engine.create_edge = AsyncMock(return_value=mock_edge)
@@ -800,7 +808,7 @@ async def test_resolve_edges_cross_type_detected() -> None:
 
     with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
         mock_repo = MockRepo.return_value
-        mock_repo.get_candidates_for_seed = AsyncMock(return_value=[candidate_row])
+        mock_repo.get_candidates_for_seed = AsyncMock(return_value=candidate_rows)
         mock_repo.get_seed_by_key = AsyncMock(return_value=target_seed)
         mock_repo.accept_candidate_facts = AsyncMock()
 
@@ -824,13 +832,16 @@ async def test_resolve_edges_handles_llm_error() -> None:
 
     source_key = make_seed_key("concept", "error_node")
     target_key = make_seed_key("concept", "other")
-    fact_id = uuid.uuid4()
+    fact_ids = [uuid.uuid4() for _ in range(3)]
 
-    candidate_row = MagicMock()
-    candidate_row.seed_key_a = source_key
-    candidate_row.seed_key_b = target_key
-    candidate_row.fact_id = str(fact_id)
-    candidate_row.status = "pending"
+    candidate_rows = []
+    for fid in fact_ids:
+        row = MagicMock()
+        row.seed_key_a = source_key
+        row.seed_key_b = target_key
+        row.fact_id = str(fid)
+        row.status = "pending"
+        candidate_rows.append(row)
 
     target_seed = MagicMock()
     target_seed.key = target_key
@@ -838,8 +849,8 @@ async def test_resolve_edges_handles_llm_error() -> None:
     target_seed.node_type = "concept"
     target_seed.promoted_node_key = target_key
 
-    mock_fact = _make_mock_fact(fact_id=fact_id, content="Some fact")
-    ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=[mock_fact])
+    mock_facts = [_make_mock_fact(fact_id=fid, content=f"Some fact {i}") for i, fid in enumerate(fact_ids)]
+    ctx.graph_engine.get_facts_by_ids = AsyncMock(return_value=mock_facts)
     ctx.graph_engine.create_edge = AsyncMock(return_value=_make_mock_edge())
 
     # LLM call raises an error — edge should still be created with empty justification
@@ -847,7 +858,7 @@ async def test_resolve_edges_handles_llm_error() -> None:
 
     with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
         mock_repo = MockRepo.return_value
-        mock_repo.get_candidates_for_seed = AsyncMock(return_value=[candidate_row])
+        mock_repo.get_candidates_for_seed = AsyncMock(return_value=candidate_rows)
         mock_repo.get_seed_by_key = AsyncMock(return_value=target_seed)
         mock_repo.accept_candidate_facts = AsyncMock()
 
@@ -1110,20 +1121,24 @@ async def test_resolve_edges_multiple_candidates_batch() -> None:
     source_key = make_seed_key("concept", "photosynthesis")
     target_key_a = make_seed_key("concept", "chloroplast")
     target_key_b = make_seed_key("concept", "sunlight")
-    fid_a = uuid.uuid4()
-    fid_b = uuid.uuid4()
+    fids_a = [uuid.uuid4() for _ in range(3)]
+    fids_b = [uuid.uuid4() for _ in range(3)]
 
-    row_a = MagicMock()
-    row_a.seed_key_a = source_key
-    row_a.seed_key_b = target_key_a
-    row_a.fact_id = str(fid_a)
-    row_a.status = "pending"
-
-    row_b = MagicMock()
-    row_b.seed_key_a = source_key
-    row_b.seed_key_b = target_key_b
-    row_b.fact_id = str(fid_b)
-    row_b.status = "pending"
+    rows = []
+    for fid in fids_a:
+        row = MagicMock()
+        row.seed_key_a = source_key
+        row.seed_key_b = target_key_a
+        row.fact_id = str(fid)
+        row.status = "pending"
+        rows.append(row)
+    for fid in fids_b:
+        row = MagicMock()
+        row.seed_key_a = source_key
+        row.seed_key_b = target_key_b
+        row.fact_id = str(fid)
+        row.status = "pending"
+        rows.append(row)
 
     seed_a = MagicMock()
     seed_a.key = target_key_a
@@ -1137,10 +1152,16 @@ async def test_resolve_edges_multiple_candidates_batch() -> None:
     seed_b.node_type = "concept"
     seed_b.promoted_node_key = target_key_b
 
-    fact_a = _make_mock_fact(fact_id=fid_a, content="chloroplast performs photosynthesis")
-    fact_b = _make_mock_fact(fact_id=fid_b, content="sunlight powers photosynthesis")
+    fids_a_set = set(fids_a)
+    facts_a = [_make_mock_fact(fact_id=fid, content=f"chloroplast fact {i}") for i, fid in enumerate(fids_a)]
+    facts_b = [_make_mock_fact(fact_id=fid, content=f"sunlight fact {i}") for i, fid in enumerate(fids_b)]
 
-    ctx.graph_engine.get_facts_by_ids = AsyncMock(side_effect=lambda ids: [fact_a] if fid_a in ids else [fact_b])
+    def _get_facts(ids):
+        if any(fid in fids_a_set for fid in ids):
+            return facts_a
+        return facts_b
+
+    ctx.graph_engine.get_facts_by_ids = AsyncMock(side_effect=_get_facts)
     ctx.graph_engine.create_edge = AsyncMock(return_value=_make_mock_edge())
     ctx.model_gateway.generate_json = AsyncMock(
         return_value=[{"justification": "connected via shared photosynthesis facts"}]
@@ -1148,7 +1169,7 @@ async def test_resolve_edges_multiple_candidates_batch() -> None:
 
     with patch("kt_worker_nodes.pipelines.edges.resolver.WriteSeedRepository") as MockRepo:
         mock_repo = MockRepo.return_value
-        mock_repo.get_candidates_for_seed = AsyncMock(return_value=[row_a, row_b])
+        mock_repo.get_candidates_for_seed = AsyncMock(return_value=rows)
         mock_repo.get_seed_by_key = AsyncMock(side_effect=lambda k: seed_a if k == target_key_a else seed_b)
         mock_repo.accept_candidate_facts = AsyncMock()
 

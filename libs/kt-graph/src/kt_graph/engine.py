@@ -1228,7 +1228,30 @@ class GraphEngine:
         return list(result.scalars().all())
 
     async def get_dimensions_with_facts(self, node_id: uuid.UUID) -> list[Dimension]:
-        """Get all dimensions for a node with dimension_facts eagerly loaded."""
+        """Get all dimensions for a node with dimension_facts eagerly loaded.
+
+        Routes to write-db when available, converting WriteDimension.fact_ids
+        into DimensionFact stubs so callers (e.g. _batch_facts) work unchanged.
+        """
+        if self._write_dim_repo is not None and self._write_node_repo is not None:
+            wn = await self._write_node_repo.get_by_uuid(node_id)
+            if wn is not None:
+                write_dims = await self._write_dim_repo.get_by_node_key(wn.key)
+                dims: list[Dimension] = []
+                for wd in write_dims:
+                    dim = Dimension(
+                        node_id=node_id,
+                        model_id=wd.model_id,
+                        content=wd.content,
+                        confidence=wd.confidence,
+                        batch_index=wd.batch_index,
+                        is_definitive=wd.is_definitive,
+                        fact_count=wd.fact_count,
+                    )
+                    dim.dimension_facts = [DimensionFact(fact_id=uuid.UUID(fid)) for fid in (wd.fact_ids or [])]
+                    dims.append(dim)
+                return dims
+            return []
         stmt = select(Dimension).where(Dimension.node_id == node_id).options(selectinload(Dimension.dimension_facts))
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
