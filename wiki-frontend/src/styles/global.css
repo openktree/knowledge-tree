@@ -2278,14 +2278,31 @@ a.fact-group-title:hover {
 
   .index-search-form { max-width: 100%; }
 
+  /* ── Mobile: Prevent horizontal overflow ── */
+  .page-wrapper {
+    overflow-x: hidden;
+  }
+
+  .node-grid {
+    overflow: hidden;
+  }
+
   /* ── Mobile: Definitions ── */
   .node-definition,
   .perspective-definition {
     padding: 0 0.5rem;
     font-size: 0.95rem;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    max-width: 100%;
   }
 
   /* ── Mobile: Dimensions ── */
+  .dimension-card-body {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
   .dimension-card-header {
     flex-wrap: wrap;
     gap: 0.35rem;
@@ -2323,6 +2340,11 @@ a.fact-group-title:hover {
   }
 
   /* ── Mobile: Relations grid ── */
+  .related-section {
+    overflow: hidden;
+    max-width: 100%;
+  }
+
   .related-grid {
     grid-template-columns: 1fr;
     gap: 0.5rem;
@@ -2330,10 +2352,18 @@ a.fact-group-title:hover {
 
   .related-card {
     padding: 0.6rem 0.75rem;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .related-card-name {
     min-height: auto;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  .related-card-actions {
+    flex-wrap: wrap;
   }
 
   /* ── Mobile: Sidebar relation rows ── */
