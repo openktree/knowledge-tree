@@ -2277,6 +2277,79 @@ a.fact-group-title:hover {
   .page-wrapper { padding: 1.5rem 1rem 2.5rem; }
 
   .index-search-form { max-width: 100%; }
+
+  /* ── Mobile: Definitions ── */
+  .node-definition,
+  .perspective-definition {
+    padding: 0 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  /* ── Mobile: Dimensions ── */
+  .dimension-card-header {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .dimension-card-body {
+    padding: 0.75rem;
+    font-size: 0.88rem;
+  }
+
+  /* ── Mobile: Fact lists ── */
+  .fact-group-title {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+
+  .fact-group-summary {
+    gap: 0.5rem;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .facts-domains {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+    scrollbar-width: thin;
+  }
+
+  .fact-card-content {
+    font-size: 0.87rem;
+  }
+
+  /* ── Mobile: Relations grid ── */
+  .related-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .related-card {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .related-card-name {
+    min-height: auto;
+  }
+
+  /* ── Mobile: Sidebar relation rows ── */
+  .relation-row {
+    padding: 0.28rem 0.75rem;
+    overflow: hidden;
+  }
+
+  .relation-row-main {
+    font-size: 0.85rem;
+  }
+
+  .relation-btn {
+    font-size: 0.68rem;
+    padding: 0.15rem 0.45rem;
+  }
 }
 
 /* ── Synthesis Type Badge ────────────────────────────────────── */
@@ -2682,4 +2755,10 @@ a.fact-group-title:hover {
   .node-grid { grid-template-columns: 1fr; }
   .tab { padding: 0.5rem 0.8rem; font-size: 0.82rem; }
   .synthesis-body { max-width: 100%; }
+
+  .node-definition,
+  .perspective-definition {
+    font-size: 0.92rem;
+    line-height: 1.65;
+  }
 }
