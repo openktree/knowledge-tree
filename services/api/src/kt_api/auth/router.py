@@ -182,6 +182,22 @@ async def api_key_status(
     )
 
 
+# ---- Auth features (public) ----
+
+
+class AuthFeaturesResponse(BaseModel):
+    google_oauth_enabled: bool
+
+
+@router.get("/features", response_model=AuthFeaturesResponse)
+async def auth_features() -> AuthFeaturesResponse:
+    """Public endpoint: check which auth features are available."""
+    settings = get_settings()
+    return AuthFeaturesResponse(
+        google_oauth_enabled=bool(settings.google_oauth_client_id),
+    )
+
+
 # ---- Registration status (public) ----
 
 
