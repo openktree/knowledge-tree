@@ -1,6 +1,6 @@
 """Add MCP OAuth 2.1 tables.
 
-Revision ID: zzag
+Revision ID: 3af9b510fd78
 Revises: zzaf
 Create Date: 2026-03-30
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "zzag"
+revision: str = "3af9b510fd78"
 down_revision: str | None = "zzaf"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

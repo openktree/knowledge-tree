@@ -369,6 +369,58 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
                     await session.delete(refresh_row)
             await session.commit()
 
+    # ── Cleanup ────────────────────────────────────────────────────────
+
+    async def cleanup_expired(self) -> dict[str, int]:
+        """Delete expired authorization codes, access tokens, and refresh tokens.
+
+        Returns a dict with counts of deleted rows per table.
+        """
+        now = time.time()
+        now_int = int(now)
+        counts: dict[str, int] = {}
+
+        async with self._session() as session:
+            # Expired authorization codes
+            result = await session.execute(
+                select(OAuthAuthorizationCode).where(OAuthAuthorizationCode.expires_at < now)
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                await session.delete(row)
+            counts["authorization_codes"] = len(rows)
+
+            # Expired access tokens
+            result = await session.execute(
+                select(OAuthAccessToken).where(
+                    OAuthAccessToken.expires_at.isnot(None),
+                    OAuthAccessToken.expires_at < now_int,
+                )
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                await session.delete(row)
+            counts["access_tokens"] = len(rows)
+
+            # Expired refresh tokens
+            result = await session.execute(
+                select(OAuthRefreshToken).where(
+                    OAuthRefreshToken.expires_at.isnot(None),
+                    OAuthRefreshToken.expires_at < now_int,
+                )
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                await session.delete(row)
+            counts["refresh_tokens"] = len(rows)
+
+            await session.commit()
+
+        total = sum(counts.values())
+        if total > 0:
+            logger.info("OAuth cleanup: removed %d expired rows: %s", total, counts)
+        return counts
+
 
 def create_oauth_provider() -> KnowledgeTreeOAuthProvider:
     """Create the OAuth provider with settings from config."""

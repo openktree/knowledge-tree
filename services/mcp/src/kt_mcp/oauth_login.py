@@ -24,6 +24,7 @@ from sqlalchemy import select
 
 from kt_db.models import OAuthAuthorizationCode, User
 from kt_mcp.dependencies import get_session_factory_cached
+from kt_mcp.oauth_provider import AUTH_CODE_EXPIRY_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ oauth_login_router = APIRouter(prefix="/oauth", tags=["oauth"])
 # ── Simple in-memory rate limiter for login attempts ──────────────────
 _MAX_ATTEMPTS = 5  # max failed attempts per IP
 _WINDOW_SECONDS = 300  # 5-minute window
+_MAX_TRACKED_IPS = 10_000  # cap to prevent unbounded memory growth
 _failed_attempts: dict[str, list[float]] = defaultdict(list)
 
 
@@ -41,11 +43,26 @@ def _is_rate_limited(ip: str) -> bool:
     attempts = _failed_attempts[ip]
     # Prune old entries
     _failed_attempts[ip] = [t for t in attempts if now - t < _WINDOW_SECONDS]
+    if not _failed_attempts[ip]:
+        del _failed_attempts[ip]
+        return False
     return len(_failed_attempts[ip]) >= _MAX_ATTEMPTS
 
 
 def _record_failed_attempt(ip: str) -> None:
     """Record a failed login attempt for rate limiting."""
+    # Evict oldest IPs if we've hit the cap
+    if len(_failed_attempts) >= _MAX_TRACKED_IPS and ip not in _failed_attempts:
+        now = time.monotonic()
+        # Prune all expired entries first
+        expired = [k for k, v in _failed_attempts.items() if all(now - t >= _WINDOW_SECONDS for t in v)]
+        for k in expired:
+            del _failed_attempts[k]
+        # If still over cap, drop the oldest entries
+        if len(_failed_attempts) >= _MAX_TRACKED_IPS:
+            to_drop = len(_failed_attempts) - _MAX_TRACKED_IPS + 1
+            for k in list(_failed_attempts)[:to_drop]:
+                del _failed_attempts[k]
     _failed_attempts[ip].append(time.monotonic())
 
 
@@ -183,7 +200,7 @@ async def login_submit(
             code_challenge=row.code_challenge,
             resource=row.resource,
             state=row.state,
-            expires_at=row.expires_at,
+            expires_at=time.time() + AUTH_CODE_EXPIRY_SECONDS,
             csrf_token=None,
             user_id=user.id,
         )

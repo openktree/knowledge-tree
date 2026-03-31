@@ -749,10 +749,12 @@ class TestLoginFlow:
         # Old row should be deleted, new one added
         session.delete.assert_called_once_with(row)
         session.add.assert_called_once()
-        # Verify the new row has user_id set
+        # Verify the new row has user_id set and expires_at is refreshed
         new_row = session.add.call_args[0][0]
         assert new_row.user_id == "user-uuid-123"
         assert new_row.csrf_token is None  # CSRF cleared on real code
+        # expires_at should be reset to a fresh window, not copied from the old row
+        assert new_row.expires_at > row.expires_at
 
     @pytest.mark.asyncio
     async def test_wrong_password_returns_401(self):
@@ -889,3 +891,97 @@ class TestLoginRateLimiting:
         assert len(_failed_attempts[ip]) == 0
         _record_failed_attempt(ip)
         assert len(_failed_attempts[ip]) == 1
+
+    def test_rate_limiter_evicts_when_over_cap(self):
+        from kt_mcp.oauth_login import _MAX_TRACKED_IPS, _failed_attempts, _record_failed_attempt
+
+        # Fill to the cap
+        for i in range(_MAX_TRACKED_IPS):
+            _failed_attempts[f"10.0.{i // 256}.{i % 256}"].append(time.monotonic())
+
+        assert len(_failed_attempts) == _MAX_TRACKED_IPS
+
+        # Recording a new IP should evict old entries to stay within cap
+        _record_failed_attempt("192.168.1.1")
+        assert len(_failed_attempts) <= _MAX_TRACKED_IPS
+        assert "192.168.1.1" in _failed_attempts
+
+    def test_expired_entries_cleaned_on_check(self):
+        from kt_mcp.oauth_login import _failed_attempts, _is_rate_limited
+
+        ip = "10.0.0.201"
+        # Add an entry far in the past (will be expired)
+        _failed_attempts[ip].append(time.monotonic() - 600)
+        assert not _is_rate_limited(ip)
+        # Expired entry should have been cleaned up, removing the key entirely
+        assert ip not in _failed_attempts
+
+
+class TestOAuthCleanup:
+    @pytest.mark.asyncio
+    async def test_cleanup_expired_tokens(self):
+        from kt_mcp.oauth_provider import KnowledgeTreeOAuthProvider
+
+        now = time.time()
+        now_int = int(now)
+
+        expired_code = MagicMock()
+        expired_access = MagicMock()
+        expired_refresh = MagicMock()
+
+        # Build mock results for three queries
+        code_result = MagicMock()
+        code_result.scalars.return_value.all.return_value = [expired_code]
+
+        access_result = MagicMock()
+        access_result.scalars.return_value.all.return_value = [expired_access]
+
+        refresh_result = MagicMock()
+        refresh_result.scalars.return_value.all.return_value = [expired_refresh]
+
+        call_count = 0
+
+        async def mock_execute(stmt):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return code_result
+            elif call_count == 2:
+                return access_result
+            else:
+                return refresh_result
+
+        session = _make_mock_session()
+        session.execute = AsyncMock(side_effect=mock_execute)
+        session.delete = AsyncMock()
+        session.commit = AsyncMock()
+
+        with patch("kt_mcp.oauth_provider.get_session_factory_cached", return_value=_make_mock_factory(session)):
+            provider = KnowledgeTreeOAuthProvider.__new__(KnowledgeTreeOAuthProvider)
+            counts = await provider.cleanup_expired()
+
+        assert counts["authorization_codes"] == 1
+        assert counts["access_tokens"] == 1
+        assert counts["refresh_tokens"] == 1
+        assert session.delete.call_count == 3
+        session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_no_expired(self):
+        from kt_mcp.oauth_provider import KnowledgeTreeOAuthProvider
+
+        empty_result = MagicMock()
+        empty_result.scalars.return_value.all.return_value = []
+
+        session = _make_mock_session()
+        session.execute = AsyncMock(return_value=empty_result)
+        session.commit = AsyncMock()
+
+        with patch("kt_mcp.oauth_provider.get_session_factory_cached", return_value=_make_mock_factory(session)):
+            provider = KnowledgeTreeOAuthProvider.__new__(KnowledgeTreeOAuthProvider)
+            counts = await provider.cleanup_expired()
+
+        assert counts["authorization_codes"] == 0
+        assert counts["access_tokens"] == 0
+        assert counts["refresh_tokens"] == 0
+        session.commit.assert_called_once()

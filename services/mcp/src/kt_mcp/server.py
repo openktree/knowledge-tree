@@ -966,11 +966,43 @@ async def get_node_paths(
 
 # ── FastAPI app with OAuth 2.1 ─────────────────────────────────────
 
+import asyncio  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+
 from kt_mcp.oauth_login import oauth_login_router  # noqa: E402
 
 mcp_http = mcp.http_app(path="/mcp", stateless_http=True)
 
-app = FastAPI(title="Knowledge Tree MCP", lifespan=mcp_http.lifespan)
+_CLEANUP_INTERVAL_SECONDS = 60 * 60  # Run cleanup every hour
+
+
+@asynccontextmanager
+async def _lifespan(app_instance: FastAPI):  # type: ignore[no-untyped-def]
+    """Wrap the MCP lifespan to add periodic OAuth token cleanup."""
+    cleanup_task: asyncio.Task[None] | None = None
+
+    async def _periodic_cleanup() -> None:
+        provider = create_oauth_provider()
+        while True:
+            await asyncio.sleep(_CLEANUP_INTERVAL_SECONDS)
+            try:
+                await provider.cleanup_expired()
+            except Exception:
+                logger.exception("OAuth cleanup failed")
+
+    async with mcp_http.lifespan(app_instance):
+        cleanup_task = asyncio.create_task(_periodic_cleanup())
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
+
+
+app = FastAPI(title="Knowledge Tree MCP", lifespan=_lifespan)
 
 # Login page for OAuth authorize flow
 app.include_router(oauth_login_router)
