@@ -306,6 +306,9 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 node_type="supersynthesis",
             )
             supersynthesis_node_id = node.id
+            from kt_models.link_normalizer import normalize_ai_links
+
+            super_text = normalize_ai_links(super_text)
             await graph_engine.set_node_definition(supersynthesis_node_id, super_text)
 
             # Set visibility

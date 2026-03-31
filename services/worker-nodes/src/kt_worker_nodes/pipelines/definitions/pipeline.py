@@ -13,11 +13,13 @@ from typing import Any
 
 from kt_agents_core.state import AgentContext
 from kt_config.settings import get_settings
+from kt_models.prompt_fragments import PRESERVE_LINKS_INSTRUCTION
 from kt_worker_nodes.pipelines.models import CreateNodeTask
 
 logger = logging.getLogger(__name__)
 
-_DEFINITION_SYSTEM_PROMPT = """\
+_DEFINITION_SYSTEM_PROMPT = (
+    """\
 You are a knowledge synthesizer. Given a concept name and multiple model \
 dimensions (analyses) of that concept, produce a unified definition.
 
@@ -30,11 +32,11 @@ complexity.
 - Where dimensions agree, state the consensus confidently.
 - Where dimensions disagree, note the disagreement rather than picking sides.
 - Use clear, encyclopedic language. No hedging or filler.
-- Dimensions may contain fact citation links like [description](/facts/<uuid>). \
-Preserve the most important of these in your definition — especially for specific \
-measurements, key claims, and disputed points. Do not invent new /facts/ links; \
-only carry forward links that appear in the input dimensions.
+- """
+    + PRESERVE_LINKS_INSTRUCTION
+    + """
 - Return ONLY the definition text, no JSON, no markdown headers."""
+)
 
 
 class DefinitionPipeline:
@@ -106,9 +108,12 @@ class DefinitionPipeline:
             clear_usage_task()
 
             if definition.strip():
-                await ctx.graph_engine.set_node_definition(node_id, definition.strip())
+                from kt_models.link_normalizer import normalize_ai_links
+
+                definition = normalize_ai_links(definition.strip())
+                await ctx.graph_engine.set_node_definition(node_id, definition)
                 logger.info("Generated definition for '%s' (%d chars)", node_concept, len(definition))
-                return definition.strip()
+                return definition
         except Exception:
             logger.exception("Error generating definition for '%s'", node_concept)
 
@@ -195,7 +200,9 @@ class DefinitionPipeline:
                     )
                     clear_usage_task()
                     if definition.strip():
-                        definitions[t.name] = definition.strip()
+                        from kt_models.link_normalizer import normalize_ai_links
+
+                        definitions[t.name] = normalize_ai_links(definition.strip())
                 except Exception:
                     logger.exception("Error generating definition for '%s'", t.name)
 

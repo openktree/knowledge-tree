@@ -78,24 +78,25 @@ export function parseJustification(
 }
 
 /**
- * Fix malformed markdown links produced by AI models:
+ * Fix malformed markdown links produced by AI models.
+ *
+ * Handles both /facts and /nodes patterns:
  *   [label](/facts:uuid]  →  [label](/facts/uuid)   (colon + wrong bracket)
  *   [label](/facts/uuid]  →  [label](/facts/uuid)   (wrong closing bracket only)
- *
- * Two passes:
- *   1. Replace closing `]` with `)` in any `[label](url]` pattern.
- *   2. Replace `/facts:` with `/facts/` anywhere inside a link URL.
+ *   [label](/nodes:uuid]  →  [label](/nodes/uuid)   (same for nodes)
  */
 export function sanitizeRichText(text: string): string {
-  // Pass 1: [label](url] → [label](url)
+  // Pass 1: [label](url] → [label](url)  (wrong closing bracket)
   let out = text.replace(
     /\[([^\]]+)\]\(([^)\]]*)\]/g,
     (_, label: string, url: string) => `[${label}](${url})`
   );
-  // Pass 2: /facts:uuid → /facts/uuid  (inside parenthesised URLs)
-  out = out.replace(/\(\/facts:([0-9a-f-]+)\)/gi, "(/facts/$1)");
+  // Pass 2: /facts:uuid or /nodes:uuid → /facts/uuid or /nodes/uuid  (colon → slash)
+  out = out.replace(/\(\/(facts|nodes):([0-9a-f-]+)\)/gi, "(/$1/$2)");
   // Pass 3: [/facts/uuid] or [/facts:uuid] (bare bracket, no text portion) → {fact:uuid}
   out = out.replace(/\[\/facts[/:]([0-9a-f-]+)\]/gi, "{fact:$1}");
+  // Pass 4: [/nodes/uuid] or [/nodes:uuid] (bare bracket, no text portion) → [node](/nodes/uuid)
+  out = out.replace(/\[\/nodes[/:]([0-9a-f-]+)\]/gi, "[node](/nodes/$1)");
   return out;
 }
 
