@@ -70,9 +70,8 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
             return f"No nodes found for query: {query}"
         lines = [f"Found {len(nodes)} nodes:"]
         for n in nodes:
-            facts = await ctx.graph_engine.get_node_facts(n.id)
-            edges = await ctx.graph_engine.get_edges(n.id, direction="both")
-            lines.append(f"- {n.id} — {n.concept} [{n.node_type}] — {len(facts)} facts, {len(edges)} edges")
+            # Use denormalized counts — no extra queries needed
+            lines.append(f"- {n.id} — {n.concept} [{n.node_type}] — {n.fact_count} facts, {n.edge_count} edges")
         return "\n".join(lines)
 
     @tool
@@ -142,9 +141,8 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
             lines.append(f"\n## Definition\n{node.definition}")
         else:
             lines.append("\n_No definition available._")
-        facts = await ctx.graph_engine.get_node_facts(nid)
-        edges = await ctx.graph_engine.get_edges(nid, direction="both")
-        lines.append(f"\nStats: {len(facts)} facts, {len(edges)} edges")
+        # Use denormalized counts — no extra queries needed
+        lines.append(f"\nStats: {node.fact_count} facts, {node.edge_count} edges")
         if node.parent_id:
             lines.append(f"Parent: {node.parent_id}")
         return "\n".join(lines)
@@ -156,20 +154,24 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
             nid = uuid.UUID(node_id)
         except (ValueError, AttributeError):
             return f"Invalid node_id: '{node_id}'"
-        edges = await ctx.graph_engine.get_edges(nid, direction="both")
-        if not edges:
+
+        # Use batch method — fetches target nodes and fact counts in 3 queries
+        result = await ctx.graph_engine.get_edges_with_targets(nid, limit=limit)
+        items = result["edges"]
+        total = result["total"]
+
+        if not items:
             return f"No edges for node {node_id}"
-        lines = [f"Edges ({len(edges)}):"]
-        for edge in edges[:limit]:
-            target_id = edge.target_node_id if edge.source_node_id == nid else edge.source_node_id
-            target_node = await ctx.graph_engine.get_node(target_id)
-            target_concept = target_node.concept if target_node else "unknown"
-            target_type = getattr(target_node, "node_type", "?") if target_node else "?"
-            weight_str = f"{edge.weight:.1f}" if edge.weight is not None else "n/a"
-            justification = (edge.justification or "")[:150]
+
+        lines = [f"Edges ({total}):"]
+        for item in items:
+            e = item["edge"]
+            weight_str = f"{e.weight:.1f}" if e.weight is not None else "n/a"
+            justification = (e.justification or "")[:150]
             lines.append(
-                f"- **{target_concept}** [{target_type}] "
-                f"({edge.relationship_type}, weight={weight_str}, id={target_id})\n"
+                f"- **{item['other_concept']}** [{item['other_node_type']}] "
+                f"({e.relationship_type}, weight={weight_str}, "
+                f"facts={item['fact_count']}, id={item['other_node_id']})\n"
                 f"  {justification}"
             )
         return "\n".join(lines)
@@ -291,32 +293,42 @@ def build_navigation_tools(ctx: AgentContext, state_ref: list[Any]) -> list[Base
         except (ValueError, AttributeError):
             return "Invalid node IDs"
 
-        # Simple BFS
+        # BFS with batch neighbor loading per frontier level
         visited: set[uuid.UUID] = set()
         queue: list[list[dict[str, Any]]] = [[{"node_id": src, "concept": "start"}]]
         found_paths: list[list[dict[str, Any]]] = []
 
         for _ in range(max_depth):
+            # Collect frontier node IDs for batch loading
+            frontier_ids = []
+            for path in queue:
+                current = path[-1]["node_id"]
+                if current not in visited:
+                    frontier_ids.append(current)
+
+            if not frontier_ids:
+                break
+
+            # Batch-load all neighbors for the entire frontier in one query
+            adjacency = await ctx.graph_engine.batch_get_neighbors_with_concepts(frontier_ids)
+
             next_queue: list[list[dict[str, Any]]] = []
             for path in queue:
                 current = path[-1]["node_id"]
                 if current in visited:
                     continue
                 visited.add(current)
-                edges = await ctx.graph_engine.get_edges(current, direction="both")
-                for edge in edges:
-                    neighbor = edge.target_node_id if edge.source_node_id == current else edge.source_node_id
-                    if neighbor in visited:
+                for neighbor_id, concept, edge in adjacency.get(current, []):
+                    if neighbor_id in visited:
                         continue
-                    neighbor_node = await ctx.graph_engine.get_node(neighbor)
                     step = {
-                        "node_id": neighbor,
-                        "concept": neighbor_node.concept if neighbor_node else "unknown",
+                        "node_id": neighbor_id,
+                        "concept": concept,
                         "edge_type": edge.relationship_type,
                         "edge_weight": edge.weight,
                     }
                     new_path = path + [step]
-                    if neighbor == tgt:
+                    if neighbor_id == tgt:
                         found_paths.append(new_path)
                     else:
                         next_queue.append(new_path)
