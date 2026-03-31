@@ -22,17 +22,21 @@ import json
 import logging
 from typing import Any
 
-import redis.asyncio as aioredis
-
 logger = logging.getLogger(__name__)
 
-_redis_client: aioredis.Redis | None = None
+_redis_client: object | None = None
 
 
-async def get_redis() -> aioredis.Redis:
-    """Get or create a shared async Redis client."""
+async def get_redis() -> object:
+    """Get or create a shared async Redis client.
+
+    The ``redis`` package is imported lazily so that libraries which depend on
+    kt-config but never touch the cache don't need redis installed.
+    """
     global _redis_client
     if _redis_client is None:
+        import redis.asyncio as aioredis
+
         from kt_config.settings import get_settings
 
         _redis_client = aioredis.from_url(

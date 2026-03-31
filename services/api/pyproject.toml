@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "structlog>=25.5.0",
     "cryptography>=46.0.5",
+    "redis>=7.3.0",
 ]
 
 [build-system]

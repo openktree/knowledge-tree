@@ -7,7 +7,7 @@ running 7-8 separate batch queries per request.
 Also adds seed_fact_count to node_counters so the sync worker can propagate
 write-db seed counts without a cross-DB query at read time.
 
-Revision ID: zzag
+Revision ID: 9d8f11ec1631
 Revises: zzaf
 Create Date: 2026-03-30
 """
@@ -15,7 +15,7 @@ Create Date: 2026-03-30
 import sqlalchemy as sa
 from alembic import op
 
-revision = "zzag"
+revision = "9d8f11ec1631"
 down_revision = "zzaf"
 branch_labels = None
 depends_on = None

@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, TypeVar
+from typing import Any, TypedDict, TypeVar
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import DBAPIError
@@ -21,6 +21,12 @@ from kt_models.embeddings import EmbeddingService
 logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
+
+
+class SubgraphResult(TypedDict):
+    nodes: list[Node]
+    edges: list[Edge]
+    edge_fact_ids: dict[uuid.UUID, list[uuid.UUID]]
 
 
 def _is_deadlock(exc: Exception) -> bool:
@@ -756,10 +762,10 @@ class GraphEngine:
         self,
         node_ids: list[uuid.UUID],
         depth: int = 0,
-    ) -> dict[str, Any]:
+    ) -> SubgraphResult:
         """Get a subgraph containing the specified nodes and edges between them."""
         if not node_ids:
-            return {"nodes": [], "edges": []}
+            return SubgraphResult(nodes=[], edges=[], edge_fact_ids={})
 
         all_ids = set(node_ids)
 
@@ -814,7 +820,7 @@ class GraphEngine:
             for row in ef_result.all():
                 edge_fact_ids.setdefault(row.edge_id, []).append(row.fact_id)
 
-        return {"nodes": nodes, "edges": edges, "edge_fact_ids": edge_fact_ids}
+        return SubgraphResult(nodes=nodes, edges=edges, edge_fact_ids=edge_fact_ids)
 
     # ── Edge fact linking ──────────────────────────────────────────
 

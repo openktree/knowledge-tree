@@ -308,7 +308,12 @@ async def get_node(
     node_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> NodeResponse:
-    """Get a single node by ID."""
+    """Get a single node by ID.
+
+    Not cached: access_count is incremented on every read, and caching would
+    serve stale counts while silently skipping increments for cache hits.
+    Denormalized counters on the nodes table already keep this query fast.
+    """
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
@@ -316,24 +321,15 @@ async def get_node(
         # Support both canonical keys (concept:ai) and URL-friendly keys (concept-ai)
         real_key = url_key_to_node_key(node_id)
         uid = key_to_uuid(real_key)
-    from kt_config.cache import cache_get, cache_set
-
-    cache_key = f"kt:node:{uid}"
-    cached = await cache_get(cache_key)
-    if cached is not None:
-        return NodeResponse(**cached)
 
     node = await engine.get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
-    # Fire-and-forget access count — don't block the response
     await engine.increment_access_count(uid)
     await session.commit()
     parent_map = await _batch_parent_concepts(session, [node])
     seed_fact_count_map = await _batch_seed_fact_counts([node])
-    result = _build_node_response(node, parent_map, seed_fact_count_map)
-    await cache_set(cache_key, result.model_dump(), ttl=60)
-    return result
+    return _build_node_response(node, parent_map, seed_fact_count_map)
 
 
 @router.patch("/{node_id}", response_model=NodeResponse)
@@ -357,6 +353,12 @@ async def update_node(
         raise HTTPException(status_code=404, detail="Node not found")
     await engine.increment_update_count(uid)
     await session.commit()
+
+    from kt_config.cache import cache_invalidate
+
+    await cache_invalidate(f"kt:node:{uid}*")
+    await cache_invalidate("kt:nodes:list:*")
+
     parent_map = await _batch_parent_concepts(session, [node])
     seed_fact_count_map = await _batch_seed_fact_counts([node])
     return _build_node_response(node, parent_map, seed_fact_count_map)
@@ -377,6 +379,13 @@ async def delete_node(
     if not deleted:
         raise HTTPException(status_code=404, detail="Node not found")
     await session.commit()
+
+    from kt_config.cache import cache_invalidate
+
+    await cache_invalidate(f"kt:node:{uid}*")
+    await cache_invalidate("kt:nodes:list:*")
+    await cache_invalidate("kt:graph:subgraph:*")
+
     return DeleteResponse(deleted=True, id=node_id)
 
 
@@ -494,6 +503,12 @@ async def rebuild_node(
             "api_key": api_key,
         },
     )
+
+    from kt_config.cache import cache_invalidate
+
+    await cache_invalidate(f"kt:node:{uid}*")
+    await cache_invalidate("kt:nodes:list:*")
+
     return {"status": "started", "node_id": node_id}
 
 

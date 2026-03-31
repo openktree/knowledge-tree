@@ -23,7 +23,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, func, select, update  # noqa: I001
+from sqlalchemy import delete, select, update  # noqa: I001
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -199,30 +199,16 @@ class SyncEngine:
 
         id_list = list(node_ids)
 
-        # fact_count
-        fact_sub = (
-            select(NodeFact.node_id, func.count().label("cnt"))
-            .where(NodeFact.node_id.in_(id_list))
-            .group_by(NodeFact.node_id)
-            .subquery()
-        )
-        await gs.execute(update(Node).where(Node.id == fact_sub.c.node_id).values(fact_count=fact_sub.c.cnt))
-
-        # edge_count (source + target) — uses raw SQL for UNION ALL clarity
+        # fact_count — use LEFT JOIN so nodes with zero facts get 0
         await gs.execute(
             sa_text(
                 """
-                UPDATE nodes SET edge_count = sub.cnt
+                UPDATE nodes SET fact_count = COALESCE(sub.cnt, 0)
                 FROM (
-                    SELECT node_id, SUM(cnt)::int AS cnt FROM (
-                        SELECT source_node_id AS node_id, COUNT(*) AS cnt
-                        FROM edges WHERE source_node_id = ANY(:ids)
-                        GROUP BY source_node_id
-                        UNION ALL
-                        SELECT target_node_id AS node_id, COUNT(*) AS cnt
-                        FROM edges WHERE target_node_id = ANY(:ids)
-                        GROUP BY target_node_id
-                    ) t GROUP BY node_id
+                    SELECT u.id AS node_id, COUNT(nf.fact_id) AS cnt
+                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    LEFT JOIN node_facts nf ON nf.node_id = u.id
+                    GROUP BY u.id
                 ) sub
                 WHERE nodes.id = sub.node_id
                 """
@@ -230,23 +216,64 @@ class SyncEngine:
             {"ids": id_list},
         )
 
-        # child_count
-        child_sub = (
-            select(Node.parent_id.label("pid"), func.count().label("cnt"))
-            .where(Node.parent_id.in_(id_list))
-            .group_by(Node.parent_id)
-            .subquery()
+        # edge_count (source + target) — LEFT JOIN so deleted edges → 0
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET edge_count = COALESCE(sub.cnt, 0)
+                FROM (
+                    SELECT u.id AS node_id, COALESCE(SUM(e.cnt), 0)::int AS cnt
+                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    LEFT JOIN (
+                        SELECT source_node_id AS node_id, COUNT(*) AS cnt
+                        FROM edges WHERE source_node_id = ANY(:ids)
+                        GROUP BY source_node_id
+                        UNION ALL
+                        SELECT target_node_id AS node_id, COUNT(*) AS cnt
+                        FROM edges WHERE target_node_id = ANY(:ids)
+                        GROUP BY target_node_id
+                    ) e ON e.node_id = u.id
+                    GROUP BY u.id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
         )
-        await gs.execute(update(Node).where(Node.id == child_sub.c.pid).values(child_count=child_sub.c.cnt))
 
-        # dimension_count
-        dim_sub = (
-            select(Dimension.node_id, func.count().label("cnt"))
-            .where(Dimension.node_id.in_(id_list))
-            .group_by(Dimension.node_id)
-            .subquery()
+        # child_count — LEFT JOIN so nodes with no children → 0
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET child_count = COALESCE(sub.cnt, 0)
+                FROM (
+                    SELECT u.id AS node_id, COUNT(c.id) AS cnt
+                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    LEFT JOIN nodes c ON c.parent_id = u.id
+                    GROUP BY u.id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
         )
-        await gs.execute(update(Node).where(Node.id == dim_sub.c.node_id).values(dimension_count=dim_sub.c.cnt))
+
+        # dimension_count — LEFT JOIN so nodes with no dimensions → 0
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET dimension_count = COALESCE(sub.cnt, 0)
+                FROM (
+                    SELECT u.id AS node_id, COUNT(d.id) AS cnt
+                    FROM UNNEST(:ids::uuid[]) AS u(id)
+                    LEFT JOIN dimensions d ON d.node_id = u.id
+                    GROUP BY u.id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
+        )
 
         # convergence_score
         conv_sub = (
@@ -255,6 +282,15 @@ class SyncEngine:
             .subquery()
         )
         await gs.execute(update(Node).where(Node.id == conv_sub.c.node_id).values(convergence_score=conv_sub.c.score))
+
+        # Invalidate cached API responses for affected nodes
+        from kt_config.cache import cache_invalidate
+
+        for nid in node_ids:
+            await cache_invalidate(f"kt:node:{nid}*")
+        await cache_invalidate("kt:nodes:list:*")
+        await cache_invalidate("kt:graph:subgraph:*")
+        await cache_invalidate("kt:graph:stats")
 
     # ── Raw Sources ──────────────────────────────────────────────────────
 

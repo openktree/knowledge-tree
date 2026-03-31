@@ -5,15 +5,15 @@ Adds:
 - Trigram GIN indexes on facts.content, fact_sources.author_org, raw_sources.uri
 - Composite partial index on nodes(node_type, visibility) for synthesis listing
 
-Revision ID: zzah
+Revision ID: 37d967d5e999
 Revises: zzag
 Create Date: 2026-03-30
 """
 
 from alembic import op
 
-revision = "zzah"
-down_revision = "zzag"
+revision = "37d967d5e999"
+down_revision = "9d8f11ec1631"
 branch_labels = None
 depends_on = None
 
