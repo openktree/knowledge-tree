@@ -201,6 +201,8 @@ mcp:
     repository: ""
     tag: ""
   port: 8001
+  # Override wiki URL for MCP instructions (default: https://wiki.<global.siteDomain>)
+  wikiBaseUrl: ""
   resources:
     requests:
       memory: 128Mi

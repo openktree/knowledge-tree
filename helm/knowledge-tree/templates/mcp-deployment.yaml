@@ -39,6 +39,8 @@ spec:
             - name: MCP_OAUTH_BASE_URL
               value: "{{ if .Values.mcp.ingress.tls }}https{{ else }}http{{ end }}://{{ .Values.mcp.ingress.host }}"
             {{- end }}
+            - name: WIKI_BASE_URL
+              value: {{ .Values.mcp.wikiBaseUrl | default (printf "https://wiki.%s" (.Values.global.siteDomain | default "openktree.com")) | quote }}
           volumeMounts:
             {{- include "knowledge-tree.configVolumeMount" . | nindent 12 }}
           livenessProbe:

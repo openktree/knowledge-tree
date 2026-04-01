@@ -538,6 +538,9 @@ class Settings(BaseSettings):
     # MCP OAuth 2.1
     mcp_oauth_base_url: str = "http://localhost:8001"  # Public URL of MCP server
 
+    # Wiki frontend — used in MCP instructions so agents can build verifiable links
+    wiki_base_url: str = "https://wiki.openktree.com"
+
     # BYOK (Bring Your Own Key) — Fernet encryption key for stored API keys
     byok_encryption_key: str = ""
 
