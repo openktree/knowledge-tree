@@ -33,7 +33,8 @@ def upgrade() -> None:
 
     # Step 1: Deduplicate by URI — keep the best row per URI
     # (prefer is_full_text=True, then most recently updated)
-    conn.execute(text("""
+    conn.execute(
+        text("""
         DELETE FROM write_raw_sources a
         USING write_raw_sources b
         WHERE a.uri = b.uri
@@ -42,7 +43,8 @@ def upgrade() -> None:
             (b.is_full_text AND NOT a.is_full_text)
             OR (b.is_full_text = a.is_full_text AND b.updated_at > a.updated_at)
           )
-    """))
+    """)
+    )
 
     # Step 2: Re-ID each source with deterministic UUID from URI
     rows = conn.execute(text("SELECT id, uri FROM write_raw_sources")).fetchall()
@@ -61,10 +63,12 @@ def upgrade() -> None:
             )
 
     # Step 3: Reset sync watermarks so sync rebuilds graph-db with new IDs
-    conn.execute(text("""
+    conn.execute(
+        text("""
         UPDATE sync_watermarks SET watermark = '1970-01-01'
         WHERE table_name IN ('write_raw_sources', 'write_fact_sources')
-    """))
+    """)
+    )
 
 
 def downgrade() -> None:
