@@ -4,8 +4,14 @@ from datetime import timedelta
 from sqlalchemy import case, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from kt_db.models import Edge, Node, NodeCounter, NodeFact, _utcnow
+
+
+def _exact_match_order(column: InstrumentedAttribute, query: str):  # noqa: ANN201
+    """CASE expression that sorts exact matches (case-insensitive) first."""
+    return case((func.lower(column) == func.lower(query), 0), else_=1)
 
 
 class NodeRepository:
@@ -69,6 +75,9 @@ class NodeRepository:
         a node named "artificial intelligence" because the best matching
         substring scores high.
 
+        Results are ranked with exact-match priority, then by similarity,
+        then shorter concepts first as tiebreaker.
+
         Falls back to ILIKE if trigram returns no results (handles exact
         substring matches that trigram might miss at low similarity).
 
@@ -79,15 +88,11 @@ class NodeRepository:
         # Exact matches first (case-insensitive), then by similarity desc,
         # then shorter concepts first as tiebreaker (so "electricity" ranks
         # above "electricity in the body" when both score equally).
-        exact_match = case(
-            (func.lower(Node.concept) == func.lower(query), 0),
-            else_=1,
-        )
         stmt = (
             select(Node)
             .where(func.word_similarity(query, Node.concept) >= threshold)
             .order_by(
-                exact_match,
+                _exact_match_order(Node.concept, query),
                 func.word_similarity(query, Node.concept).desc(),
                 func.length(Node.concept).asc(),
             )
@@ -284,15 +289,11 @@ class NodeRepository:
         shorter-concept tiebreaker, avoiding the problem where long
         compound concepts crowd out the exact target.
         """
-        exact_match = case(
-            (func.lower(Node.concept) == func.lower(query), 0),
-            else_=1,
-        )
         stmt = (
             select(Node)
             .where(func.similarity(Node.concept, query) >= threshold)
             .order_by(
-                exact_match,
+                _exact_match_order(Node.concept, query),
                 func.similarity(Node.concept, query).desc(),
                 func.length(Node.concept).asc(),
             )
