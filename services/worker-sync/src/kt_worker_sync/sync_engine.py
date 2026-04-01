@@ -649,7 +649,12 @@ class SyncEngine:
                     )
                     raw_source_id = result2.scalar_one_or_none()
             else:
-                # Fallback: create minimal record (source not in write-db)
+                # Fallback: create minimal record without content (source not in write-db).
+                # This can still produce phantom sources — monitor for occurrences.
+                logger.warning(
+                    "Creating minimal RawSource for hash %s (not found in write-db) — potential phantom",
+                    wfs.raw_source_content_hash,
+                )
                 raw_source_id = uuid.uuid4()
                 stmt = (
                     pg_insert(RawSource.__table__)

@@ -104,7 +104,11 @@ async def list_sources(
     sort_by: str | None = Query(None, description="Sort by: retrieved_at (default), fact_count, prohibited_chunks"),
     has_prohibited: bool | None = Query(None, description="Filter to sources with/without prohibited chunks"),
     is_super_source: bool | None = Query(None, description="Filter to super sources (large, deferred)"),
-    fetch_status: str | None = Query(None, description="Filter by fetch status: full_text, fetch_failed, snippet"),
+    fetch_status: str | None = Query(
+        None,
+        description="Filter by fetch status: full_text, fetch_failed, snippet",
+        pattern="^(full_text|fetch_failed|snippet)$",
+    ),
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedSourcesResponse:
     """List raw sources with pagination and optional filters."""

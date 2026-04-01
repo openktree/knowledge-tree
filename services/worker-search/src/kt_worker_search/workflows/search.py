@@ -253,6 +253,7 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
                 for (idx, _uri), fetch_result in zip(urls_to_fetch, fetch_results):
                     src = sources[idx]
                     src.fetch_attempted = True
+                    await write_source_repo.mark_fetch_attempted(src.id)
                     if fetch_result.success and fetch_result.content:
                         try:
                             updated = await write_source_repo.update_content(

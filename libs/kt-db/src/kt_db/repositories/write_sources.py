@@ -128,3 +128,11 @@ class WriteSourceRepository:
         await self._session.execute(update(WriteRawSource).where(WriteRawSource.id == source_id).values(**values))
         await self._session.flush()
         return True
+
+    async def mark_fetch_attempted(self, source_id: uuid.UUID) -> None:
+        """Mark a source as having had a fetch attempt (success or failure)."""
+        await self._session.execute(
+            update(WriteRawSource).where(WriteRawSource.id == source_id).values(fetch_attempted=True)
+        )
+        await self._session.flush()
+        return True

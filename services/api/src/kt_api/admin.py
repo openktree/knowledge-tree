@@ -117,8 +117,16 @@ async def add_skip_domain(
     """Add a domain to the fetch skip list."""
     from kt_db.repositories.write_fetch_skip_domains import WriteFetchSkipDomainRepository
 
+    # Normalize: lowercase, strip protocol/path if accidentally included
+    normalized = body.domain.lower().strip()
+    if "://" in normalized:
+        from urllib.parse import urlparse
+
+        normalized = urlparse(normalized).netloc or normalized
+    normalized = normalized.split("/")[0]  # strip any trailing path
+
     repo = WriteFetchSkipDomainRepository(write_session)
-    domain = await repo.add_domain(body.domain, body.reason)
+    domain = await repo.add_domain(normalized, body.reason)
     await write_session.commit()
     return SkipDomainResponse(
         domain=domain.domain,

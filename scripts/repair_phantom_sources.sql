@@ -31,6 +31,18 @@ JOIN raw_sources real_src
 WHERE phantom.raw_content IS NULL
   AND fs.raw_source_id = phantom.id;
 
+-- Step 1b: Reassign remaining phantoms by content_hash match (covers cases
+-- where the real source has a different URI but same content_hash).
+UPDATE fact_sources fs
+SET raw_source_id = real_src.id
+FROM raw_sources phantom
+JOIN raw_sources real_src
+  ON real_src.content_hash = phantom.content_hash
+  AND real_src.raw_content IS NOT NULL
+  AND real_src.id != phantom.id
+WHERE phantom.raw_content IS NULL
+  AND fs.raw_source_id = phantom.id;
+
 SELECT 'Fact sources reassigned:' AS label, count(*) AS cnt
 FROM fact_sources fs
 JOIN raw_sources rs ON rs.id = fs.raw_source_id
@@ -62,5 +74,9 @@ WHERE raw_content IS NULL
 SELECT 'Phantom sources after repair:' AS label, count(*) AS cnt
 FROM raw_sources WHERE raw_content IS NULL;
 
--- If satisfied, COMMIT. Otherwise ROLLBACK.
--- COMMIT;
+-- ============================================================
+-- IMPORTANT: This transaction is NOT committed by default.
+-- Review the output above, then run one of:
+--   COMMIT;    -- to apply the changes
+--   ROLLBACK;  -- to discard and start over
+-- ============================================================
