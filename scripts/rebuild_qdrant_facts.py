@@ -65,8 +65,11 @@ async def main(batch_size: int = DEFAULT_BATCH_SIZE, skip_node_ids: bool = False
     await qdrant_repo.ensure_collection()
     logger.info("Created facts collection (dim=%d, cosine)", settings.embedding_dimensions)
 
-    await qdrant_repo.ensure_text_index()
-    logger.info("Created text index on content field")
+    try:
+        await qdrant_repo.ensure_text_index()
+        logger.info("Created text index on content field")
+    except AttributeError:
+        logger.info("ensure_text_index not available (PR #95 not deployed) — skipping text index")
 
     # ── Step 2: Count write-db facts ─────────────────────────────────
     async with AsyncSession(write_engine) as session:
@@ -111,13 +114,25 @@ async def main(batch_size: int = DEFAULT_BATCH_SIZE, skip_node_ids: bool = False
             offset += batch_size
             continue
 
-        # Build 4-tuples and upsert
-        tuples = [(fid, emb, ft, content) for fid, emb, ft, content in zip(fact_ids, embeddings, fact_types, texts)]
+        # Upsert to Qdrant — build points directly to work regardless of
+        # whether the deployed QdrantFactRepository supports 4-tuples
+        from qdrant_client.models import PointStruct
+
+        points = [
+            PointStruct(
+                id=str(fid),
+                vector=emb,
+                payload={"fact_type": ft, "content": content},
+            )
+            for fid, emb, ft, content in zip(fact_ids, embeddings, fact_types, texts)
+        ]
         try:
             t_upsert = time.monotonic()
-            await qdrant_repo.upsert_batch(tuples)
+            for chunk_start in range(0, len(points), 200):
+                chunk = points[chunk_start : chunk_start + 200]
+                await qdrant.upsert(collection_name=FACTS_COLLECTION, points=chunk)
             upsert_time += time.monotonic() - t_upsert
-            processed += len(tuples)
+            processed += len(points)
         except Exception:
             logger.exception("Qdrant upsert failed for batch at offset %d, skipping", offset)
             skipped += len(facts)
