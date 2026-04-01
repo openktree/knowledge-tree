@@ -188,6 +188,17 @@ edges:
 
 
 # =============================================================================
+# Email — provider, validation (prefer .env for API keys)
+# =============================================================================
+# email:
+#   enabled: false
+#   provider: "resend"
+#   verification: false
+#   from_address: "noreply@openktree.com"
+#   resend_api_key: ""
+
+
+# =============================================================================
 # Ingest — file/link upload and processing
 # =============================================================================
 # ingest:

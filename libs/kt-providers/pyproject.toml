@@ -28,3 +28,8 @@ testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kt_providers"]
+
+[dependency-groups]
+dev = [
+    "respx>=0.22.0",
+]
