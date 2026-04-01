@@ -80,6 +80,17 @@ class WritePageFetchLog(WriteBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
+class WriteFetchSkipDomain(WriteBase):
+    """Admin-configured domains to skip during content fetching."""
+
+    __tablename__ = "write_fetch_skip_domains"
+
+    domain: Mapped[str] = mapped_column(String(255), primary_key=True)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
 class WriteProhibitedChunk(WriteBase):
     """Tracks text chunks rejected by LLM safety filters during extraction."""
 

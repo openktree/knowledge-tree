@@ -231,6 +231,22 @@ export default function SourceDetailPage({
   const [isReingesting, setIsReingesting] = useState(false);
   const [reingestMessage, setReingestMessage] = useState<string | null>(null);
   const [reingestError, setReingestError] = useState<string | null>(null);
+  const [isSkippingDomain, setIsSkippingDomain] = useState(false);
+
+  const handleSkipDomain = useCallback(async () => {
+    if (!source) return;
+    setIsSkippingDomain(true);
+    try {
+      const result = await api.sources.skipDomain(source.id);
+      setReingestMessage(`Domain "${result.domain}" added to skip list`);
+    } catch (err) {
+      setReingestError(
+        err instanceof Error ? err.message : "Failed to skip domain",
+      );
+    } finally {
+      setIsSkippingDomain(false);
+    }
+  }, [source]);
 
   const handleReingest = useCallback(async () => {
     if (!source) return;
@@ -332,6 +348,21 @@ export default function SourceDetailPage({
                 )}
                 {isReingesting ? "Reingesting..." : "Reingest"}
               </Button>
+              {!source.is_full_text && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSkipDomain}
+                  disabled={isSkippingDomain}
+                >
+                  {isSkippingDomain ? (
+                    <Loader2 className="size-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="size-3.5 mr-1" />
+                  )}
+                  Skip domain
+                </Button>
+              )}
               <Button variant="ghost" size="sm" asChild>
                 <a href={source.uri} target="_blank" rel="noopener noreferrer">
                   <Globe className="size-3.5 mr-1" />

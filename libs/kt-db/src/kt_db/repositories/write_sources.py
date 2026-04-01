@@ -33,6 +33,13 @@ class WriteSourceRepository:
         result = await self._session.execute(select(WriteRawSource).where(WriteRawSource.id == source_id))
         return result.scalar_one_or_none()
 
+    async def get_by_content_hash(self, content_hash: str) -> WriteRawSource | None:
+        """Find a WriteRawSource by its content hash."""
+        result = await self._session.execute(
+            select(WriteRawSource).where(WriteRawSource.content_hash == content_hash).limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def create_or_get(
         self,
         *,

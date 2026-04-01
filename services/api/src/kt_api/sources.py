@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.dependencies import get_db_session
+from kt_api.dependencies import get_db_session, get_write_db_session
 from kt_api.schemas import (
     FactResponse,
     FactSourceInfo,
@@ -104,6 +104,7 @@ async def list_sources(
     sort_by: str | None = Query(None, description="Sort by: retrieved_at (default), fact_count, prohibited_chunks"),
     has_prohibited: bool | None = Query(None, description="Filter to sources with/without prohibited chunks"),
     is_super_source: bool | None = Query(None, description="Filter to super sources (large, deferred)"),
+    fetch_status: str | None = Query(None, description="Filter by fetch status: full_text, fetch_failed, snippet"),
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedSourcesResponse:
     """List raw sources with pagination and optional filters."""
@@ -116,12 +117,14 @@ async def list_sources(
         sort_by=sort_by,
         has_prohibited=has_prohibited,
         is_super_source=is_super_source,
+        fetch_status=fetch_status,
     )
     total = await repo.count_sources(
         search=search,
         provider_id=provider_id,
         has_prohibited=has_prohibited,
         is_super_source=is_super_source,
+        fetch_status=fetch_status,
     )
     return PaginatedSourcesResponse(
         items=[
@@ -196,3 +199,30 @@ async def reingest_source(
         content_updated=output.content_updated,
         message=output.message,
     )
+
+
+@router.post("/{source_id}/skip-domain")
+async def skip_source_domain(
+    source_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    write_session: AsyncSession = Depends(get_write_db_session),
+) -> dict:
+    """Add the domain of this source to the fetch skip list."""
+    from urllib.parse import urlparse
+
+    from kt_db.repositories.sources import SourceRepository
+    from kt_db.repositories.write_fetch_skip_domains import WriteFetchSkipDomainRepository
+
+    repo = SourceRepository(session)
+    source = await repo.get_by_id(uuid.UUID(source_id))
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    domain = urlparse(source.uri).netloc.lower()
+    if not domain:
+        raise HTTPException(status_code=400, detail="Could not extract domain from source URI")
+
+    skip_repo = WriteFetchSkipDomainRepository(write_session)
+    await skip_repo.add_domain(domain, reason=f"Skipped from source {source_id}")
+    await write_session.commit()
+    return {"status": "ok", "domain": domain}

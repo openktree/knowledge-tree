@@ -114,6 +114,7 @@ class SourceRepository:
         sort_by: str | None = None,
         has_prohibited: bool | None = None,
         is_super_source: bool | None = None,
+        fetch_status: str | None = None,
     ) -> list[RawSource]:
         """List raw sources with pagination and optional filters."""
         stmt = select(RawSource)
@@ -139,6 +140,12 @@ class SourceRepository:
             stmt = stmt.where(RawSource.is_super_source.is_(True))
         elif is_super_source is False:
             stmt = stmt.where(RawSource.is_super_source.is_(False))
+        if fetch_status == "full_text":
+            stmt = stmt.where(RawSource.is_full_text.is_(True))
+        elif fetch_status == "fetch_failed":
+            stmt = stmt.where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(True))
+        elif fetch_status == "snippet":
+            stmt = stmt.where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(False))
         stmt = stmt.offset(offset).limit(limit)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
@@ -150,6 +157,7 @@ class SourceRepository:
         provider_id: str | None = None,
         has_prohibited: bool | None = None,
         is_super_source: bool | None = None,
+        fetch_status: str | None = None,
     ) -> int:
         """Count raw sources with optional filters."""
         stmt = select(func.count(RawSource.id))
@@ -166,6 +174,12 @@ class SourceRepository:
             stmt = stmt.where(RawSource.is_super_source.is_(True))
         elif is_super_source is False:
             stmt = stmt.where(RawSource.is_super_source.is_(False))
+        if fetch_status == "full_text":
+            stmt = stmt.where(RawSource.is_full_text.is_(True))
+        elif fetch_status == "fetch_failed":
+            stmt = stmt.where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(True))
+        elif fetch_status == "snippet":
+            stmt = stmt.where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(False))
         result = await self._session.execute(stmt)
         return result.scalar_one()
 

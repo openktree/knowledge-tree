@@ -262,10 +262,10 @@ class GatherFactsPipeline:
                         if snap:
                             all_source_snapshots.append(snap)
 
-                        # Classify as text/image for decomposition
+                        # Classify as text/image for decomposition (skip snippet-only)
                         if ctx.file_data_store and ctx.file_data_store.has(s.uri):
                             plan.image_sources.append(s)
-                        else:
+                        elif s.is_full_text:
                             all_text_sources.append(s)
 
                     if fetched_count >= target:

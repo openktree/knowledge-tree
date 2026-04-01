@@ -208,7 +208,6 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
     state = cast(WorkerState, ctx.lifespan)
 
     from kt_config.types import RawSearchResult
-    from kt_db.repositories.sources import SourceRepository
     from kt_db.repositories.write_sources import WriteSourceRepository
     from kt_providers.fetcher import ContentFetcher
     from kt_providers.registry import ProviderRegistry
@@ -222,83 +221,70 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
         max_results=input.max_results,
     )
 
-    # 2. Store results and optionally fetch full text
-    async with state.session_factory() as session:
-        source_repo = SourceRepository(session)
-        write_session = state.write_session_factory()
-        write_source_repo = WriteSourceRepository(write_session)
-        sources = []
+    # 2. Store results in write-db and optionally fetch full text
+    #    (sync worker propagates to graph-db — no direct graph-db writes)
+    write_session = state.write_session_factory()
+    write_source_repo = WriteSourceRepository(write_session)
+    sources = []
+    try:
+        for result in results:
+            source = await write_source_repo.create_or_get(
+                uri=result.uri,
+                title=result.title,
+                raw_content=result.raw_content,
+                provider_id=result.provider_id,
+                provider_metadata=result.provider_metadata,
+            )
+            sources.append(source)
+
+        # Fetch full-text content for top N URLs if fetcher is available
+        if sources and content_fetcher is not None:
+            urls_to_fetch: list[tuple[int, str]] = []
+            for i, source in enumerate(sources):
+                if source.is_full_text:
+                    continue
+                if source.uri and len(urls_to_fetch) < state.settings.full_text_fetch_max_urls:
+                    urls_to_fetch.append((i, source.uri))
+
+            if urls_to_fetch:
+                uris = [uri for _, uri in urls_to_fetch]
+                fetch_results = await content_fetcher.fetch_urls(uris)
+
+                for (idx, _uri), fetch_result in zip(urls_to_fetch, fetch_results):
+                    src = sources[idx]
+                    src.fetch_attempted = True
+                    if fetch_result.success and fetch_result.content:
+                        try:
+                            updated = await write_source_repo.update_content(
+                                src.id,
+                                fetch_result.content,
+                                is_full_text=True,
+                                content_type=fetch_result.content_type,
+                            )
+                            if updated:
+                                src.raw_content = fetch_result.content
+                                src.is_full_text = True
+                                if fetch_result.content_type:
+                                    src.content_type = fetch_result.content_type
+                        except Exception:
+                            logger.debug(
+                                "Failed to update source %s with full text",
+                                src.id,
+                                exc_info=True,
+                            )
+
+        await write_session.commit()
+    except Exception:
         try:
-            for result in results:
-                source, _ = await source_repo.create_or_get(result)
-                # Mirror to write-db so downstream workers can read from there
-                await write_source_repo.create_or_get(
-                    source_id=source.id,
-                    uri=source.uri,
-                    title=source.title,
-                    raw_content=source.raw_content,
-                    content_hash=source.content_hash,
-                    provider_id=source.provider_id,
-                    provider_metadata=source.provider_metadata,
-                )
-                sources.append(source)
-
-            # Fetch full-text content for top N URLs if fetcher is available
-            if sources and content_fetcher is not None:
-                urls_to_fetch: list[tuple[int, str]] = []
-                for i, source in enumerate(sources):
-                    if source.is_full_text:
-                        continue
-                    if source.uri and len(urls_to_fetch) < state.settings.full_text_fetch_max_urls:
-                        urls_to_fetch.append((i, source.uri))
-
-                if urls_to_fetch:
-                    uris = [uri for _, uri in urls_to_fetch]
-                    fetch_results = await content_fetcher.fetch_urls(uris)
-
-                    for (idx, _uri), fetch_result in zip(urls_to_fetch, fetch_results):
-                        src = sources[idx]
-                        if fetch_result.success and fetch_result.content:
-                            try:
-                                updated = await source_repo.update_content(
-                                    src.id,
-                                    fetch_result.content,
-                                    is_full_text=True,
-                                    content_type=fetch_result.content_type,
-                                )
-                                if updated:
-                                    src.raw_content = fetch_result.content
-                                    src.is_full_text = True
-                                    if fetch_result.content_type:
-                                        src.content_type = fetch_result.content_type
-                                    # Mirror full-text update to write-db
-                                    await write_source_repo.update_content(
-                                        src.id,
-                                        fetch_result.content,
-                                        is_full_text=True,
-                                        content_type=fetch_result.content_type,
-                                    )
-                            except Exception:
-                                logger.debug(
-                                    "Failed to update source %s with full text",
-                                    src.id,
-                                    exc_info=True,
-                                )
-
-            await write_session.commit()
-            await session.commit()
+            await write_session.rollback()
         except Exception:
-            for s in (write_session, session):
-                try:
-                    await s.rollback()
-                except Exception:
-                    pass
-            raise
-        finally:
-            await write_session.close()
+            pass
+        raise
+    finally:
+        await write_session.close()
 
-    # 3. Filter to pages with content worth decomposing (>50 chars)
-    pages = [s for s in sources if s.raw_content and len(s.raw_content) > 50]
+    # 3. Filter to full-text pages with content worth decomposing (>50 chars)
+    pages = [s for s in sources if s.is_full_text and s.raw_content and len(s.raw_content) > 50]
 
     if not pages:
         logger.info(

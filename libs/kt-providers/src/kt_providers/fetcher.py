@@ -72,18 +72,23 @@ class ContentFetcher:
         self,
         timeout: float = _DEFAULT_TIMEOUT,
         max_concurrent: int = _DEFAULT_MAX_CONCURRENT,
+        skip_domains: set[str] | None = None,
     ) -> None:
         self._timeout = timeout
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._client: httpx.AsyncClient | None = None
+        self._skip_domains: set[str] = skip_domains or set()
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
+            from kt_config.settings import get_settings
+
+            settings = get_settings()
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self._timeout),
                 follow_redirects=True,
                 headers={
-                    "User-Agent": ("Mozilla/5.0 (compatible; KnowledgeTree/1.0; +https://github.com/knowledge-tree)"),
+                    "User-Agent": settings.fetch_user_agent,
                 },
             )
         return self._client
@@ -94,6 +99,14 @@ class ContentFetcher:
         Returns FetchResult with extracted text or error description.
         Handles text/HTML, PDF (via pymupdf), and image content types.
         """
+        # Check domain skiplist
+        if self._skip_domains:
+            from urllib.parse import urlparse
+
+            domain = urlparse(uri).netloc.lower()
+            if domain in self._skip_domains:
+                return FetchResult(uri=uri, error=f"Domain {domain} is in skip list")
+
         async with self._semaphore:
             try:
                 client = await self._get_client()

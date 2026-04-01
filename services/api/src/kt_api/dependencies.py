@@ -66,6 +66,13 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def get_write_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency that yields a write-db session."""
+    factory = get_write_session_factory_cached()
+    async with factory() as session:
+        yield session
+
+
 async def get_agent_context(
     emit_event: EventCallback | None = None,
 ) -> AgentContext:
