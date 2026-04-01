@@ -536,35 +536,52 @@ async def _store_extracted_facts_impl(
             "All worker pipelines must pass a write-db session to GraphEngine."
         )
 
-    # Link each fact to the source via write-db
-    facts: list[Fact] = []
-    successful_extracted: list[ExtractedFactWithAttribution] = []
-    for ef, (fact_id, _is_new) in zip(extracted, dedup_results):
-        try:
-            attribution_str = _format_attribution(ef)
+    # Link each fact to the source via write-db.
+    # Wrapped in try/except for compensating Qdrant delete on failure:
+    # if the post-dedup logic fails, the DB transaction will roll back but
+    # Qdrant already has the points — delete them to prevent orphans.
+    try:
+        facts: list[Fact] = []
+        successful_extracted: list[ExtractedFactWithAttribution] = []
+        for ef, (fact_id, _is_new) in zip(extracted, dedup_results):
+            try:
+                attribution_str = _format_attribution(ef)
 
-            await write_fact_repo.create_fact_source(
-                fact_id=fact_id,
-                raw_source_uri=uri,
-                raw_source_title=title,
-                raw_source_content_hash=content_hash,
-                raw_source_provider_id=provider_id,
-                context_snippet=content[:500],
-                attribution=attribution_str,
-                author_person=author_person,
-                author_org=author_org,
-            )
-            # Return a transient Fact-like object for pipeline compatibility
-            fact = Fact(
-                id=fact_id,
-                content=ef.content,
-                fact_type=ef.fact_type,
-            )
-            facts.append(fact)
-            successful_extracted.append(ef)
+                await write_fact_repo.create_fact_source(
+                    fact_id=fact_id,
+                    raw_source_uri=uri,
+                    raw_source_title=title,
+                    raw_source_content_hash=content_hash,
+                    raw_source_provider_id=provider_id,
+                    context_snippet=content[:500],
+                    attribution=attribution_str,
+                    author_person=author_person,
+                    author_org=author_org,
+                )
+                # Return a transient Fact-like object for pipeline compatibility
+                fact = Fact(
+                    id=fact_id,
+                    content=ef.content,
+                    fact_type=ef.fact_type,
+                )
+                facts.append(fact)
+                successful_extracted.append(ef)
 
-        except Exception:
-            logger.exception("Error storing extracted fact: %s", ef.content[:100])
-            continue
+            except Exception:
+                logger.exception("Error storing extracted fact: %s", ef.content[:100])
+                continue
 
-    return facts
+        return facts
+    except Exception:
+        # Compensating delete: remove newly-created Qdrant points to prevent
+        # orphans when the DB transaction rolls back.
+        _new_ids = getattr(dedup_results, "new_qdrant_ids", [])
+        if _new_ids and qdrant_client is not None:
+            try:
+                from kt_qdrant.repositories.facts import QdrantFactRepository
+
+                await QdrantFactRepository(qdrant_client).delete_batch(_new_ids)
+                logger.info("Compensating delete: removed %d Qdrant points", len(_new_ids))
+            except Exception:
+                logger.warning("Failed compensating Qdrant delete for %d points", len(_new_ids), exc_info=True)
+        raise

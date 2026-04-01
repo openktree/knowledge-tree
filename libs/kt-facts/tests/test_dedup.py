@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from kt_facts.processing.dedup import deduplicate_facts
+from kt_facts.processing.dedup import DeduplicationOutput, deduplicate_facts
 
 
 @dataclass
@@ -145,7 +145,9 @@ async def test_batch_empty_input():
 
     results = await deduplicate_facts([], mock_repo, mock_embedding_service)
 
-    assert results == []
+    assert len(results) == 0
+    assert isinstance(results, DeduplicationOutput)
+    assert results.new_qdrant_ids == []
     mock_embedding_service.embed_batch.assert_not_called()
     mock_repo.create.assert_not_called()
 
@@ -224,3 +226,71 @@ async def test_missing_write_fact_repo_raises():
                 qdrant_client=mock_qdrant_client,
                 write_fact_repo=None,
             )
+
+
+@pytest.mark.asyncio
+async def test_new_qdrant_ids_tracked():
+    """DeduplicationOutput.new_qdrant_ids contains IDs of facts upserted to Qdrant."""
+    fake_embeddings = [[0.1] * 3072, [0.2] * 3072]
+
+    mock_embedding_service = AsyncMock()
+    mock_embedding_service.embed_batch.return_value = fake_embeddings
+
+    mock_repo = AsyncMock()
+    mock_write_fact_repo = _make_write_fact_repo()
+
+    mock_qdrant_client = AsyncMock()
+    mock_qdrant_fact_repo = AsyncMock()
+    mock_qdrant_fact_repo.find_most_similar.return_value = None
+
+    items = [
+        ("Water boils at 100C", "measurement"),
+        ("Ice melts at 0C", "measurement"),
+    ]
+
+    with patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=mock_qdrant_fact_repo):
+        results = await deduplicate_facts(
+            items,
+            mock_repo,
+            mock_embedding_service,
+            qdrant_client=mock_qdrant_client,
+            write_fact_repo=mock_write_fact_repo,
+        )
+
+    assert isinstance(results, DeduplicationOutput)
+    # Both facts are new → both should be in new_qdrant_ids
+    assert len(results.new_qdrant_ids) == 2
+    # IDs should match the fact IDs in the results
+    result_ids = {fid for fid, _ in results}
+    assert set(results.new_qdrant_ids) == result_ids
+
+
+@pytest.mark.asyncio
+async def test_new_qdrant_ids_empty_when_all_deduped():
+    """When all facts match existing Qdrant entries, new_qdrant_ids is empty."""
+    fake_embeddings = [[0.1] * 3072]
+    existing_id = uuid.uuid4()
+
+    mock_embedding_service = AsyncMock()
+    mock_embedding_service.embed_batch.return_value = fake_embeddings
+
+    mock_repo = AsyncMock()
+    mock_write_fact_repo = _make_write_fact_repo()
+
+    mock_qdrant_client = AsyncMock()
+    mock_qdrant_fact_repo = AsyncMock()
+    mock_qdrant_fact_repo.find_most_similar.return_value = _FakeQdrantResult(fact_id=existing_id)
+
+    items = [("Water boils at 100C", "measurement")]
+
+    with patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=mock_qdrant_fact_repo):
+        results = await deduplicate_facts(
+            items,
+            mock_repo,
+            mock_embedding_service,
+            qdrant_client=mock_qdrant_client,
+            write_fact_repo=mock_write_fact_repo,
+        )
+
+    assert len(results.new_qdrant_ids) == 0
+    assert results[0] == (existing_id, False)
