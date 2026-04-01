@@ -21,6 +21,7 @@ from fastmcp import FastMCP
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from kt_config.settings import get_settings
 from kt_db.models import Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
 from kt_mcp.dependencies import (
@@ -32,53 +33,55 @@ from kt_mcp.oauth_provider import create_oauth_provider
 
 logger = logging.getLogger(__name__)
 
-_INSTRUCTIONS = """\
-Knowledge Tree is a **provenance-tracked knowledge graph** built exclusively \
-from real external sources (web search, uploaded documents, links). Every piece \
-of information traces back to a citable source — nothing comes from AI model \
+_settings = get_settings()
+
+_INSTRUCTIONS = f"""
+Knowledge Tree is a **provenance-tracked knowledge graph** built exclusively
+from real external sources (web search, uploaded documents, links). Every piece
+of information traces back to a citable source — nothing comes from AI model
 internal knowledge.
 
 ## How to navigate the graph
 
-The graph stores **nodes** (concepts, entities, perspectives, events) connected \
-by **edges** weighted by shared evidence. The right way to use it is to \
+The graph stores **nodes** (concepts, entities, perspectives, events) connected
+by **edges** weighted by shared evidence. The right way to use it is to
 *navigate*, not just retrieve a single concept.
 
 ### Recommended workflow
 
-1. **Search** — use `search_graph` to find relevant nodes, or `search_facts` \
-to find evidence across the entire fact pool. Both are valid entry points.
-2. **Get the overview** — call `get_node` on a result to read its definition \
-and see counts (fact_count, edge_count, dimension_count tell you how rich \
-the node is).
-3. **Explore neighbors** — call `get_edges` to see what the node is connected \
-to. Edges are sorted by evidence strength (shared fact count). Follow \
-high-weight edges to neighboring nodes to build full context — don't stop \
-at the first node you find.
+1. **Search** — use `search_graph` to find relevant nodes, or `search_facts`
+   to find evidence across the entire fact pool. Both are valid entry points.
+2. **Get the overview** — call `get_node` on a result to read its definition
+   and see counts (fact_count, edge_count, dimension_count tell you how rich
+   the node is).
+3. **Explore neighbors** — call `get_edges` to see what the node is connected
+   to. Edges are sorted by evidence strength (shared fact count). Follow
+   high-weight edges to neighboring nodes to build full context — don't stop
+   at the first node you find.
 4. **Drill deeper when needed:**
-   - `get_dimensions` — multiple AI models' independent analyses of the node. \
-Useful when the definition alone isn't enough.
-   - `get_facts` — the actual provenance-tracked evidence. Each fact traces \
-to real sources. Use this when you need to cite or verify claims.
-   - `get_fact_sources` — deduplicated list of original sources (URLs, titles, \
-authors, dates). Use for building citations.
-5. **Find connections** — use `get_node_paths` to discover how two concepts \
-relate through intermediate nodes.
+   - `get_dimensions` — multiple AI models' independent analyses of the node.
+     Useful when the definition alone isn't enough.
+   - `get_facts` — the actual provenance-tracked evidence. Each fact traces
+     to real sources. Use this when you need to cite or verify claims.
+   - `get_fact_sources` — deduplicated list of original sources (URLs, titles,
+     authors, dates). Use for building citations.
+5. **Find connections** — use `get_node_paths` to discover how two concepts
+   relate through intermediate nodes.
 
 ### Cross-referencing
 
-Use `get_facts(node_id=X, source_node_id=Y)` to find facts shared between \
+Use `get_facts(node_id=X, source_node_id=Y)` to find facts shared between
 two nodes — this answers questions like "what does [source] say about [topic]?"
 
 ### Building references for users
 
 When citing information from the graph, construct wiki URLs so users can verify:
-- **Node pages:** `https://wiki.openktree.com/nodes/{node_type}-{slug}` \
-where slug = concept lowercased, non-alphanumeric replaced with `-`, \
-leading/trailing `-` stripped. \
-Example: "Machine Learning" (concept) → \
-`https://wiki.openktree.com/nodes/concept-machine-learning`
-- **Fact pages:** `https://wiki.openktree.com/facts/{fact_id}`
+- **Node pages:** `{_settings.wiki_base_url}/nodes/{{node_type}}-{{slug}}`
+  where slug = concept lowercased, non-alphanumeric replaced with `-`,
+  leading/trailing `-` stripped.
+  Example: "Machine Learning" (concept) →
+  `{_settings.wiki_base_url}/nodes/concept-machine-learning`
+- **Fact pages:** `{_settings.wiki_base_url}/facts/{{fact_id}}`
 """
 
 mcp = FastMCP("Knowledge Tree", instructions=_INSTRUCTIONS, auth=create_oauth_provider())
