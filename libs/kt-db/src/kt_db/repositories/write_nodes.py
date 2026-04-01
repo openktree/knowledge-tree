@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_db.keys import key_to_uuid, make_node_key
+from kt_db.repositories.nodes import _exact_match_order
 from kt_db.write_models import WriteNode, WriteNodeCounter
 
 
@@ -214,7 +215,11 @@ class WriteNodeRepository:
         stmt = (
             select(WriteNode)
             .where(func.similarity(WriteNode.concept, query) >= threshold)
-            .order_by(func.similarity(WriteNode.concept, query).desc())
+            .order_by(
+                _exact_match_order(WriteNode.concept, query),
+                func.similarity(WriteNode.concept, query).desc(),
+                func.length(WriteNode.concept).asc(),
+            )
         )
         if node_type is not None:
             stmt = stmt.where(WriteNode.node_type == node_type)

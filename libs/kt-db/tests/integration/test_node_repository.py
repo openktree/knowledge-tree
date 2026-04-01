@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from kt_db.repositories.nodes import NodeRepository
+from kt_db.repositories.write_nodes import WriteNodeRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,6 +43,32 @@ async def test_search_by_concept_case_insensitive(db_session):
     await repo.create(concept="QuantumMechanics_node_test")
     results = await repo.search_by_concept("quantummechanics_node_test")
     assert len(results) >= 1
+
+
+async def test_search_by_concept_exact_match_first(db_session):
+    """Exact concept match should rank above longer compound concepts."""
+    repo = NodeRepository(db_session)
+    # Create a compound concept first, then the exact match
+    await repo.create(concept="electricity in the body")
+    await repo.create(concept="electricity")
+    await repo.create(concept="electricity and magnetism")
+
+    results = await repo.search_by_concept("electricity")
+    assert len(results) >= 2
+    # The exact match "electricity" must be first
+    assert results[0].concept == "electricity"
+
+
+async def test_search_by_trigram_exact_match_first(db_session):
+    """search_by_trigram also ranks exact matches first."""
+    repo = NodeRepository(db_session)
+    await repo.create(concept="gravity in quantum mechanics")
+    await repo.create(concept="gravity")
+    await repo.create(concept="gravity waves")
+
+    results = await repo.search_by_trigram("gravity", threshold=0.2)
+    assert len(results) >= 2
+    assert results[0].concept == "gravity"
 
 
 async def test_increment_access_count(db_session):
@@ -114,3 +141,16 @@ async def test_delete_node(db_session):
     assert await repo.get_by_id(node.id) is None
     # Deleting again returns False
     assert await repo.delete(node.id) is False
+
+
+async def test_write_node_search_by_trigram_exact_match_first(write_db_session):
+    """Write-db search_by_trigram also ranks exact matches first."""
+    repo = WriteNodeRepository(write_db_session)
+    await repo.upsert("concept", "magnetism in biology")
+    await repo.upsert("concept", "magnetism")
+    await repo.upsert("concept", "magnetism and electricity")
+    await write_db_session.flush()
+
+    results = await repo.search_by_trigram("magnetism", threshold=0.2)
+    assert len(results) >= 2
+    assert results[0].concept == "magnetism"
