@@ -9,6 +9,8 @@ from kt_db.repositories.facts import FactRepository
 from kt_models.embeddings import EmbeddingService
 
 if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
+
     from kt_db.repositories.write_facts import WriteFactRepository
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ async def deduplicate_facts(
     items: list[tuple[str, str]],
     repo: FactRepository,
     embedding_service: EmbeddingService | None = None,
-    qdrant_client: object | None = None,
+    qdrant_client: AsyncQdrantClient | None = None,
     write_fact_repo: WriteFactRepository | None = None,
     pre_embeddings: list[list[float] | None] | None = None,
 ) -> list[tuple[uuid.UUID, bool]]:

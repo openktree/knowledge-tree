@@ -52,7 +52,7 @@ async def build_subgraph(
     if not uuids:
         return {"nodes": [], "edges": []}
 
-    subgraph_data: dict[str, Any] = await ctx.graph_engine.get_subgraph(uuids, depth=depth)
+    subgraph_data = await ctx.graph_engine.get_subgraph(uuids, depth=depth)
 
     sg_nodes = subgraph_data.get("nodes", [])
     sg_edges = subgraph_data.get("edges", [])

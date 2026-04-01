@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import random
@@ -5,7 +7,10 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar  # noqa: F401 (Any used in annotations)
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import DBAPIError
@@ -98,7 +103,7 @@ class GraphEngine:
         session: AsyncSession | None = None,
         embedding_service: EmbeddingService | None = None,
         write_session: AsyncSession | None = None,
-        qdrant_client: object | None = None,
+        qdrant_client: AsyncQdrantClient | None = None,
     ) -> None:
         self._session = session
         self._embedding_service = embedding_service

@@ -1,7 +1,9 @@
 import uuid
 
 import pytest
+from sqlalchemy import select
 
+from kt_db.models import NodeCounter
 from kt_db.repositories.facts import FactRepository
 from kt_graph.engine import GraphEngine
 
@@ -258,6 +260,6 @@ async def test_increment_access_count_deadlock_retry(db_session):
 
     # Verify the node's access count increments normally despite savepoints
     await engine.increment_access_count(node.id)
-    refreshed = await engine.get_node(node.id)
-    assert refreshed is not None
-    assert refreshed.access_count == 1
+    result = await db_session.execute(select(NodeCounter).where(NodeCounter.node_id == node.id))
+    counter = result.scalar_one()
+    assert counter.access_count == 1
