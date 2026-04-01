@@ -8,8 +8,8 @@
 -- Run this AFTER deploying the sync engine fix (change #1) to prevent new
 -- phantoms. Execute via:
 --
---   kubectl exec -n knowledge-tree knowledge-tree-graph-db-1 -- \
---     psql -U postgres -d knowledge_tree -f /dev/stdin < scripts/repair_phantom_sources.sql
+--   kubectl exec -i -n knowledge-tree knowledge-tree-graph-db-1 -- \
+--     psql -U postgres -d knowledge_tree < scripts/repair_phantom_sources.sql
 --
 -- Or paste into an interactive psql session inside a transaction.
 
@@ -19,8 +19,39 @@ BEGIN;
 SELECT 'Phantom sources before repair:' AS label, count(*) AS cnt
 FROM raw_sources WHERE raw_content IS NULL;
 
--- Step 1: Reassign fact_sources from phantom to real source (matched by URI).
--- For each phantom, find a real source (has content) with the same URI.
+-- Step 1a: Delete duplicate fact_source rows that would conflict when
+-- reassigning from phantom to real source (the real source already has
+-- a fact_source row for the same fact).
+DELETE FROM fact_sources fs
+USING raw_sources phantom
+JOIN raw_sources real_src
+  ON real_src.uri = phantom.uri
+  AND real_src.raw_content IS NOT NULL
+  AND real_src.id != phantom.id
+WHERE phantom.raw_content IS NULL
+  AND fs.raw_source_id = phantom.id
+  AND EXISTS (
+    SELECT 1 FROM fact_sources existing
+    WHERE existing.fact_id = fs.fact_id
+      AND existing.raw_source_id = real_src.id
+  );
+
+-- Step 1b: Same dedup for content_hash matches.
+DELETE FROM fact_sources fs
+USING raw_sources phantom
+JOIN raw_sources real_src
+  ON real_src.content_hash = phantom.content_hash
+  AND real_src.raw_content IS NOT NULL
+  AND real_src.id != phantom.id
+WHERE phantom.raw_content IS NULL
+  AND fs.raw_source_id = phantom.id
+  AND EXISTS (
+    SELECT 1 FROM fact_sources existing
+    WHERE existing.fact_id = fs.fact_id
+      AND existing.raw_source_id = real_src.id
+  );
+
+-- Step 2a: Reassign remaining fact_sources from phantom to real source (by URI).
 UPDATE fact_sources fs
 SET raw_source_id = real_src.id
 FROM raw_sources phantom
@@ -31,8 +62,7 @@ JOIN raw_sources real_src
 WHERE phantom.raw_content IS NULL
   AND fs.raw_source_id = phantom.id;
 
--- Step 1b: Reassign remaining phantoms by content_hash match (covers cases
--- where the real source has a different URI but same content_hash).
+-- Step 2b: Reassign remaining phantoms by content_hash match.
 UPDATE fact_sources fs
 SET raw_source_id = real_src.id
 FROM raw_sources phantom
@@ -43,12 +73,12 @@ JOIN raw_sources real_src
 WHERE phantom.raw_content IS NULL
   AND fs.raw_source_id = phantom.id;
 
-SELECT 'Fact sources reassigned:' AS label, count(*) AS cnt
+SELECT 'Fact sources on real sources:' AS label, count(*) AS cnt
 FROM fact_sources fs
 JOIN raw_sources rs ON rs.id = fs.raw_source_id
 WHERE rs.raw_content IS NOT NULL;
 
--- Step 2: Recalculate fact_count on ALL sources (idempotent).
+-- Step 3: Recalculate fact_count on ALL sources (idempotent).
 UPDATE raw_sources rs
 SET fact_count = sub.cnt
 FROM (
@@ -65,12 +95,12 @@ SET fact_count = 0
 WHERE NOT EXISTS (SELECT 1 FROM fact_sources WHERE raw_source_id = rs.id)
   AND rs.fact_count != 0;
 
--- Step 3: Delete phantoms that are now orphaned (no fact_sources pointing to them).
+-- Step 4: Delete phantoms that are now orphaned (no fact_sources pointing to them).
 DELETE FROM raw_sources
 WHERE raw_content IS NULL
   AND NOT EXISTS (SELECT 1 FROM fact_sources WHERE raw_source_id = raw_sources.id);
 
--- Step 4: Verify
+-- Step 5: Verify
 SELECT 'Phantom sources after repair:' AS label, count(*) AS cnt
 FROM raw_sources WHERE raw_content IS NULL;
 
