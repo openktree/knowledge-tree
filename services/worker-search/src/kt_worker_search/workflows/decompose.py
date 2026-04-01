@@ -624,9 +624,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
         if result.content_type is not None:
             values["content_type"] = result.content_type
 
-        await write_session.execute(
-            sa_update(WriteRawSource).where(WriteRawSource.id == source.id).values(**values)
-        )
+        await write_session.execute(sa_update(WriteRawSource).where(WriteRawSource.id == source.id).values(**values))
         await write_session.commit()
         content_updated = True
         ctx.log("Source content updated, starting decomposition")
