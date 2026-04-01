@@ -375,6 +375,20 @@ class SyncEngine:
                     if wrs.updated_at > max_ts:
                         max_ts = wrs.updated_at
                 except Exception as exc:
+                    is_hash_dup = "ix_raw_sources_content_hash" in str(exc)
+                    if is_hash_dup:
+                        # Write-db source has a different ID than the graph-db
+                        # source with the same content (ID mismatch from URI
+                        # dedup in create_or_get).  Skip — graph-db already
+                        # has this content.  Advance watermark past it.
+                        logger.info(
+                            "Skipping raw_source %s — content_hash already in graph-db under a different ID",
+                            wrs.id,
+                        )
+                        if wrs.updated_at > max_ts:
+                            max_ts = wrs.updated_at
+                        count += 1
+                        continue
                     logger.warning(
                         "Failed to sync raw_source %s",
                         wrs.id,
