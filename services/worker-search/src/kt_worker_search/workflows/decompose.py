@@ -535,6 +535,30 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
 
 from kt_hatchet.models import ReingestSourceInput, ReingestSourceOutput
 
+async def _mark_graph_source_fetched(
+    state: WorkerState,
+    source_id: uuid.UUID,
+    *,
+    error: str | None,
+) -> None:
+    """Update fetch_attempted/fetch_error on a graph-db source directly.
+
+    Used when the write-db source has a different ID (from URI dedup) so
+    the normal sync path can't propagate the fetch status.
+    """
+    from sqlalchemy import update as sa_update
+
+    from kt_db.models import RawSource
+
+    async with state.session_factory() as gs:
+        await gs.execute(
+            sa_update(RawSource)
+            .where(RawSource.id == source_id)
+            .values(fetch_attempted=True, fetch_error=error)
+        )
+        await gs.commit()
+
+
 reingest_source_wf = hatchet.workflow(
     name="reingest_source",
     input_validator=ReingestSourceInput,
@@ -572,6 +596,10 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
         write_source_repo = WriteSourceRepository(write_session)
         source = await write_source_repo.get_by_id(uuid.UUID(input.raw_source_id))
 
+        # Track the graph-db ID when we fall back to it — may differ from
+        # the write-db ID returned by create_or_get (URI dedup).
+        graph_source_id: uuid.UUID | None = None
+
         if source is None:
             # Fallback: look up graph-db source for its URI, then find/create in write-db
             from kt_db.repositories.sources import SourceRepository
@@ -580,6 +608,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
                 graph_repo = SourceRepository(graph_session)
                 graph_source = await graph_repo.get_by_id(uuid.UUID(input.raw_source_id))
                 if graph_source is not None:
+                    graph_source_id = graph_source.id
                     source = await write_source_repo.create_or_get(
                         source_id=graph_source.id,
                         uri=graph_source.uri,
@@ -608,6 +637,10 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
             ctx.log(message)
             await write_source_repo.mark_fetch_attempted(source.id, error=result.error)
             await write_session.commit()
+            # If the graph-db source has a different ID (URI dedup), sync
+            # can't propagate fetch_error.  Update graph-db directly.
+            if graph_source_id is not None and graph_source_id != source.id:
+                await _mark_graph_source_fetched(state, graph_source_id, error=result.error)
             return ReingestSourceOutput(message=message).model_dump()
 
         # Step 2: Force-update content (bypass hash dedup)
@@ -629,6 +662,8 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
         await write_session.execute(sa_update(WriteRawSource).where(WriteRawSource.id == source.id).values(**values))
         await write_source_repo.mark_fetch_attempted(source.id, error=None)
         await write_session.commit()
+        if graph_source_id is not None and graph_source_id != source.id:
+            await _mark_graph_source_fetched(state, graph_source_id, error=None)
         content_updated = True
         ctx.log("Source content updated, starting decomposition")
 
