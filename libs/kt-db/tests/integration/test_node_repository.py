@@ -44,6 +44,20 @@ async def test_search_by_concept_case_insensitive(db_session):
     assert len(results) >= 1
 
 
+async def test_search_by_concept_exact_match_first(db_session):
+    """Exact concept match should rank above longer compound concepts."""
+    repo = NodeRepository(db_session)
+    # Create a compound concept first, then the exact match
+    await repo.create(concept="electricity in the body")
+    await repo.create(concept="electricity")
+    await repo.create(concept="electricity and magnetism")
+
+    results = await repo.search_by_concept("electricity")
+    assert len(results) >= 2
+    # The exact match "electricity" must be first
+    assert results[0].concept == "electricity"
+
+
 async def test_increment_access_count(db_session):
     repo = NodeRepository(db_session)
     node = await repo.create(concept="counted_node_test")

@@ -6,7 +6,7 @@ No advisory locks, no FK validation — just fast upserts.
 
 import uuid
 
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -211,10 +211,18 @@ class WriteNodeRepository:
         Mirrors NodeRepository.search_by_trigram but targets write-db,
         avoiding graph-db pool pressure during pipeline fan-out.
         """
+        exact_match = case(
+            (func.lower(WriteNode.concept) == func.lower(query), 0),
+            else_=1,
+        )
         stmt = (
             select(WriteNode)
             .where(func.similarity(WriteNode.concept, query) >= threshold)
-            .order_by(func.similarity(WriteNode.concept, query).desc())
+            .order_by(
+                exact_match,
+                func.similarity(WriteNode.concept, query).desc(),
+                func.length(WriteNode.concept).asc(),
+            )
         )
         if node_type is not None:
             stmt = stmt.where(WriteNode.node_type == node_type)
