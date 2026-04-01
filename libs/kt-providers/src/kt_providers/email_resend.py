@@ -59,7 +59,7 @@ class ResendEmailProvider(EmailProvider):
                     delay=delay,
                 )
                 await asyncio.sleep(delay)
-        raise last_exc  # type: ignore[misc]
+            raise last_exc  # type: ignore[misc]
 
     async def is_available(self) -> bool:
         return bool(self._api_key and self._default_from)

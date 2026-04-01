@@ -39,7 +39,7 @@ def _get_email_provider_cached() -> EmailProvider | None:
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     def __init__(
         self,
-        user_db: SQLAlchemyUserDatabase,  # type: ignore[type-arg]
+        user_db: SQLAlchemyUserDatabase[User, uuid.UUID],
         email_provider: EmailProvider | None = None,
     ) -> None:
         super().__init__(user_db)
@@ -108,10 +108,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             await session.flush()
             logger.info("First user %s auto-promoted to admin", user.email)
 
-        # Request email verification when enabled
+        # Request email verification when enabled (best-effort — don't fail registration)
         settings = get_settings()
         if settings.email_enabled and settings.email_verification and self._email_provider:
-            await self.request_verify(user, request)
+            try:
+                await self.request_verify(user, request)
+            except Exception:
+                logger.exception("Failed to send verification email to %s", user.email)
 
     async def on_after_request_verify(self, user: User, token: str, request=None) -> None:  # type: ignore[override]
         if self._email_provider is None:
