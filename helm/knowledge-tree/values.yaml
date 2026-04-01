@@ -43,10 +43,11 @@ secrets:
 
   resendApiKey: ""
 
-# -- Email configuration
+# -- Email configuration (provider-scoped)
 email:
-  enabled: false
-  fromAddress: ""
+  provider: ""  # set to "resend" to enable
+  resend:
+    fromAddress: ""
 
 # =============================================================================
 # CloudNativePG Databases
