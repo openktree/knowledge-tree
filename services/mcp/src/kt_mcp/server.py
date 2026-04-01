@@ -32,7 +32,56 @@ from kt_mcp.oauth_provider import create_oauth_provider
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Knowledge Tree", auth=create_oauth_provider())
+_INSTRUCTIONS = """\
+Knowledge Tree is a **provenance-tracked knowledge graph** built exclusively \
+from real external sources (web search, uploaded documents, links). Every piece \
+of information traces back to a citable source — nothing comes from AI model \
+internal knowledge.
+
+## How to navigate the graph
+
+The graph stores **nodes** (concepts, entities, perspectives, events) connected \
+by **edges** weighted by shared evidence. The right way to use it is to \
+*navigate*, not just retrieve a single concept.
+
+### Recommended workflow
+
+1. **Search** — use `search_graph` to find relevant nodes, or `search_facts` \
+to find evidence across the entire fact pool. Both are valid entry points.
+2. **Get the overview** — call `get_node` on a result to read its definition \
+and see counts (fact_count, edge_count, dimension_count tell you how rich \
+the node is).
+3. **Explore neighbors** — call `get_edges` to see what the node is connected \
+to. Edges are sorted by evidence strength (shared fact count). Follow \
+high-weight edges to neighboring nodes to build full context — don't stop \
+at the first node you find.
+4. **Drill deeper when needed:**
+   - `get_dimensions` — multiple AI models' independent analyses of the node. \
+Useful when the definition alone isn't enough.
+   - `get_facts` — the actual provenance-tracked evidence. Each fact traces \
+to real sources. Use this when you need to cite or verify claims.
+   - `get_fact_sources` — deduplicated list of original sources (URLs, titles, \
+authors, dates). Use for building citations.
+5. **Find connections** — use `get_node_paths` to discover how two concepts \
+relate through intermediate nodes.
+
+### Cross-referencing
+
+Use `get_facts(node_id=X, source_node_id=Y)` to find facts shared between \
+two nodes — this answers questions like "what does [source] say about [topic]?"
+
+### Building references for users
+
+When citing information from the graph, construct wiki URLs so users can verify:
+- **Node pages:** `https://wiki.openktree.com/nodes/{node_type}-{slug}` \
+where slug = concept lowercased, non-alphanumeric replaced with `-`, \
+leading/trailing `-` stripped. \
+Example: "Machine Learning" (concept) → \
+`https://wiki.openktree.com/nodes/concept-machine-learning`
+- **Fact pages:** `https://wiki.openktree.com/facts/{fact_id}`
+"""
+
+mcp = FastMCP("Knowledge Tree", instructions=_INSTRUCTIONS, auth=create_oauth_provider())
 
 
 def _extract_published_date(raw_source: RawSource) -> str | None:
@@ -77,8 +126,17 @@ async def search_graph(
 ) -> dict:
     """Search the knowledge graph for nodes matching a text query.
 
-    Returns lightweight results with node ID, concept name, type, and
-    fact count. Use get_node to load full details for nodes you care about.
+    This is the primary **entry point** for exploring the graph. Results
+    are starting points for navigation — after finding relevant nodes,
+    call ``get_node`` to read the definition, then ``get_edges`` to
+    discover neighboring nodes and build full context around the topic.
+
+    An alternative entry point is ``search_facts``, which searches the
+    global fact pool directly and can surface evidence spanning multiple
+    nodes or topics not yet well-represented as nodes.
+
+    Each result includes ``fact_count`` — higher counts indicate richer,
+    better-evidenced nodes worth exploring first.
 
     Args:
         query: Search term for concept names.
@@ -116,11 +174,20 @@ async def search_graph(
 
 @mcp.tool()
 async def get_node(node_id: str) -> dict:
-    """Load a node's core details.
+    """Load a node's core details — the overview of a concept in the graph.
 
-    Returns concept, type, definition, parent, creation date, and counts.
-    If the node has no definition, a single dimension is included as a
-    fallback so there is always some descriptive content.
+    Returns the node's definition, type, parent, creation date, and
+    counts (fact_count, edge_count, dimension_count). Use these counts
+    to decide what to explore next:
+    - High ``edge_count`` → call ``get_edges`` to see connections to
+      related nodes and navigate the graph neighborhood.
+    - High ``dimension_count`` → call ``get_dimensions`` for deeper
+      multi-model analyses when the definition isn't sufficient.
+    - High ``fact_count`` → call ``get_facts`` when you need the actual
+      provenance-tracked evidence behind this node.
+
+    If the node has no definition yet, a fallback dimension is included
+    so there is always some descriptive content.
 
     Args:
         node_id: UUID of the node to load.
@@ -190,10 +257,17 @@ async def get_node(node_id: str) -> dict:
 
 @mcp.tool()
 async def get_dimensions(node_id: str, limit: int = 10, offset: int = 0) -> dict:
-    """Load dimensions (model perspectives) for a node.
+    """Load dimensions (model perspectives) for a node — deeper analysis.
 
-    Each dimension is a different AI model's analysis of the node,
-    with content and confidence score. Paginated.
+    Each dimension is an **independent AI model's analysis** of the same
+    node, grounded in the same fact base. Use this when the node's
+    definition (from ``get_node``) isn't detailed enough.
+
+    Convergence across models (similar content, high confidence) reveals
+    genuine consensus. Divergence reveals where model biases determine
+    conclusions — both are valuable signals.
+
+    Paginated. Use offset/limit to page through results.
 
     Args:
         node_id: UUID of the node.
@@ -247,11 +321,22 @@ async def get_edges(
     offset: int = 0,
     edge_type: str | None = None,
 ) -> dict:
-    """Load edges (relationships) for a node, sorted by fact count (most evidence first).
+    """Load edges (relationships) for a node — the key tool for graph navigation.
 
-    Returns connected nodes with relationship type, weight, justification,
-    and fact count. Paginated and optionally filtered by edge type.
-    Use offset/limit to page through results.
+    Edges represent evidence-backed connections between nodes. They are
+    sorted by **shared fact count** (weight), so the strongest
+    relationships appear first. Follow high-weight edges to neighboring
+    nodes to build full context around a topic — don't stop at a single
+    node.
+
+    Each edge includes the connected node's ID, concept, type, a
+    justification explaining the relationship, and the fact count that
+    backs it. Use ``get_node`` on interesting neighbors to continue
+    exploring, or ``get_facts(node_id=A, source_node_id=B)`` to see
+    the shared evidence between two connected nodes.
+
+    Edge types: ``related`` connects same-type nodes, ``cross_type``
+    connects different types (e.g., entity↔event). Paginated.
 
     Args:
         node_id: UUID of the node.
@@ -317,15 +402,19 @@ async def get_facts(
     search: str | None = None,
     fact_type: str | None = None,
 ) -> dict:
-    """Load facts linked to a node, grouped by source.
+    """Load provenance-tracked facts linked to a node, grouped by source.
 
-    Returns facts organized by their primary source, with author
-    information and provenance. Each source group contains facts
-    extracted from that source. Sources are sorted by fact count
-    (most facts first). Paginated via offset/limit over the flat
-    fact list — use the returned offset to fetch the next page.
+    This is the **evidence layer** of the knowledge graph. Every fact
+    traces back to a real external source (article, document, search
+    result) — nothing comes from AI internal knowledge. Use this when
+    you need the actual evidence behind a node, need to cite specific
+    claims, or want to verify information.
 
-    Supports two powerful filtering strategies:
+    Facts are organized by their primary source, with author info and
+    provenance. Sources are sorted by fact count (most facts first).
+    Paginated — use ``next_offset`` to fetch subsequent pages.
+
+    **Filtering strategies:**
 
     1. **Node intersection** (``source_node_id``): Return only facts
        linked to BOTH ``node_id`` AND ``source_node_id``.  This is
@@ -339,6 +428,9 @@ async def get_facts(
        source entity doesn't have its own node.
 
     Both strategies can be combined.
+
+    To trace facts all the way to original URLs and citations, use
+    ``get_fact_sources``.
 
     Args:
         node_id: UUID of the subject node.
@@ -551,11 +643,17 @@ async def get_facts(
 
 @mcp.tool()
 async def get_fact_sources(node_id: str) -> dict:
-    """Load all sources for a node's facts.
+    """Load all original sources for a node's facts — full provenance.
 
-    Returns a deduplicated list of raw sources (URI, title, provider,
-    retrieval date) that back the facts linked to this node.
-    Full provenance chain: Node -> Facts -> Sources.
+    Returns a deduplicated list of the real external sources (URLs,
+    titles, authors, publication dates) that back the facts linked to
+    this node. This completes the provenance chain: Node → Facts →
+    Sources.
+
+    Use this to build citations, verify claims against original
+    articles, or understand which sources contributed to a node's
+    knowledge base. Each source includes URI, title, author info,
+    and retrieval date.
 
     Args:
         node_id: UUID of the node.
@@ -620,12 +718,17 @@ async def search_facts(
     author_org: str | None = None,
     source_domain: str | None = None,
 ) -> dict:
-    """Search the global fact pool by text query or node context.
+    """Search the global fact pool — an alternative entry point into the graph.
 
-    Searches across ALL facts in the knowledge graph, not just those
-    linked to a specific node. Useful for exploring topics that may
-    not yet be fully reflected in nodes, or for finding evidence
-    across multiple concepts.
+    Searches across **ALL** facts in the knowledge graph, not just those
+    linked to a specific node. This is valuable when:
+    - A topic may not yet have a well-developed node
+    - You want evidence that spans multiple concepts
+    - You want to discover which nodes are relevant to a query (each
+      result includes ``linked_nodes`` showing what nodes the fact
+      is attached to — use these to find nodes worth exploring)
+
+    Uses hybrid search (semantic + keyword) for best results.
 
     Accepts either a text ``query`` or a ``node_id``.  When
     ``node_id`` is provided, the node's concept name and aliases
@@ -821,12 +924,17 @@ async def get_node_paths(
     max_depth: int = 6,
     limit: int = 5,
 ) -> dict:
-    """Find shortest paths between two nodes in the knowledge graph.
+    """Find how two nodes connect through the graph — relationship discovery.
 
     Uses breadth-first search to discover how two concepts are
-    connected through the graph's edge relationships. Returns all
-    shortest paths (same hop count) up to the limit. Each path is
-    a sequence of steps: node → edge → node → edge → ... → node.
+    connected through intermediate nodes and edges. This reveals
+    indirect relationships and shared context that may not be obvious.
+
+    Returns all shortest paths (same hop count) up to the limit. Each
+    path is a sequence of steps: node → edge → node → edge → ... →
+    node. Explore interesting intermediate nodes with ``get_node`` and
+    ``get_facts`` to understand the chain of evidence connecting the
+    two concepts.
 
     Edges are bidirectional — the algorithm traverses in both
     directions regardless of canonical source/target ordering.
