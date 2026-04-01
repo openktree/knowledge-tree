@@ -79,6 +79,10 @@ class ContentFetcher:
         self._client: httpx.AsyncClient | None = None
         self._skip_domains: set[str] = skip_domains or set()
 
+    def set_skip_domains(self, domains: set[str]) -> None:
+        """Replace the skip domains set (e.g. after reloading from DB)."""
+        self._skip_domains = domains
+
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             from kt_config.settings import get_settings
