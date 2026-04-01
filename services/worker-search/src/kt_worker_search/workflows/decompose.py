@@ -573,25 +573,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
         source = await write_source_repo.get_by_id(uuid.UUID(input.raw_source_id))
 
         if source is None:
-            # Fallback: look up graph-db source for its URI, then find/create in write-db
-            from kt_db.repositories.sources import SourceRepository
-
-            async with state.session_factory() as graph_session:
-                graph_repo = SourceRepository(graph_session)
-                graph_source = await graph_repo.get_by_id(uuid.UUID(input.raw_source_id))
-                if graph_source is not None:
-                    source = await write_source_repo.create_or_get(
-                        source_id=graph_source.id,
-                        uri=graph_source.uri,
-                        title=graph_source.title,
-                        raw_content=graph_source.raw_content or "",
-                        provider_id=graph_source.provider_id,
-                        provider_metadata=graph_source.provider_metadata,
-                    )
-                    await write_session.flush()
-
-        if source is None:
-            message = "Source not found in write-db or graph-db"
+            message = "Source not found in write-db"
             logger.warning("reingest: source %s not found", input.raw_source_id)
             return ReingestSourceOutput(message=message).model_dump()
 

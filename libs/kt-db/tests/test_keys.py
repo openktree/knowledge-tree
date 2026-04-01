@@ -2,7 +2,15 @@
 
 import uuid
 
-from kt_db.keys import KT_NAMESPACE, key_to_uuid, make_dimension_key, make_edge_key, make_node_key
+from kt_db.keys import (
+    KT_NAMESPACE,
+    key_to_uuid,
+    make_dimension_key,
+    make_edge_key,
+    make_node_key,
+    make_source_key,
+    uri_to_source_id,
+)
 
 
 def test_make_node_key_basic():
@@ -83,3 +91,39 @@ def test_key_to_uuid_node_edge_different():
     node_uuid = key_to_uuid("concept:ai")
     edge_uuid = key_to_uuid("related:concept:ai--concept:ml")
     assert node_uuid != edge_uuid
+
+
+# ── source key tests ────────────────────────────────────────────────
+
+
+def test_make_source_key():
+    assert make_source_key("https://example.com/page") == "source:https://example.com/page"
+
+
+def test_uri_to_source_id_returns_uuid():
+    result = uri_to_source_id("https://example.com")
+    assert isinstance(result, uuid.UUID)
+
+
+def test_uri_to_source_id_deterministic():
+    a = uri_to_source_id("https://example.com/page")
+    b = uri_to_source_id("https://example.com/page")
+    assert a == b
+
+
+def test_uri_to_source_id_different_uris():
+    a = uri_to_source_id("https://example.com/a")
+    b = uri_to_source_id("https://example.com/b")
+    assert a != b
+
+
+def test_uri_to_source_id_matches_key_to_uuid():
+    uri = "https://example.com/test"
+    assert uri_to_source_id(uri) == key_to_uuid(make_source_key(uri))
+
+
+def test_uri_to_source_id_different_from_node_uuid():
+    """Source UUID should differ from node UUID even with similar text."""
+    source_uuid = uri_to_source_id("concept:ai")
+    node_uuid = key_to_uuid("concept:ai")
+    assert source_uuid != node_uuid

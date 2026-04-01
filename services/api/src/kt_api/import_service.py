@@ -565,7 +565,6 @@ async def _create_or_get_source(
 
         write_source_repo = WriteSourceRepository(write_session)
         await write_source_repo.create_or_get(
-            source_id=source_id,
             uri=source_info.uri,
             title=source_info.title,
             raw_content=source_info.raw_content,
