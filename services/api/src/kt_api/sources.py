@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.dependencies import get_db_session, get_write_db_session
+from kt_api.dependencies import get_db_session
 from kt_api.schemas import (
     FactResponse,
     FactSourceInfo,
@@ -53,6 +53,7 @@ async def _build_source_detail(
         fact_count=source.fact_count,
         prohibited_chunk_count=source.prohibited_chunk_count,
         is_full_text=source.is_full_text,
+        fetch_error=source.fetch_error,
         content_type=source.content_type,
         content_preview=content_preview,
         facts=[
@@ -143,6 +144,7 @@ async def list_sources(
                 is_super_source=s.is_super_source,
                 is_full_text=s.is_full_text,
                 fetch_attempted=s.fetch_attempted,
+                fetch_error=s.fetch_error,
             )
             for s in sources
         ],
@@ -203,30 +205,3 @@ async def reingest_source(
         content_updated=output.content_updated,
         message=output.message,
     )
-
-
-@router.post("/{source_id}/skip-domain")
-async def skip_source_domain(
-    source_id: str,
-    session: AsyncSession = Depends(get_db_session),
-    write_session: AsyncSession = Depends(get_write_db_session),
-) -> dict:
-    """Add the domain of this source to the fetch skip list."""
-    from urllib.parse import urlparse
-
-    from kt_db.repositories.sources import SourceRepository
-    from kt_db.repositories.write_fetch_skip_domains import WriteFetchSkipDomainRepository
-
-    repo = SourceRepository(session)
-    source = await repo.get_by_id(uuid.UUID(source_id))
-    if source is None:
-        raise HTTPException(status_code=404, detail="Source not found")
-
-    domain = urlparse(source.uri).netloc.lower()
-    if not domain:
-        raise HTTPException(status_code=400, detail="Could not extract domain from source URI")
-
-    skip_repo = WriteFetchSkipDomainRepository(write_session)
-    await skip_repo.add_domain(domain, reason=f"Skipped from source {source_id}")
-    await write_session.commit()
-    return {"status": "ok", "domain": domain}

@@ -346,6 +346,7 @@ class SyncEngine:
                                 fact_count=wrs.fact_count,
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
+                                fetch_error=wrs.fetch_error,
                             )
                             .on_conflict_do_update(
                                 index_elements=["id"],
@@ -364,6 +365,7 @@ class SyncEngine:
                                     # re-syncing would reset it to 0.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
+                                    "fetch_error": wrs.fetch_error,
                                 },
                             )
                         )
@@ -623,6 +625,7 @@ class SyncEngine:
                         provider_id=real_source.provider_id,
                         provider_metadata=real_source.provider_metadata,
                         fetch_attempted=real_source.fetch_attempted,
+                        fetch_error=real_source.fetch_error,
                     )
                     .on_conflict_do_update(
                         index_elements=["id"],
@@ -636,6 +639,7 @@ class SyncEngine:
                             "content_type": real_source.content_type,
                             "provider_metadata": real_source.provider_metadata,
                             "fetch_attempted": real_source.fetch_attempted,
+                            "fetch_error": real_source.fetch_error,
                         },
                     )
                     .returning(RawSource.__table__.c.id)
@@ -1981,6 +1985,7 @@ class SyncEngine:
                                 fact_count=wrs.fact_count,
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
+                                fetch_error=wrs.fetch_error,
                             )
                             .on_conflict_do_update(
                                 index_elements=["id"],
@@ -1993,10 +1998,9 @@ class SyncEngine:
                                     "is_super_source": wrs.is_super_source,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
-                                    # fact_count intentionally excluded — managed
-                                    # by _sync_one_fact_source increments only.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
+                                    "fetch_error": wrs.fetch_error,
                                 },
                             )
                         )

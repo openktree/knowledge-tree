@@ -265,6 +265,7 @@ export interface SourceResponse {
   is_super_source: boolean;
   is_full_text: boolean;
   fetch_attempted: boolean;
+  fetch_error: string | null;
 }
 
 export interface SourceLinkedNode {
@@ -283,6 +284,7 @@ export interface SourceDetailResponse {
   fact_count: number;
   prohibited_chunk_count: number;
   is_full_text: boolean;
+  fetch_error: string | null;
   content_type: string | null;
   content_preview: string | null;
   facts: FactResponse[];

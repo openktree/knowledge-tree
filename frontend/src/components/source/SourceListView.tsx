@@ -264,6 +264,7 @@ export function SourceListView() {
                       <Badge
                         variant="outline"
                         className="text-xs text-red-400 border-red-400/30"
+                        title={source.fetch_error ?? "Content could not be fetched"}
                       >
                         fetch failed
                       </Badge>

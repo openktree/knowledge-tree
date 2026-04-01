@@ -52,6 +52,7 @@ class WriteRawSource(WriteBase):
     prohibited_chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_super_source: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_attempted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    fetch_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -77,17 +78,6 @@ class WritePageFetchLog(WriteBase):
     skip_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
-
-
-class WriteFetchSkipDomain(WriteBase):
-    """Admin-configured domains to skip during content fetching."""
-
-    __tablename__ = "write_fetch_skip_domains"
-
-    domain: Mapped[str] = mapped_column(String(255), primary_key=True)
-    reason: Mapped[str] = mapped_column(String(500), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 

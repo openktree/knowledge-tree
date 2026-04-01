@@ -129,10 +129,11 @@ class WriteSourceRepository:
         await self._session.flush()
         return True
 
-    async def mark_fetch_attempted(self, source_id: uuid.UUID) -> None:
-        """Mark a source as having had a fetch attempt (success or failure)."""
-        await self._session.execute(
-            update(WriteRawSource).where(WriteRawSource.id == source_id).values(fetch_attempted=True)
-        )
+    async def mark_fetch_attempted(self, source_id: uuid.UUID, *, error: str | None = None) -> None:
+        """Mark a source as having had a fetch attempt (success or failure).
+
+        If error is provided, it is stored as fetch_error for UI display.
+        """
+        values: dict[str, object] = {"fetch_attempted": True, "fetch_error": error}
+        await self._session.execute(update(WriteRawSource).where(WriteRawSource.id == source_id).values(**values))
         await self._session.flush()
-        return True

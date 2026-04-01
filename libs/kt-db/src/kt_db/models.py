@@ -274,6 +274,7 @@ class RawSource(Base):
     prohibited_chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_super_source: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_attempted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    fetch_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     # Relationships
     fact_sources: Mapped[list["FactSource"]] = relationship(back_populates="raw_source", cascade="all, delete-orphan")

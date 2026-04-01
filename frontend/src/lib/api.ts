@@ -554,13 +554,6 @@ export const api = {
       return request<PaginatedSourcesResponse>(`/sources${qs}`);
     },
 
-    skipDomain(id: string): Promise<{ status: string; domain: string }> {
-      return request<{ status: string; domain: string }>(
-        `/sources/${encodeURIComponent(id)}/skip-domain`,
-        { method: "POST" },
-      );
-    },
-
     reingest(id: string): Promise<SourceReingestResponse> {
       return request<SourceReingestResponse>(
         `/sources/${encodeURIComponent(id)}/reingest`,

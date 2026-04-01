@@ -230,6 +230,7 @@ async def store_and_fetch(
         for (idx, _uri), fetch_result in zip(urls_to_fetch, fetch_results):
             source = raw_sources[idx]
             source.fetch_attempted = True
+            source.fetch_error = fetch_result.error if not fetch_result.success else None
 
             # Store PDF/HTML metadata in provider_metadata for author extraction
             if fetch_result.pdf_metadata or fetch_result.html_metadata:
