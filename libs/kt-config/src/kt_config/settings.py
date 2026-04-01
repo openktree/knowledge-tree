@@ -222,6 +222,18 @@ _register(
     },
 )
 
+# ---- Email -----------------------------------------------------------------
+_register(
+    "email",
+    {
+        "email_enabled": "enabled",
+        "email_provider": "provider",
+        "email_validation": "email_validation",
+        "email_from_address": "from_address",
+        "resend_api_key": "resend_api_key",
+    },
+)
+
 # ---- Ingest ----------------------------------------------------------------
 _register(
     "ingest",
@@ -540,6 +552,13 @@ class Settings(BaseSettings):
 
     # BYOK (Bring Your Own Key) — Fernet encryption key for stored API keys
     byok_encryption_key: str = ""
+
+    # Email
+    email_enabled: bool = False
+    email_provider: str = "resend"
+    email_validation: bool = False
+    email_from_address: str = ""
+    resend_api_key: str = ""
 
     model_config = {"extra": "ignore"}
 

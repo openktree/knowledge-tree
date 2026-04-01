@@ -187,6 +187,7 @@ async def api_key_status(
 
 class AuthFeaturesResponse(BaseModel):
     google_oauth_enabled: bool
+    email_validation_enabled: bool
 
 
 @router.get("/features", response_model=AuthFeaturesResponse)
@@ -195,6 +196,7 @@ async def auth_features() -> AuthFeaturesResponse:
     settings = get_settings()
     return AuthFeaturesResponse(
         google_oauth_enabled=bool(settings.google_oauth_client_id),
+        email_validation_enabled=settings.email_enabled and settings.email_validation,
     )
 
 
