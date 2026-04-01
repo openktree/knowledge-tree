@@ -87,20 +87,9 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     if settings.enable_full_text_fetch:
         from kt_providers.fetcher import ContentFetcher
 
-        # Load skip domains from write-db
-        _skip_domains: set[str] = set()
-        try:
-            from kt_db.repositories.write_fetch_skip_domains import WriteFetchSkipDomainRepository
-
-            async with write_session_factory() as _ws:
-                _skip_domains = await WriteFetchSkipDomainRepository(_ws).get_all_domains()
-        except Exception:
-            pass  # table may not exist yet (pre-migration)
-
         content_fetcher = ContentFetcher(
             timeout=settings.full_text_fetch_timeout,
             max_concurrent=settings.full_text_fetch_max_urls,
-            skip_domains=_skip_domains,
         )
 
     # Ontology provider setup
@@ -201,20 +190,9 @@ async def build_worker_state() -> WorkerState:
     if settings.enable_full_text_fetch:
         from kt_providers.fetcher import ContentFetcher
 
-        # Load skip domains from write-db
-        _skip_domains: set[str] = set()
-        try:
-            from kt_db.repositories.write_fetch_skip_domains import WriteFetchSkipDomainRepository
-
-            async with write_session_factory() as _ws:
-                _skip_domains = await WriteFetchSkipDomainRepository(_ws).get_all_domains()
-        except Exception:
-            pass  # table may not exist yet (pre-migration)
-
         content_fetcher = ContentFetcher(
             timeout=settings.full_text_fetch_timeout,
             max_concurrent=settings.full_text_fetch_max_urls,
-            skip_domains=_skip_domains,
         )
 
     ontology_registry = None
