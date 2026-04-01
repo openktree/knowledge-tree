@@ -193,7 +193,7 @@ Outputs a list of env var definitions.
 - name: EMAIL_PROVIDER
   value: "resend"
 - name: EMAIL_FROM_ADDRESS
-  value: {{ .Values.email.resend.fromAddress | quote }}
+  value: {{ ((.Values.email).resend).fromAddress | default "" | quote }}
 - name: RESEND_API_KEY
   valueFrom:
     secretKeyRef:
