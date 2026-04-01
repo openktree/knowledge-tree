@@ -581,6 +581,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
                 graph_source = await graph_repo.get_by_id(uuid.UUID(input.raw_source_id))
                 if graph_source is not None:
                     source = await write_source_repo.create_or_get(
+                        source_id=graph_source.id,
                         uri=graph_source.uri,
                         title=graph_source.title,
                         raw_content=graph_source.raw_content or "",
@@ -623,9 +624,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
         if result.content_type is not None:
             values["content_type"] = result.content_type
 
-        await write_session.execute(
-            sa_update(WriteRawSource).where(WriteRawSource.id == uuid.UUID(input.raw_source_id)).values(**values)
-        )
+        await write_session.execute(sa_update(WriteRawSource).where(WriteRawSource.id == source.id).values(**values))
         await write_session.commit()
         content_updated = True
         ctx.log("Source content updated, starting decomposition")
@@ -633,9 +632,11 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
         # Step 3: Dispatch decompose_source_task (reuses existing logic)
         # force=True bypasses the super-source safety guard so manual
         # reingest works for large sources that were deferred during research.
+        # Use source.id (write-db) not input.raw_source_id (graph-db) —
+        # they can differ when create_or_get deduplicates by URI.
         decompose_result = await decompose_source_task.aio_run(
             DecomposeSourceInput(
-                raw_source_id=input.raw_source_id,
+                raw_source_id=str(source.id),
                 concept=input.concept,
                 query_context=input.query_context,
                 force=True,
