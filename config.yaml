@@ -193,7 +193,7 @@ edges:
 # email:
 #   enabled: false
 #   provider: "resend"
-#   email_validation: false
+#   verification: false
 #   from_address: "noreply@openktree.com"
 #   resend_api_key: ""
 

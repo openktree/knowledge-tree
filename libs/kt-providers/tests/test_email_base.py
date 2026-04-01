@@ -1,5 +1,7 @@
 """Tests for email base classes."""
 
+import pytest
+
 from kt_providers.email_base import EmailMessage, EmailProvider
 
 
@@ -23,8 +25,5 @@ def test_email_message_with_from() -> None:
 
 def test_email_provider_is_abstract() -> None:
     """EmailProvider cannot be instantiated directly."""
-    try:
+    with pytest.raises(TypeError):
         EmailProvider()  # type: ignore[abstract]
-        raise AssertionError("Should not be able to instantiate ABC")
-    except TypeError:
-        pass

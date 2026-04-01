@@ -22,7 +22,6 @@ class ResendEmailProvider(EmailProvider):
     def __init__(self, api_key: str, default_from: str) -> None:
         self._api_key = api_key
         self._default_from = default_from
-        self._client = httpx.AsyncClient(timeout=30.0)
 
     @property
     def provider_id(self) -> str:
@@ -41,28 +40,26 @@ class ResendEmailProvider(EmailProvider):
         }
 
         last_exc: httpx.HTTPStatusError | None = None
-        for attempt in range(_MAX_RETRIES):
-            response = await self._client.post(self.API_URL, headers=headers, json=payload)
-            if response.status_code not in _RETRYABLE_STATUS_CODES:
-                response.raise_for_status()
-                return
-            last_exc = httpx.HTTPStatusError(
-                f"{response.status_code} {response.reason_phrase}",
-                request=response.request,
-                response=response,
-            )
-            delay = _BASE_DELAY * (2**attempt)
-            logger.warning(
-                "resend_email_retrying",
-                status=response.status_code,
-                attempt=attempt + 1,
-                delay=delay,
-            )
-            await asyncio.sleep(delay)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for attempt in range(_MAX_RETRIES):
+                response = await client.post(self.API_URL, headers=headers, json=payload)
+                if response.status_code not in _RETRYABLE_STATUS_CODES:
+                    response.raise_for_status()
+                    return
+                last_exc = httpx.HTTPStatusError(
+                    f"{response.status_code} {response.reason_phrase}",
+                    request=response.request,
+                    response=response,
+                )
+                delay = _BASE_DELAY * (2**attempt)
+                logger.warning(
+                    "resend_email_retrying",
+                    status=response.status_code,
+                    attempt=attempt + 1,
+                    delay=delay,
+                )
+                await asyncio.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
     async def is_available(self) -> bool:
         return bool(self._api_key and self._default_from)
-
-    async def close(self) -> None:
-        await self._client.aclose()

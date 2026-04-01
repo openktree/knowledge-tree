@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import uuid
 from collections.abc import AsyncGenerator
@@ -9,21 +10,23 @@ from collections.abc import AsyncGenerator
 from fastapi import Depends, HTTPException
 from fastapi_users import BaseUserManager, UUIDIDMixin
 from fastapi_users import schemas as fu_schemas
+from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy import func, select
 
 from kt_api.auth.db import get_user_db
 from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.system_settings import SystemSettingsRepository
+from kt_providers.email_base import EmailMessage, EmailProvider
 
 logger = logging.getLogger(__name__)
 
 # Module-level email provider singleton (created once on first use)
-_email_provider_singleton: EmailProvider | None = None  # type: ignore[name-defined]  # noqa: F821
+_email_provider_singleton: EmailProvider | None = None
 _email_provider_initialized = False
 
 
-def _get_email_provider_cached() -> EmailProvider | None:  # type: ignore[name-defined]  # noqa: F821
+def _get_email_provider_cached() -> EmailProvider | None:
     global _email_provider_singleton, _email_provider_initialized
     if not _email_provider_initialized:
         from kt_providers.email_factory import create_email_provider
@@ -34,7 +37,11 @@ def _get_email_provider_cached() -> EmailProvider | None:  # type: ignore[name-d
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
-    def __init__(self, user_db, email_provider=None) -> None:  # type: ignore[no-untyped-def]
+    def __init__(
+        self,
+        user_db: SQLAlchemyUserDatabase,  # type: ignore[type-arg]
+        email_provider: EmailProvider | None = None,
+    ) -> None:
         super().__init__(user_db)
         self._email_provider = email_provider
 
@@ -103,19 +110,18 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
         # Request email verification when enabled
         settings = get_settings()
-        if settings.email_enabled and settings.email_validation and self._email_provider:
+        if settings.email_enabled and settings.email_verification and self._email_provider:
             await self.request_verify(user, request)
 
     async def on_after_request_verify(self, user: User, token: str, request=None) -> None:  # type: ignore[override]
         if self._email_provider is None:
             return
         settings = get_settings()
-        if not (settings.email_enabled and settings.email_validation):
+        if not (settings.email_enabled and settings.email_verification):
             return
-        from kt_providers.email_base import EmailMessage
 
         base_url = str(request.base_url).rstrip("/") if request else "http://localhost:3000"
-        verify_url = f"{base_url}/verify?token={token}"
+        verify_url = html.escape(f"{base_url}/verify?token={token}")
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,
@@ -131,10 +137,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         settings = get_settings()
         if not settings.email_enabled:
             return
-        from kt_providers.email_base import EmailMessage
 
         base_url = str(request.base_url).rstrip("/") if request else "http://localhost:3000"
-        reset_url = f"{base_url}/reset-password?token={token}"
+        reset_url = html.escape(f"{base_url}/reset-password?token={token}")
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,
