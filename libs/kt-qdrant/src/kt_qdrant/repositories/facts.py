@@ -13,10 +13,17 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    Fusion,
+    FusionQuery,
     HasIdCondition,
     MatchAny,
+    MatchText,
     MatchValue,
     PointStruct,
+    Prefetch,
+    TextIndexParams,
+    TextIndexType,
+    TokenizerType,
     VectorParams,
 )
 
@@ -61,12 +68,36 @@ class QdrantFactRepository:
             )
             logger.info("Created Qdrant collection '%s' (dim=%d)", FACTS_COLLECTION, settings.embedding_dimensions)
 
+    async def ensure_text_index(self) -> None:
+        """Create a full-text index on the 'content' payload field if not present."""
+        try:
+            collection_info = await self._client.get_collection(FACTS_COLLECTION)
+            existing_indexes = collection_info.payload_schema or {}
+            if "content" in existing_indexes:
+                return
+        except Exception:
+            pass
+
+        await self._client.create_payload_index(
+            collection_name=FACTS_COLLECTION,
+            field_name="content",
+            field_schema=TextIndexParams(
+                type=TextIndexType.TEXT,
+                tokenizer=TokenizerType.WORD,
+                min_token_len=2,
+                max_token_len=40,
+                lowercase=True,
+            ),
+        )
+        logger.info("Created text index on '%s.content'", FACTS_COLLECTION)
+
     async def upsert(
         self,
         fact_id: uuid.UUID,
         embedding: list[float],
         fact_type: str | None = None,
         node_ids: list[uuid.UUID] | None = None,
+        content: str | None = None,
     ) -> None:
         """Insert or update a fact vector in Qdrant.
 
@@ -75,12 +106,15 @@ class QdrantFactRepository:
             embedding: The fact embedding vector.
             fact_type: Optional fact type for payload filtering.
             node_ids: Optional list of linked node IDs for payload filtering.
+            content: Optional fact text content for full-text search.
         """
         payload: dict[str, object] = {}
         if fact_type is not None:
             payload["fact_type"] = fact_type
         if node_ids is not None:
             payload["node_ids"] = [str(nid) for nid in node_ids]
+        if content is not None:
+            payload["content"] = content
 
         point = PointStruct(
             id=str(fact_id),
@@ -94,28 +128,34 @@ class QdrantFactRepository:
 
     async def upsert_batch(
         self,
-        facts: list[tuple[uuid.UUID, list[float], str | None]],
+        facts: list[tuple[uuid.UUID, list[float], str | None]]
+        | list[tuple[uuid.UUID, list[float], str | None, str | None]],
         *,
         chunk_size: int = 200,
     ) -> None:
         """Batch upsert fact vectors in chunks to avoid connection timeouts.
 
         Args:
-            facts: List of (fact_id, embedding, fact_type) tuples.
+            facts: List of ``(fact_id, embedding, fact_type)`` 3-tuples or
+                ``(fact_id, embedding, fact_type, content)`` 4-tuples.
             chunk_size: Max points per Qdrant upsert call (default 200).
         """
         if not facts:
             return
         for i in range(0, len(facts), chunk_size):
             chunk = facts[i : i + chunk_size]
-            points = [
-                PointStruct(
-                    id=str(fid),
-                    vector=emb,
-                    payload={"fact_type": ft} if ft else {},
-                )
-                for fid, emb, ft in chunk
-            ]
+            points = []
+            for item in chunk:
+                fid = item[0]
+                emb = item[1]
+                ft = item[2]
+                content = item[3] if len(item) > 3 else None  # type: ignore[misc]
+                payload: dict[str, object] = {}
+                if ft:
+                    payload["fact_type"] = ft
+                if content:
+                    payload["content"] = content
+                points.append(PointStruct(id=str(fid), vector=emb, payload=payload))
             await self._client.upsert(
                 collection_name=FACTS_COLLECTION,
                 points=points,
@@ -199,6 +239,72 @@ class QdrantFactRepository:
             limit=limit,
             score_threshold=score_threshold,
             query_filter=query_filter,
+            with_payload=True,
+        )
+
+        return [
+            FactSearchResult(
+                fact_id=uuid.UUID(str(point.id)),
+                score=point.score,
+                fact_type=point.payload.get("fact_type") if point.payload else None,
+            )
+            for point in results.points
+        ]
+
+    async def hybrid_search(
+        self,
+        query_embedding: list[float],
+        query_text: str,
+        limit: int = 30,
+        score_threshold: float = 0.3,
+        fact_type: str | None = None,
+    ) -> list[FactSearchResult]:
+        """Hybrid search combining vector similarity and keyword matching.
+
+        Uses Qdrant prefetch with RRF (Reciprocal Rank Fusion) to merge
+        results from both a vector nearest-neighbour search and a full-text
+        keyword search on the ``content`` payload field.
+
+        Args:
+            query_embedding: Query embedding vector for semantic search.
+            query_text: Query text for full-text keyword search.
+            limit: Maximum results to return.
+            score_threshold: Minimum vector similarity score for the
+                vector prefetch branch.
+            fact_type: Optional filter by fact type (applied to both branches).
+        """
+        query_filter = self._build_filter(fact_type=fact_type)
+
+        # Keyword prefetch — full-text match on the content field
+        keyword_must: list[FieldCondition | Filter] = [
+            FieldCondition(key="content", match=MatchText(text=query_text)),
+        ]
+        if query_filter and query_filter.must:
+            must = query_filter.must
+            if isinstance(must, list):
+                keyword_must.extend(must)
+            else:
+                keyword_must.append(must)
+
+        keyword_prefetch = Prefetch(
+            query=query_embedding,
+            filter=Filter(must=keyword_must),  # type: ignore[arg-type]
+            limit=limit,
+        )
+
+        # Vector prefetch — pure semantic similarity
+        vector_prefetch = Prefetch(
+            query=query_embedding,
+            score_threshold=score_threshold,
+            filter=query_filter,
+            limit=limit,
+        )
+
+        results = await self._client.query_points(
+            collection_name=FACTS_COLLECTION,
+            prefetch=[keyword_prefetch, vector_prefetch],
+            query=FusionQuery(fusion=Fusion.RRF),
+            limit=limit,
             with_payload=True,
         )
 

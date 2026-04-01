@@ -252,17 +252,24 @@ class GraphEngine:
         fact_id: uuid.UUID,
         embedding: list[float],
         fact_type: str | None = None,
+        content: str | None = None,
     ) -> None:
         """Upsert a fact embedding to Qdrant (no-op if Qdrant not available)."""
         if self._qdrant_fact_repo is not None:
             try:
-                await self._qdrant_fact_repo.upsert(fact_id, embedding, fact_type=fact_type)
+                await self._qdrant_fact_repo.upsert(
+                    fact_id,
+                    embedding,
+                    fact_type=fact_type,
+                    content=content,
+                )
             except Exception:
                 logger.warning("Failed to upsert fact %s to Qdrant", fact_id, exc_info=True)
 
     async def upsert_facts_to_qdrant(
         self,
-        facts: list[tuple[uuid.UUID, list[float], str | None]],
+        facts: list[tuple[uuid.UUID, list[float], str | None]]
+        | list[tuple[uuid.UUID, list[float], str | None, str | None]],
     ) -> None:
         """Batch upsert fact embeddings to Qdrant (no-op if Qdrant not available)."""
         if self._qdrant_fact_repo is not None and facts:
@@ -1483,6 +1490,43 @@ class GraphEngine:
             limit=limit,
             score_threshold=threshold,
         )
+        if not results:
+            return []
+        fact_ids = [r.fact_id for r in results]
+        return await self._load_facts_preserving_order(fact_ids)
+
+    async def hybrid_search_facts(
+        self,
+        query: str,
+        embedding: list[float],
+        limit: int = 30,
+        score_threshold: float = 0.3,
+        fact_type: str | None = None,
+    ) -> list[Fact]:
+        """Hybrid search: vector similarity + keyword matching via Qdrant RRF.
+
+        Requires Qdrant with a text index on the ``content`` payload field.
+        Falls back to pure vector search if hybrid search fails.
+        """
+        if self._qdrant_fact_repo is None:
+            logger.error("hybrid_search_facts called but Qdrant fact repo is not available")
+            return []
+        try:
+            results = await self._qdrant_fact_repo.hybrid_search(
+                query_embedding=embedding,
+                query_text=query,
+                limit=limit,
+                score_threshold=score_threshold,
+                fact_type=fact_type,
+            )
+        except Exception:
+            logger.warning("hybrid_search failed, falling back to vector search", exc_info=True)
+            results = await self._qdrant_fact_repo.search_similar(
+                embedding,
+                limit=limit,
+                score_threshold=score_threshold,
+                fact_type=fact_type,
+            )
         if not results:
             return []
         fact_ids = [r.fact_id for r in results]

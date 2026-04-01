@@ -243,6 +243,100 @@ class TestSearchByNode:
         assert call_kwargs["query_filter"] is not None
 
 
+class TestUpsertWithContent:
+    async def test_upsert_includes_content(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        embedding = _make_embedding()
+
+        await repo.upsert(fact_id=fact_id, embedding=embedding, fact_type="claim", content="test fact content")
+
+        points = mock_client.upsert.call_args.kwargs["points"]
+        assert points[0].payload["content"] == "test fact content"
+
+    async def test_upsert_without_content(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        embedding = _make_embedding()
+
+        await repo.upsert(fact_id=fact_id, embedding=embedding, fact_type="claim")
+
+        points = mock_client.upsert.call_args.kwargs["points"]
+        assert "content" not in points[0].payload
+
+
+class TestEnsureTextIndex:
+    async def test_creates_index_when_missing(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_info = MagicMock()
+        mock_info.payload_schema = {}
+        mock_client.get_collection.return_value = mock_info
+
+        await repo.ensure_text_index()
+
+        mock_client.create_payload_index.assert_called_once()
+        call_kwargs = mock_client.create_payload_index.call_args.kwargs
+        assert call_kwargs["field_name"] == "content"
+
+    async def test_skips_when_exists(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_info = MagicMock()
+        mock_info.payload_schema = {"content": MagicMock()}
+        mock_client.get_collection.return_value = mock_info
+
+        await repo.ensure_text_index()
+
+        mock_client.create_payload_index.assert_not_called()
+
+
+class TestHybridSearch:
+    async def test_basic_hybrid_search(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        mock_point = MagicMock()
+        mock_point.id = str(fact_id)
+        mock_point.score = 0.85
+        mock_point.payload = {"fact_type": "claim", "content": "quantum entanglement"}
+
+        mock_result = MagicMock()
+        mock_result.points = [mock_point]
+        mock_client.query_points.return_value = mock_result
+
+        results = await repo.hybrid_search(
+            query_embedding=_make_embedding(),
+            query_text="quantum",
+            limit=10,
+        )
+
+        assert len(results) == 1
+        assert results[0].fact_id == fact_id
+        assert results[0].score == 0.85
+        mock_client.query_points.assert_called_once()
+        call_kwargs = mock_client.query_points.call_args.kwargs
+        assert call_kwargs["prefetch"] is not None
+        assert len(call_kwargs["prefetch"]) == 2
+
+    async def test_hybrid_search_with_fact_type(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_result = MagicMock()
+        mock_result.points = []
+        mock_client.query_points.return_value = mock_result
+
+        await repo.hybrid_search(
+            query_embedding=_make_embedding(),
+            query_text="test",
+            fact_type="measurement",
+        )
+
+        mock_client.query_points.assert_called_once()
+
+    async def test_hybrid_search_empty_results(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_result = MagicMock()
+        mock_result.points = []
+        mock_client.query_points.return_value = mock_result
+
+        results = await repo.hybrid_search(
+            query_embedding=_make_embedding(),
+            query_text="nonexistent",
+        )
+
+        assert results == []
+
+
 class TestBuildFilter:
     def test_no_filters(self, repo: QdrantFactRepository) -> None:
         result = repo._build_filter()

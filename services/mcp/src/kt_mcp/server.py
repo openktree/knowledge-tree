@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 from kt_db.models import Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.engine import GraphEngine
 from kt_mcp.dependencies import (
+    get_embedding_service_cached,
     get_qdrant_client_cached,
     get_session_factory_cached,
 )
@@ -683,23 +684,44 @@ async def search_facts(
         if not query:
             return {"error": "Either query or node_id must be provided"}
 
-        # Get total count for pagination
-        total = await engine.count_facts(
-            search=query,
-            fact_type=fact_type,
-            author_org=author_org,
-            source_domain=source_domain,
-        )
+        # Hybrid search: vector + keyword via Qdrant RRF fusion.
+        # Fall back to ILIKE when source-level filters are used (author_org,
+        # source_domain) since those require SQL joins not available in Qdrant.
+        embedding_service = get_embedding_service_cached()
+        has_source_filters = bool(author_org or source_domain)
+        use_hybrid = False
 
-        # Get paginated results
-        facts = await engine.list_facts(
-            offset=offset,
-            limit=limit,
-            search=query,
-            fact_type=fact_type,
-            author_org=author_org,
-            source_domain=source_domain,
-        )
+        if embedding_service is not None and not has_source_filters:
+            try:
+                query_embedding = await embedding_service.embed_text(query)
+                facts = await engine.hybrid_search_facts(
+                    query=query,
+                    embedding=query_embedding,
+                    limit=100,
+                    fact_type=fact_type,
+                )
+                use_hybrid = True
+            except Exception:
+                logger.warning("Hybrid search failed, falling back to ILIKE", exc_info=True)
+
+        if use_hybrid:
+            total = len(facts)
+            facts = facts[offset : offset + limit]
+        else:
+            total = await engine.count_facts(
+                search=query,
+                fact_type=fact_type,
+                author_org=author_org,
+                source_domain=source_domain,
+            )
+            facts = await engine.list_facts(
+                offset=offset,
+                limit=limit,
+                search=query,
+                fact_type=fact_type,
+                author_org=author_org,
+                source_domain=source_domain,
+            )
 
         if not facts:
             return {
