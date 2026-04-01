@@ -41,6 +41,13 @@ secrets:
   hatchetAdminEmail: ""
   hatchetAdminPassword: ""
 
+  resendApiKey: ""
+
+# -- Email configuration
+email:
+  enabled: false
+  fromAddress: ""
+
 # =============================================================================
 # CloudNativePG Databases
 # =============================================================================
