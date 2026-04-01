@@ -53,6 +53,7 @@ async def _build_source_detail(
         fact_count=source.fact_count,
         prohibited_chunk_count=source.prohibited_chunk_count,
         is_full_text=source.is_full_text,
+        fetch_error=source.fetch_error,
         content_type=source.content_type,
         content_preview=content_preview,
         facts=[
@@ -104,6 +105,11 @@ async def list_sources(
     sort_by: str | None = Query(None, description="Sort by: retrieved_at (default), fact_count, prohibited_chunks"),
     has_prohibited: bool | None = Query(None, description="Filter to sources with/without prohibited chunks"),
     is_super_source: bool | None = Query(None, description="Filter to super sources (large, deferred)"),
+    fetch_status: str | None = Query(
+        None,
+        description="Filter by fetch status: full_text, fetch_failed, snippet",
+        pattern="^(full_text|fetch_failed|snippet)$",
+    ),
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedSourcesResponse:
     """List raw sources with pagination and optional filters."""
@@ -116,12 +122,14 @@ async def list_sources(
         sort_by=sort_by,
         has_prohibited=has_prohibited,
         is_super_source=is_super_source,
+        fetch_status=fetch_status,
     )
     total = await repo.count_sources(
         search=search,
         provider_id=provider_id,
         has_prohibited=has_prohibited,
         is_super_source=is_super_source,
+        fetch_status=fetch_status,
     )
     return PaginatedSourcesResponse(
         items=[
@@ -136,6 +144,7 @@ async def list_sources(
                 is_super_source=s.is_super_source,
                 is_full_text=s.is_full_text,
                 fetch_attempted=s.fetch_attempted,
+                fetch_error=s.fetch_error,
             )
             for s in sources
         ],

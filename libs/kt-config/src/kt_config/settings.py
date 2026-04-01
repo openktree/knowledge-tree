@@ -441,6 +441,10 @@ class Settings(BaseSettings):
     enable_full_text_fetch: bool = True
     full_text_fetch_max_urls: int = 10
     full_text_fetch_timeout: float = 15.0
+    fetch_user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
 
     # Page fetch dedup — skip URLs already processed within this window
     page_stale_days: int = 30

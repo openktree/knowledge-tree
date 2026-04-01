@@ -13,6 +13,7 @@ export interface UseSourceListResult {
   sortBy: string | null;
   hasProhibited: boolean | null;
   isSuperSource: boolean | null;
+  fetchStatus: string | null;
   isLoading: boolean;
   error: string | null;
   setSearch: (query: string) => void;
@@ -20,6 +21,7 @@ export interface UseSourceListResult {
   setSortBy: (sortBy: string | null) => void;
   setHasProhibited: (val: boolean | null) => void;
   setIsSuperSource: (val: boolean | null) => void;
+  setFetchStatus: (val: string | null) => void;
   setPage: (page: number) => void;
   refresh: () => void;
 }
@@ -35,6 +37,7 @@ export function useSourceList(): UseSourceListResult {
   const [sortBy, setSortByRaw] = useState<string | null>(null);
   const [hasProhibited, setHasProhibitedRaw] = useState<boolean | null>(null);
   const [isSuperSource, setIsSuperSourceRaw] = useState<boolean | null>(null);
+  const [fetchStatus, setFetchStatusRaw] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,6 +72,11 @@ export function useSourceList(): UseSourceListResult {
     setOffset(0);
   }, []);
 
+  const setFetchStatus = useCallback((val: string | null) => {
+    setFetchStatusRaw(val);
+    setOffset(0);
+  }, []);
+
   const setPage = useCallback((page: number) => {
     setOffset(page * PAGE_SIZE);
   }, []);
@@ -85,6 +93,7 @@ export function useSourceList(): UseSourceListResult {
         sort_by: sortBy ?? undefined,
         has_prohibited: hasProhibited ?? undefined,
         is_super_source: isSuperSource ?? undefined,
+        fetch_status: fetchStatus ?? undefined,
       });
       setSources(result.items);
       setTotal(result.total);
@@ -93,7 +102,7 @@ export function useSourceList(): UseSourceListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, providerId, sortBy, hasProhibited, isSuperSource]);
+  }, [offset, debouncedSearch, providerId, sortBy, hasProhibited, isSuperSource, fetchStatus]);
 
   useEffect(() => {
     fetchData();
@@ -108,6 +117,7 @@ export function useSourceList(): UseSourceListResult {
     sortBy,
     hasProhibited,
     isSuperSource,
+    fetchStatus,
     isLoading,
     error,
     setSearch,
@@ -115,6 +125,7 @@ export function useSourceList(): UseSourceListResult {
     setSortBy,
     setHasProhibited,
     setIsSuperSource,
+    setFetchStatus,
     setPage,
     refresh: fetchData,
   };

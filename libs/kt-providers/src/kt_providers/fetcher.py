@@ -79,11 +79,14 @@ class ContentFetcher:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
+            from kt_config.settings import get_settings
+
+            settings = get_settings()
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self._timeout),
                 follow_redirects=True,
                 headers={
-                    "User-Agent": ("Mozilla/5.0 (compatible; KnowledgeTree/1.0; +https://github.com/knowledge-tree)"),
+                    "User-Agent": settings.fetch_user_agent,
                 },
             )
         return self._client

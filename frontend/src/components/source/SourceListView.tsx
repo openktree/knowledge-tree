@@ -50,6 +50,7 @@ export function SourceListView() {
     sortBy,
     hasProhibited,
     isSuperSource,
+    fetchStatus,
     isLoading,
     error,
     setSearch,
@@ -57,6 +58,7 @@ export function SourceListView() {
     setSortBy,
     setHasProhibited,
     setIsSuperSource,
+    setFetchStatus,
     setPage,
   } = useSourceList();
 
@@ -98,6 +100,38 @@ export function SourceListView() {
                 <span className={providerId !== p ? "ml-6" : ""}>{p}</span>
               </DropdownMenuItem>
             ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="gap-1 shrink-0">
+              {fetchStatus === "full_text"
+                ? "Full text"
+                : fetchStatus === "fetch_failed"
+                  ? "Fetch failed"
+                  : fetchStatus === "snippet"
+                    ? "Snippet only"
+                    : "All statuses"}
+              <ChevronsUpDown className="size-3.5 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setFetchStatus(null)}>
+              {!fetchStatus && <Check className="mr-2 size-4" />}
+              <span className={fetchStatus ? "ml-6" : ""}>All statuses</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setFetchStatus("full_text")}>
+              {fetchStatus === "full_text" && <Check className="mr-2 size-4" />}
+              <span className={fetchStatus !== "full_text" ? "ml-6" : ""}>Full text</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setFetchStatus("fetch_failed")}>
+              {fetchStatus === "fetch_failed" && <Check className="mr-2 size-4" />}
+              <span className={fetchStatus !== "fetch_failed" ? "ml-6" : ""}>Fetch failed</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setFetchStatus("snippet")}>
+              {fetchStatus === "snippet" && <Check className="mr-2 size-4" />}
+              <span className={fetchStatus !== "snippet" ? "ml-6" : ""}>Snippet only</span>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>
@@ -230,6 +264,7 @@ export function SourceListView() {
                       <Badge
                         variant="outline"
                         className="text-xs text-red-400 border-red-400/30"
+                        title={source.fetch_error ?? "Content could not be fetched"}
                       >
                         fetch failed
                       </Badge>

@@ -250,6 +250,7 @@ class SourceResponse(BaseModel):
     is_super_source: bool = False
     is_full_text: bool = False
     fetch_attempted: bool = False
+    fetch_error: str | None = None
 
 
 class SourceLinkedNode(BaseModel):
@@ -272,6 +273,7 @@ class SourceDetailResponse(BaseModel):
     fact_count: int = 0
     prohibited_chunk_count: int = 0
     is_full_text: bool = False
+    fetch_error: str | None = None
     content_type: str | None = None
     content_preview: str | None = None
     facts: list[FactResponse] = Field(default_factory=list)

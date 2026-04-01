@@ -346,6 +346,7 @@ class SyncEngine:
                                 fact_count=wrs.fact_count,
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
+                                fetch_error=wrs.fetch_error,
                             )
                             .on_conflict_do_update(
                                 index_elements=["id"],
@@ -364,6 +365,7 @@ class SyncEngine:
                                     # re-syncing would reset it to 0.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
+                                    "fetch_error": wrs.fetch_error,
                                 },
                             )
                         )
@@ -549,7 +551,7 @@ class SyncEngine:
                         )
 
                         for wfs in fact_sources:
-                            await self._sync_one_fact_source(gs, wf.id, wfs)
+                            await self._sync_one_fact_source(ws, gs, wf.id, wfs)
                 except Exception as exc:
                     logger.error("Failed to sync fact %s, skipping", wf.id, exc_info=True)
                     if first_failure_ts is None:
@@ -579,6 +581,7 @@ class SyncEngine:
 
     async def _sync_one_fact_source(
         self,
+        ws: AsyncSession,
         gs: AsyncSession,
         fact_id: uuid.UUID,
         wfs: WriteFactSource,
@@ -586,7 +589,8 @@ class SyncEngine:
         """Sync a single WriteFactSource to graph-db.
 
         Finds or creates the RawSource by content_hash, then creates the
-        FactSource junction row.
+        FactSource junction row.  When creating a new RawSource, looks up the
+        real source in write-db first to avoid creating content-less phantoms.
         """
         # Find existing RawSource by content_hash
         raw_source_id: uuid.UUID | None = None
@@ -598,37 +602,92 @@ class SyncEngine:
             if row is not None:
                 raw_source_id = row
 
-        # If not found, create a minimal RawSource via upsert
+        # If not found, look up the real source in write-db before creating
         if raw_source_id is None:
-            raw_source_id = uuid.uuid4()
-            stmt = (
-                pg_insert(RawSource.__table__)
-                .values(
-                    id=raw_source_id,
-                    uri=wfs.raw_source_uri,
-                    title=wfs.raw_source_title,
-                    provider_id=wfs.raw_source_provider_id,
-                    content_hash=wfs.raw_source_content_hash or "",
-                )
-                .on_conflict_do_nothing()
-                .returning(RawSource.__table__.c.id)
-            )
-            result = await gs.execute(stmt)
-            returned = result.scalar_one_or_none()
-            if returned is None:
-                # Row already existed — re-query for its ID
-                result2 = await gs.execute(
-                    select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
-                )
-                raw_source_id = result2.scalar_one_or_none()
-                if raw_source_id is None:
-                    logger.debug(
-                        "Failed to find or create RawSource for hash %s",
-                        wfs.raw_source_content_hash,
+            from kt_db.repositories.write_sources import WriteSourceRepository
+
+            write_repo = WriteSourceRepository(ws)
+            real_source = await write_repo.get_by_content_hash(wfs.raw_source_content_hash or "")
+
+            if real_source is not None:
+                # Upsert with full content from write-db (no phantom)
+                stmt = (
+                    pg_insert(RawSource.__table__)
+                    .values(
+                        id=real_source.id,
+                        uri=real_source.uri,
+                        title=real_source.title,
+                        raw_content=real_source.raw_content,
+                        content_hash=real_source.content_hash,
+                        is_full_text=real_source.is_full_text,
+                        is_super_source=real_source.is_super_source,
+                        content_type=real_source.content_type,
+                        provider_id=real_source.provider_id,
+                        provider_metadata=real_source.provider_metadata,
+                        fetch_attempted=real_source.fetch_attempted,
+                        fetch_error=real_source.fetch_error,
                     )
-                    return
+                    .on_conflict_do_update(
+                        index_elements=["id"],
+                        set_={
+                            "uri": real_source.uri,
+                            "title": real_source.title,
+                            "raw_content": real_source.raw_content,
+                            "content_hash": real_source.content_hash,
+                            "is_full_text": real_source.is_full_text,
+                            "is_super_source": real_source.is_super_source,
+                            "content_type": real_source.content_type,
+                            "provider_metadata": real_source.provider_metadata,
+                            "fetch_attempted": real_source.fetch_attempted,
+                            "fetch_error": real_source.fetch_error,
+                        },
+                    )
+                    .returning(RawSource.__table__.c.id)
+                )
+                result = await gs.execute(stmt)
+                raw_source_id = result.scalar_one_or_none()
+                if raw_source_id is None:
+                    # content_hash conflict with different ID — re-query
+                    result2 = await gs.execute(
+                        select(RawSource.id).where(RawSource.content_hash == real_source.content_hash).limit(1)
+                    )
+                    raw_source_id = result2.scalar_one_or_none()
             else:
-                raw_source_id = returned
+                # Fallback: create minimal record without content (source not in write-db).
+                # This can still produce phantom sources — monitor for occurrences.
+                logger.warning(
+                    "Creating minimal RawSource for hash %s (not found in write-db) — potential phantom",
+                    wfs.raw_source_content_hash,
+                )
+                raw_source_id = uuid.uuid4()
+                stmt = (
+                    pg_insert(RawSource.__table__)
+                    .values(
+                        id=raw_source_id,
+                        uri=wfs.raw_source_uri,
+                        title=wfs.raw_source_title,
+                        provider_id=wfs.raw_source_provider_id,
+                        content_hash=wfs.raw_source_content_hash or "",
+                    )
+                    .on_conflict_do_nothing()
+                    .returning(RawSource.__table__.c.id)
+                )
+                result = await gs.execute(stmt)
+                returned = result.scalar_one_or_none()
+                if returned is None:
+                    result2 = await gs.execute(
+                        select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
+                    )
+                    raw_source_id = result2.scalar_one_or_none()
+                else:
+                    raw_source_id = returned
+
+            if raw_source_id is None:
+                logger.debug(
+                    "Failed to find or create RawSource for hash %s",
+                    wfs.raw_source_content_hash,
+                )
+                return
 
         # Create FactSource junction (inner savepoint protects enclosing txn)
         try:
@@ -1685,7 +1744,7 @@ class SyncEngine:
                             .all()
                         )
                         for wfs in fact_sources:
-                            await self._sync_one_fact_source(gs, wf.id, wfs)
+                            await self._sync_one_fact_source(ws, gs, wf.id, wfs)
                     await gs.commit()
                     return True
 
@@ -1926,6 +1985,7 @@ class SyncEngine:
                                 fact_count=wrs.fact_count,
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
+                                fetch_error=wrs.fetch_error,
                             )
                             .on_conflict_do_update(
                                 index_elements=["id"],
@@ -1942,6 +2002,7 @@ class SyncEngine:
                                     # by _sync_one_fact_source increments only.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
+                                    "fetch_error": wrs.fetch_error,
                                 },
                             )
                         )

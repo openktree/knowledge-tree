@@ -532,6 +532,7 @@ export const api = {
       sort_by?: string;
       has_prohibited?: boolean;
       is_super_source?: boolean;
+      fetch_status?: string;
     }): Promise<PaginatedSourcesResponse> {
       const qs = buildQuery({
         offset:
@@ -548,6 +549,7 @@ export const api = {
           params?.is_super_source !== undefined
             ? String(params.is_super_source)
             : undefined,
+        fetch_status: params?.fetch_status,
       });
       return request<PaginatedSourcesResponse>(`/sources${qs}`);
     },

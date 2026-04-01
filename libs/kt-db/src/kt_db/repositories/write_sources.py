@@ -33,6 +33,13 @@ class WriteSourceRepository:
         result = await self._session.execute(select(WriteRawSource).where(WriteRawSource.id == source_id))
         return result.scalar_one_or_none()
 
+    async def get_by_content_hash(self, content_hash: str) -> WriteRawSource | None:
+        """Find a WriteRawSource by its content hash."""
+        result = await self._session.execute(
+            select(WriteRawSource).where(WriteRawSource.content_hash == content_hash).limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def create_or_get(
         self,
         *,
@@ -121,3 +128,12 @@ class WriteSourceRepository:
         await self._session.execute(update(WriteRawSource).where(WriteRawSource.id == source_id).values(**values))
         await self._session.flush()
         return True
+
+    async def mark_fetch_attempted(self, source_id: uuid.UUID, *, error: str | None = None) -> None:
+        """Mark a source as having had a fetch attempt (success or failure).
+
+        If error is provided, it is stored as fetch_error for UI display.
+        """
+        values: dict[str, object] = {"fetch_attempted": True, "fetch_error": error}
+        await self._session.execute(update(WriteRawSource).where(WriteRawSource.id == source_id).values(**values))
+        await self._session.flush()

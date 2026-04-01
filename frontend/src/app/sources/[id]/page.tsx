@@ -231,7 +231,6 @@ export default function SourceDetailPage({
   const [isReingesting, setIsReingesting] = useState(false);
   const [reingestMessage, setReingestMessage] = useState<string | null>(null);
   const [reingestError, setReingestError] = useState<string | null>(null);
-
   const handleReingest = useCallback(async () => {
     if (!source) return;
     setIsReingesting(true);
@@ -307,6 +306,11 @@ export default function SourceDetailPage({
                 <FileText className="size-3 mr-1" />
                 Full text
               </Badge>
+            ) : source.fetch_error ? (
+              <Badge variant="outline" className="text-red-400 border-red-400/30" title={source.fetch_error}>
+                <AlertTriangle className="size-3 mr-1" />
+                Fetch failed
+              </Badge>
             ) : (
               <Badge variant="outline" className="text-amber-500 border-amber-500/30">
                 Snippet only
@@ -351,6 +355,13 @@ export default function SourceDetailPage({
           {reingestError && (
             <div className="mb-3 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2.5 text-sm text-destructive">
               {reingestError}
+            </div>
+          )}
+
+          {/* Fetch error detail */}
+          {source.fetch_error && (
+            <div className="mb-3 rounded-md bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm text-red-400">
+              <span className="font-medium">Scraping blocked:</span> {source.fetch_error}
             </div>
           )}
 
