@@ -684,31 +684,36 @@ async def search_facts(
         if not query:
             return {"error": "Either query or node_id must be provided"}
 
-        # Hybrid search: vector + keyword via Qdrant RRF fusion
+        # Hybrid search: vector + keyword via Qdrant RRF fusion.
+        # Fall back to ILIKE when source-level filters are used (author_org,
+        # source_domain) since those require SQL joins not available in Qdrant.
         embedding_service = get_embedding_service_cached()
-        if embedding_service is not None:
+        has_source_filters = bool(author_org or source_domain)
+        use_hybrid = False
+
+        if embedding_service is not None and not has_source_filters:
             try:
                 query_embedding = await embedding_service.embed_text(query)
-                # Fetch more than needed so we can apply post-filters and offset
-                fetch_limit = offset + limit
                 facts = await engine.hybrid_search_facts(
                     query=query,
                     embedding=query_embedding,
-                    limit=fetch_limit,
+                    limit=100,
                     fact_type=fact_type,
                 )
+                use_hybrid = True
             except Exception:
                 logger.warning("Hybrid search failed, falling back to ILIKE", exc_info=True)
-                facts = await engine.list_facts(
-                    offset=offset,
-                    limit=limit,
-                    search=query,
-                    fact_type=fact_type,
-                    author_org=author_org,
-                    source_domain=source_domain,
-                )
+
+        if use_hybrid:
+            total = len(facts)
+            facts = facts[offset : offset + limit]
         else:
-            # No embedding service — fall back to ILIKE
+            total = await engine.count_facts(
+                search=query,
+                fact_type=fact_type,
+                author_org=author_org,
+                source_domain=source_domain,
+            )
             facts = await engine.list_facts(
                 offset=offset,
                 limit=limit,
@@ -717,13 +722,6 @@ async def search_facts(
                 author_org=author_org,
                 source_domain=source_domain,
             )
-
-        # Apply post-filters for author_org / source_domain (not in Qdrant)
-        total = len(facts)
-        if offset > 0 and embedding_service is not None:
-            facts = facts[offset:]
-        if embedding_service is not None:
-            facts = facts[:limit]
 
         if not facts:
             return {
@@ -782,14 +780,6 @@ async def search_facts(
                             "author_org": fs.author_org,
                         }
                     )
-
-            # Post-filter by author_org / source_domain (not in Qdrant)
-            if author_org and not any(
-                s.get("author_org") and author_org.lower() in s["author_org"].lower() for s in sources
-            ):
-                continue
-            if source_domain and not any(s.get("uri") and source_domain.lower() in s["uri"].lower() for s in sources):
-                continue
 
             items.append(
                 {

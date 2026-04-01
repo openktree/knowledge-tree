@@ -849,7 +849,7 @@ class TestSearchFacts:
 
             await search_facts("test", limit=999)
 
-            # limit is clamped to 100, so fetch_limit = offset(0) + 100
+            # Hybrid search always fetches up to 100 results (max window)
             engine_instance.hybrid_search_facts.assert_called_once_with(
                 query="test",
                 embedding=[0.1] * 3072,

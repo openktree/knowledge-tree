@@ -136,8 +136,8 @@ class QdrantFactRepository:
         """Batch upsert fact vectors in chunks to avoid connection timeouts.
 
         Args:
-            facts: List of (fact_id, embedding, fact_type) or
-                   (fact_id, embedding, fact_type, content) tuples.
+            facts: List of ``(fact_id, embedding, fact_type)`` 3-tuples or
+                ``(fact_id, embedding, fact_type, content)`` 4-tuples.
             chunk_size: Max points per Qdrant upsert call (default 200).
         """
         if not facts:
@@ -146,8 +146,10 @@ class QdrantFactRepository:
             chunk = facts[i : i + chunk_size]
             points = []
             for item in chunk:
-                fid, emb, ft = item[0], item[1], item[2]
-                content = item[3] if len(item) > 3 else None  # type: ignore[arg-type]
+                fid = item[0]
+                emb = item[1]
+                ft = item[2]
+                content = item[3] if len(item) > 3 else None  # type: ignore[misc]
                 payload: dict[str, object] = {}
                 if ft:
                     payload["fact_type"] = ft

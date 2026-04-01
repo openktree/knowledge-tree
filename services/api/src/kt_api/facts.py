@@ -25,15 +25,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/facts", tags=["facts"])
 
 
-def _get_embedding_service():  # noqa: ANN202
-    """Lazy-init embedding service singleton."""
-    from kt_config.settings import get_settings
-    from kt_models.embeddings import EmbeddingService
+_embedding_service_cache: object | None = None
+_embedding_service_initialized: bool = False
 
-    settings = get_settings()
-    if settings.openrouter_api_key:
-        return EmbeddingService()
-    return None
+
+def _get_embedding_service():  # noqa: ANN202
+    """Lazy-init cached embedding service singleton."""
+    global _embedding_service_cache, _embedding_service_initialized  # noqa: PLW0603
+    if not _embedding_service_initialized:
+        from kt_config.settings import get_settings
+        from kt_models.embeddings import EmbeddingService
+
+        settings = get_settings()
+        if settings.openrouter_api_key:
+            _embedding_service_cache = EmbeddingService()
+        _embedding_service_initialized = True
+    return _embedding_service_cache
 
 
 @router.get("", response_model=PaginatedFactsResponse)
@@ -49,20 +56,22 @@ async def list_facts(
     """List facts with pagination and optional filters."""
     engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
 
-    # Use hybrid search when a text query is provided and embeddings are available
+    # Use hybrid search when a text query is provided, embeddings are available,
+    # and no source-level filters are used (those require SQL joins).
     facts: list = []
     total: int = 0
+    has_source_filters = bool(author_org or source_domain)
     use_hybrid = False
-    if search:
+
+    if search and not has_source_filters:
         embedding_service = _get_embedding_service()
         if embedding_service is not None:
             try:
                 query_embedding = await embedding_service.embed_text(search)
-                fetch_limit = offset + limit
                 facts = await engine.hybrid_search_facts(
                     query=search,
                     embedding=query_embedding,
-                    limit=fetch_limit,
+                    limit=100,
                     fact_type=fact_type,
                 )
                 total = len(facts)
