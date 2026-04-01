@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar  # noqa: F401 (Any used in annotations)
 
 if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
