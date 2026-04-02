@@ -40,8 +40,10 @@ class SourceRepository:
         Returns:
             Tuple of (source, created) where created is True if a new record was inserted.
         """
+        from kt_db.keys import uri_to_source_id
+
         content_hash = self.compute_hash(search_result.raw_content)
-        new_id = uuid.uuid4()
+        new_id = uri_to_source_id(search_result.uri)
 
         stmt = pg_insert(RawSource).values(
             id=new_id,

@@ -121,6 +121,20 @@ def make_seed_key(node_type: str, name: str) -> str:
     return f"{node_type}:{_slugify(name)}"
 
 
+def make_source_key(uri: str) -> str:
+    """Deterministic source key from URI."""
+    return f"source:{uri}"
+
+
+def uri_to_source_id(uri: str) -> uuid.UUID:
+    """Derive a deterministic source UUID from a URI.
+
+    Same URI always produces the same UUID, ensuring write-db and graph-db
+    agree on source IDs without coordination.
+    """
+    return key_to_uuid(make_source_key(uri))
+
+
 def make_dimension_key(node_key: str, model_id: str, batch_index: int = 0) -> str:
     """Generate a deterministic dimension key.
 

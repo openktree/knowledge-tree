@@ -536,8 +536,10 @@ async def _create_or_get_source(
     if existing:
         source_id = existing.id
     else:
+        from kt_db.keys import uri_to_source_id
+
         source = RawSource(
-            id=uuid.uuid4(),
+            id=uri_to_source_id(source_info.uri),
             uri=source_info.uri,
             title=source_info.title,
             raw_content=source_info.raw_content or "",
@@ -565,7 +567,6 @@ async def _create_or_get_source(
 
         write_source_repo = WriteSourceRepository(write_session)
         await write_source_repo.create_or_get(
-            source_id=source_id,
             uri=source_info.uri,
             title=source_info.title,
             raw_content=source_info.raw_content,

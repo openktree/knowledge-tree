@@ -43,7 +43,6 @@ class WriteSourceRepository:
     async def create_or_get(
         self,
         *,
-        source_id: uuid.UUID | None = None,
         uri: str,
         title: str | None,
         raw_content: str | None,
@@ -53,11 +52,16 @@ class WriteSourceRepository:
     ) -> WriteRawSource:
         """Insert or return existing source, deduplicating by URI then content_hash.
 
+        The source ID is derived deterministically from the URI via
+        ``uri_to_source_id()``, ensuring write-db and graph-db always agree.
+
         First checks for an existing source with the same URI to prevent
         duplicate entries when search engines return different snippets for
         the same URL across queries.  Falls back to content_hash upsert for
         genuinely new URLs.
         """
+        from kt_db.keys import uri_to_source_id
+
         # Deduplicate by URI first — same URL should always reuse the
         # existing source regardless of snippet content.
         existing = (
@@ -68,8 +72,7 @@ class WriteSourceRepository:
 
         if content_hash is None:
             content_hash = self.compute_hash(raw_content or "")
-        if source_id is None:
-            source_id = uuid.uuid4()
+        source_id = uri_to_source_id(uri)
 
         stmt = (
             pg_insert(WriteRawSource)

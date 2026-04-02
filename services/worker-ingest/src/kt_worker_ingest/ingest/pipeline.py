@@ -843,8 +843,10 @@ async def _find_or_create_raw_source(
     if existing is not None:
         return existing
 
+    from kt_db.keys import uri_to_source_id
+
     raw_source = RawSource(
-        id=uuid.uuid4(),
+        id=uri_to_source_id(uri),
         uri=uri,
         title=title,
         raw_content=raw_content,
