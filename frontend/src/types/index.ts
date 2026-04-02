@@ -306,6 +306,30 @@ export interface PaginatedSourcesResponse {
   limit: number;
 }
 
+export interface DomainFailureCount {
+  domain: string;
+  failure_count: number;
+}
+
+export interface ErrorGroupCount {
+  error_group: string;
+  count: number;
+}
+
+export interface DailyFailureCount {
+  day: string;
+  failure_count: number;
+}
+
+export interface SourceInsightsResponse {
+  total_count: number;
+  failed_count: number;
+  pending_super_count: number;
+  top_failed_domains: DomainFailureCount[];
+  common_errors: ErrorGroupCount[];
+  failures_per_day: DailyFailureCount[];
+}
+
 export interface SubgraphResponse {
   nodes: NodeResponse[];
   edges: EdgeResponse[];

@@ -299,6 +299,38 @@ class PaginatedSourcesResponse(BaseModel):
     limit: int
 
 
+class DomainFailureCount(BaseModel):
+    """A domain and its fetch failure count."""
+
+    domain: str
+    failure_count: int
+
+
+class ErrorGroupCount(BaseModel):
+    """A fetch error message group and its occurrence count."""
+
+    error_group: str
+    count: int
+
+
+class DailyFailureCount(BaseModel):
+    """Fetch failures on a single day."""
+
+    day: str
+    failure_count: int
+
+
+class SourceInsightsResponse(BaseModel):
+    """Aggregate insights about source fetch health."""
+
+    total_count: int
+    failed_count: int
+    pending_super_count: int
+    top_failed_domains: list[DomainFailureCount]
+    common_errors: list[ErrorGroupCount]
+    failures_per_day: list[DailyFailureCount]
+
+
 class SubgraphResponse(BaseModel):
     """Response body for a subgraph (collection of nodes and edges)."""
 

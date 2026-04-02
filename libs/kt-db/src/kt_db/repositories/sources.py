@@ -1,7 +1,8 @@
 import hashlib
 import uuid
+from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Date, case, cast, func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -260,3 +261,89 @@ class SourceRepository:
             }
             for row in result.all()
         ]
+
+    # ── Insights aggregate queries ─────────────────────────────────────
+
+    async def get_insights_summary(self, since: datetime | None = None) -> dict:
+        """Get aggregate counts: total, failed fetches, pending super sources."""
+        stmt = select(
+            func.count(RawSource.id).label("total_count"),
+            func.count(
+                case(
+                    (
+                        (RawSource.is_full_text.is_(False)) & (RawSource.fetch_attempted.is_(True)),
+                        RawSource.id,
+                    ),
+                )
+            ).label("failed_count"),
+            func.count(
+                case(
+                    (
+                        (RawSource.is_super_source.is_(True)) & (RawSource.fetch_attempted.is_(False)),
+                        RawSource.id,
+                    ),
+                )
+            ).label("pending_super_count"),
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        row = (await self._session.execute(stmt)).one()
+        return {
+            "total_count": row.total_count,
+            "failed_count": row.failed_count,
+            "pending_super_count": row.pending_super_count,
+        }
+
+    async def get_top_failed_domains(self, since: datetime | None = None, limit: int = 15) -> list[dict]:
+        """Get domains with the most fetch failures."""
+        domain_expr = func.substring(RawSource.uri, literal_column("'://([^/]+)+'"))
+        stmt = (
+            select(
+                domain_expr.label("domain"),
+                func.count(RawSource.id).label("failure_count"),
+            )
+            .where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(True))
+            .group_by(literal_column("domain"))
+            .having(domain_expr.isnot(None))
+            .order_by(func.count(RawSource.id).desc())
+            .limit(limit)
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        result = await self._session.execute(stmt)
+        return [{"domain": row.domain, "failure_count": row.failure_count} for row in result.all()]
+
+    async def get_common_fetch_errors(self, since: datetime | None = None, limit: int = 15) -> list[dict]:
+        """Get most common fetch error messages (grouped by first 150 chars)."""
+        error_group = func.left(RawSource.fetch_error, 150)
+        stmt = (
+            select(
+                error_group.label("error_group"),
+                func.count(RawSource.id).label("count"),
+            )
+            .where(RawSource.fetch_error.isnot(None))
+            .group_by(error_group)
+            .order_by(func.count(RawSource.id).desc())
+            .limit(limit)
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        result = await self._session.execute(stmt)
+        return [{"error_group": row.error_group, "count": row.count} for row in result.all()]
+
+    async def get_failures_per_day(self, since: datetime | None = None) -> list[dict]:
+        """Get daily failure counts for charting."""
+        day_expr = cast(RawSource.retrieved_at, Date)
+        stmt = (
+            select(
+                day_expr.label("day"),
+                func.count(RawSource.id).label("failure_count"),
+            )
+            .where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(True))
+            .group_by(day_expr)
+            .order_by(day_expr.asc())
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        result = await self._session.execute(stmt)
+        return [{"day": str(row.day), "failure_count": row.failure_count} for row in result.all()]
