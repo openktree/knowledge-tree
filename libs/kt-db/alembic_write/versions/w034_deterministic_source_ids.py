@@ -69,7 +69,7 @@ def upgrade() -> None:
     # Step 3: Reset sync watermarks so sync rebuilds graph-db with new IDs
     conn.execute(
         text("""
-        UPDATE sync_watermarks SET watermark = '1970-01-01'
+        UPDATE sync_watermarks SET last_synced_at = '1970-01-01'
         WHERE table_name IN ('write_raw_sources', 'write_fact_sources')
     """)
     )
