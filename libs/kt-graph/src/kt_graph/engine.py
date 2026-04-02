@@ -471,8 +471,38 @@ class GraphEngine:
         limit: int = 10,
         node_type: str | None = None,
     ) -> list[Node]:
-        """Search nodes by concept name (text search)."""
-        return await self._node_repo.search_by_concept(query, limit=limit, node_type=node_type)
+        """Search nodes by concept name (text search).
+
+        Falls back to write-db trigram search when graph-db session is
+        not available (e.g. during pipeline fan-out where _open_sessions
+        yields session=None to avoid holding graph-db connections).
+        """
+        if self._node_repo is not None:
+            return await self._node_repo.search_by_concept(query, limit=limit, node_type=node_type)
+
+        if self._write_node_repo is not None:
+            from kt_db.keys import key_to_uuid
+
+            write_nodes = await self._write_node_repo.search_by_trigram(query, limit=limit, node_type=node_type)
+            return [
+                Node(
+                    id=wn.node_uuid,
+                    concept=wn.concept,
+                    node_type=wn.node_type,
+                    entity_subtype=wn.entity_subtype,
+                    parent_id=key_to_uuid(wn.parent_key) if wn.parent_key else None,
+                    stale_after=wn.stale_after,
+                    definition=wn.definition,
+                    definition_source=wn.definition_source,
+                    access_count=0,
+                    update_count=0,
+                    created_at=wn.created_at,
+                    updated_at=wn.updated_at,
+                )
+                for wn in write_nodes
+            ]
+
+        raise ValueError("search_nodes requires either a graph-db or write-db session")
 
     async def find_similar_nodes(
         self,
