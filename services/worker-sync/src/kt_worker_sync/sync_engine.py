@@ -661,7 +661,13 @@ class SyncEngine:
                 )
                 from kt_db.keys import uri_to_source_id as _uri_to_source_id
 
-                raw_source_id = _uri_to_source_id(wfs.raw_source_uri) if wfs.raw_source_uri else uuid.uuid4()
+                if not wfs.raw_source_uri:
+                    logger.error(
+                        "WriteFactSource %s has no URI — cannot derive deterministic source ID, skipping",
+                        wfs.id,
+                    )
+                    return
+                raw_source_id = _uri_to_source_id(wfs.raw_source_uri)
                 stmt = (
                     pg_insert(RawSource.__table__)
                     .values(

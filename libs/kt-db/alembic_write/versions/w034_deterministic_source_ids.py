@@ -31,18 +31,22 @@ def _uri_to_source_id(uri: str) -> uuid.UUID:
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # Step 1: Deduplicate by URI — keep the best row per URI
-    # (prefer is_full_text=True, then most recently updated)
+    # Step 1: Deduplicate by URI — keep exactly one row per URI
+    # (prefer is_full_text=TRUE, then most recently updated)
     conn.execute(
         text("""
-        DELETE FROM write_raw_sources a
-        USING write_raw_sources b
-        WHERE a.uri = b.uri
-          AND a.id != b.id
-          AND (
-            (b.is_full_text AND NOT a.is_full_text)
-            OR (b.is_full_text = a.is_full_text AND b.updated_at > a.updated_at)
-          )
+        DELETE FROM write_raw_sources
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY uri
+                           ORDER BY is_full_text DESC, updated_at DESC
+                       ) AS rn
+                FROM write_raw_sources
+            ) ranked
+            WHERE rn > 1
+        )
     """)
     )
 
