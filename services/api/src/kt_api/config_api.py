@@ -22,9 +22,9 @@ async def get_models() -> list[dict[str, Any]]:
             "display_name": "Grok 4.1 Fast",
         },
         {
-            "model_id": "openrouter/anthropic/claude-3.5-sonnet",
+            "model_id": "openrouter/anthropic/claude-sonnet-4.6",
             "provider": "openrouter",
-            "display_name": "Claude 3.5 Sonnet",
+            "display_name": "Claude Sonnet 4.6",
         },
         {
             "model_id": "openrouter/openai/gpt-4o-mini",
