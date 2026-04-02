@@ -113,7 +113,7 @@ class SuperSynthesizerAgent(BaseAgent[SuperSynthesizerState]):
     route_nudges_to_agent = False
 
     def get_model_id(self) -> str:
-        return self.ctx.model_gateway.synthesis_model
+        return self._model_id_override or self.ctx.model_gateway.synthesis_model
 
     def get_reasoning_effort(self) -> str | None:
         return self.ctx.model_gateway.synthesis_thinking_level or None

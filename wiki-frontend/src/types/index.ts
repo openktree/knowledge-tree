@@ -75,6 +75,7 @@ export interface SynthesisListItem {
   concept: string;
   node_type: string;
   visibility: string;
+  model_id: string | null;
   sentence_count: number;
   sub_synthesis_ids: string[];
   created_at: string | null;
@@ -99,6 +100,7 @@ export interface SynthesisDocumentResponse {
   node_type: string;
   visibility: string;
   definition: string | null;
+  model_id: string | null;
   sentences: SynthesisSentenceResponse[];
   referenced_nodes: SynthesisNodeResponse[];
   sub_syntheses: SynthesisNodeResponse[];

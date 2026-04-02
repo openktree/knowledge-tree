@@ -62,8 +62,9 @@ class BaseAgent(ABC, Generic[S]):
 
     # -- Constructor --
 
-    def __init__(self, ctx: AgentContext) -> None:
+    def __init__(self, ctx: AgentContext, *, model_id_override: str | None = None) -> None:
         self.ctx = ctx
+        self._model_id_override = model_id_override
         self._state_ref: list[S | None] = [None]
 
     # -- Abstract methods (must override) --

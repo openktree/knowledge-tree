@@ -16,7 +16,7 @@ import {
   ExternalLink,
   Loader2,
 } from "lucide-react";
-import { formatSynthesisConcept } from "./utils";
+import { formatSynthesisConcept, formatModelName } from "./utils";
 import type {
   SynthesisDocumentResponse,
   SynthesisSentenceResponse,
@@ -494,6 +494,12 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
               <>
                 <span className="text-border">|</span>
                 <span>{document.referenced_nodes.length} nodes</span>
+              </>
+            )}
+            {formatModelName(document.model_id) && (
+              <>
+                <span className="text-border">|</span>
+                <span>{formatModelName(document.model_id)}</span>
               </>
             )}
           </div>
