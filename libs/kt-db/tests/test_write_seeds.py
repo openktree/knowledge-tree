@@ -15,10 +15,12 @@ class TestWriteSeedRepository:
 
     async def test_upsert_seed_creates_new(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("entity", "Albert Einstein")
-        seed = await repo.upsert_seed(key, "Albert Einstein", "entity", "person")
+        # Use a unique name to avoid collisions with other tests in the shared session
+        unique_name = f"Albert Einstein {uuid.uuid4().hex[:8]}"
+        key = make_seed_key("entity", unique_name)
+        seed = await repo.upsert_seed(key, unique_name, "entity", "person")
         assert seed.key == key
-        assert seed.name == "Albert Einstein"
+        assert seed.name == unique_name
         assert seed.node_type == "entity"
         assert seed.entity_subtype == "person"
         assert seed.status == "active"
