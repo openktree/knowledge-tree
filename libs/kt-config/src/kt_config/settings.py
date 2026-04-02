@@ -422,6 +422,7 @@ class Settings(BaseSettings):
 
     # Ontology ancestry
     qdrant_url: str = "http://localhost:6333"
+    qdrant_timeout: int = 30  # seconds — default REST timeout for Qdrant client
     redis_url: str = "redis://localhost:6379/0"
     ontology_cache_ttl: int = 604800  # 7 days in seconds
     ontology_model: str = "openrouter/x-ai/grok-4.1-fast"
