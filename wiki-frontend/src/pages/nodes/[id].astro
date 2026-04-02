@@ -224,6 +224,8 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                         block.level === 1 ? <h2 class="perspective-h1"><RichSegments segments={block.segments} /></h2> :
                         block.level === 2 ? <h3 class="perspective-h2"><RichSegments segments={block.segments} /></h3> :
                         <h4 class="perspective-h3"><RichSegments segments={block.segments} /></h4>
+                      ) : block.kind === "table" ? (
+                        <Fragment set:html={block.rawHtml} />
                       ) : block.kind === "list-item" ? (
                         <li class="perspective-paragraph"><RichSegments segments={block.segments} /></li>
                       ) : (
@@ -238,6 +240,8 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                         block.level === 1 ? <h2><RichSegments segments={block.segments} /></h2> :
                         block.level === 2 ? <h3><RichSegments segments={block.segments} /></h3> :
                         <h4><RichSegments segments={block.segments} /></h4>
+                      ) : block.kind === "table" ? (
+                        <Fragment set:html={block.rawHtml} />
                       ) : block.kind === "list-item" ? (
                         <li><RichSegments segments={block.segments} /></li>
                       ) : (

@@ -252,6 +252,9 @@ function buildExportHTML(
   sup.fact-ref a:hover { text-decoration: underline; }
   ul, ol { padding-left: 1.5rem; margin-bottom: 0.8rem; }
   li { margin-bottom: 0.3rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 1rem 0; }
+  th { text-align: left; font-weight: 600; padding: 0.4rem 0.6rem; border-bottom: 2px solid #d4cdc2; background: #faf8f5; }
+  td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #e8e3d8; vertical-align: top; }
   strong { font-weight: 700; }
   em { font-style: italic; }
   hr { border: none; border-top: 1px solid #d4cdc2; margin: 2rem 0; }
@@ -516,13 +519,32 @@ function markdownToHTML(md: string): string {
     }
   );
 
+  // Tables — convert pipe tables to HTML before paragraph wrapping
+  html = html.replace(
+    /(^\|.+\|$\n?)+/gm,
+    (match) => {
+      const lines = match.trim().split("\n").filter((l) => l.trim());
+      const dataLines = lines.filter(
+        (l) => !/^\|[\s:?-]+(\|[\s:?-]+)*\|$/.test(l.trim())
+      );
+      if (dataLines.length === 0) return match;
+      const parseRow = (line: string) =>
+        line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const headerCells = parseRow(dataLines[0]).map((c) => `<th>${c}</th>`).join("");
+      const bodyRows = dataLines.slice(1).map(
+        (line) => `<tr>${parseRow(line).map((c) => `<td>${c}</td>`).join("")}</tr>`
+      ).join("");
+      return `<table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+    }
+  );
+
   // Paragraphs — wrap lines not already in tags
   html = html
     .split("\n\n")
     .map((block) => {
       block = block.trim();
       if (!block) return "";
-      if (block.startsWith("<h") || block.startsWith("<ul") || block.startsWith("<ol") || block.startsWith("<hr")) {
+      if (block.startsWith("<h") || block.startsWith("<ul") || block.startsWith("<ol") || block.startsWith("<hr") || block.startsWith("<table")) {
         return block;
       }
       return `<p>${block.replace(/\n/g, " ")}</p>`;

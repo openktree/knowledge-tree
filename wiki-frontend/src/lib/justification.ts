@@ -149,17 +149,52 @@ export function parseRichText(
   return segments;
 }
 
-/** A block of parsed markdown content (header, paragraph, or list item). */
+/** A block of parsed markdown content (header, paragraph, list item, or table). */
 export interface MarkdownBlock {
-  kind: "heading" | "paragraph" | "list-item";
+  kind: "heading" | "paragraph" | "list-item" | "table";
   level?: number; // 1-6 for headings
   segments: RichTextSegment[];
+  rawHtml?: string; // Pre-rendered HTML for table blocks
+}
+
+/** Check if a line looks like a markdown table row: | cell | cell | */
+function isTableLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 1;
+}
+
+/** Check if a line is the separator row: |---|---|---| */
+function isTableSeparator(line: string): boolean {
+  return /^\|[\s:?-]+(\|[\s:?-]+)*\|$/.test(line.trim());
+}
+
+/** Parse accumulated table lines into an HTML <table> string. */
+function tableLinesToHtml(tableLines: string[]): string {
+  const rows = tableLines
+    .filter((l) => !isTableSeparator(l))
+    .map((l) =>
+      l
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map((c) => c.trim())
+    );
+  if (rows.length === 0) return "";
+
+  const headerCells = rows[0].map((c) => `<th>${c}</th>`).join("");
+  const bodyRows = rows
+    .slice(1)
+    .map((row) => `<tr>${row.map((c) => `<td>${c}</td>`).join("")}</tr>`)
+    .join("");
+
+  return `<div class="table-scroll"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
 }
 
 /**
- * Parse markdown text into blocks (headings and paragraphs) with rich text
- * segments inside each block. Handles #/##/### headings and groups
- * consecutive non-empty lines into paragraphs.
+ * Parse markdown text into blocks (headings, paragraphs, list items, and tables)
+ * with rich text segments inside each block. Handles #/##/### headings, pipe
+ * tables, and groups consecutive non-empty lines into paragraphs.
  */
 export function parseMarkdownBlocks(
   text: string | null | undefined
@@ -169,6 +204,7 @@ export function parseMarkdownBlocks(
   const lines = text.split("\n");
   const blocks: MarkdownBlock[] = [];
   let paragraphLines: string[] = [];
+  let tableLines: string[] = [];
 
   function flushParagraph() {
     if (paragraphLines.length === 0) return;
@@ -179,7 +215,26 @@ export function parseMarkdownBlocks(
     paragraphLines = [];
   }
 
+  function flushTable() {
+    if (tableLines.length === 0) return;
+    const rawHtml = tableLinesToHtml(tableLines);
+    if (rawHtml) {
+      blocks.push({ kind: "table", segments: [], rawHtml });
+    }
+    tableLines = [];
+  }
+
   for (const line of lines) {
+    if (isTableLine(line)) {
+      flushParagraph();
+      tableLines.push(line);
+      continue;
+    }
+
+    if (tableLines.length > 0) {
+      flushTable();
+    }
+
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
     const listMatch = line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
     if (headingMatch) {
@@ -202,6 +257,7 @@ export function parseMarkdownBlocks(
       paragraphLines.push(line);
     }
   }
+  flushTable();
   flushParagraph();
 
   return blocks;

@@ -114,6 +114,9 @@ const blockMetas: BlockMeta[] = blocks.map((block) => {
                 </Tag>
               );
             }
+            if (block.kind === "table") {
+              return <Fragment set:html={block.rawHtml} />;
+            }
             if (block.kind === "list-item") {
               return (
                 <li class={blockCls} {...dataAttrs}>

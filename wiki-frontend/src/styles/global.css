@@ -2513,6 +2513,48 @@ a.fact-group-title:hover {
   border-bottom-color: var(--ocean);
 }
 
+/* ── Markdown Tables ──────────────────────────────────────── */
+
+.table-scroll {
+  overflow-x: auto;
+  margin: 1rem 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.synthesis-body table,
+.node-definition table,
+.perspective-definition table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.synthesis-body th,
+.node-definition th,
+.perspective-definition th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface-2);
+  white-space: nowrap;
+}
+
+.synthesis-body td,
+.node-definition td,
+.perspective-definition td {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: top;
+}
+
+.synthesis-body tbody tr:hover,
+.node-definition tbody tr:hover,
+.perspective-definition tbody tr:hover {
+  background: var(--color-surface-2);
+}
+
 /* ── Synthesis List (Investigations Tab) ────────────────────── */
 
 .synthesis-meta {
