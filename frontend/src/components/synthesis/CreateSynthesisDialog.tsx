@@ -52,7 +52,7 @@ export function CreateSynthesisDialog({
   const [creating, setCreating] = useState(false);
   const [workflowRunId, setWorkflowRunId] = useState<string | null>(null);
 
-  const [modelId, setModelId] = useState<string>("");
+  const [modelId, setModelId] = useState<string>("default");
 
   // Available synthesis models
   const [availableModels, setAvailableModels] = useState<SynthesisModelOption[]>([]);
@@ -100,7 +100,7 @@ export function CreateSynthesisDialog({
     setCreating(true);
     try {
       let result;
-      const selectedModel = modelId || undefined;
+      const selectedModel = modelId !== "default" ? modelId : undefined;
       if (mode === "super") {
         result = await createSuperSynthesis({
           topic: topic.trim(),
@@ -129,7 +129,7 @@ export function CreateSynthesisDialog({
     onOpenChange(false);
     setWorkflowRunId(null);
     setTopic("");
-    setModelId("");
+    setModelId("default");
     setSelectedExisting(new Set());
     onCreated();
   }, [onOpenChange, onCreated]);
@@ -218,7 +218,7 @@ export function CreateSynthesisDialog({
                   <SelectValue placeholder="Server Default" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Server Default</SelectItem>
+                  <SelectItem value="default">Server Default</SelectItem>
                   {availableModels.map((m) => (
                     <SelectItem key={m.model_id} value={m.model_id}>
                       {m.display_name}

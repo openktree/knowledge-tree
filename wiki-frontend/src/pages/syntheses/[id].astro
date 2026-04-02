@@ -29,6 +29,7 @@ const paragraphMap: Map<string, SynthesisSentenceResponse[]> = synthesis
 
 const typeLabel = synthesis?.node_type === "supersynthesis" ? "Super-Synthesis" : "Synthesis";
 
+// Duplicated from frontend/src/components/synthesis/utils.ts — keep in sync
 function formatModelName(modelId: string | null | undefined): string | null {
   if (!modelId) return null;
   const parts = modelId.replace(/^openrouter\//, "").split("/");

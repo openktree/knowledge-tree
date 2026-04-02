@@ -64,6 +64,10 @@ async def get_model_roles() -> dict[str, Any]:
     }
 
 
+# Curated allowlist of models available for user-selected synthesis.
+# Manually maintained — update when OpenRouter model IDs change or models
+# are added/retired.  To make this configurable without a code change,
+# move the list to Settings and populate from env/YAML.
 SYNTHESIS_MODELS: list[dict[str, str]] = [
     {"model_id": "openrouter/google/gemini-3.1-pro", "display_name": "Gemini 3.1 Pro", "provider": "google"},
     {"model_id": "openrouter/z-ai/glm-5", "display_name": "GLM 5", "provider": "z-ai"},

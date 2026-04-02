@@ -121,11 +121,6 @@ def _get_synthesis_doc(node: Node) -> dict[str, Any]:
     return meta.get("synthesis_document", {})
 
 
-def _get_sentence_count(node: Node) -> int:
-    doc = _get_synthesis_doc(node)
-    stats = doc.get("stats", {})
-    return stats.get("sentences_count", 0)
-
 
 # ── Endpoints ──────────────────────────────────────────────────────
 
@@ -216,19 +211,21 @@ async def list_syntheses(
     q = select(Node).where(base_filter).order_by(Node.created_at.desc()).offset(offset).limit(limit)
     nodes = (await session.execute(q)).scalars().all()
 
-    items = [
-        SynthesisListItem(
-            id=str(n.id),
-            concept=n.concept,
-            node_type=n.node_type,
-            visibility=n.visibility,
-            model_id=_get_synthesis_doc(n).get("model_id"),
-            sentence_count=_get_sentence_count(n),
-            sub_synthesis_ids=_get_synthesis_doc(n).get("sub_synthesis_ids", []),
-            created_at=n.created_at.isoformat() if n.created_at else None,
+    items = []
+    for n in nodes:
+        doc = _get_synthesis_doc(n)
+        items.append(
+            SynthesisListItem(
+                id=str(n.id),
+                concept=n.concept,
+                node_type=n.node_type,
+                visibility=n.visibility,
+                model_id=doc.get("model_id"),
+                sentence_count=doc.get("stats", {}).get("sentences_count", 0),
+                sub_synthesis_ids=doc.get("sub_synthesis_ids", []),
+                created_at=n.created_at.isoformat() if n.created_at else None,
+            )
         )
-        for n in nodes
-    ]
 
     return PaginatedSynthesesResponse(items=items, total=total, offset=offset, limit=limit)
 
