@@ -184,8 +184,8 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                 if row and isinstance(row, dict):
                     existing_meta = row
 
-                doc["model_id"] = input.model_id or agent.get_model_id()
                 existing_meta["synthesis_document"] = doc
+                existing_meta["model_id"] = input.model_id or agent.get_model_id()
                 await write_session.execute(
                     update(WriteNode).where(WriteNode.node_uuid == synthesis_node_id).values(metadata_=existing_meta)
                 )

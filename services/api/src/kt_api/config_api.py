@@ -82,7 +82,13 @@ SYNTHESIS_MODEL_IDS: set[str] = {m["model_id"] for m in SYNTHESIS_MODELS}
 
 @router.get("/synthesis-models")
 async def get_synthesis_models() -> list[dict[str, str]]:
-    """Return the curated list of models available for synthesis creation."""
+    """Return the curated list of models available for user-selected synthesis.
+
+    This is separate from ``GET /config/models`` which lists system-level
+    models used across all agent roles.  The synthesis list is a smaller,
+    curated subset of high-quality models that are suitable for long-form
+    document generation and that we want to expose to end-users.
+    """
     return SYNTHESIS_MODELS
 
 

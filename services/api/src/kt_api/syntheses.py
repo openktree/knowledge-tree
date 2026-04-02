@@ -214,13 +214,14 @@ async def list_syntheses(
     items = []
     for n in nodes:
         doc = _get_synthesis_doc(n)
+        meta = n.metadata_ or {}
         items.append(
             SynthesisListItem(
                 id=str(n.id),
                 concept=n.concept,
                 node_type=n.node_type,
                 visibility=n.visibility,
-                model_id=doc.get("model_id"),
+                model_id=meta.get("model_id"),
                 sentence_count=doc.get("stats", {}).get("sentences_count", 0),
                 sub_synthesis_ids=doc.get("sub_synthesis_ids", []),
                 created_at=n.created_at.isoformat() if n.created_at else None,
@@ -293,7 +294,7 @@ async def get_synthesis(
         node_type=node.node_type,
         visibility=node.visibility,
         definition=node.definition,
-        model_id=doc.get("model_id"),
+        model_id=(node.metadata_ or {}).get("model_id"),
         sentences=sentences,
         referenced_nodes=referenced_nodes,
         sub_syntheses=sub_syntheses,
