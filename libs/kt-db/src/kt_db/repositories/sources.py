@@ -1,7 +1,7 @@
 import hashlib
 import uuid
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -61,13 +61,16 @@ class SourceRepository:
         stmt = stmt.on_conflict_do_update(
             index_elements=["content_hash"],
             set_={"content_hash": stmt.excluded.content_hash},
-        ).returning(RawSource.id)
+        ).returning(RawSource.id, text("xmax"))
         result = await self._session.execute(stmt)
-        returned_id = result.scalar_one()
+        row = result.one()
+        returned_id = row[0]
+        # PostgreSQL: xmax == 0 means a fresh INSERT; xmax > 0 means
+        # ON CONFLICT triggered an UPDATE on an existing row.
+        created = int(row[1]) == 0
 
         source = await self.get_by_id(returned_id)
         assert source is not None  # noqa: S101
-        created = returned_id == new_id
         return source, created
 
     async def get_by_uri(self, uri: str) -> RawSource | None:
