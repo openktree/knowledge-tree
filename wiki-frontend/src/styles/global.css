@@ -2312,6 +2312,25 @@ a.fact-group-title:hover {
 
   .index-search-form { max-width: 100%; }
 
+  /* ── Mobile: Stack link + meta on separate lines so links are tappable ── */
+  .node-flat-list li {
+    flex-wrap: wrap;
+  }
+
+  .node-flat-list li .node-flat-link {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
+  .synthesis-group-children li {
+    flex-wrap: wrap;
+  }
+
+  .synthesis-group-children li .node-flat-link {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
   /* ── Mobile: Prevent horizontal overflow ── */
   html, body {
     overflow-x: hidden;
