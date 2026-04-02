@@ -121,7 +121,6 @@ def _get_synthesis_doc(node: Node) -> dict[str, Any]:
     return meta.get("synthesis_document", {})
 
 
-
 # ── Endpoints ──────────────────────────────────────────────────────
 
 
