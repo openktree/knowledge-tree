@@ -182,6 +182,34 @@ class GraphEngine:
             self._require_graph_session()  # will raise
         return self._fact_repo  # type: ignore[return-value]
 
+    @staticmethod
+    def _write_node_to_node(wn: Any, **overrides: Any) -> Node:
+        """Convert a WriteNode to a graph-db Node model instance.
+
+        Centralises the WriteNode → Node mapping so every call-site stays
+        consistent.  Pass ``**overrides`` to replace specific fields (e.g.
+        ``metadata_=custom_meta``).
+        """
+        from kt_db.keys import key_to_uuid
+
+        fields: dict[str, Any] = {
+            "id": wn.node_uuid,
+            "concept": wn.concept,
+            "node_type": wn.node_type,
+            "entity_subtype": wn.entity_subtype,
+            "parent_id": key_to_uuid(wn.parent_key) if wn.parent_key else None,
+            "stale_after": wn.stale_after,
+            "definition": wn.definition,
+            "definition_source": wn.definition_source,
+            "metadata_": wn.metadata_,
+            "access_count": 0,
+            "update_count": 0,
+            "created_at": wn.created_at,
+            "updated_at": wn.updated_at,
+        }
+        fields.update(overrides)
+        return Node(**fields)
+
     async def _get_cached_or_db(self, node_id: uuid.UUID) -> Node | None:
         """Look up a node from cache, then write-db, then graph-db.
 
@@ -195,20 +223,7 @@ class GraphEngine:
         if self._write_node_repo is not None:
             wn = await self._write_node_repo.get_by_uuid(node_id)
             if wn is not None:
-                from kt_db.keys import key_to_uuid
-
-                parent_id = key_to_uuid(wn.parent_key) if wn.parent_key else None
-                return Node(
-                    id=wn.node_uuid,
-                    concept=wn.concept,
-                    node_type=wn.node_type,
-                    definition=wn.definition,
-                    metadata_=wn.metadata_,
-                    parent_id=parent_id,
-                    stale_after=wn.stale_after,
-                    created_at=wn.created_at,
-                    updated_at=wn.updated_at,
-                )
+                return self._write_node_to_node(wn)
         if self._node_repo is not None:
             return await self._node_repo.get_by_id(node_id)
         return None
@@ -451,13 +466,7 @@ class GraphEngine:
             if wn is not None:
                 await self._write_node_repo.update_metadata(wn.key, kwargs["metadata_"])  # type: ignore[arg-type]
                 await self._write_session.commit()  # type: ignore[union-attr]
-                return Node(
-                    id=wn.node_uuid,
-                    concept=wn.concept,
-                    node_type=wn.node_type,
-                    definition=wn.definition,
-                    metadata_=kwargs["metadata_"],  # type: ignore[arg-type]
-                )
+                return self._write_node_to_node(wn, metadata_=kwargs["metadata_"])
         await self._node_repo.update_fields(node_id, **kwargs)
         node = await self._node_repo.get_by_id(node_id)
         if node is None:
@@ -471,8 +480,20 @@ class GraphEngine:
         limit: int = 10,
         node_type: str | None = None,
     ) -> list[Node]:
-        """Search nodes by concept name (text search)."""
-        return await self._node_repo.search_by_concept(query, limit=limit, node_type=node_type)
+        """Search nodes by concept name (text search).
+
+        Falls back to write-db trigram search when graph-db session is
+        not available (e.g. during pipeline fan-out where _open_sessions
+        yields session=None to avoid holding graph-db connections).
+        """
+        if self._node_repo is not None:
+            return await self._node_repo.search_by_concept(query, limit=limit, node_type=node_type)
+
+        if self._write_node_repo is not None:
+            write_nodes = await self._write_node_repo.search_by_trigram(query, limit=limit, node_type=node_type)
+            return [self._write_node_to_node(wn) for wn in write_nodes]
+
+        raise ValueError("search_nodes requires either a graph-db or write-db session")
 
     async def find_similar_nodes(
         self,
@@ -691,16 +712,7 @@ class GraphEngine:
             parent_wn = await self._write_node_repo.get_by_uuid(parent_id)
             if parent_wn is not None:
                 children_wn = await self._write_node_repo.get_children_by_parent_key(parent_wn.key)
-                return [
-                    Node(
-                        id=wn.node_uuid,
-                        concept=wn.concept,
-                        node_type=wn.node_type,
-                        definition=wn.definition,
-                        metadata_=wn.metadata_,
-                    )
-                    for wn in children_wn
-                ]
+                return [self._write_node_to_node(wn) for wn in children_wn]
             return []
         return await self._node_repo.get_children(parent_id)
 
@@ -750,7 +762,7 @@ class GraphEngine:
         """
         if self._write_node_repo is not None:
             write_nodes = await self._write_node_repo.get_by_uuids(node_ids)
-            return [Node(id=wn.node_uuid, concept=wn.concept, node_type=wn.node_type) for wn in write_nodes]
+            return [self._write_node_to_node(wn) for wn in write_nodes]
         return await self._node_repo.get_by_ids(node_ids)
 
     async def delete_edge(self, edge_id: uuid.UUID) -> bool:
@@ -1450,9 +1462,7 @@ class GraphEngine:
                     _WN.node_type == "perspective",
                 )
                 result = await self._write_session.execute(stmt)  # type: ignore[union-attr]
-                return [
-                    Node(id=wn.node_uuid, concept=wn.concept, node_type=wn.node_type) for wn in result.scalars().all()
-                ]
+                return [self._write_node_to_node(wn) for wn in result.scalars().all()]
             return []
         return await self._node_repo.get_perspectives_for_concept(concept_node_id)
 
@@ -1671,28 +1681,13 @@ class GraphEngine:
         during concurrent pipeline fan-out.
         """
         if self._write_node_repo is not None:
-            from kt_db.keys import key_to_uuid
-
             write_nodes = await self._write_node_repo.search_by_trigram(
                 query,
                 threshold=threshold,
                 limit=limit,
                 node_type=node_type,
             )
-            return [
-                Node(
-                    id=wn.node_uuid,
-                    concept=wn.concept,
-                    node_type=wn.node_type,
-                    definition=wn.definition,
-                    metadata_=wn.metadata_,
-                    parent_id=key_to_uuid(wn.parent_key) if wn.parent_key else None,
-                    stale_after=wn.stale_after,
-                    created_at=wn.created_at,
-                    updated_at=wn.updated_at,
-                )
-                for wn in write_nodes
-            ]
+            return [self._write_node_to_node(wn) for wn in write_nodes]
         return await self._require_node_repo().search_by_trigram(
             query,
             threshold=threshold,
