@@ -80,6 +80,7 @@ import type {
   CreateSynthesisRequest,
   CreateSuperSynthesisRequest,
   SynthesisDocumentResponse,
+  SynthesisModelOption,
   PaginatedSynthesesResponse,
   SentenceFactLink,
   SynthesisNodeResponse,
@@ -1211,6 +1212,10 @@ async function streamImport(
 // ---------------------------------------------------------------------------
 // Syntheses
 // ---------------------------------------------------------------------------
+
+export async function getSynthesisModels() {
+  return request<SynthesisModelOption[]>("/config/synthesis-models");
+}
 
 export async function createSynthesis(data: CreateSynthesisRequest) {
   return request<{ status: string; workflow_run_id: string; topic: string }>(

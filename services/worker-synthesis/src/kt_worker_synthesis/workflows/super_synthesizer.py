@@ -169,6 +169,7 @@ Output ONLY the JSON array."""
                     exploration_budget=scope.get("exploration_budget", 15),
                     visibility=input.visibility,
                     creator_id=input.creator_id,
+                    model_id=input.model_id,
                 ).model_dump()
             )
 
@@ -281,7 +282,7 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 ],
             )
 
-            agent = SuperSynthesizerAgent(agent_ctx)
+            agent = SuperSynthesizerAgent(agent_ctx, model_id_override=input.model_id)
             graph, _ = agent.build_graph()
             compiled = graph.compile()
 
@@ -348,8 +349,9 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 node_names_and_aliases=node_names,
             )
 
-            # Add sub_synthesis_ids to the document
+            # Add sub_synthesis_ids and model_id to the document
             doc["sub_synthesis_ids"] = synthesis_node_ids
+            doc["model_id"] = input.model_id or agent.get_model_id()
 
             # Store document JSON in node metadata via write-db
             if write_session:

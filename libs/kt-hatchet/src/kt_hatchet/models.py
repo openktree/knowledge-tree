@@ -714,6 +714,7 @@ class SynthesizerInput(BaseModel):
     exploration_budget: int = 20
     visibility: str = "public"
     creator_id: str | None = None
+    model_id: str | None = None
 
 
 class SynthesizerOutput(BaseModel):
@@ -735,6 +736,7 @@ class SuperSynthesizerInput(BaseModel):
     visibility: str = "public"
     creator_id: str | None = None
     distance_threshold: float = 0.7
+    model_id: str | None = None
 
 
 class SuperSynthesizerOutput(BaseModel):

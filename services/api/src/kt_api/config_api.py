@@ -64,6 +64,24 @@ async def get_model_roles() -> dict[str, Any]:
     }
 
 
+SYNTHESIS_MODELS: list[dict[str, str]] = [
+    {"model_id": "openrouter/google/gemini-3.1-pro", "display_name": "Gemini 3.1 Pro", "provider": "google"},
+    {"model_id": "openrouter/z-ai/glm-5", "display_name": "GLM 5", "provider": "z-ai"},
+    {"model_id": "openrouter/minimax/minimax-2.7", "display_name": "MiniMax 2.7", "provider": "minimax"},
+    {"model_id": "openrouter/anthropic/claude-sonnet-4", "display_name": "Claude Sonnet", "provider": "anthropic"},
+    {"model_id": "openrouter/anthropic/claude-opus-4", "display_name": "Claude Opus", "provider": "anthropic"},
+    {"model_id": "openrouter/deepseek/deepseek-v4", "display_name": "DeepSeek V4", "provider": "deepseek"},
+]
+
+SYNTHESIS_MODEL_IDS: set[str] = {m["model_id"] for m in SYNTHESIS_MODELS}
+
+
+@router.get("/synthesis-models")
+async def get_synthesis_models() -> list[dict[str, str]]:
+    """Return the curated list of models available for synthesis creation."""
+    return SYNTHESIS_MODELS
+
+
 @router.get("/filters")
 async def get_filters() -> dict[str, Any]:
     """Return filter configuration."""
