@@ -2331,6 +2331,15 @@ a.fact-group-title:hover {
     white-space: normal;
   }
 
+  .synthesis-group-header {
+    flex-wrap: wrap;
+  }
+
+  .synthesis-group-header .node-flat-link {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
   /* ── Mobile: Prevent horizontal overflow ── */
   html, body {
     overflow-x: hidden;
