@@ -380,6 +380,7 @@ class HatchetPipeline:
                 write_node_repo = WriteNodeRepository(write_session)
                 node_key = write_node_repo.node_key(node_type, node.concept)
                 await write_node_repo.update_facts_at_last_build(node_key, len(facts))
+                await write_session.commit()
 
             await session.commit()
 
@@ -451,6 +452,7 @@ class HatchetPipeline:
             if facts:
                 write_node_repo = WriteNodeRepository(write_session)
                 await write_node_repo.update_facts_at_last_build(node_key, len(facts))
+                await write_session.commit()
 
             await session.commit()
 
