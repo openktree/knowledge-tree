@@ -1,9 +1,14 @@
-"""Tests for the AncestryPipeline merge algorithm and seed creation."""
+"""Tests for the AncestryPipeline merge algorithm and seed creation.
+
+NOTE: kt-ontology is deprecated — ancestry removal PR pending.
+"""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.skip(reason="kt-ontology is deprecated — ancestry removal PR pending")
 
 from kt_config.types import ALL_CONCEPTS_ID
 from kt_ontology.ancestry import AncestryPipeline, AncestryResult

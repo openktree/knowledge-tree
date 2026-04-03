@@ -1,5 +1,8 @@
 """Integration test for the AncestryPipeline with a real DB session.
 
+NOTE: kt-ontology is deprecated and scheduled for removal. These tests
+are skipped pending the ancestry removal PR.
+
 Uses mocked LLM and Wikidata to test the full pipeline flow:
 - AI proposes ancestry chain
 - Wikidata returns base chain
@@ -14,6 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+
+pytestmark = pytest.mark.skip(reason="kt-ontology is deprecated — ancestry removal PR pending")
 
 from kt_config.types import ALL_CONCEPTS_ID
 from kt_db.models import Node
