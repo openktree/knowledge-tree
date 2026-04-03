@@ -205,3 +205,55 @@ async def test_subdivide_large_passes_small_through() -> None:
     assert result[0].explore_budget == 4
     # LLM should NOT have been called (both below threshold)
     agent_ctx.model_gateway.generate.assert_not_called()
+
+
+# ── _plan_wave utilization retry ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_plan_wave_retries_on_low_utilization() -> None:
+    """_plan_wave retries with a hint when the LLM underutilizes the budget."""
+    from kt_worker_bottomup.shared import _plan_wave
+
+    wave_explore = 60
+    wave_nav = 0
+
+    # First call: LLM returns 3 scopes of 5 (15/60 = 25% < 70%)
+    underutilized = json.dumps(
+        [
+            {"scope": "scope A", "explore_budget": 5, "nav_budget": 0},
+            {"scope": "scope B", "explore_budget": 5, "nav_budget": 0},
+            {"scope": "scope C", "explore_budget": 5, "nav_budget": 0},
+        ]
+    )
+    # Second call: LLM returns 12 scopes of 5 (60/60 = 100%)
+    full_plan = json.dumps([{"scope": f"scope {i}", "explore_budget": 5, "nav_budget": 0} for i in range(12)])
+
+    agent_ctx = MagicMock()
+    agent_ctx.model_gateway.generate = AsyncMock(side_effect=[underutilized, full_plan])
+    agent_ctx.model_gateway.orchestrator_model = "test-model"
+    agent_ctx.model_gateway.orchestrator_thinking_level = ""
+
+    scopes = await _plan_wave(
+        query="test query",
+        wave=1,
+        total_waves=1,
+        briefings=[],
+        wave_explore=wave_explore,
+        wave_nav=wave_nav,
+        scout_results={},
+        agent_ctx=agent_ctx,
+    )
+
+    # Should have called generate twice (first underutilized, then retry)
+    assert agent_ctx.model_gateway.generate.call_count == 2
+
+    # Second call's user message should contain the hint
+    second_call_args = agent_ctx.model_gateway.generate.call_args_list[1]
+    second_user_msg = second_call_args[1]["messages"][1]["content"]
+    assert "IMPORTANT" in second_user_msg
+    assert "only used 15" in second_user_msg
+
+    # Result should be 12 scopes of 5 each
+    assert len(scopes) == 12
+    assert sum(s.explore_budget for s in scopes) == 60

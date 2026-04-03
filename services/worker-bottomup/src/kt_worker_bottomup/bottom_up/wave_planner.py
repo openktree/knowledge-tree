@@ -251,7 +251,7 @@ def parse_scope_plans(raw: str, wave_explore: int, wave_nav: int) -> list[ScopeP
 
 MAX_SCOPE_EXPLORE = 5  # Atomic execution unit — each scope gets at most this
 SUBDIVISION_THRESHOLD = 20  # Above this, use LLM-based subdivision
-_MIN_UTILIZATION = 0.7  # Retry if planned explore < 70% of wave budget
+MIN_UTILIZATION = 0.7  # Retry if planned explore < 70% of wave budget
 
 SUBDIVISION_PROMPT = """\
 You are breaking a research scope into smaller, more specific sub-scopes \
