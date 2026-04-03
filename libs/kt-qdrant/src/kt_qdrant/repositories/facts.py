@@ -371,15 +371,21 @@ class QdrantFactRepository:
         )
 
     async def append_node_id(self, fact_id: uuid.UUID, node_id: uuid.UUID) -> None:
-        """Append a node_id to the fact's node_ids payload (idempotent)."""
+        """Append a node_id to the fact's node_ids payload (idempotent).
+
+        No-op if the fact point does not exist in Qdrant yet (e.g. the
+        embedding upsert hasn't happened).
+        """
         points = await self._client.retrieve(
             collection_name=FACTS_COLLECTION,
             ids=[str(fact_id)],
             with_payload=["node_ids"],
             with_vectors=False,
         )
+        if not points:
+            return
         existing: list[str] = []
-        if points and points[0].payload:
+        if points[0].payload:
             existing = points[0].payload.get("node_ids", [])
         nid_str = str(node_id)
         if nid_str not in existing:
@@ -391,15 +397,20 @@ class QdrantFactRepository:
             )
 
     async def remove_node_id(self, fact_id: uuid.UUID, node_id: uuid.UUID) -> None:
-        """Remove a node_id from the fact's node_ids payload (idempotent)."""
+        """Remove a node_id from the fact's node_ids payload (idempotent).
+
+        No-op if the fact point does not exist in Qdrant.
+        """
         points = await self._client.retrieve(
             collection_name=FACTS_COLLECTION,
             ids=[str(fact_id)],
             with_payload=["node_ids"],
             with_vectors=False,
         )
+        if not points:
+            return
         existing: list[str] = []
-        if points and points[0].payload:
+        if points[0].payload:
             existing = points[0].payload.get("node_ids", [])
         nid_str = str(node_id)
         if nid_str in existing:

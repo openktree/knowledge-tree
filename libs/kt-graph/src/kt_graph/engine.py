@@ -1091,14 +1091,16 @@ class GraphEngine:
                     node_key = wn.key
                 else:
                     success = await self._fact_repo.unlink_from_node(node_id, fact_id)
-                    await self._update_qdrant_node_id(fact_id, node_id, append=False)
+                    if success:
+                        await self._update_qdrant_node_id(fact_id, node_id, append=False)
                     return success
             await self._write_node_repo.remove_fact_id(node_key, str(fact_id))
             await self._write_session.commit()  # type: ignore[union-attr]
             await self._update_qdrant_node_id(fact_id, node_id, append=False)
             return True
         success = await self._fact_repo.unlink_from_node(node_id, fact_id)
-        await self._update_qdrant_node_id(fact_id, node_id, append=False)
+        if success:
+            await self._update_qdrant_node_id(fact_id, node_id, append=False)
         return success
 
     async def get_fact_ids_for_nodes(

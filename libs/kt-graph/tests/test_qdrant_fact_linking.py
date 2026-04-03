@@ -157,6 +157,23 @@ class TestUnlinkFactFromNodeQdrant:
         assert result is True
         mock_qdrant_fact_repo.remove_node_id.assert_awaited_once_with(fact_id, node_id)
 
+    async def test_unlink_skips_qdrant_when_link_did_not_exist(
+        self, mock_session: AsyncMock, mock_qdrant_fact_repo: AsyncMock
+    ) -> None:
+        """When unlink_from_node returns False, Qdrant should not be updated."""
+        engine = GraphEngine(session=mock_session)
+        engine._qdrant_fact_repo = mock_qdrant_fact_repo
+
+        engine._fact_repo = AsyncMock()
+        engine._fact_repo.unlink_from_node = AsyncMock(return_value=False)
+
+        node_id = uuid.uuid4()
+        fact_id = uuid.uuid4()
+        result = await engine.unlink_fact_from_node(node_id, fact_id)
+
+        assert result is False
+        mock_qdrant_fact_repo.remove_node_id.assert_not_called()
+
     async def test_unlink_qdrant_failure_does_not_raise(
         self, mock_session: AsyncMock, mock_qdrant_fact_repo: AsyncMock
     ) -> None:

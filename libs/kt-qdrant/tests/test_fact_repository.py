@@ -422,6 +422,16 @@ class TestAppendNodeId:
         call_kwargs = mock_client.set_payload.call_args.kwargs
         assert call_kwargs["payload"]["node_ids"] == [str(node_id)]
 
+    async def test_noop_when_point_not_in_qdrant(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        """When the fact point doesn't exist in Qdrant yet, append is a no-op."""
+        mock_client.retrieve.return_value = []
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+
+        await repo.append_node_id(fact_id, node_id)
+
+        mock_client.set_payload.assert_not_called()
+
 
 class TestRemoveNodeId:
     async def test_removes_existing(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
