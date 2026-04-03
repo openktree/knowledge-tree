@@ -280,6 +280,33 @@ class ReadGraphEngine:
         except Exception:
             logger.warning("Non-critical: failed to increment access_count for node %s", node_id)
 
+    async def increment_update_count(self, node_id: uuid.UUID) -> None:
+        """Increment a node's update_count by 1 (best-effort, graph-db)."""
+        try:
+            async with self._get_session() as session:
+                node_repo, _, _ = self._repos_from_session(session)
+                await node_repo.increment_update_count(node_id)
+        except Exception:
+            logger.warning("Non-critical: failed to increment update_count for node %s", node_id)
+
+    async def set_node_definition(
+        self,
+        node_id: uuid.UUID,
+        definition: str,
+        source: str = "synthesized",
+    ) -> None:
+        """Set the synthesized definition for a node directly in graph-db."""
+        async with self._get_session() as session:
+            node_repo, _, _ = self._repos_from_session(session)
+            from kt_db.models import _utcnow as _now
+
+            await node_repo.update_fields(
+                node_id,
+                definition=definition,
+                definition_source=source,
+                definition_generated_at=_now(),
+            )
+
     # ── Node reads ────────────────────────────────────────────────────
 
     async def get_node(self, node_id: uuid.UUID) -> Node | None:
