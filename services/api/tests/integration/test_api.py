@@ -382,6 +382,73 @@ async def test_get_source_with_db(api_session_factory):
         await session.rollback()
 
 
+async def test_get_source_insights(api_session_factory):
+    """GET /api/v1/sources/insights returns aggregate insights."""
+    async with api_session_factory() as session:
+        # Add a failed source
+        source = RawSource(
+            id=uuid.uuid4(),
+            uri="https://insights-test.com/page",
+            title="Insights Test",
+            raw_content="content",
+            content_hash="insights_" + uuid.uuid4().hex,
+            provider_id="test",
+            is_full_text=False,
+            fetch_attempted=True,
+            fetch_error="timeout",
+        )
+        session.add(source)
+        await session.flush()
+
+        app = create_app()
+
+        async def override() -> AsyncGenerator[AsyncSession, None]:
+            yield session
+
+        app.dependency_overrides[get_db_session] = override
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            resp = await c.get("/api/v1/sources/insights")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "total_count" in data
+            assert "failed_count" in data
+            assert "pending_super_count" in data
+            assert "top_failed_domains" in data
+            assert "common_errors" in data
+            assert "failures_per_day" in data
+            assert data["total_count"] >= 1
+            assert data["failed_count"] >= 1
+            assert isinstance(data["top_failed_domains"], list)
+            assert isinstance(data["common_errors"], list)
+            assert isinstance(data["failures_per_day"], list)
+
+        await session.rollback()
+
+
+async def test_get_source_insights_with_since(api_session_factory):
+    """GET /api/v1/sources/insights?since=... filters by date."""
+    async with api_session_factory() as session:
+        app = create_app()
+
+        async def override() -> AsyncGenerator[AsyncSession, None]:
+            yield session
+
+        app.dependency_overrides[get_db_session] = override
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            # Far-future since should return zeroes
+            resp = await c.get("/api/v1/sources/insights?since=2099-01-01T00:00:00")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["total_count"] == 0
+            assert data["failed_count"] == 0
+
+        await session.rollback()
+
+
 # ── Config endpoints ─────────────────────────────────────────────────
 
 

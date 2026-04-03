@@ -1,5 +1,3 @@
-"use client";
-
 import type { DomainFailureCount } from "@/types";
 
 interface TopFailedDomainsTableProps {
