@@ -161,6 +161,11 @@ class WriteNodeRepository:
         stmt = text(r"UPDATE write_nodes SET metadata = :meta\:\:jsonb, updated_at = NOW() WHERE key = :key")
         await self._session.execute(stmt, {"key": key, "meta": json.dumps(metadata_)})
 
+    async def remove_metadata_key(self, node_key: str, meta_key: str) -> None:
+        """Remove a single key from a node's metadata JSON without overwriting other keys."""
+        stmt = text("UPDATE write_nodes SET metadata = metadata - :meta_key, updated_at = NOW() WHERE key = :node_key")
+        await self._session.execute(stmt, {"node_key": node_key, "meta_key": meta_key})
+
     async def increment_update_count(self, node_key: str) -> None:
         stmt = (
             pg_insert(WriteNodeCounter)
