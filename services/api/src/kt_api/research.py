@@ -866,45 +866,74 @@ async def get_research_summary(
             msg_id = str(msg.id)
             break
 
-    if metadata is None:
+    if metadata is not None:
+        # Parse seeds from metadata
+        raw_seeds = metadata.get("seeds", [])
+        seeds = [
+            ResearchSeedResponse(
+                key=s.get("key", ""),
+                name=s.get("name", ""),
+                node_type=s.get("node_type", "concept"),
+                fact_count=s.get("fact_count", 0),
+                aliases=s.get("aliases", []),
+                status=s.get("status", "active"),
+                entity_subtype=s.get("entity_subtype"),
+            )
+            for s in raw_seeds
+            if isinstance(s, dict) and s.get("key")
+        ]
+
+        # Parse source URLs
+        raw_sources = metadata.get("source_urls", [])
+        source_urls = [
+            BottomUpSourceUrl(url=s.get("url", ""), title=s.get("title", ""))
+            for s in raw_sources
+            if isinstance(s, dict) and s.get("url")
+        ]
+
+        return ResearchSummaryResponse(
+            conversation_id=conversation_id,
+            message_id=msg_id or "",
+            fact_count=metadata.get("fact_count", 0),
+            source_count=len(source_urls) or metadata.get("source_count", 0),
+            source_urls=source_urls,
+            seeds=seeds,
+            content_summary=metadata.get("content_summary", ""),
+            explore_used=metadata.get("explore_used", 0),
+        )
+
+    # Fallback: metadata_json missing (workflow failed before storing it).
+    # Try to reconstruct from ResearchReport table + live seed data.
+    from sqlalchemy import select
+
+    from kt_db.models import ResearchReport
+
+    result = await session.execute(
+        select(ResearchReport)
+        .where(ResearchReport.conversation_id == conv_uuid)
+        .order_by(ResearchReport.created_at.desc())
+        .limit(1)
+    )
+    report = result.scalar_one_or_none()
+
+    if report is None:
         raise HTTPException(
             status_code=404,
             detail="No summary found — research may still be running",
         )
 
-    # Parse seeds from metadata
-    raw_seeds = metadata.get("seeds", [])
-    seeds = [
-        ResearchSeedResponse(
-            key=s.get("key", ""),
-            name=s.get("name", ""),
-            node_type=s.get("node_type", "concept"),
-            fact_count=s.get("fact_count", 0),
-            aliases=s.get("aliases", []),
-            status=s.get("status", "active"),
-            entity_subtype=s.get("entity_subtype"),
-        )
-        for s in raw_seeds
-        if isinstance(s, dict) and s.get("key")
-    ]
-
-    # Parse source URLs
-    raw_sources = metadata.get("source_urls", [])
-    source_urls = [
-        BottomUpSourceUrl(url=s.get("url", ""), title=s.get("title", ""))
-        for s in raw_sources
-        if isinstance(s, dict) and s.get("url")
-    ]
+    # Build a minimal response from the report
+    content_summary = "\n\n".join(report.scope_summaries or [])
 
     return ResearchSummaryResponse(
         conversation_id=conversation_id,
-        message_id=msg_id or "",
-        fact_count=metadata.get("fact_count", 0),
-        source_count=len(source_urls) or metadata.get("source_count", 0),
-        source_urls=source_urls,
-        seeds=seeds,
-        content_summary=metadata.get("content_summary", ""),
-        explore_used=metadata.get("explore_used", 0),
+        message_id=str(report.message_id),
+        fact_count=0,
+        source_count=0,
+        source_urls=[],
+        seeds=[],
+        content_summary=content_summary,
+        explore_used=report.explore_used,
     )
 
 
