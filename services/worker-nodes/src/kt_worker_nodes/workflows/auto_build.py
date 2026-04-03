@@ -119,7 +119,13 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
     from kt_db.repositories.write_seeds import WriteSeedRepository
     from kt_models.embeddings import EmbeddingService
 
-    min_facts = settings.graph_build_auto_promote_min_facts  # type: ignore[attr-defined]
+    # Promote only when a seed has enough facts for at least one
+    # dimension batch — promoting earlier just creates stub nodes that
+    # rebuild_node immediately skips as "partial".
+    min_facts = max(
+        settings.graph_build_auto_promote_min_facts,  # type: ignore[attr-defined]
+        settings.dimension_fact_limit,  # type: ignore[attr-defined]
+    )
     batch_size = settings.graph_build_batch_size  # type: ignore[attr-defined]
 
     embedding_service = EmbeddingService()
