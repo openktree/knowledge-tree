@@ -19,6 +19,7 @@ export default function ProfilePage() {
   const [emailVerificationEnabled, setEmailVerificationEnabled] = useState(false);
   const [verifyRequesting, setVerifyRequesting] = useState(false);
   const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+  const [verifySent, setVerifySent] = useState(false);
 
   useEffect(() => {
     void api.auth.authFeatures().then((f) => {
@@ -35,6 +36,7 @@ export default function ProfilePage() {
     setVerifyMessage(null);
     try {
       await api.auth.requestVerifyToken(user.email);
+      setVerifySent(true);
       setVerifyMessage("Verification email sent — check your inbox.");
     } catch (err) {
       setVerifyMessage(err instanceof Error ? err.message : "Failed to send verification email");
@@ -74,7 +76,7 @@ export default function ProfilePage() {
     }
   };
 
-  const showVerifyButton = emailVerificationEnabled && !user.is_verified && !verifyMessage;
+  const showVerifyButton = emailVerificationEnabled && !user.is_verified && !verifySent;
 
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "Display name", value: user.display_name ?? "\u2014" },
@@ -86,10 +88,15 @@ export default function ProfilePage() {
       value: user.is_verified ? (
         "Yes"
       ) : showVerifyButton ? (
-        <Button size="sm" onClick={handleRequestVerify} disabled={verifyRequesting}>
-          {verifyRequesting ? "Sending..." : "Verify my account"}
-        </Button>
-      ) : verifyMessage ? (
+        <div className="flex flex-col items-end gap-1">
+          <Button size="sm" onClick={handleRequestVerify} disabled={verifyRequesting}>
+            {verifyRequesting ? "Sending..." : "Verify my account"}
+          </Button>
+          {verifyMessage && (
+            <span className="text-xs text-muted-foreground">{verifyMessage}</span>
+          )}
+        </div>
+      ) : verifySent && verifyMessage ? (
         <span className="text-xs text-muted-foreground">{verifyMessage}</span>
       ) : (
         "No"

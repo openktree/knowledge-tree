@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/auth";
 
 type Status = "loading" | "success" | "error" | "no-token";
 
-export default function VerifyPage() {
+function VerifyContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const { refreshUser } = useAuth();
@@ -80,5 +80,13 @@ export default function VerifyPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<div className="max-w-md mx-auto px-6 py-20 text-center"><p className="text-sm text-muted-foreground">Loading...</p></div>}>
+      <VerifyContent />
+    </Suspense>
   );
 }
