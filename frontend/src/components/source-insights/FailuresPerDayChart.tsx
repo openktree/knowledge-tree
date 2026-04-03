@@ -30,18 +30,19 @@ export function FailuresPerDayChart({ data }: FailuresPerDayChartProps) {
           dataKey="day"
           tick={{ fontSize: 12 }}
           tickFormatter={(v: string) => {
-            const d = new Date(v + "T00:00:00");
-            return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+            const d = new Date(v + "T00:00:00Z");
+            return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
           }}
         />
         <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
         <Tooltip
           labelFormatter={(v) => {
-            const d = new Date(String(v) + "T00:00:00");
+            const d = new Date(String(v) + "T00:00:00Z");
             return d.toLocaleDateString(undefined, {
               year: "numeric",
               month: "long",
               day: "numeric",
+              timeZone: "UTC",
             });
           }}
           formatter={(value) => [String(value), "Failures"]}

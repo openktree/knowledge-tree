@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from kt_api.auth.tokens import require_admin
 from kt_api.dependencies import get_db_session
 from kt_api.schemas import (
     DailyFailureCount,
@@ -24,6 +25,7 @@ from kt_api.schemas import (
     SourceReingestResponse,
     SourceResponse,
 )
+from kt_db.models import User
 from kt_db.repositories.sources import SourceRepository
 
 logger = logging.getLogger(__name__)
@@ -162,10 +164,12 @@ async def list_sources(
 @router.get("/insights", response_model=SourceInsightsResponse)
 async def get_source_insights(
     since: datetime | None = Query(None, description="Only include sources retrieved after this ISO datetime"),
+    _admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
 ) -> SourceInsightsResponse:
-    """Get aggregate insights about source fetch health."""
+    """Get aggregate insights about source fetch health (admin only)."""
     repo = SourceRepository(session)
+    # Queries are sequential because they share one AsyncSession (single DB connection).
     summary = await repo.get_insights_summary(since)
     top_domains = await repo.get_top_failed_domains(since)
     errors = await repo.get_common_fetch_errors(since)

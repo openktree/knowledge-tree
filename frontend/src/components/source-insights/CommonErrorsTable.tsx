@@ -23,8 +23,8 @@ export function CommonErrorsTable({ data }: CommonErrorsTableProps) {
           </tr>
         </thead>
         <tbody>
-          {data.map((row, i) => (
-            <tr key={i} className="border-b last:border-0">
+          {data.map((row) => (
+            <tr key={row.error_group} className="border-b last:border-0">
               <td
                 className="py-2 max-w-[400px] truncate font-mono text-xs"
                 title={row.error_group}

@@ -290,7 +290,11 @@ class SourceRepository:
     # ── Insights aggregate queries ─────────────────────────────────────
 
     async def get_insights_summary(self, since: datetime | None = None) -> InsightsSummary:
-        """Get aggregate counts: total, failed fetches, pending super sources."""
+        """Get aggregate counts: total, failed fetches, pending super sources.
+
+        ``pending_super_count`` is always unfiltered — a pending source is
+        still pending regardless of when it was created.
+        """
         stmt = select(
             func.count(RawSource.id).label("total_count"),
             func.count(
@@ -301,22 +305,21 @@ class SourceRepository:
                     ),
                 )
             ).label("failed_count"),
-            func.count(
-                case(
-                    (
-                        (RawSource.is_super_source.is_(True)) & (RawSource.fetch_attempted.is_(False)),
-                        RawSource.id,
-                    ),
-                )
-            ).label("pending_super_count"),
         )
         if since is not None:
             stmt = stmt.where(RawSource.retrieved_at >= since)
         row = (await self._session.execute(stmt)).one()
+
+        pending_stmt = select(func.count(RawSource.id)).where(
+            RawSource.is_super_source.is_(True),
+            RawSource.fetch_attempted.is_(False),
+        )
+        pending_count = (await self._session.execute(pending_stmt)).scalar_one()
+
         return InsightsSummary(
             total_count=row.total_count,
             failed_count=row.failed_count,
-            pending_super_count=row.pending_super_count,
+            pending_super_count=pending_count,
         )
 
     async def get_top_failed_domains(self, since: datetime | None = None, limit: int = 15) -> list[DomainFailure]:
