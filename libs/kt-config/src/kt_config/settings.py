@@ -252,7 +252,6 @@ _register(
         "graph_build_auto_promote_min_facts": "auto_promote_min_facts",
         "graph_build_edge_min_shared_facts": "edge_min_shared_facts",
         "graph_build_batch_size": "batch_size",
-        "graph_build_auto_recalculate_min_new_facts": "auto_recalculate_min_new_facts",
         "graph_build_auto_recalculate_batch_size": "auto_recalculate_batch_size",
     },
 )
@@ -422,6 +421,7 @@ class Settings(BaseSettings):
 
     # Ontology ancestry
     qdrant_url: str = "http://localhost:6333"
+    qdrant_timeout: int = 30  # seconds — default REST timeout for Qdrant client
     redis_url: str = "redis://localhost:6379/0"
     ontology_cache_ttl: int = 604800  # 7 days in seconds
     ontology_model: str = "openrouter/x-ai/grok-4.1-fast"
@@ -481,8 +481,7 @@ class Settings(BaseSettings):
     graph_build_auto_promote_min_facts: int = 10
     graph_build_edge_min_shared_facts: int = 3
     graph_build_batch_size: int = 100
-    graph_build_auto_recalculate_min_new_facts: int = 10
-    graph_build_auto_recalculate_batch_size: int = 20
+    graph_build_auto_recalculate_batch_size: int = 40
 
     # On-demand enrichment
     enrichment_min_facts_for_dimensions: int = 100

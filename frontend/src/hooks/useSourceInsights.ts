@@ -16,9 +16,10 @@ export function useSourceInsights(since?: string): UseSourceInsightsResult {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
+  const loadInsights = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setData(null);
     try {
       const result = await api.sources.getInsights(since);
       setData(result);
@@ -30,8 +31,8 @@ export function useSourceInsights(since?: string): UseSourceInsightsResult {
   }, [since]);
 
   useEffect(() => {
-    void fetch();
-  }, [fetch]);
+    void loadInsights();
+  }, [loadInsights]);
 
-  return { data, isLoading, error, refresh: fetch };
+  return { data, isLoading, error, refresh: loadInsights };
 }

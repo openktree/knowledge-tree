@@ -141,6 +141,9 @@ Output a JSON array of scope objects:
 Output ONLY the JSON array."""
 
         try:
+            # Scope planning is infrastructure, not synthesis — always uses
+            # orchestrator_model regardless of the user-selected model_id.
+            # The user-selected model only applies to the synthesis agents.
             response = await agent_ctx.model_gateway.generate(
                 messages=[{"role": "user", "content": plan_prompt}],
                 model_id=agent_ctx.model_gateway.orchestrator_model,
@@ -169,6 +172,7 @@ Output ONLY the JSON array."""
                     exploration_budget=scope.get("exploration_budget", 15),
                     visibility=input.visibility,
                     creator_id=input.creator_id,
+                    model_id=input.model_id,
                 ).model_dump()
             )
 
@@ -281,7 +285,7 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 ],
             )
 
-            agent = SuperSynthesizerAgent(agent_ctx)
+            agent = SuperSynthesizerAgent(agent_ctx, model_id_override=input.model_id)
             graph, _ = agent.build_graph()
             compiled = graph.compile()
 
@@ -362,6 +366,7 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
                 ).scalar_one_or_none()
                 existing_meta = row if isinstance(row, dict) else {}
                 existing_meta["synthesis_document"] = doc
+                existing_meta["model_id"] = input.model_id or agent.get_model_id()
                 await write_session.execute(
                     update(WriteNode)
                     .where(WriteNode.node_uuid == supersynthesis_node_id)

@@ -375,13 +375,19 @@ class HatchetPipeline:
             dim_pipeline = DimensionPipeline(ctx)
             dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
 
-            # Track fact count at build time for staleness detection
+            await session.commit()
+
+            # Track fact count at build time for staleness detection.
+            # Committed after graph-db so the watermark only advances
+            # when the graph-db side has succeeded.
+            # When facts is empty, no dimensions were generated and
+            # no watermark update is needed — the write session has
+            # no pending changes to commit.
             if facts:
                 write_node_repo = WriteNodeRepository(write_session)
                 node_key = write_node_repo.node_key(node_type, node.concept)
                 await write_node_repo.update_facts_at_last_build(node_key, len(facts))
-
-            await session.commit()
+                await write_session.commit()
 
         dimensions_created = len(dim_result.dim_results)
         if not facts:
@@ -404,6 +410,12 @@ class HatchetPipeline:
     async def full_dimensions(self, node_id: str) -> dict:
         """Full-mode dimensions: delete all existing, then regenerate from ALL facts.
 
+        Resumable on retry: a ``dim_rebuild_in_progress`` metadata flag tracks
+        whether a previous attempt already deleted the old dimensions.  On retry
+        only draft (non-definitive) dimensions are removed so that definitive
+        dimensions committed during the failed attempt are preserved and
+        ``_batch_facts`` resumes from the first unclaimed fact batch.
+
         Same return shape as ``dimensions()``:
         ``{node_id, node_type, dimensions_created, fact_count}``.
         """
@@ -415,12 +427,13 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions(write_only=True) as (_, write_session):
             if write_session is None:
                 raise RuntimeError("full_dimensions: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
-            wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
+            write_node_repo = WriteNodeRepository(write_session)
+            wn = await write_node_repo.get_by_uuid(nid)
             node = Node(id=nid, concept=wn.concept, node_type=wn.node_type) if wn else None
             if node is None:
                 logger.warning("full_dimensions: node %s not found", node_id)
@@ -429,17 +442,39 @@ class HatchetPipeline:
             # Sync seed facts first
             await self._sync_seed_facts_to_node(nid, write_session, ctx.graph_engine)
 
-            # Delete all existing dimensions + derived data
             node_key = make_node_key(node.node_type, node.concept)
             dim_repo = WriteDimensionRepository(write_session)
-            deleted = await dim_repo.delete_all_for_node(node_key)
-            await dim_repo.delete_convergence_report(node_key)
-            await dim_repo.delete_divergent_claims(node_key)
-            if deleted:
-                await write_session.flush()
-                logger.info("full_dimensions: deleted %d existing dimensions for node %s", deleted, node_id)
+            metadata = dict(wn.metadata_ or {})
+            rebuild_in_progress = metadata.get("dim_rebuild_in_progress", False)
+            deleted = 0
 
-            # Regenerate from all facts
+            if not rebuild_in_progress:
+                # First attempt — delete all existing dims and mark rebuild started.
+                # The early commit is intentional: it makes the deletion durable so
+                # that on retry _batch_facts can resume from committed definitive
+                # dims rather than re-deleting everything.
+                deleted = await dim_repo.delete_all_for_node(node_key)
+                await dim_repo.delete_convergence_report(node_key)
+                await dim_repo.delete_divergent_claims(node_key)
+                metadata["dim_rebuild_in_progress"] = True
+                await write_node_repo.update_metadata(node_key, metadata)
+                await write_session.commit()
+                if deleted:
+                    logger.info("full_dimensions: deleted %d existing dimensions for node %s", deleted, node_id)
+            else:
+                # Retry — keep definitive dims from previous attempt, delete only drafts
+                deleted = await dim_repo.delete_drafts_for_node(node_key)
+                await dim_repo.delete_convergence_report(node_key)
+                await dim_repo.delete_divergent_claims(node_key)
+                await write_session.commit()
+                logger.info(
+                    "full_dimensions: retry — kept definitive dims, deleted %d drafts for node %s",
+                    deleted,
+                    node_id,
+                )
+
+            # Regenerate from all facts (writes go to write-db only; sync
+            # worker propagates to graph-db, so no graph-db commit needed).
             facts = await ctx.graph_engine.get_node_facts(nid)
             dim_mode = "neutral" if node.node_type == "concept" else node.node_type
             node_type = node.node_type
@@ -447,12 +482,13 @@ class HatchetPipeline:
             dim_pipeline = DimensionPipeline(ctx)
             dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
 
-            # Update watermark
-            if facts:
-                write_node_repo = WriteNodeRepository(write_session)
-                await write_node_repo.update_facts_at_last_build(node_key, len(facts))
+            # Clear the rebuild flag on success — uses a targeted jsonb key
+            # removal to avoid overwriting concurrent metadata changes.
+            await write_node_repo.remove_metadata_key(node_key, "dim_rebuild_in_progress")
 
-            await session.commit()
+            if facts:
+                await write_node_repo.update_facts_at_last_build(node_key, len(facts))
+            await write_session.commit()
 
         dimensions_created = len(dim_result.dim_results)
         logger.info(

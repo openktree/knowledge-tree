@@ -1,5 +1,7 @@
 """Unit tests for API schemas."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
 
 from kt_api.schemas import (
@@ -253,3 +255,67 @@ def test_node_version_response_no_snapshot():
         created_at=now,
     )
     assert resp.snapshot is None
+
+
+# ── Synthesis schemas ─────────────────────────────────────────────
+
+
+def test_create_synthesis_request_defaults():
+    from kt_api.syntheses import CreateSynthesisRequest
+
+    req = CreateSynthesisRequest()
+    assert req.topic == ""
+    assert req.model_id is None
+    assert req.visibility == "public"
+
+
+def test_create_synthesis_request_with_model():
+    from kt_api.syntheses import CreateSynthesisRequest
+
+    req = CreateSynthesisRequest(topic="AI safety", model_id="openrouter/anthropic/claude-sonnet-4")
+    assert req.model_id == "openrouter/anthropic/claude-sonnet-4"
+
+
+def test_create_super_synthesis_request_with_model():
+    from kt_api.syntheses import CreateSuperSynthesisRequest
+
+    req = CreateSuperSynthesisRequest(topic="AI safety", model_id="openrouter/deepseek/deepseek-v4")
+    assert req.model_id == "openrouter/deepseek/deepseek-v4"
+
+
+def test_synthesis_list_item_model_id():
+    from kt_api.syntheses import SynthesisListItem
+
+    item = SynthesisListItem(id="1", concept="test", node_type="synthesis")
+    assert item.model_id is None
+
+    item2 = SynthesisListItem(
+        id="2", concept="test", node_type="synthesis", model_id="openrouter/google/gemini-3.1-pro"
+    )
+    assert item2.model_id == "openrouter/google/gemini-3.1-pro"
+
+
+def test_synthesis_document_response_model_id():
+    from kt_api.syntheses import SynthesisDocumentResponse
+
+    resp = SynthesisDocumentResponse(id="1", concept="test", node_type="synthesis")
+    assert resp.model_id is None
+
+
+# ── Synthesis model validation ────────────────────────────────────
+
+
+def test_synthesis_models_endpoint():
+    from kt_api.config_api import SYNTHESIS_MODEL_IDS, SYNTHESIS_MODELS
+
+    assert len(SYNTHESIS_MODELS) > 0
+    assert all("model_id" in m and "display_name" in m for m in SYNTHESIS_MODELS)
+    assert len(SYNTHESIS_MODEL_IDS) == len(SYNTHESIS_MODELS)
+
+
+def test_invalid_model_id_rejected():
+    """Verify that an unsupported model_id would be caught by the allowlist check."""
+    from kt_api.config_api import SYNTHESIS_MODEL_IDS
+
+    assert "openrouter/fake/nonexistent-model" not in SYNTHESIS_MODEL_IDS
+    assert "openrouter/anthropic/claude-sonnet-4" in SYNTHESIS_MODEL_IDS

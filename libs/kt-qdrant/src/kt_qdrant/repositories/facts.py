@@ -4,11 +4,13 @@ Stores fact embeddings in Qdrant for fast similarity search while facts
 themselves remain in PostgreSQL as the source of truth.
 """
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
 
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException
 from qdrant_client.models import (
     Distance,
     FieldCondition,
@@ -32,6 +34,9 @@ from kt_config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 FACTS_COLLECTION = "facts"
+
+_SEARCH_MAX_RETRIES = 3
+_SEARCH_BASE_DELAY = 0.5  # seconds
 
 
 @dataclass
@@ -185,14 +190,28 @@ class QdrantFactRepository:
         """
         query_filter = self._build_filter(fact_type=fact_type, exclude_ids=exclude_ids, node_ids=node_ids)
 
-        results = await self._client.query_points(
-            collection_name=FACTS_COLLECTION,
-            query=embedding,
-            limit=limit,
-            score_threshold=score_threshold,
-            query_filter=query_filter,
-            with_payload=True,
-        )
+        last_exc: Exception | None = None
+        for attempt in range(_SEARCH_MAX_RETRIES):
+            try:
+                results = await self._client.query_points(
+                    collection_name=FACTS_COLLECTION,
+                    query=embedding,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    query_filter=query_filter,
+                    with_payload=True,
+                )
+                break
+            except ResponseHandlingException as exc:
+                last_exc = exc
+                if attempt < _SEARCH_MAX_RETRIES - 1:
+                    delay = _SEARCH_BASE_DELAY * (2**attempt)
+                    logger.warning(
+                        "Qdrant search_similar retry %d/%d after %.1fs", attempt + 1, _SEARCH_MAX_RETRIES, delay
+                    )
+                    await asyncio.sleep(delay)
+        else:
+            raise last_exc  # type: ignore[misc]
 
         return [
             FactSearchResult(

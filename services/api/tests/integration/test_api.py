@@ -1156,3 +1156,33 @@ async def test_import_creates_seeds(api_session_factory):
             assert len(data["imported_nodes"]) == 1
 
         await session.rollback()
+
+
+# ── Synthesis model validation ────────────────────────────────────
+
+
+async def test_create_synthesis_invalid_model_returns_400(api_client: AsyncClient):
+    resp = await api_client.post(
+        "/api/v1/syntheses",
+        json={"topic": "test", "model_id": "openrouter/fake/nonexistent-model"},
+    )
+    assert resp.status_code == 400
+    assert "Unsupported model_id" in resp.json()["detail"]
+
+
+async def test_create_super_synthesis_invalid_model_returns_400(api_client: AsyncClient):
+    resp = await api_client.post(
+        "/api/v1/super-syntheses",
+        json={"topic": "test", "model_id": "openrouter/fake/nonexistent-model"},
+    )
+    assert resp.status_code == 400
+    assert "Unsupported model_id" in resp.json()["detail"]
+
+
+async def test_config_synthesis_models_endpoint(api_client: AsyncClient):
+    resp = await api_client.get("/api/v1/config/synthesis-models")
+    assert resp.status_code == 200
+    models = resp.json()
+    assert isinstance(models, list)
+    assert len(models) > 0
+    assert all("model_id" in m and "display_name" in m for m in models)

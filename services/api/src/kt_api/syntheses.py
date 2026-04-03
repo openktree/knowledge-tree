@@ -33,6 +33,7 @@ class CreateSynthesisRequest(BaseModel):
     starting_node_ids: list[str] = Field(default_factory=list)
     exploration_budget: int = 20
     visibility: str = "public"
+    model_id: str | None = None
 
 
 class CreateSuperSynthesisRequest(BaseModel):
@@ -42,6 +43,7 @@ class CreateSuperSynthesisRequest(BaseModel):
     scope_count: int = 0  # 0 = let the LLM decide
     visibility: str = "public"
     distance_threshold: float = 0.7
+    model_id: str | None = None
 
 
 class SentenceFactLink(BaseModel):
@@ -68,6 +70,7 @@ class SynthesisDocumentResponse(BaseModel):
     node_type: str
     visibility: str = "public"
     definition: str | None = None
+    model_id: str | None = None
     sentences: list[SynthesisSentenceResponse] = Field(default_factory=list)
     referenced_nodes: list[SynthesisNodeResponse] = Field(default_factory=list)
     sub_syntheses: list[SynthesisNodeResponse] = Field(default_factory=list)
@@ -79,6 +82,7 @@ class SynthesisListItem(BaseModel):
     concept: str
     node_type: str
     visibility: str = "public"
+    model_id: str | None = None
     sentence_count: int = 0
     sub_synthesis_ids: list[str] = Field(default_factory=list)
     created_at: str | None = None
@@ -117,12 +121,6 @@ def _get_synthesis_doc(node: Node) -> dict[str, Any]:
     return meta.get("synthesis_document", {})
 
 
-def _get_sentence_count(node: Node) -> int:
-    doc = _get_synthesis_doc(node)
-    stats = doc.get("stats", {})
-    return stats.get("sentences_count", 0)
-
-
 # ── Endpoints ──────────────────────────────────────────────────────
 
 
@@ -132,7 +130,11 @@ async def create_synthesis(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Create a new synthesis by dispatching the synthesizer workflow."""
+    from kt_api.config_api import SYNTHESIS_MODEL_IDS
     from kt_hatchet.client import dispatch_workflow
+
+    if body.model_id and body.model_id not in SYNTHESIS_MODEL_IDS:
+        raise HTTPException(status_code=400, detail=f"Unsupported model_id: {body.model_id}")
 
     try:
         run_id = await dispatch_workflow(
@@ -142,6 +144,7 @@ async def create_synthesis(
                 "starting_node_ids": body.starting_node_ids,
                 "exploration_budget": body.exploration_budget,
                 "visibility": body.visibility,
+                "model_id": body.model_id,
             },
         )
     except RuntimeError as exc:
@@ -155,7 +158,11 @@ async def create_super_synthesis(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Create a new super-synthesis by dispatching the super-synthesizer workflow."""
+    from kt_api.config_api import SYNTHESIS_MODEL_IDS
     from kt_hatchet.client import dispatch_workflow
+
+    if body.model_id and body.model_id not in SYNTHESIS_MODEL_IDS:
+        raise HTTPException(status_code=400, detail=f"Unsupported model_id: {body.model_id}")
 
     sub_configs = [
         {
@@ -163,6 +170,7 @@ async def create_super_synthesis(
             "starting_node_ids": c.starting_node_ids,
             "exploration_budget": c.exploration_budget,
             "visibility": c.visibility,
+            "model_id": body.model_id,
         }
         for c in body.sub_configs
     ]
@@ -176,6 +184,7 @@ async def create_super_synthesis(
                 "scope_count": body.scope_count,
                 "visibility": body.visibility,
                 "distance_threshold": body.distance_threshold,
+                "model_id": body.model_id,
             },
         )
     except RuntimeError as exc:
@@ -201,18 +210,22 @@ async def list_syntheses(
     q = select(Node).where(base_filter).order_by(Node.created_at.desc()).offset(offset).limit(limit)
     nodes = (await session.execute(q)).scalars().all()
 
-    items = [
-        SynthesisListItem(
-            id=str(n.id),
-            concept=n.concept,
-            node_type=n.node_type,
-            visibility=n.visibility,
-            sentence_count=_get_sentence_count(n),
-            sub_synthesis_ids=_get_synthesis_doc(n).get("sub_synthesis_ids", []),
-            created_at=n.created_at.isoformat() if n.created_at else None,
+    items = []
+    for n in nodes:
+        doc = _get_synthesis_doc(n)
+        meta = n.metadata_ or {}
+        items.append(
+            SynthesisListItem(
+                id=str(n.id),
+                concept=n.concept,
+                node_type=n.node_type,
+                visibility=n.visibility,
+                model_id=meta.get("model_id"),
+                sentence_count=doc.get("stats", {}).get("sentences_count", 0),
+                sub_synthesis_ids=doc.get("sub_synthesis_ids", []),
+                created_at=n.created_at.isoformat() if n.created_at else None,
+            )
         )
-        for n in nodes
-    ]
 
     return PaginatedSynthesesResponse(items=items, total=total, offset=offset, limit=limit)
 
@@ -280,6 +293,7 @@ async def get_synthesis(
         node_type=node.node_type,
         visibility=node.visibility,
         definition=node.definition,
+        model_id=(node.metadata_ or {}).get("model_id"),
         sentences=sentences,
         referenced_nodes=referenced_nodes,
         sub_syntheses=sub_syntheses,

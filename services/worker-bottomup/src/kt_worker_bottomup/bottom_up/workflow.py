@@ -489,7 +489,7 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
         await auto_build_task.aio_run_no_wait(AutoBuildInput())
         ctx.log("Dispatched auto_build_graph to promote accumulated seeds")
     except Exception:
-        logger.debug("Failed to dispatch auto_build_graph", exc_info=True)
+        logger.warning("Failed to dispatch auto_build_graph", exc_info=True)
 
     await emit(
         "done",
@@ -1137,7 +1137,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         await auto_build_task.aio_run_no_wait(AutoBuildInput())
         ctx.log("Dispatched auto_build_graph to promote accumulated seeds")
     except Exception:
-        logger.debug("Failed to dispatch auto_build_graph", exc_info=True)
+        logger.warning("Failed to dispatch auto_build_graph", exc_info=True)
 
     await emit(
         "done",

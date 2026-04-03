@@ -99,7 +99,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
             # Run the agent
             await emit_event("synthesis_agent_started", topic=input.topic)
 
-            agent = SynthesizerAgent(agent_ctx)
+            agent = SynthesizerAgent(agent_ctx, model_id_override=input.model_id)
             graph, _ = agent.build_graph()
             compiled = graph.compile()
 
@@ -185,6 +185,7 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
                     existing_meta = row
 
                 existing_meta["synthesis_document"] = doc
+                existing_meta["model_id"] = input.model_id or agent.get_model_id()
                 await write_session.execute(
                     update(WriteNode).where(WriteNode.node_uuid == synthesis_node_id).values(metadata_=existing_meta)
                 )

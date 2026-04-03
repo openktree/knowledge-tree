@@ -8,11 +8,7 @@
       "inputPerMillion": 0.30,
       "outputPerMillion": 0.50
     },
-    "openrouter/anthropic/claude-3.5-sonnet": {
-      "inputPerMillion": 3.00,
-      "outputPerMillion": 15.00
-    },
-    "openrouter/anthropic/claude-sonnet-4": {
+    "openrouter/anthropic/claude-sonnet-4.6": {
       "inputPerMillion": 3.00,
       "outputPerMillion": 15.00
     },

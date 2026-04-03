@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -16,7 +17,7 @@ import {
   ExternalLink,
   Loader2,
 } from "lucide-react";
-import { formatSynthesisConcept } from "./utils";
+import { formatSynthesisConcept, formatModelName } from "./utils";
 import type {
   SynthesisDocumentResponse,
   SynthesisSentenceResponse,
@@ -422,6 +423,34 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
           {children}
         </em>
       ),
+      table: ({ children }: { children?: React.ReactNode }) => (
+        <div className="overflow-x-auto my-4 -mx-1">
+          <table className="w-full border-collapse text-[0.88rem] leading-relaxed">
+            {children}
+          </table>
+        </div>
+      ),
+      thead: ({ children }: { children?: React.ReactNode }) => (
+        <thead className="border-b-2 border-border">{children}</thead>
+      ),
+      tbody: ({ children }: { children?: React.ReactNode }) => (
+        <tbody>{children}</tbody>
+      ),
+      tr: ({ children }: { children?: React.ReactNode }) => (
+        <tr className="border-b border-border/50 hover:bg-secondary/50">
+          {children}
+        </tr>
+      ),
+      th: ({ children }: { children?: React.ReactNode }) => (
+        <th className="text-left font-semibold text-foreground px-3 py-2 bg-secondary/50 whitespace-nowrap">
+          {children}
+        </th>
+      ),
+      td: ({ children }: { children?: React.ReactNode }) => (
+        <td className="px-3 py-2 text-foreground/85 align-top">
+          {children}
+        </td>
+      ),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedParaKey, paragraphMap, getSectionInfo]
@@ -496,13 +525,19 @@ export function SynthesisDocument({ document }: SynthesisDocumentProps) {
                 <span>{document.referenced_nodes.length} nodes</span>
               </>
             )}
+            {formatModelName(document.model_id) && (
+              <>
+                <span className="text-border">|</span>
+                <span>{formatModelName(document.model_id)}</span>
+              </>
+            )}
           </div>
         </header>
 
         {/* Body */}
         <div className="mb-10">
           {hasDefinition ? (
-            <Markdown components={markdownComponents}>
+            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {document.definition!}
             </Markdown>
           ) : (

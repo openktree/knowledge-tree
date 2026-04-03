@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Date, case, cast, func, literal_column, select, update
+from sqlalchemy import Date, case, cast, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -62,13 +62,16 @@ class SourceRepository:
         stmt = stmt.on_conflict_do_update(
             index_elements=["content_hash"],
             set_={"content_hash": stmt.excluded.content_hash},
-        ).returning(RawSource.id)
+        ).returning(RawSource.id, text("xmax"))
         result = await self._session.execute(stmt)
-        returned_id = result.scalar_one()
+        row = result.one()
+        returned_id = row[0]
+        # PostgreSQL: xmax == 0 means a fresh INSERT; xmax > 0 means
+        # ON CONFLICT triggered an UPDATE on an existing row.
+        created = int(row[1]) == 0
 
         source = await self.get_by_id(returned_id)
         assert source is not None  # noqa: S101
-        created = returned_id == new_id
         return source, created
 
     async def get_by_uri(self, uri: str) -> RawSource | None:
@@ -296,14 +299,14 @@ class SourceRepository:
 
     async def get_top_failed_domains(self, since: datetime | None = None, limit: int = 15) -> list[dict]:
         """Get domains with the most fetch failures."""
-        domain_expr = func.substring(RawSource.uri, literal_column("'://([^/]+)+'"))
+        domain_expr = func.substring(RawSource.uri, text("'://([^/]+)'"))
         stmt = (
             select(
                 domain_expr.label("domain"),
                 func.count(RawSource.id).label("failure_count"),
             )
             .where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(True))
-            .group_by(literal_column("domain"))
+            .group_by(domain_expr)
             .having(domain_expr.isnot(None))
             .order_by(func.count(RawSource.id).desc())
             .limit(limit)

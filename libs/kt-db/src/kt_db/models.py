@@ -155,12 +155,18 @@ class Dimension(Base):
 
     def __init__(self, **kwargs: object) -> None:
         self._embedding: list[float] | None = kwargs.pop("embedding", None)  # type: ignore[assignment]
+        self._write_key: str | None = kwargs.pop("write_key", None)  # type: ignore[assignment]
         super().__init__(**kwargs)
 
     @property
     def embedding(self) -> list[float] | None:
         """In-memory embedding (not persisted). Stored in Qdrant."""
         return getattr(self, "_embedding", None)
+
+    @property
+    def write_key(self) -> str | None:
+        """Write-db key (not persisted). Set when loading from write-db."""
+        return getattr(self, "_write_key", None)
 
     @embedding.setter
     def embedding(self, value: list[float] | None) -> None:

@@ -170,7 +170,7 @@ class DimensionPipeline:
 
                 # If regenerating unsaturated dim, delete old one first
                 if existing_dim is not None:
-                    await ctx.graph_engine.delete_dimension(existing_dim.id)
+                    await ctx.graph_engine.delete_dimension(existing_dim.id, write_key=existing_dim.write_key)
 
                 for d in dim_results:
                     suggested = d.get("suggested_concepts")

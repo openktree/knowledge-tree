@@ -21,3 +21,18 @@ export function formatSynthesisConcept(concept: string): {
   });
   return { title: title.trim(), date };
 }
+
+/**
+ * Convert an OpenRouter model ID to a short display name.
+ * e.g. "openrouter/anthropic/claude-sonnet-4" → "Claude Sonnet 4"
+ */
+export function formatModelName(modelId: string | null | undefined): string | null {
+  if (!modelId) return null;
+  // Strip "openrouter/" prefix, take the last segment, and humanize
+  const parts = modelId.replace(/^openrouter\//, "").split("/");
+  const slug = parts[parts.length - 1];
+  return slug
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
