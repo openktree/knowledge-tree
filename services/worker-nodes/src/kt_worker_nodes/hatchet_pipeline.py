@@ -427,10 +427,10 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions(write_only=True) as (_, write_session):
             if write_session is None:
                 raise RuntimeError("full_dimensions: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             write_node_repo = WriteNodeRepository(write_session)
             wn = await write_node_repo.get_by_uuid(nid)
