@@ -780,9 +780,9 @@ class TestAncestryPipelineIntegration:
         node_b = await _create_node(db_session, "node-b-circ", parent_id=node_c.id)
         node_a = await _create_node(db_session, "node-a-circ", parent_id=node_b.id)
 
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
-        engine = GraphEngine(db_session, mock_embedding_service)
+        engine = WorkerGraphEngine(write_session=db_session)
 
         # Setting C.parent = A would create A→B→C→A (cycle, never reaches root)
         with pytest.raises(ValueError, match="would create a cycle"):
@@ -807,9 +807,9 @@ class TestAncestryPipelineIntegration:
         orphan = await _create_node(db_session, "orphan-node", parent_id=None)
         child = await _create_node(db_session, "child-node", parent_id=ALL_CONCEPTS_ID)
 
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
-        engine = GraphEngine(db_session, mock_embedding_service)
+        engine = WorkerGraphEngine(write_session=db_session)
 
         with pytest.raises(ValueError, match="not a root node"):
             await engine.set_parent(child.id, orphan.id)

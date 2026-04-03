@@ -77,7 +77,7 @@ async def _build_agent_context(
     ones from ``WorkerState``.
     """
     from kt_agents_core.state import AgentContext
-    from kt_graph.engine import GraphEngine
+    from kt_graph.worker_engine import WorkerGraphEngine
 
     if api_key:
         from kt_models.embeddings import EmbeddingService
@@ -89,10 +89,9 @@ async def _build_agent_context(
         model_gateway = state.model_gateway
         embedding_service = state.embedding_service
 
-    graph_engine = GraphEngine(
-        session,
+    graph_engine = WorkerGraphEngine(
+        write_session,
         embedding_service,
-        write_session=write_session,
         qdrant_client=state.qdrant_client,
     )
     return AgentContext(
@@ -100,7 +99,7 @@ async def _build_agent_context(
         provider_registry=state.provider_registry,
         model_gateway=model_gateway,
         embedding_service=embedding_service,
-        session=session,
+        session=None,
         emit_event=emit_event,
         content_fetcher=state.content_fetcher,
         session_factory=state.session_factory,

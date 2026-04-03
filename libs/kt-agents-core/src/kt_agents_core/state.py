@@ -15,11 +15,15 @@ if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from kt_graph.engine import GraphEngine
+    from kt_graph.read_engine import ReadGraphEngine
+    from kt_graph.worker_engine import WorkerGraphEngine
     from kt_models.embeddings import EmbeddingService
     from kt_models.gateway import ModelGateway
     from kt_providers.fetcher import ContentFetcher, FileDataStore
     from kt_providers.registry import ProviderRegistry
+
+    # Either engine type can be used as graph_engine
+    GraphEngineType = WorkerGraphEngine | ReadGraphEngine
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +108,7 @@ class AgentContext:
 
     def __init__(
         self,
-        graph_engine: GraphEngine,
+        graph_engine: GraphEngineType,
         provider_registry: ProviderRegistry,
         model_gateway: ModelGateway,
         embedding_service: EmbeddingService | None,
@@ -148,22 +152,16 @@ class AgentContext:
         Raises RuntimeError if no session_factory was provided (e.g. in tests).
         The caller is responsible for committing/closing the child session.
         """
-        if self.session_factory is None:
-            raise RuntimeError("Cannot create child context: no session_factory provided")
+        if self.write_session_factory is None:
+            raise RuntimeError("Cannot create child context: no write_session_factory provided")
 
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
-        child_session = self.session_factory()
+        child_write_session = self.write_session_factory()
 
-        # Open a write session if factory is available
-        child_write_session = None
-        if self.write_session_factory is not None:
-            child_write_session = self.write_session_factory()
-
-        child_graph_engine = GraphEngine(
-            child_session,
+        child_graph_engine = WorkerGraphEngine(
+            child_write_session,
             self.embedding_service,
-            write_session=child_write_session,
             qdrant_client=self.qdrant_client,
         )
 
@@ -172,7 +170,7 @@ class AgentContext:
             provider_registry=self.provider_registry,
             model_gateway=self.model_gateway,
             embedding_service=self.embedding_service,
-            session=child_session,
+            session=None,
             emit_event=self._emit_event,
             content_fetcher=self.content_fetcher,
             session_factory=self.session_factory,

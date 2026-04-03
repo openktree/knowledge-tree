@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _utcnow() -> datetime:
@@ -235,6 +235,13 @@ class WriteFact(WriteBase):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
+    sources: Mapped[list["WriteFactSource"]] = relationship(
+        back_populates="fact",
+        lazy="raise",
+        foreign_keys="WriteFactSource.fact_id",
+        primaryjoin="WriteFact.id == WriteFactSource.fact_id",
+    )
+
 
 class WriteFactSource(WriteBase):
     """Write-optimized fact-to-source provenance.
@@ -262,6 +269,12 @@ class WriteFactSource(WriteBase):
     author_org: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    fact: Mapped["WriteFact"] = relationship(
+        back_populates="sources",
+        lazy="raise",
+        foreign_keys=[fact_id],
+    )
 
 
 class WriteNodeFactRejection(WriteBase):

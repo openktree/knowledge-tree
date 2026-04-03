@@ -4,7 +4,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    command: postgres -c max_connections=100
+    command: postgres -c max_connections=200
     environment:
       POSTGRES_DB: knowledge_tree
       POSTGRES_USER: kt
@@ -37,6 +37,32 @@ services:
       timeout: 5s
       retries: 5
 
+  pgbouncer-read:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASE_URL: "postgres://kt:localdev@postgres:5432/knowledge_tree"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "50"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_TIMEOUT: "3"
+      SERVER_RESET_QUERY: "DISCARD ALL"
+      SERVER_IDLE_TIMEOUT: "600"
+      SERVER_LIFETIME: "3600"
+      IGNORE_STARTUP_PARAMETERS: "extra_float_digits"
+      AUTH_TYPE: plain
+    ports:
+      - "5436:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "kt"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   pgbouncer-write:
     image: edoburu/pgbouncer:latest
     environment:
@@ -48,6 +74,8 @@ services:
       RESERVE_POOL_SIZE: "10"
       RESERVE_POOL_TIMEOUT: "3"
       SERVER_RESET_QUERY: "DISCARD ALL"
+      SERVER_IDLE_TIMEOUT: "600"
+      SERVER_LIFETIME: "3600"
       IGNORE_STARTUP_PARAMETERS: "extra_float_digits"
       AUTH_TYPE: plain
     ports:
@@ -159,11 +187,11 @@ services:
       dockerfile: services/worker-bottomup/Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
       WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
       REDIS_URL: "redis://redis:6379/0"
     depends_on:
-      postgres:
+      pgbouncer-read:
         condition: service_healthy
       pgbouncer-write:
         condition: service_healthy
@@ -180,11 +208,11 @@ services:
       dockerfile: services/worker-search/Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
       WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
       REDIS_URL: "redis://redis:6379/0"
     depends_on:
-      postgres:
+      pgbouncer-read:
         condition: service_healthy
       pgbouncer-write:
         condition: service_healthy
@@ -201,11 +229,11 @@ services:
       dockerfile: services/worker-nodes/Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
       WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
       REDIS_URL: "redis://redis:6379/0"
     depends_on:
-      postgres:
+      pgbouncer-read:
         condition: service_healthy
       pgbouncer-write:
         condition: service_healthy
@@ -222,11 +250,11 @@ services:
       dockerfile: services/worker-ingest/Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
       WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
       REDIS_URL: "redis://redis:6379/0"
     depends_on:
-      postgres:
+      pgbouncer-read:
         condition: service_healthy
       pgbouncer-write:
         condition: service_healthy
@@ -243,11 +271,11 @@ services:
       dockerfile: services/worker-synthesis/Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
       WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
       REDIS_URL: "redis://redis:6379/0"
     depends_on:
-      postgres:
+      pgbouncer-read:
         condition: service_healthy
       pgbouncer-write:
         condition: service_healthy
@@ -266,9 +294,9 @@ services:
       - "8001:8001"
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@postgres:5432/knowledge_tree"
+      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
     depends_on:
-      postgres:
+      pgbouncer-read:
         condition: service_healthy
       qdrant:
         condition: service_started

@@ -1,11 +1,11 @@
-"""Unit tests for GraphEngine Qdrant node_id updates in link/unlink."""
+"""Unit tests for WorkerGraphEngine Qdrant node_id updates in link/unlink."""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from kt_graph.engine import GraphEngine
+from kt_graph.worker_engine import WorkerGraphEngine
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ class TestLinkFactToNodeQdrant:
         self, mock_session: AsyncMock, mock_qdrant_fact_repo: AsyncMock
     ) -> None:
         """When no write session, link goes through graph-db and updates Qdrant."""
-        engine = GraphEngine(session=mock_session)
+        engine = WorkerGraphEngine(write_session=mock_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
 
         # Mock the fact_repo.link_to_node call
@@ -67,7 +67,7 @@ class TestLinkFactToNodeQdrant:
         mock_qdrant_fact_repo: AsyncMock,
     ) -> None:
         """When write session exists and node is in cache, updates Qdrant."""
-        engine = GraphEngine(session=mock_session, write_session=mock_write_session)
+        engine = WorkerGraphEngine(write_session=mock_write_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
 
         node_id = uuid.uuid4()
@@ -87,7 +87,7 @@ class TestLinkFactToNodeQdrant:
         self, mock_session: AsyncMock, mock_qdrant_fact_repo: AsyncMock
     ) -> None:
         """Qdrant failure is logged but does not break the link operation."""
-        engine = GraphEngine(session=mock_session)
+        engine = WorkerGraphEngine(write_session=mock_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
         mock_qdrant_fact_repo.append_node_id.side_effect = ConnectionError("Qdrant down")
 
@@ -103,7 +103,7 @@ class TestLinkFactToNodeQdrant:
 
     async def test_link_no_qdrant_skips_update(self, mock_session: AsyncMock) -> None:
         """When no Qdrant repo, link works without Qdrant update."""
-        engine = GraphEngine(session=mock_session)
+        engine = WorkerGraphEngine(write_session=mock_session)
         assert engine._qdrant_fact_repo is None
 
         node_fact = MagicMock()
@@ -122,7 +122,7 @@ class TestUnlinkFactFromNodeQdrant:
     async def test_unlink_via_graph_db_updates_qdrant(
         self, mock_session: AsyncMock, mock_qdrant_fact_repo: AsyncMock
     ) -> None:
-        engine = GraphEngine(session=mock_session)
+        engine = WorkerGraphEngine(write_session=mock_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
 
         engine._fact_repo = AsyncMock()
@@ -141,7 +141,7 @@ class TestUnlinkFactFromNodeQdrant:
         mock_write_session: AsyncMock,
         mock_qdrant_fact_repo: AsyncMock,
     ) -> None:
-        engine = GraphEngine(session=mock_session, write_session=mock_write_session)
+        engine = WorkerGraphEngine(write_session=mock_write_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
 
         node_id = uuid.uuid4()
@@ -161,7 +161,7 @@ class TestUnlinkFactFromNodeQdrant:
         self, mock_session: AsyncMock, mock_qdrant_fact_repo: AsyncMock
     ) -> None:
         """When unlink_from_node returns False, Qdrant should not be updated."""
-        engine = GraphEngine(session=mock_session)
+        engine = WorkerGraphEngine(write_session=mock_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
 
         engine._fact_repo = AsyncMock()
@@ -177,7 +177,7 @@ class TestUnlinkFactFromNodeQdrant:
     async def test_unlink_qdrant_failure_does_not_raise(
         self, mock_session: AsyncMock, mock_qdrant_fact_repo: AsyncMock
     ) -> None:
-        engine = GraphEngine(session=mock_session)
+        engine = WorkerGraphEngine(write_session=mock_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
         mock_qdrant_fact_repo.remove_node_id.side_effect = ConnectionError("Qdrant down")
 

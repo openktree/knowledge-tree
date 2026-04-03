@@ -42,28 +42,28 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
     errors = 0
 
     async with state.write_session_factory() as session:
-        async with session.begin():
-            repo = WriteSeedRepository(session)
+        repo = WriteSeedRepository(session)
 
-            # Batch-fetch all seeds, filter to active only
-            unique_keys = list(dict.fromkeys(input.seed_keys))
-            seeds_by_key = await repo.get_seeds_by_keys_batch(unique_keys)
-            active_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "active"]
+        # Batch-fetch all seeds, filter to active only
+        unique_keys = list(dict.fromkeys(input.seed_keys))
+        seeds_by_key = await repo.get_seeds_by_keys_batch(unique_keys)
+        active_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "active"]
 
-            # Build Qdrant seed repo — required for embedding dedup
-            if state.qdrant_client is None:
-                raise RuntimeError("Qdrant client is required for seed dedup but was not available on WorkerState")
+        # Build Qdrant seed repo — required for embedding dedup
+        if state.qdrant_client is None:
+            raise RuntimeError("Qdrant client is required for seed dedup but was not available on WorkerState")
 
-            from kt_qdrant.repositories.seeds import QdrantSeedRepository
+        from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
-            qdrant_seed_repo = QdrantSeedRepository(state.qdrant_client)
+        qdrant_seed_repo = QdrantSeedRepository(state.qdrant_client)
 
-            from kt_db.repositories.write_facts import WriteFactRepository
+        from kt_db.repositories.write_facts import WriteFactRepository
 
-            write_fact_repo = WriteFactRepository(session)
+        write_fact_repo = WriteFactRepository(session)
 
-            for seed_key, seed in active_seeds:
-                try:
+        for seed_key, seed in active_seeds:
+            try:
+                async with session.begin():
                     surviving = await deduplicate_seed(
                         seed_key=seed_key,
                         name=seed.name,
@@ -74,12 +74,12 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
                         model_gateway=state.model_gateway,
                         write_fact_repo=write_fact_repo,
                     )
-                    processed += 1
-                    if surviving != seed_key:
-                        merges[seed_key] = surviving
-                except Exception:
-                    logger.exception("Dedup failed for seed '%s'", seed_key)
-                    errors += 1
+                processed += 1
+                if surviving != seed_key:
+                    merges[seed_key] = surviving
+            except Exception:
+                logger.exception("Dedup failed for seed '%s'", seed_key)
+                errors += 1
 
     logger.info(
         "seed_dedup_batch: processed=%d merges=%d errors=%d scope=%s",

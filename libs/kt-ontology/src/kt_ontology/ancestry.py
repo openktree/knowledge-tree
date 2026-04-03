@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_config.settings import get_settings
 from kt_config.types import DEFAULT_PARENTS
 from kt_db.repositories.nodes import NodeRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.worker_engine import WorkerGraphEngine as GraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_ontology.base import AncestorEntry, AncestryChain

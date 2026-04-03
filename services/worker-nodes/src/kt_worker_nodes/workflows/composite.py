@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from kt_agents_core.state import AgentContext
-    from kt_graph.engine import GraphEngine
+    from kt_graph.worker_engine import WorkerGraphEngine
 
 from hatchet_sdk import Context
 
@@ -85,7 +85,7 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
     from kt_agents_core.state import AgentContext
     from kt_db.keys import make_node_key
     from kt_db.repositories.write_node_versions import WriteNodeVersionRepository
-    from kt_graph.engine import GraphEngine
+    from kt_graph.worker_engine import WorkerGraphEngine
     from kt_worker_nodes.pipelines.composite.merge import find_mergeable_composite
 
     node_id: str | None = None
@@ -94,125 +94,122 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
     draws_from_edge_ids: list[str] = []
     version_number = 1
 
-    async with state.session_factory() as session:
-        write_session = state.write_session_factory() if state.write_session_factory else None
-        try:
-            graph_engine = GraphEngine(
-                session,
-                state.embedding_service,
-                qdrant_client=state.qdrant_client,
-                write_session=write_session,
-            )
-            agent_ctx = AgentContext(
-                graph_engine=graph_engine,
-                provider_registry=state.provider_registry,
-                model_gateway=state.model_gateway,
-                embedding_service=state.embedding_service,
-                session=session,
-                session_factory=state.session_factory,
-                content_fetcher=state.content_fetcher,
-                write_session_factory=state.write_session_factory,
-                qdrant_client=state.qdrant_client,
-            )
+    write_session = state.write_session_factory() if state.write_session_factory else None
+    try:
+        graph_engine = WorkerGraphEngine(
+            write_session,
+            state.embedding_service,
+            qdrant_client=state.qdrant_client,
+        )
+        agent_ctx = AgentContext(
+            graph_engine=graph_engine,
+            provider_registry=state.provider_registry,
+            model_gateway=state.model_gateway,
+            embedding_service=state.embedding_service,
+            session=None,
+            session_factory=state.session_factory,
+            content_fetcher=state.content_fetcher,
+            write_session_factory=state.write_session_factory,
+            qdrant_client=state.qdrant_client,
+        )
 
-            source_ids = input.source_node_ids
+        source_ids = input.source_node_ids
 
-            # ── Embed concept for merge check and node creation ───────
-            embedding: list[float] | None = None
-            if state.embedding_service:
-                try:
-                    embedding = await state.embedding_service.embed_text(input.concept)
-                except Exception:
-                    logger.warning("Failed to embed concept for composite", exc_info=True)
+        # ── Embed concept for merge check and node creation ───────
+        embedding: list[float] | None = None
+        if state.embedding_service:
+            try:
+                embedding = await state.embedding_service.embed_text(input.concept)
+            except Exception:
+                logger.warning("Failed to embed concept for composite", exc_info=True)
 
-            # ── Check for merge candidate ─────────────────────────────
-            merge_target = await find_mergeable_composite(
-                graph_engine,
-                node_type=input.node_type,
-                source_node_ids=set(source_ids),
+        # ── Check for merge candidate ─────────────────────────────
+        merge_target = await find_mergeable_composite(
+            graph_engine,
+            node_type=input.node_type,
+            source_node_ids=set(source_ids),
+            concept=input.concept,
+            embedding=embedding,
+        )
+
+        if merge_target:
+            # Merge: expand source set and regenerate
+            node_id = merge_target
+            merged_into = merge_target
+            is_new = False
+            ctx.log(f"build_composite: merging into existing {merge_target}")
+
+            # Get existing source nodes from draws_from edges
+            existing_sources = await _get_source_node_ids(graph_engine, uuid.UUID(merge_target))
+            source_ids = list(set(source_ids) | set(existing_sources))
+        else:
+            # Create new composite node
+            node = await graph_engine.create_node(
                 concept=input.concept,
                 embedding=embedding,
-            )
-
-            if merge_target:
-                # Merge: expand source set and regenerate
-                node_id = merge_target
-                merged_into = merge_target
-                is_new = False
-                ctx.log(f"build_composite: merging into existing {merge_target}")
-
-                # Get existing source nodes from draws_from edges
-                existing_sources = await _get_source_node_ids(graph_engine, uuid.UUID(merge_target))
-                source_ids = list(set(source_ids) | set(existing_sources))
-            else:
-                # Create new composite node
-                node = await graph_engine.create_node(
-                    concept=input.concept,
-                    embedding=embedding,
-                    node_type=input.node_type,
-                    metadata_=input.metadata,
-                )
-                node_id = str(node.id)
-                ctx.log(f"build_composite: created node {node_id}")
-
-            # ── Run agent ─────────────────────────────────────────────
-            definition = await _run_composite_agent(
-                agent_ctx=agent_ctx,
                 node_type=input.node_type,
-                concept=input.concept,
-                source_node_ids=source_ids,
-                query_context=input.query_context,
-                parent_concept=input.parent_concept,
+                metadata_=input.metadata,
+            )
+            node_id = str(node.id)
+            ctx.log(f"build_composite: created node {node_id}")
+
+        # ── Run agent ─────────────────────────────────────────────
+        definition = await _run_composite_agent(
+            agent_ctx=agent_ctx,
+            node_type=input.node_type,
+            concept=input.concept,
+            source_node_ids=source_ids,
+            query_context=input.query_context,
+            parent_concept=input.parent_concept,
+        )
+
+        # ── Set definition on node ────────────────────────────────
+        if node_id and definition:
+            await graph_engine.set_node_definition(
+                uuid.UUID(node_id),
+                definition,
+                source=state.model_gateway.orchestrator_model,
             )
 
-            # ── Set definition on node ────────────────────────────────
-            if node_id and definition:
+        # ── Create draws_from edges ───────────────────────────────
+        if node_id:
+            draws_from_edge_ids = await _create_draws_from_edges(
+                graph_engine,
+                uuid.UUID(node_id),
+                source_ids,
+            )
+
+        # ── Save version ──────────────────────────────────────────
+        if node_id and write_session:
+            node_key = make_node_key(input.node_type, input.concept)
+            version_repo = WriteNodeVersionRepository(write_session)
+            version_number = await version_repo.next_version_number(node_key)
+            await version_repo.create_version(
+                node_key=node_key,
+                version_number=version_number,
+                snapshot={
+                    "definition": definition,
+                    "source_node_ids": source_ids,
+                    "source_node_count": len(source_ids),
+                    "model_id": state.model_gateway.orchestrator_model,
+                    "query_context": input.query_context,
+                },
+                source_node_count=len(source_ids),
+            )
+            default = await version_repo.update_default(node_key)
+            # If the new default differs, update the node definition
+            if default and default.snapshot and default.snapshot.get("definition") != definition:
                 await graph_engine.set_node_definition(
                     uuid.UUID(node_id),
-                    definition,
-                    source=state.model_gateway.orchestrator_model,
+                    default.snapshot["definition"],
+                    source=default.snapshot.get("model_id", "synthesized"),
                 )
 
-            # ── Create draws_from edges ───────────────────────────────
-            if node_id:
-                draws_from_edge_ids = await _create_draws_from_edges(
-                    graph_engine,
-                    uuid.UUID(node_id),
-                    source_ids,
-                )
+            await write_session.commit()
 
-            # ── Save version ──────────────────────────────────────────
-            if node_id and write_session:
-                node_key = make_node_key(input.node_type, input.concept)
-                version_repo = WriteNodeVersionRepository(write_session)
-                version_number = await version_repo.next_version_number(node_key)
-                await version_repo.create_version(
-                    node_key=node_key,
-                    version_number=version_number,
-                    snapshot={
-                        "definition": definition,
-                        "source_node_ids": source_ids,
-                        "source_node_count": len(source_ids),
-                        "model_id": state.model_gateway.orchestrator_model,
-                        "query_context": input.query_context,
-                    },
-                    source_node_count=len(source_ids),
-                )
-                default = await version_repo.update_default(node_key)
-                # If the new default differs, update the node definition
-                if default and default.snapshot and default.snapshot.get("definition") != definition:
-                    await graph_engine.set_node_definition(
-                        uuid.UUID(node_id),
-                        default.snapshot["definition"],
-                        source=default.snapshot.get("model_id", "synthesized"),
-                    )
-
-                await write_session.commit()
-            await session.commit()
-
-        finally:
-            if write_session:
-                await write_session.close()
+    finally:
+        if write_session:
+            await write_session.close()
 
     await emit(
         "pipeline_phase",
@@ -264,87 +261,84 @@ async def regenerate_composite_task(input: RegenerateCompositeInput, ctx: Contex
     from kt_agents_core.state import AgentContext
     from kt_db.keys import make_node_key
     from kt_db.repositories.write_node_versions import WriteNodeVersionRepository
-    from kt_graph.engine import GraphEngine
+    from kt_graph.worker_engine import WorkerGraphEngine
 
     version_number = 1
     source_node_count = 0
     is_default = False
 
-    async with state.session_factory() as session:
-        write_session = state.write_session_factory() if state.write_session_factory else None
-        try:
-            graph_engine = GraphEngine(
-                session,
-                state.embedding_service,
-                qdrant_client=state.qdrant_client,
-                write_session=write_session,
+    write_session = state.write_session_factory() if state.write_session_factory else None
+    try:
+        graph_engine = WorkerGraphEngine(
+            write_session,
+            state.embedding_service,
+            qdrant_client=state.qdrant_client,
+        )
+
+        # Load the node
+        node = await graph_engine.get_node(nid)
+        if node is None:
+            raise ValueError(f"Node {input.node_id} not found")
+
+        if node.node_type not in COMPOSITE_NODE_TYPES:
+            raise ValueError(f"Node {input.node_id} is type {node.node_type}, not composite")
+
+        # Get current source nodes
+        source_ids = await _get_source_node_ids(graph_engine, nid)
+        source_node_count = len(source_ids)
+
+        agent_ctx = AgentContext(
+            graph_engine=graph_engine,
+            provider_registry=state.provider_registry,
+            model_gateway=state.model_gateway,
+            embedding_service=state.embedding_service,
+            session=None,
+            session_factory=state.session_factory,
+            content_fetcher=state.content_fetcher,
+            write_session_factory=state.write_session_factory,
+            qdrant_client=state.qdrant_client,
+        )
+
+        # Run agent
+        definition = await _run_composite_agent(
+            agent_ctx=agent_ctx,
+            node_type=node.node_type,
+            concept=node.concept,
+            source_node_ids=source_ids,
+        )
+
+        # Save version
+        if write_session:
+            node_key = make_node_key(node.node_type, node.concept)
+            version_repo = WriteNodeVersionRepository(write_session)
+            version_number = await version_repo.next_version_number(node_key)
+            await version_repo.create_version(
+                node_key=node_key,
+                version_number=version_number,
+                snapshot={
+                    "definition": definition,
+                    "source_node_ids": source_ids,
+                    "source_node_count": source_node_count,
+                    "model_id": state.model_gateway.orchestrator_model,
+                },
+                source_node_count=source_node_count,
             )
+            default = await version_repo.update_default(node_key)
+            is_default = default is not None and default.version_number == version_number
 
-            # Load the node
-            node = await graph_engine.get_node(nid)
-            if node is None:
-                raise ValueError(f"Node {input.node_id} not found")
-
-            if node.node_type not in COMPOSITE_NODE_TYPES:
-                raise ValueError(f"Node {input.node_id} is type {node.node_type}, not composite")
-
-            # Get current source nodes
-            source_ids = await _get_source_node_ids(graph_engine, nid)
-            source_node_count = len(source_ids)
-
-            agent_ctx = AgentContext(
-                graph_engine=graph_engine,
-                provider_registry=state.provider_registry,
-                model_gateway=state.model_gateway,
-                embedding_service=state.embedding_service,
-                session=session,
-                session_factory=state.session_factory,
-                content_fetcher=state.content_fetcher,
-                write_session_factory=state.write_session_factory,
-                qdrant_client=state.qdrant_client,
-            )
-
-            # Run agent
-            definition = await _run_composite_agent(
-                agent_ctx=agent_ctx,
-                node_type=node.node_type,
-                concept=node.concept,
-                source_node_ids=source_ids,
-            )
-
-            # Save version
-            if write_session:
-                node_key = make_node_key(node.node_type, node.concept)
-                version_repo = WriteNodeVersionRepository(write_session)
-                version_number = await version_repo.next_version_number(node_key)
-                await version_repo.create_version(
-                    node_key=node_key,
-                    version_number=version_number,
-                    snapshot={
-                        "definition": definition,
-                        "source_node_ids": source_ids,
-                        "source_node_count": source_node_count,
-                        "model_id": state.model_gateway.orchestrator_model,
-                    },
-                    source_node_count=source_node_count,
+            # Update node definition to default version
+            if default and default.snapshot:
+                await graph_engine.set_node_definition(
+                    nid,
+                    default.snapshot["definition"],
+                    source=default.snapshot.get("model_id", "synthesized"),
                 )
-                default = await version_repo.update_default(node_key)
-                is_default = default is not None and default.version_number == version_number
 
-                # Update node definition to default version
-                if default and default.snapshot:
-                    await graph_engine.set_node_definition(
-                        nid,
-                        default.snapshot["definition"],
-                        source=default.snapshot.get("model_id", "synthesized"),
-                    )
+            await write_session.commit()
 
-                await write_session.commit()
-            await session.commit()
-
-        finally:
-            if write_session:
-                await write_session.close()
+    finally:
+        if write_session:
+            await write_session.close()
 
     ctx.log(
         f"regenerate_composite: done version={version_number}, "
@@ -396,7 +390,7 @@ async def _run_composite_agent(
 
 
 async def _get_source_node_ids(
-    graph_engine: "GraphEngine",
+    graph_engine: "WorkerGraphEngine",
     node_id: uuid.UUID,
 ) -> list[str]:
     """Get source node IDs for a composite node from draws_from edges."""
@@ -413,7 +407,7 @@ async def _get_source_node_ids(
 
 
 async def _create_draws_from_edges(
-    graph_engine: "GraphEngine",
+    graph_engine: "WorkerGraphEngine",
     composite_node_id: uuid.UUID,
     source_node_ids: list[str],
 ) -> list[str]:

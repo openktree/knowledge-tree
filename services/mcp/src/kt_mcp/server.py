@@ -23,7 +23,7 @@ from sqlalchemy.orm import selectinload
 
 from kt_config.settings import get_settings
 from kt_db.models import Fact, FactSource, Node, NodeFact, RawSource
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 from kt_mcp.dependencies import (
     get_embedding_service_cached,
     get_qdrant_client_cached,
@@ -149,7 +149,7 @@ async def search_graph(
     limit = max(1, min(100, limit))
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
         nodes = await engine.search_nodes(query, limit=limit, node_type=node_type)
         if not nodes:
             return {"nodes": [], "total": 0}
@@ -201,7 +201,7 @@ async def get_node(node_id: str) -> dict:
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -286,7 +286,7 @@ async def get_dimensions(node_id: str, limit: int = 10, offset: int = 0) -> dict
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -356,7 +356,7 @@ async def get_edges(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -468,7 +468,7 @@ async def get_facts(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -667,7 +667,7 @@ async def get_fact_sources(node_id: str) -> dict:
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -762,7 +762,7 @@ async def search_facts(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         # Resolve node_id to a search query if no explicit query given
         resolved_from_node: str | None = None
@@ -961,7 +961,7 @@ async def get_node_paths(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         source_node = await engine.get_node(source_uid)
         if not source_node:

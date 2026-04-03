@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from kt_graph.engine import GraphEngine
+from kt_graph.worker_engine import WorkerGraphEngine as GraphEngine
 
 logger = logging.getLogger(__name__)
 

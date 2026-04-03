@@ -155,16 +155,15 @@ class TestDetermineAncestryEntity:
 
 
 class TestGraphEngineSetParentGuard:
-    """GraphEngine.set_parent must reject invalid parent chains."""
+    """WorkerGraphEngine.set_parent must reject invalid parent chains."""
 
     @pytest.mark.asyncio
     async def test_set_parent_rejects_self_reference(self) -> None:
         """set_parent(node_id, node_id) should raise ValueError."""
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         session = AsyncMock()
-        embedding_service = MagicMock()
-        engine = GraphEngine(session, embedding_service)
+        engine = WorkerGraphEngine(write_session=session)
 
         node_id = uuid.uuid4()
         with pytest.raises(ValueError, match="Cannot set node .* as its own parent"):
@@ -173,11 +172,10 @@ class TestGraphEngineSetParentGuard:
     @pytest.mark.asyncio
     async def test_set_parent_allows_root_parent(self) -> None:
         """set_parent with a root ID should always succeed."""
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         session = AsyncMock()
-        embedding_service = MagicMock()
-        engine = GraphEngine(session, embedding_service)
+        engine = WorkerGraphEngine(write_session=session)
 
         node_id = uuid.uuid4()
         # Root IDs are always valid — no chain walk needed
@@ -186,44 +184,42 @@ class TestGraphEngineSetParentGuard:
     @pytest.mark.asyncio
     async def test_set_parent_allows_chain_reaching_root(self) -> None:
         """set_parent succeeds when parent chain reaches a root node."""
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         session = AsyncMock()
-        embedding_service = MagicMock()
-        engine = GraphEngine(session, embedding_service)
+        engine = WorkerGraphEngine(write_session=session)
 
         node_id = uuid.uuid4()
         parent_id = uuid.uuid4()
         grandparent_id = uuid.uuid4()
 
-        nodes = {
-            parent_id: MagicMock(id=parent_id, parent_id=grandparent_id),
-            grandparent_id: MagicMock(id=grandparent_id, parent_id=ALL_CONCEPTS_ID),
-        }
-        engine._node_repo.get_by_id = AsyncMock(side_effect=lambda nid: nodes.get(nid))
+        # Populate node cache so _get_cached_or_write_db finds them
+        engine._node_cache[node_id] = MagicMock(id=node_id, parent_id=None, node_type="concept", concept="child")
+        engine._node_cache[parent_id] = MagicMock(
+            id=parent_id, parent_id=grandparent_id, node_type="concept", concept="parent"
+        )
+        engine._node_cache[grandparent_id] = MagicMock(
+            id=grandparent_id, parent_id=ALL_CONCEPTS_ID, node_type="concept", concept="grandparent"
+        )
 
         await engine.set_parent(node_id, parent_id)
 
     @pytest.mark.asyncio
     async def test_set_parent_rejects_cycle(self) -> None:
         """set_parent should detect cycles in the ancestor chain."""
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         session = AsyncMock()
-        embedding_service = MagicMock()
-        engine = GraphEngine(session, embedding_service)
+        engine = WorkerGraphEngine(write_session=session)
 
         node_a = uuid.uuid4()
         node_b = uuid.uuid4()
         node_c = uuid.uuid4()
 
-        # A → B → C → (no root)
-        nodes = {
-            node_a: MagicMock(id=node_a, parent_id=node_b),
-            node_b: MagicMock(id=node_b, parent_id=node_c),
-            node_c: MagicMock(id=node_c, parent_id=ALL_CONCEPTS_ID),
-        }
-        engine._node_repo.get_by_id = AsyncMock(side_effect=lambda nid: nodes.get(nid))
+        # A → B → C → root — populate cache
+        engine._node_cache[node_a] = MagicMock(id=node_a, parent_id=node_b, node_type="concept", concept="a")
+        engine._node_cache[node_b] = MagicMock(id=node_b, parent_id=node_c, node_type="concept", concept="b")
+        engine._node_cache[node_c] = MagicMock(id=node_c, parent_id=ALL_CONCEPTS_ID, node_type="concept", concept="c")
 
         # Setting C.parent = A would create A → B → C → A cycle
         with pytest.raises(ValueError, match="would create a cycle"):
@@ -232,20 +228,18 @@ class TestGraphEngineSetParentGuard:
     @pytest.mark.asyncio
     async def test_set_parent_rejects_chain_not_reaching_root(self) -> None:
         """set_parent rejects if parent chain ends without reaching a root."""
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         session = AsyncMock()
-        embedding_service = MagicMock()
-        engine = GraphEngine(session, embedding_service)
+        engine = WorkerGraphEngine(write_session=session)
 
         node_id = uuid.uuid4()
         orphan_parent = uuid.uuid4()
 
-        # orphan_parent has no parent (None) and is not a root node
-        nodes = {
-            orphan_parent: MagicMock(id=orphan_parent, parent_id=None),
-        }
-        engine._node_repo.get_by_id = AsyncMock(side_effect=lambda nid: nodes.get(nid))
+        # orphan_parent has no parent (None) and is not a root node — populate cache
+        engine._node_cache[orphan_parent] = MagicMock(
+            id=orphan_parent, parent_id=None, node_type="concept", concept="orphan"
+        )
 
         with pytest.raises(ValueError, match="not a root node"):
             await engine.set_parent(node_id, orphan_parent)
@@ -253,19 +247,16 @@ class TestGraphEngineSetParentGuard:
     @pytest.mark.asyncio
     async def test_validate_chain_ok(self) -> None:
         """_validate_parent_chain returns ok for valid chain to root."""
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         session = AsyncMock()
-        embedding_service = MagicMock()
-        engine = GraphEngine(session, embedding_service)
+        engine = WorkerGraphEngine(write_session=session)
 
         node_a = uuid.uuid4()
         node_b = uuid.uuid4()
 
-        nodes = {
-            node_b: MagicMock(id=node_b, parent_id=ALL_CONCEPTS_ID),
-        }
-        engine._node_repo.get_by_id = AsyncMock(side_effect=lambda nid: nodes.get(nid))
+        # Populate cache for chain validation
+        engine._node_cache[node_b] = MagicMock(id=node_b, parent_id=ALL_CONCEPTS_ID, node_type="concept", concept="b")
 
         ok, reason = await engine._validate_parent_chain(node_a, node_b)
         assert ok is True

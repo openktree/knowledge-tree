@@ -521,15 +521,17 @@ class Settings(BaseSettings):
     hatchet_schedule_timeout_minutes: int = 60  # max queue wait before Hatchet cancels a task
 
     # Database pool (graph-db — read-optimized, mostly API reads)
-    db_pool_size: int = 10
-    db_max_overflow: int = 20
+    db_pool_size: int = 20
+    db_max_overflow: int = 40
     db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800  # recycle connections every 30 min
 
     # Write database (normalized, write-optimized — all worker pipeline writes)
     write_database_url: str = "postgresql+asyncpg://kt:localdev@localhost:5434/knowledge_tree_write"
     write_db_pool_size: int = 100
     write_db_max_overflow: int = 700
     write_db_pool_timeout: int = 120
+    write_db_pool_recycle: int = 600  # recycle connections every 10 min
 
     # Sync worker (write-db → graph-db)
     sync_interval_seconds: int = 5

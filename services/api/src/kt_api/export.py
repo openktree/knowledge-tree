@@ -28,7 +28,7 @@ from kt_api.schemas import (
 from kt_config.settings import get_settings
 from kt_db.models import NodeFact
 from kt_db.repositories.conversations import ConversationRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/export", tags=["export"])
 
@@ -182,7 +182,7 @@ async def export_nodes(
 ) -> NodesExportResponse:
     """Export all nodes in the graph as JSON, including linked facts."""
     qdrant = get_qdrant_client_cached()
-    engine = GraphEngine(session, qdrant_client=qdrant)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant)
     nodes = await engine.list_all_nodes()
 
     # Collect edges
@@ -251,7 +251,7 @@ async def export_facts(
 ) -> FactsExportResponse:
     """Export all facts with their sources as JSON."""
     qdrant = get_qdrant_client_cached()
-    engine = GraphEngine(session, qdrant_client=qdrant)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant)
     facts = await engine.list_all_facts_with_sources()
 
     # Optionally fetch embeddings
@@ -313,7 +313,7 @@ async def export_conversation(
             continue
 
     # Get subgraph (nodes + edges)
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     subgraph = await engine.get_subgraph(node_uuids) if node_uuids else {"nodes": [], "edges": [], "edge_fact_ids": {}}
     nodes = subgraph["nodes"]
     edges = subgraph["edges"]

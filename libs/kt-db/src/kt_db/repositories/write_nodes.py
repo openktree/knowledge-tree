@@ -231,3 +231,40 @@ class WriteNodeRepository:
         stmt = stmt.limit(limit)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def search_by_concept(
+        self,
+        query: str,
+        limit: int = 10,
+        node_type: str | None = None,
+    ) -> list[WriteNode]:
+        """Text search by concept using word_similarity with ILIKE fallback.
+
+        Mirrors NodeRepository.search_by_concept for the write-db.
+        """
+        threshold = 0.25
+        stmt = (
+            select(WriteNode)
+            .where(func.word_similarity(query, WriteNode.concept) >= threshold)
+            .order_by(
+                _exact_match_order(WriteNode.concept, query),
+                func.word_similarity(query, WriteNode.concept).desc(),
+                func.length(WriteNode.concept).asc(),
+            )
+        )
+        if node_type is not None:
+            stmt = stmt.where(WriteNode.node_type == node_type)
+        stmt = stmt.limit(limit)
+        result = await self._session.execute(stmt)
+        nodes = list(result.scalars().all())
+
+        if nodes:
+            return nodes
+
+        # Fallback: ILIKE for exact substring matches
+        stmt2 = select(WriteNode).where(WriteNode.concept.ilike(f"%{query}%"))
+        if node_type is not None:
+            stmt2 = stmt2.where(WriteNode.node_type == node_type)
+        stmt2 = stmt2.limit(limit)
+        result2 = await self._session.execute(stmt2)
+        return list(result2.scalars().all())

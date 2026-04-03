@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from kt_graph.engine import GraphEngine
+from kt_graph.worker_engine import WorkerGraphEngine
 
 
 def _make_write_node(**overrides):
@@ -32,7 +32,7 @@ def _make_write_node(**overrides):
 class TestWriteNodeToNode:
     def test_basic_conversion(self):
         wn = _make_write_node()
-        node = GraphEngine._write_node_to_node(wn)
+        node = WorkerGraphEngine._write_node_to_node(wn)
 
         assert node.id == wn.node_uuid
         assert node.concept == wn.concept
@@ -50,7 +50,7 @@ class TestWriteNodeToNode:
 
     def test_parent_key_resolves_to_uuid(self):
         wn = _make_write_node(parent_key="concept:parent-topic")
-        node = GraphEngine._write_node_to_node(wn)
+        node = WorkerGraphEngine._write_node_to_node(wn)
 
         assert node.parent_id is not None
         # key_to_uuid is deterministic — same key always produces same UUID
@@ -60,7 +60,7 @@ class TestWriteNodeToNode:
 
     def test_overrides_applied(self):
         wn = _make_write_node(metadata_={"original": True})
-        node = GraphEngine._write_node_to_node(wn, metadata_={"overridden": True})
+        node = WorkerGraphEngine._write_node_to_node(wn, metadata_={"overridden": True})
 
         assert node.metadata_ == {"overridden": True}
 
@@ -74,7 +74,7 @@ class TestSearchNodesFallback:
         mock_write_node_repo = AsyncMock()
         mock_write_node_repo.search_by_trigram.return_value = [wn]
 
-        engine = GraphEngine(session=None, write_session=None)
+        engine = WorkerGraphEngine(write_session=None)
         engine._write_node_repo = mock_write_node_repo
 
         nodes = await engine.search_nodes("sleep", limit=5)
@@ -87,7 +87,7 @@ class TestSearchNodesFallback:
     @pytest.mark.asyncio
     async def test_raises_when_no_session_available(self):
         """search_nodes raises ValueError when neither DB is available."""
-        engine = GraphEngine(session=None, write_session=None)
+        engine = WorkerGraphEngine(write_session=None)
 
         with pytest.raises(ValueError, match="requires either a graph-db or write-db session"):
             await engine.search_nodes("anything")
