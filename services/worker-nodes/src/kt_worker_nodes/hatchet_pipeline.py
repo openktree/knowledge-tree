@@ -380,6 +380,9 @@ class HatchetPipeline:
             # Track fact count at build time for staleness detection.
             # Committed after graph-db so the watermark only advances
             # when the graph-db side has succeeded.
+            # When facts is empty, no dimensions were generated and
+            # no watermark update is needed — the write session has
+            # no pending changes to commit.
             if facts:
                 write_node_repo = WriteNodeRepository(write_session)
                 node_key = write_node_repo.node_key(node_type, node.concept)

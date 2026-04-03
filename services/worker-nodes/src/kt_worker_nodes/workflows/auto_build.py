@@ -107,6 +107,9 @@ async def auto_build_graph(input: AutoBuildInput, ctx: Context) -> dict:
 async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> tuple[int, int]:
     """Promote active seeds to stub nodes.
 
+    Loops in batches until all eligible seeds are promoted so a single
+    auto_build run drains the full backlog.
+
     Returns (nodes_promoted, 0).  Enrichment is NOT dispatched here —
     ``_check_fact_stale_nodes`` detects newly promoted stubs (facts_at_last_build=0)
     and dispatches ``rebuild_node`` for them.
@@ -127,65 +130,74 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
         logger.error("No write session factory available")
         return 0, 0
 
-    async with write_sf() as ws:
-        seed_repo = WriteSeedRepository(ws)
-        node_repo = WriteNodeRepository(ws)
+    while True:
+        batch_promoted = 0
 
-        seeds = await seed_repo.get_promotable_seeds(min_facts, limit=batch_size)
-        if not seeds:
-            return 0, 0
+        async with write_sf() as ws:
+            seed_repo = WriteSeedRepository(ws)
+            node_repo = WriteNodeRepository(ws)
 
-        logger.info("Found %d promotable seeds", len(seeds))
+            seeds = await seed_repo.get_promotable_seeds(min_facts, limit=batch_size)
+            if not seeds:
+                break
 
-        # Batch embed concept names
-        names = [s.name for s in seeds]
-        try:
-            embeddings = await embedding_service.embed_batch(names)
-        except Exception:
-            logger.exception("Failed to batch-embed seed names, skipping embedding")
-            embeddings = [None] * len(seeds)
+            logger.info("Promoting batch of %d seeds (%d promoted so far)", len(seeds), promoted)
 
-        for seed, embedding in zip(seeds, embeddings):
+            # Batch embed concept names
+            names = [s.name for s in seeds]
             try:
-                node_key = make_node_key(seed.node_type, seed.name)
-                node_uuid = key_to_uuid(node_key)
-
-                # Create WriteNode with enrichment_status='stub'
-                # facts_at_last_build=0 so _check_fact_stale_nodes picks it up
-                await node_repo.upsert(
-                    node_type=seed.node_type,
-                    concept=seed.name,
-                    entity_subtype=seed.entity_subtype,
-                    metadata_=seed.metadata_,
-                    enrichment_status="stub",
-                )
-                await node_repo.update_facts_at_last_build(node_key, 0)
-
-                # Copy seed fact IDs to node
-                seed_facts = await seed_repo.get_seed_fact_ids(seed.key)
-                for fid in seed_facts:
-                    await node_repo.append_fact_id(node_key, str(fid))
-
-                # Upsert to Qdrant if embedding available
-                if embedding is not None and state.qdrant_client is not None:
-                    from kt_qdrant.repositories.nodes import QdrantNodeRepository
-
-                    qdrant_repo = QdrantNodeRepository(state.qdrant_client)
-                    await qdrant_repo.upsert(
-                        node_id=node_uuid,
-                        concept=seed.name,
-                        node_type=seed.node_type,
-                        embedding=embedding,
-                    )
-
-                # Mark seed as promoted
-                await seed_repo.mark_seed_promoted(seed.key, node_key)
-                promoted += 1
-
+                embeddings = await embedding_service.embed_batch(names)
             except Exception:
-                logger.debug("Error promoting seed %s", seed.key, exc_info=True)
+                logger.exception("Failed to batch-embed seed names, skipping embedding")
+                embeddings = [None] * len(seeds)
 
-        await ws.commit()
+            for seed, embedding in zip(seeds, embeddings):
+                try:
+                    node_key = make_node_key(seed.node_type, seed.name)
+                    node_uuid = key_to_uuid(node_key)
+
+                    # Create WriteNode with enrichment_status='stub'
+                    # facts_at_last_build=0 so _check_fact_stale_nodes picks it up
+                    await node_repo.upsert(
+                        node_type=seed.node_type,
+                        concept=seed.name,
+                        entity_subtype=seed.entity_subtype,
+                        metadata_=seed.metadata_,
+                        enrichment_status="stub",
+                    )
+                    await node_repo.update_facts_at_last_build(node_key, 0)
+
+                    # Copy seed fact IDs to node
+                    seed_facts = await seed_repo.get_seed_fact_ids(seed.key)
+                    for fid in seed_facts:
+                        await node_repo.append_fact_id(node_key, str(fid))
+
+                    # Upsert to Qdrant if embedding available
+                    if embedding is not None and state.qdrant_client is not None:
+                        from kt_qdrant.repositories.nodes import QdrantNodeRepository
+
+                        qdrant_repo = QdrantNodeRepository(state.qdrant_client)
+                        await qdrant_repo.upsert(
+                            node_id=node_uuid,
+                            concept=seed.name,
+                            node_type=seed.node_type,
+                            embedding=embedding,
+                        )
+
+                    # Mark seed as promoted
+                    await seed_repo.mark_seed_promoted(seed.key, node_key)
+                    batch_promoted += 1
+
+                except Exception:
+                    logger.warning("Error promoting seed %s", seed.key, exc_info=True)
+
+            await ws.commit()
+
+        promoted += batch_promoted
+
+        # If this batch was smaller than the limit, there are no more
+        if len(seeds) < batch_size:
+            break
 
     logger.info("Promoted %d seeds to stub nodes", promoted)
     try:
