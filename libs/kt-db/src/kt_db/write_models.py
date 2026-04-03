@@ -238,8 +238,8 @@ class WriteFact(WriteBase):
     sources: Mapped[list["WriteFactSource"]] = relationship(
         back_populates="fact",
         lazy="raise",
-        foreign_keys="WriteFactSource.fact_id",
-        primaryjoin="WriteFact.id == WriteFactSource.fact_id",
+        foreign_keys="[WriteFactSource.fact_id]",
+        primaryjoin="WriteFact.id == foreign(WriteFactSource.fact_id)",
     )
 
 
@@ -273,7 +273,8 @@ class WriteFactSource(WriteBase):
     fact: Mapped["WriteFact"] = relationship(
         back_populates="sources",
         lazy="raise",
-        foreign_keys=[fact_id],
+        foreign_keys="[WriteFactSource.fact_id]",
+        primaryjoin="WriteFact.id == foreign(WriteFactSource.fact_id)",
     )
 
 
