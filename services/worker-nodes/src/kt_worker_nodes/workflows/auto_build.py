@@ -189,7 +189,7 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                     batch_promoted += 1
 
                 except Exception:
-                    logger.debug("Error promoting seed %s", seed.key, exc_info=True)
+                    logger.warning("Error promoting seed %s", seed.key, exc_info=True)
 
             await ws.commit()
 

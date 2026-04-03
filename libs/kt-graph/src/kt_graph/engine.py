@@ -1274,9 +1274,8 @@ class GraphEngine:
                         batch_index=wd.batch_index,
                         is_definitive=wd.is_definitive,
                         fact_count=wd.fact_count,
+                        write_key=wd.key,
                     )
-                    # Stash write-db key for delete_dimension routing
-                    dim._write_key = wd.key  # type: ignore[attr-defined]
                     dim.dimension_facts = [DimensionFact(fact_id=uuid.UUID(fid)) for fid in (wd.fact_ids or [])]
                     dims.append(dim)
                 return dims
@@ -1288,28 +1287,31 @@ class GraphEngine:
     async def delete_dimensions(self, node_id: uuid.UUID) -> int:
         """Delete all dimensions for a node. Returns count deleted.
 
-        Routes to write-db when available.
+        Routes to write-db when available, falls through to graph-db
+        for dimensions that pre-date write-db or weren't synced yet.
         """
+        deleted = 0
         if self._write_dim_repo is not None and self._write_node_repo is not None:
             wn = await self._write_node_repo.get_by_uuid(node_id)
             if wn is not None:
-                return await self._write_dim_repo.delete_all_for_node(wn.key)
-            return 0
+                deleted = await self._write_dim_repo.delete_all_for_node(wn.key)
+        # Also delete from graph-db to catch pre-write-db dimensions
         stmt = delete(Dimension).where(Dimension.node_id == node_id)
         result = await self._session.execute(stmt)
-        return result.rowcount  # type: ignore[return-value]
+        deleted += result.rowcount or 0
+        return deleted
 
-    async def delete_dimension(self, dimension_id: uuid.UUID, *, _write_key: str | None = None) -> bool:
+    async def delete_dimension(self, dimension_id: uuid.UUID, *, write_key: str | None = None) -> bool:
         """Delete a single dimension by ID. Returns True if deleted.
 
-        Routes to write-db when available.  The ``_write_key`` is set on
-        Dimension objects returned by ``get_dimensions_with_facts`` when
-        using write-db, allowing direct deletion without a lookup.
+        Routes to write-db when ``write_key`` is provided (set via
+        ``Dimension.write_key`` on objects from ``get_dimensions_with_facts``).
+        Falls through to graph-db if write-db delete didn't find it.
         """
-        if self._write_dim_repo is not None:
-            if _write_key:
-                return await self._write_dim_repo.delete_by_key(_write_key)
-            return False
+        if self._write_dim_repo is not None and write_key:
+            if await self._write_dim_repo.delete_by_key(write_key):
+                return True
+        # Fall through to graph-db for pre-write-db dimensions
         stmt = delete(Dimension).where(Dimension.id == dimension_id)
         result = await self._session.execute(stmt)
         return result.rowcount > 0  # type: ignore[operator]
