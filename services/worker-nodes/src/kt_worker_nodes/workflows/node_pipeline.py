@@ -479,8 +479,9 @@ async def finalize_node(input: NodePipelineInput, ctx: Context) -> dict:
     is_rebuild = input.mode.startswith("rebuild")
 
     if is_rebuild and state.write_session_factory:
-        from kt_db.repositories.write_nodes import WriteNodeRepository
         from sqlalchemy import text
+
+        from kt_db.repositories.write_nodes import WriteNodeRepository
 
         # Load node key for write-db update
         async with state.write_session_factory() as ws:
