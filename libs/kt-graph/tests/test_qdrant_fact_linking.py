@@ -89,7 +89,7 @@ class TestLinkFactToNodeQdrant:
         """Qdrant failure is logged but does not break the link operation."""
         engine = GraphEngine(session=mock_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
-        mock_qdrant_fact_repo.append_node_id.side_effect = RuntimeError("Qdrant down")
+        mock_qdrant_fact_repo.append_node_id.side_effect = ConnectionError("Qdrant down")
 
         node_fact = MagicMock()
         engine._fact_repo = AsyncMock()
@@ -179,7 +179,7 @@ class TestUnlinkFactFromNodeQdrant:
     ) -> None:
         engine = GraphEngine(session=mock_session)
         engine._qdrant_fact_repo = mock_qdrant_fact_repo
-        mock_qdrant_fact_repo.remove_node_id.side_effect = RuntimeError("Qdrant down")
+        mock_qdrant_fact_repo.remove_node_id.side_effect = ConnectionError("Qdrant down")
 
         engine._fact_repo = AsyncMock()
         engine._fact_repo.unlink_from_node = AsyncMock(return_value=True)

@@ -1005,7 +1005,11 @@ class GraphEngine:
                 await self._qdrant_fact_repo.append_node_id(fact_id, node_id)
             else:
                 await self._qdrant_fact_repo.remove_node_id(fact_id, node_id)
-        except Exception:
+        except Exception as exc:
+            from qdrant_client.http.exceptions import ApiException
+
+            if not isinstance(exc, (ConnectionError, TimeoutError, OSError, ApiException)):
+                raise
             logger.warning(
                 "Failed to %s node_id in Qdrant for fact %s",
                 "append" if append else "remove",

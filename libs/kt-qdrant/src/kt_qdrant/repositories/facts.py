@@ -158,7 +158,7 @@ class QdrantFactRepository:
                     payload["fact_type"] = ft
                 if content:
                     payload["content"] = content
-                if node_ids:
+                if node_ids is not None:
                     payload["node_ids"] = [str(nid) for nid in node_ids]
                 points.append(PointStruct(id=str(fid), vector=emb, payload=payload))
             await self._client.upsert(
@@ -375,6 +375,11 @@ class QdrantFactRepository:
 
         No-op if the fact point does not exist in Qdrant yet (e.g. the
         embedding upsert hasn't happened).
+
+        Note: the retrieve → check → set_payload sequence is not atomic.
+        Concurrent calls for the same fact could lose an append.  This is
+        acceptable because Qdrant is a secondary index (PostgreSQL NodeFact
+        is authoritative) and the backfill script can repair any drift.
         """
         points = await self._client.retrieve(
             collection_name=FACTS_COLLECTION,
