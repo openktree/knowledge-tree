@@ -284,7 +284,8 @@ class GraphEngine:
     async def upsert_facts_to_qdrant(
         self,
         facts: list[tuple[uuid.UUID, list[float], str | None]]
-        | list[tuple[uuid.UUID, list[float], str | None, str | None]],
+        | list[tuple[uuid.UUID, list[float], str | None, str | None]]
+        | list[tuple[uuid.UUID, list[float], str | None, str | None, list[uuid.UUID] | None]],
     ) -> None:
         """Batch upsert fact embeddings to Qdrant (no-op if Qdrant not available)."""
         if self._qdrant_fact_repo is not None and facts:
@@ -999,6 +1000,35 @@ class GraphEngine:
         """Delete all non-structural edges for a node."""
         return await self._edge_repo.delete_non_structural_edges(node_id)
 
+    # ── Qdrant helpers ─────────────────────────────────────────────────
+
+    async def _update_qdrant_node_id(
+        self,
+        fact_id: uuid.UUID,
+        node_id: uuid.UUID,
+        *,
+        append: bool,
+    ) -> None:
+        """Append or remove a node_id in Qdrant fact payload (best-effort)."""
+        if self._qdrant_fact_repo is None:
+            return
+        try:
+            if append:
+                await self._qdrant_fact_repo.append_node_id(fact_id, node_id)
+            else:
+                await self._qdrant_fact_repo.remove_node_id(fact_id, node_id)
+        except Exception as exc:
+            from qdrant_client.http.exceptions import ApiException
+
+            if not isinstance(exc, (ConnectionError, TimeoutError, OSError, ApiException)):
+                raise
+            logger.warning(
+                "Failed to %s node_id in Qdrant for fact %s",
+                "append" if append else "remove",
+                fact_id,
+                exc_info=True,
+            )
+
     # ── Fact linking ─────────────────────────────────────────────────
 
     async def link_fact_to_node(
@@ -1017,7 +1047,11 @@ class GraphEngine:
 
         Falls back to graph-db only when no write session is available
         (API / read-only contexts).
+
+        Also updates the Qdrant fact payload with the new node_id so that
+        synthesis fact linking (MatchAny on node_ids) works immediately.
         """
+        result: NodeFact | None = None
         if self._write_node_repo is not None:
             # Try cache first for node key
             if node_id in self._node_cache:
@@ -1032,20 +1066,25 @@ class GraphEngine:
                     node_key = wn.key
                 else:
                     # Node not in write-db — fall through to graph-db
-                    return await _retry_on_deadlock(
+                    result = await _retry_on_deadlock(
                         self._session,
                         lambda: self._fact_repo.link_to_node(
                             node_id, fact_id, relevance_score=relevance, stance=stance
                         ),
                     )
+                    await self._update_qdrant_node_id(fact_id, node_id, append=True)
+                    return result
             await self._write_node_repo.append_fact_id(node_key, str(fact_id))
             await self._write_session.commit()  # type: ignore[union-attr]
+            await self._update_qdrant_node_id(fact_id, node_id, append=True)
             return None
 
-        return await _retry_on_deadlock(
+        result = await _retry_on_deadlock(
             self._session,
             lambda: self._fact_repo.link_to_node(node_id, fact_id, relevance_score=relevance, stance=stance),
         )
+        await self._update_qdrant_node_id(fact_id, node_id, append=True)
+        return result
 
     async def unlink_fact_from_node(self, node_id: uuid.UUID, fact_id: uuid.UUID) -> bool:
         """Remove a fact-to-node link.
@@ -1053,6 +1092,8 @@ class GraphEngine:
         When a write session is available, always routes through write-db
         (removes from WriteNode.fact_ids). Falls back to graph-db only
         when no write session is available.
+
+        Also updates the Qdrant fact payload to remove the node_id.
         """
         if self._write_node_repo is not None:
             if node_id in self._node_cache:
@@ -1065,11 +1106,18 @@ class GraphEngine:
                 if wn is not None:
                     node_key = wn.key
                 else:
-                    return await self._fact_repo.unlink_from_node(node_id, fact_id)
+                    success = await self._fact_repo.unlink_from_node(node_id, fact_id)
+                    if success:
+                        await self._update_qdrant_node_id(fact_id, node_id, append=False)
+                    return success
             await self._write_node_repo.remove_fact_id(node_key, str(fact_id))
             await self._write_session.commit()  # type: ignore[union-attr]
+            await self._update_qdrant_node_id(fact_id, node_id, append=False)
             return True
-        return await self._fact_repo.unlink_from_node(node_id, fact_id)
+        success = await self._fact_repo.unlink_from_node(node_id, fact_id)
+        if success:
+            await self._update_qdrant_node_id(fact_id, node_id, append=False)
+        return success
 
     async def get_fact_ids_for_nodes(
         self,
