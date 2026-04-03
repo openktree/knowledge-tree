@@ -58,14 +58,16 @@ class TestLinkFactToNodeQdrant:
         node_id = uuid.uuid4()
         fact_id = uuid.uuid4()
 
-        # Mock write_node_repo to return a WriteNode
+        # Replace the real repo with a full mock
+        mock_node_repo = AsyncMock()
         mock_wn = MagicMock()
         mock_wn.key = "concept:test-concept"
-        engine._write_node_repo.get_by_uuid = AsyncMock(return_value=mock_wn)
+        mock_node_repo.get_by_uuid.return_value = mock_wn
+        engine._write_node_repo = mock_node_repo
 
         await engine.link_fact_to_node(node_id, fact_id)
 
-        engine._write_node_repo.append_fact_id.assert_awaited_once()
+        mock_node_repo.append_fact_id.assert_awaited_once()
         mock_qdrant_fact_repo.append_node_id.assert_awaited_once_with(fact_id, node_id)
 
     async def test_link_node_not_found_skips(
@@ -77,7 +79,9 @@ class TestLinkFactToNodeQdrant:
         node_id = uuid.uuid4()
         fact_id = uuid.uuid4()
 
-        engine._write_node_repo.get_by_uuid = AsyncMock(return_value=None)
+        mock_node_repo = AsyncMock()
+        mock_node_repo.get_by_uuid.return_value = None
+        engine._write_node_repo = mock_node_repo
 
         await engine.link_fact_to_node(node_id, fact_id)
 
@@ -146,9 +150,11 @@ class TestUnlinkFactFromNodeQdrant:
         node_id = uuid.uuid4()
         fact_id = uuid.uuid4()
 
+        mock_node_repo = AsyncMock()
         mock_wn = MagicMock()
         mock_wn.key = "concept:test-concept"
-        engine._write_node_repo.get_by_uuid = AsyncMock(return_value=mock_wn)
+        mock_node_repo.get_by_uuid.return_value = mock_wn
+        engine._write_node_repo = mock_node_repo
 
         result = await engine.unlink_fact_from_node(node_id, fact_id)
 
@@ -164,7 +170,9 @@ class TestUnlinkFactFromNodeQdrant:
         node_id = uuid.uuid4()
         fact_id = uuid.uuid4()
 
-        engine._write_node_repo.get_by_uuid = AsyncMock(return_value=None)
+        mock_node_repo = AsyncMock()
+        mock_node_repo.get_by_uuid.return_value = None
+        engine._write_node_repo = mock_node_repo
 
         result = await engine.unlink_fact_from_node(node_id, fact_id)
 
