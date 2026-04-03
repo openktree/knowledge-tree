@@ -82,20 +82,38 @@ class DecomposeChunkOutput(BaseModel):
 # -- Node pipeline -----------------------------------------------------
 
 
-class BuildNodeInput(BaseModel):
-    """Input for the node pipeline DAG workflow."""
+class NodePipelineInput(BaseModel):
+    """Unified input for the node pipeline DAG workflow.
 
-    scope_id: str
-    concept: str
+    Supports three modes:
+    - ``create`` -- promote a seed to a full node (default)
+    - ``rebuild_incremental`` -- enrich existing node with new facts
+    - ``rebuild_full`` -- full rebuild: delete dims, regenerate everything
+    """
+
+    # Mode discriminator
+    mode: str = "create"  # "create" | "rebuild_incremental" | "rebuild_full"
+    scope: str = "all"  # "all" | "dimensions" | "edges"
+
+    # Create-mode fields
+    scope_id: str = ""
+    concept: str = ""
     node_type: str = "concept"
     entity_subtype: str | None = None
-    skip_ontology: bool = False
-    skip_edges: bool = False
-    seed_key: str  # REQUIRED — seed to promote or enrich
-    existing_node_id: str | None = None  # set → enrich mode (seed already promoted)
-    message_id: str
-    conversation_id: str
+    seed_key: str = ""  # REQUIRED for create mode -- seed to promote
+
+    # Rebuild-mode fields
+    node_id: str | None = None  # REQUIRED for rebuild modes
+    recalculate_pair: bool = False  # Also rebuild dialectic pair (rebuild_full only)
+
+    # Shared
+    message_id: str = ""
+    conversation_id: str = ""
     api_key: str | None = None
+
+
+# Backward-compatible alias -- callers (bottom-up, ingest) pass mode="create" by default
+BuildNodeInput = NodePipelineInput
 
 
 class BuildNodeOutput(BaseModel):
@@ -135,16 +153,14 @@ class GenerateDefinitionInput(BaseModel):
 
 
 class UpdateEdgesInput(BaseModel):
-    """Input for a single edge resolution task."""
+    """Input for a single edge resolution task (candidates-only)."""
 
     node_id: str
-    edge_mode: str  # "same_type" or "cross_type"
-    concept: str = ""  # node concept — avoids graph-db lookup
-    node_type: str = "concept"  # node type — avoids graph-db lookup
-    cross_type_pair: str | None = None  # e.g. "concept:entity"
+    concept: str = ""  # node concept -- avoids graph-db lookup
+    node_type: str = "concept"  # node type -- avoids graph-db lookup
     scope_id: str = ""
-    message_id: str
-    conversation_id: str
+    message_id: str = ""
+    conversation_id: str = ""
     api_key: str | None = None
 
 
@@ -153,63 +169,6 @@ class EdgeOutput(BaseModel):
 
     edge_ids: list[str] = Field(default_factory=list)
     edges_created: int = 0
-
-
-class AncestryInput(BaseModel):
-    """Input for ancestry resolution task (within node pipeline DAG)."""
-
-    node_id: str
-    node_name: str
-    node_type: str
-    definition: str | None = None
-    scope_id: str = ""
-    message_id: str
-    conversation_id: str
-    api_key: str | None = None
-
-
-class AncestryOutput(BaseModel):
-    """Results from ancestry resolution."""
-
-    node_id: str
-    parent_id: str = ""
-    nodes_created: list[str] = Field(default_factory=list)  # UUIDs of stub nodes created
-
-
-# -- Recalculate (quick action) ----------------------------------------
-
-
-class RecalculateInput(BaseModel):
-    """Input for the recalculate workflow (full refresh of an existing node).
-
-    .. deprecated:: Use ``RebuildNodeInput`` instead.
-    """
-
-    node_id: str
-    recalculate_pair: bool = True  # Also recalculate dialectic pair partner
-    api_key: str | None = None
-
-
-class RebuildNodeInput(BaseModel):
-    """Input for the unified rebuild_node task (replaces enrich_node + recalculate)."""
-
-    node_id: str
-    mode: str = "incremental"  # "incremental" | "full"
-    scope: str = "all"  # "all" | "dimensions" | "edges"
-    recalculate_pair: bool = False  # Also rebuild dialectic pair (full+all only)
-    api_key: str | None = None
-
-
-class RebuildNodeOutput(BaseModel):
-    """Results from the rebuild_node task."""
-
-    node_id: str
-    status: str = "completed"  # "completed" | "skipped" | "error"
-    mode: str = "incremental"
-    scope: str = "all"
-    dimensions_created: int = 0
-    edges_resolved: int = 0
-    fact_count: int = 0
 
 
 # -- Bottom-up exploration ---------------------------------------------
@@ -468,19 +427,6 @@ class IngestPartitionOutput(BaseModel):
     summary: str = ""
 
 
-# -- Crystallization ---------------------------------------------------
-
-
-class CrystallizeInput(BaseModel):
-    """Input for the crystallization task."""
-
-    parent_node_id: str
-    scope_id: str = ""
-    message_id: str
-    conversation_id: str
-    api_key: str | None = None
-
-
 # -- Composite nodes ---------------------------------------------------
 
 
@@ -653,37 +599,8 @@ class AutoBuildOutput(BaseModel):
 
     nodes_promoted: int = 0
     nodes_absorbed: int = 0
-    edges_created: int = 0
-    edges_updated: int = 0
     nodes_recalculated: int = 0
     nodes_enrichment_dispatched: int = 0
-
-
-class EnrichNodeInput(BaseModel):
-    """Input for enrich_node task."""
-
-    node_id: str
-    api_key: str | None = None
-
-
-class EnrichNodeOutput(BaseModel):
-    """Results from enrich_node task."""
-
-    enriched: bool = False
-    dimensions_count: int = 0
-
-
-class EnrichEdgeInput(BaseModel):
-    """Input for enrich_edge task."""
-
-    edge_id: str
-    api_key: str | None = None
-
-
-class EnrichEdgeOutput(BaseModel):
-    """Results from enrich_edge task."""
-
-    justified: bool = False
 
 
 class ReingestSourceInput(BaseModel):
