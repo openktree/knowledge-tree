@@ -1,7 +1,7 @@
 """Integration tests for SourceRepository insights methods."""
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -32,7 +32,7 @@ def _make_source(
         fetch_attempted=fetch_attempted,
         fetch_error=fetch_error,
         is_super_source=is_super_source,
-        retrieved_at=retrieved_at or datetime.utcnow(),
+        retrieved_at=retrieved_at or datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
 
@@ -43,7 +43,7 @@ async def test_insights_summary_empty(db_session):
     """Summary on a fresh DB returns zeroes (or at least valid counts)."""
     repo = SourceRepository(db_session)
     # Use a future timestamp so existing test data is excluded
-    future = datetime.utcnow() + timedelta(days=3650)
+    future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=3650)
     result = await repo.get_insights_summary(since=future)
     assert result["total_count"] == 0
     assert result["failed_count"] == 0
@@ -53,7 +53,7 @@ async def test_insights_summary_empty(db_session):
 async def test_insights_summary_counts(db_session):
     """Summary correctly counts failed, pending-super, and total sources."""
     repo = SourceRepository(db_session)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Successful fetch
     db_session.add(_make_source(uri="https://a.com/ok", is_full_text=True, retrieved_at=now))
@@ -91,7 +91,7 @@ async def test_insights_summary_counts(db_session):
 async def test_top_failed_domains(db_session):
     """Failed domains are extracted and ranked by failure count."""
     repo = SourceRepository(db_session)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Add 3 failures for domain-a.com
     for i in range(3):
@@ -126,7 +126,7 @@ async def test_top_failed_domains(db_session):
 async def test_top_failed_domains_empty(db_session):
     """No failures returns an empty list."""
     repo = SourceRepository(db_session)
-    future = datetime.utcnow() + timedelta(days=3650)
+    future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=3650)
     result = await repo.get_top_failed_domains(since=future)
     assert result == []
 
@@ -137,7 +137,7 @@ async def test_top_failed_domains_empty(db_session):
 async def test_common_fetch_errors(db_session):
     """Errors are grouped and counted correctly."""
     repo = SourceRepository(db_session)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     for i in range(4):
         db_session.add(
@@ -169,7 +169,7 @@ async def test_common_fetch_errors(db_session):
 async def test_common_fetch_errors_empty(db_session):
     """No errors returns an empty list."""
     repo = SourceRepository(db_session)
-    future = datetime.utcnow() + timedelta(days=3650)
+    future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=3650)
     result = await repo.get_common_fetch_errors(since=future)
     assert result == []
 
@@ -180,7 +180,7 @@ async def test_common_fetch_errors_empty(db_session):
 async def test_failures_per_day(db_session):
     """Daily failure counts are aggregated correctly."""
     repo = SourceRepository(db_session)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     for i in range(2):
         db_session.add(
@@ -205,7 +205,7 @@ async def test_failures_per_day(db_session):
 async def test_failures_per_day_empty(db_session):
     """No failures returns an empty list."""
     repo = SourceRepository(db_session)
-    future = datetime.utcnow() + timedelta(days=3650)
+    future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=3650)
     result = await repo.get_failures_per_day(since=future)
     assert result == []
 
@@ -217,7 +217,7 @@ async def test_since_filter_excludes_old_data(db_session):
     """The since parameter correctly excludes old sources."""
     repo = SourceRepository(db_session)
     old = datetime(2020, 1, 1)
-    recent = datetime.utcnow()
+    recent = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db_session.add(
         _make_source(

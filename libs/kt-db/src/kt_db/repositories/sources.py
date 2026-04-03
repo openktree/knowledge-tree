@@ -321,7 +321,7 @@ class SourceRepository:
 
     async def get_top_failed_domains(self, since: datetime | None = None, limit: int = 15) -> list[DomainFailure]:
         """Get domains with the most fetch failures."""
-        domain_expr = func.substring(RawSource.uri, text("'://([^/]+)'"))
+        domain_expr = func.substring(RawSource.uri, "://([^/]+)")
         stmt = (
             select(
                 domain_expr.label("domain"),
