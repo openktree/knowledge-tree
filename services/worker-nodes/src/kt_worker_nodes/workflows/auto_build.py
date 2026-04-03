@@ -514,8 +514,9 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
     from kt_db.keys import key_to_uuid
     from kt_db.repositories.write_seeds import WriteSeedRepository
 
-    threshold = settings.graph_build_auto_recalculate_min_new_facts  # type: ignore[attr-defined]
-    batch_size = settings.graph_build_auto_recalculate_batch_size  # type: ignore[attr-defined]
+    # Use dimension_fact_limit as the threshold: a node qualifies for rebuild
+    # when it has accumulated enough new facts to produce a new dimension batch.
+    threshold = settings.dimension_fact_limit  # type: ignore[attr-defined]
 
     write_sf = state.write_session_factory
     if write_sf is None:
@@ -525,7 +526,7 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
 
     async with write_sf() as ws:
         seed_repo = WriteSeedRepository(ws)
-        stale_nodes = await seed_repo.get_fact_stale_nodes(threshold, batch_size)
+        stale_nodes = await seed_repo.get_fact_stale_nodes(threshold)
         if not stale_nodes:
             return 0
 
@@ -550,8 +551,12 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
                     exc_info=True,
                 )
 
-    # Fire-and-forget all dispatches concurrently
+    # Dispatch in batches to provide backpressure — each batch fires
+    # concurrently, then we move to the next.  The full list was loaded
+    # upfront so no new nodes can sneak in mid-loop.
     import asyncio
+
+    batch_size = settings.graph_build_auto_recalculate_batch_size  # type: ignore[attr-defined]
 
     async def _dispatch_one(node_key: str, node_uuid: str, entry: dict) -> bool:
         try:
@@ -574,8 +579,10 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
             )
             return False
 
-    results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in dispatch_entries))
-    dispatched = sum(1 for r in results if r)
+    for i in range(0, len(dispatch_entries), batch_size):
+        batch = dispatch_entries[i : i + batch_size]
+        results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in batch))
+        dispatched += sum(1 for r in results if r)
 
     logger.info("Dispatched %d fact-stale node tasks", dispatched)
     try:
