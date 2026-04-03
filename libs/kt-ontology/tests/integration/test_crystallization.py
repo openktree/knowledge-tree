@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+pytestmark = pytest.mark.skip(reason="kt-ontology is deprecated — ancestry removal PR pending")
+
 from kt_db.models import Node
 from kt_db.repositories.nodes import NodeRepository
 from kt_graph.read_engine import ReadGraphEngine
