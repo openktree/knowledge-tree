@@ -1279,8 +1279,8 @@ class WriteSeedRepository:
         """Return ALL promoted seeds whose nodes have accumulated enough new facts.
 
         Compares seed.fact_count against write_node.facts_at_last_build.
-        No batch limit — every qualifying node is returned so that all nodes
-        with enough new facts for a new dimension get rebuilt.
+        Returns the full list in one shot so callers can batch dispatch
+        without re-querying (which could pick up new nodes mid-loop).
 
         Returns dicts with seed_key, promoted_node_key, fact_count,
         facts_at_last_build, delta, enrichment_status.

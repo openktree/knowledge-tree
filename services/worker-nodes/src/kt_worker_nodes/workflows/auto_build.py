@@ -529,8 +529,12 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
                     exc_info=True,
                 )
 
-    # Fire-and-forget all dispatches concurrently
+    # Dispatch in batches to provide backpressure — each batch fires
+    # concurrently, then we move to the next.  The full list was loaded
+    # upfront so no new nodes can sneak in mid-loop.
     import asyncio
+
+    batch_size = settings.graph_build_auto_recalculate_batch_size  # type: ignore[attr-defined]
 
     async def _dispatch_one(node_key: str, node_uuid: str, entry: dict) -> bool:
         try:
@@ -553,8 +557,10 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
             )
             return False
 
-    results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in dispatch_entries))
-    dispatched = sum(1 for r in results if r)
+    for i in range(0, len(dispatch_entries), batch_size):
+        batch = dispatch_entries[i : i + batch_size]
+        results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in batch))
+        dispatched += sum(1 for r in results if r)
 
     logger.info("Dispatched %d fact-stale node tasks", dispatched)
     try:
