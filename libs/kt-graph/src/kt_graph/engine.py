@@ -1246,12 +1246,15 @@ class GraphEngine:
         into DimensionFact stubs so callers (e.g. _batch_facts) work unchanged.
         """
         if self._write_dim_repo is not None and self._write_node_repo is not None:
+            from kt_db.keys import key_to_uuid
+
             wn = await self._write_node_repo.get_by_uuid(node_id)
             if wn is not None:
                 write_dims = await self._write_dim_repo.get_by_node_key(wn.key)
                 dims: list[Dimension] = []
                 for wd in write_dims:
                     dim = Dimension(
+                        id=key_to_uuid(wd.key),
                         node_id=node_id,
                         model_id=wd.model_id,
                         content=wd.content,
@@ -1260,6 +1263,8 @@ class GraphEngine:
                         is_definitive=wd.is_definitive,
                         fact_count=wd.fact_count,
                     )
+                    # Stash write-db key for delete_dimension routing
+                    dim._write_key = wd.key  # type: ignore[attr-defined]
                     dim.dimension_facts = [DimensionFact(fact_id=uuid.UUID(fid)) for fid in (wd.fact_ids or [])]
                     dims.append(dim)
                 return dims
@@ -1269,13 +1274,30 @@ class GraphEngine:
         return list(result.scalars().all())
 
     async def delete_dimensions(self, node_id: uuid.UUID) -> int:
-        """Delete all dimensions for a node. Returns count deleted."""
+        """Delete all dimensions for a node. Returns count deleted.
+
+        Routes to write-db when available.
+        """
+        if self._write_dim_repo is not None and self._write_node_repo is not None:
+            wn = await self._write_node_repo.get_by_uuid(node_id)
+            if wn is not None:
+                return await self._write_dim_repo.delete_all_for_node(wn.key)
+            return 0
         stmt = delete(Dimension).where(Dimension.node_id == node_id)
         result = await self._session.execute(stmt)
         return result.rowcount  # type: ignore[return-value]
 
-    async def delete_dimension(self, dimension_id: uuid.UUID) -> bool:
-        """Delete a single dimension by ID. Returns True if deleted."""
+    async def delete_dimension(self, dimension_id: uuid.UUID, *, _write_key: str | None = None) -> bool:
+        """Delete a single dimension by ID. Returns True if deleted.
+
+        Routes to write-db when available.  The ``_write_key`` is set on
+        Dimension objects returned by ``get_dimensions_with_facts`` when
+        using write-db, allowing direct deletion without a lookup.
+        """
+        if self._write_dim_repo is not None:
+            if _write_key:
+                return await self._write_dim_repo.delete_by_key(_write_key)
+            return False
         stmt = delete(Dimension).where(Dimension.id == dimension_id)
         result = await self._session.execute(stmt)
         return result.rowcount > 0  # type: ignore[operator]
