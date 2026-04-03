@@ -4,13 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kt_db.models import RawSource
-from kt_db.repositories.facts import FactRepository
 from kt_facts.pipeline import DecompositionPipeline
 
 pytestmark = pytest.mark.asyncio
 
 
-async def test_full_pipeline_with_mocked_gateway(db_session):
+async def test_full_pipeline_with_mocked_gateway(db_session, write_session):
     """Feed sample text through the single-call pipeline, verify facts are stored."""
     # Create a RawSource in the DB
     raw_source = RawSource(
@@ -68,17 +67,20 @@ async def test_full_pipeline_with_mocked_gateway(db_session):
         concept="water properties",
         session=db_session,
         embedding_service=mock_embedding_service,
+        write_session=write_session,
     )
 
     assert len(result.facts) >= 1
-    # Verify facts are in the database
-    repo = FactRepository(db_session)
+    # Verify facts were written to write-db
+    from kt_db.repositories.write_facts import WriteFactRepository
+
+    write_repo = WriteFactRepository(write_session)
     for fact in result.facts:
-        db_fact = await repo.get_by_id(fact.id)
+        db_fact = await write_repo.get_by_id(fact.id)
         assert db_fact is not None
 
-    # Verify only ONE LLM call was made (not 50+)
-    assert mock_gateway.generate_json.call_count == 1
+    # Verify a small number of LLM calls (decomposition + entity extraction, not 50+)
+    assert mock_gateway.generate_json.call_count <= 5
 
 
 async def test_pipeline_skips_empty_sources(db_session):
@@ -122,7 +124,7 @@ async def test_pipeline_handles_empty_source_list(db_session):
     assert result.facts == []
 
 
-async def test_pipeline_multiple_sources(db_session):
+async def test_pipeline_multiple_sources(db_session, write_session):
     """Multiple sources should each get one LLM call and produce facts."""
     sources = []
     for i in range(3):
@@ -176,6 +178,7 @@ async def test_pipeline_multiple_sources(db_session):
         concept="testing",
         session=db_session,
         embedding_service=mock_embedding_service,
+        write_session=write_session,
     )
 
     # One LLM call per source (3 total, not 30+)

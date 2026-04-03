@@ -159,6 +159,40 @@ class TestSearchSimilar:
         assert results == []
 
 
+class TestSearchSimilarRetry:
+    async def test_retries_on_timeout_then_succeeds(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        from qdrant_client.http.exceptions import ResponseHandlingException
+
+        fact_id = uuid.uuid4()
+        mock_point = MagicMock()
+        mock_point.id = str(fact_id)
+        mock_point.score = 0.9
+        mock_point.payload = {}
+
+        mock_result = MagicMock()
+        mock_result.points = [mock_point]
+
+        mock_client.query_points.side_effect = [
+            ResponseHandlingException("ReadTimeout"),
+            mock_result,
+        ]
+
+        results = await repo.search_similar(embedding=_make_embedding())
+        assert len(results) == 1
+        assert results[0].fact_id == fact_id
+        assert mock_client.query_points.call_count == 2
+
+    async def test_raises_after_max_retries(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        from qdrant_client.http.exceptions import ResponseHandlingException
+
+        mock_client.query_points.side_effect = ResponseHandlingException("ReadTimeout")
+
+        with pytest.raises(ResponseHandlingException):
+            await repo.search_similar(embedding=_make_embedding())
+
+        assert mock_client.query_points.call_count == 3
+
+
 class TestFindMostSimilar:
     async def test_returns_best_match(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
         fact_id = uuid.uuid4()

@@ -11,6 +11,7 @@ graph-db. No separate tables are needed — the document lives in metadata_.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -151,22 +152,26 @@ async def link_facts_by_embedding(
     from kt_qdrant.repositories.facts import QdrantFactRepository
 
     fact_repo = QdrantFactRepository(qdrant_client)
-    links: dict[int, list[tuple[str, float]]] = {}
+    semaphore = asyncio.Semaphore(10)
 
-    for i, embedding in enumerate(sentence_embeddings):
-        try:
-            results = await fact_repo.search_similar(
-                embedding,
-                limit=top_k,
-                score_threshold=0.6,
-                node_ids=referenced_node_ids,
-            )
-            if results:
-                links[i] = [(str(r.fact_id), r.score) for r in results]
-        except Exception:
-            logger.warning("Fact embedding search failed for sentence %d", i, exc_info=True)
+    async def _search_one(i: int, embedding: list[float]) -> tuple[int, list[tuple[str, float]] | None]:
+        async with semaphore:
+            try:
+                results = await fact_repo.search_similar(
+                    embedding,
+                    limit=top_k,
+                    score_threshold=0.6,
+                    node_ids=referenced_node_ids,
+                )
+                if results:
+                    return i, [(str(r.fact_id), r.score) for r in results]
+                return i, None
+            except Exception:
+                logger.warning("Fact embedding search failed for sentence %d", i, exc_info=True)
+                return i, None
 
-    return links
+    results = await asyncio.gather(*[_search_one(i, emb) for i, emb in enumerate(sentence_embeddings)])
+    return {i: r for i, r in results if r is not None}
 
 
 # ── Full pipeline ──────────────────────────────────────────────────

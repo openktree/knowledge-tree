@@ -40,14 +40,12 @@ async def _create_node(
     concept: str,
     parent_id: uuid.UUID | None = None,
     node_type: str = "concept",
-    embedding: list[float] | None = None,
 ) -> Node:
     repo = NodeRepository(session)
     return await repo.create(
         concept=concept,
         parent_id=parent_id,
         node_type=node_type,
-        embedding=embedding,
     )
 
 
@@ -347,7 +345,6 @@ class TestAncestrySteps:
             db_session,
             "biology-s5",
             parent_id=ALL_CONCEPTS_ID,
-            embedding=_make_embedding(0.5),
         )
 
         pipeline = AncestryPipeline(
@@ -382,7 +379,6 @@ class TestAncestrySteps:
             db_session,
             "algorithms-excl",
             parent_id=ALL_CONCEPTS_ID,
-            embedding=_make_embedding(0.5),
         )
 
         pipeline = AncestryPipeline(
@@ -601,12 +597,16 @@ class TestAncestryPipelineIntegration:
             ontology_registry=ontology_registry,
         )
 
-        result = await pipeline.determine_ancestry("Tesla Inc", "entity")
+        from kt_config.types import ALL_ENTITIES_ID
+
+        unique_entity = f"UniqueTestEntity-{uuid.uuid4().hex[:8]}"
+        result = await pipeline.determine_ancestry(unique_entity, "entity")
 
         assert isinstance(result, AncestryResult)
-        assert result.parent_id is None
+        # Entities get ALL_ENTITIES_ID as default parent (no LLM ancestry)
+        assert result.parent_id == ALL_ENTITIES_ID
         assert result.nodes_created == []
-        assert result.ancestry_chain == []
+        assert result.ancestry_chain == [ALL_ENTITIES_ID]
         mock_model_gateway.generate.assert_not_awaited()
 
     async def test_concept_creates_stubs_no_existing(

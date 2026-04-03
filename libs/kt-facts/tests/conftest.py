@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from kt_config.settings import get_settings
 from kt_db.models import Base
+from kt_db.write_models import WriteBase
 
 
 def _worker_schema() -> str:
@@ -55,6 +56,12 @@ async def engine(settings, schema_name) -> AsyncGenerator[AsyncEngine, None]:
         await conn.run_sync(Base.metadata.create_all)
         for table in Base.metadata.sorted_tables:
             table.schema = None
+        # Also create write-db tables so write_session tests work
+        for table in WriteBase.metadata.sorted_tables:
+            table.schema = schema_name
+        await conn.run_sync(WriteBase.metadata.create_all)
+        for table in WriteBase.metadata.sorted_tables:
+            table.schema = None
     yield eng
     await eng.dispose()
     cleanup_eng = create_async_engine(base_url, echo=False)
@@ -70,3 +77,11 @@ async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
         async with session.begin():
             yield session
             await session.rollback()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def write_session(engine) -> AsyncGenerator[AsyncSession, None]:
+    """Separate session for write-db operations (pipeline calls commit())."""
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        yield session
