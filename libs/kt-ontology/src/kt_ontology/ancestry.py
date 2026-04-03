@@ -69,7 +69,9 @@ class AncestryPipeline:
         self._write_session = write_session
         self._qdrant_client = qdrant_client
         self._graph_engine = GraphEngine(
-            session, embedding_service, write_session=write_session, qdrant_client=qdrant_client
+            write_session=write_session or session,
+            embedding_service=embedding_service,
+            qdrant_client=qdrant_client,
         )
 
     async def determine_ancestry(
