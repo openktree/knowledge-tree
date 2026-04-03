@@ -67,27 +67,19 @@ class TestWriteNodeToNode:
 
 class TestSearchNodesFallback:
     @pytest.mark.asyncio
-    async def test_falls_back_to_write_db(self):
-        """search_nodes uses write-db when graph-db session is None."""
+    async def test_uses_write_db(self):
+        """search_nodes uses write-db search_by_concept."""
         wn = _make_write_node(concept="sleep")
 
         mock_write_node_repo = AsyncMock()
-        mock_write_node_repo.search_by_trigram.return_value = [wn]
+        mock_write_node_repo.search_by_concept.return_value = [wn]
 
         engine = WorkerGraphEngine(write_session=None)
         engine._write_node_repo = mock_write_node_repo
 
         nodes = await engine.search_nodes("sleep", limit=5)
 
-        mock_write_node_repo.search_by_trigram.assert_awaited_once_with("sleep", limit=5, node_type=None)
+        mock_write_node_repo.search_by_concept.assert_awaited_once_with("sleep", limit=5, node_type=None)
         assert len(nodes) == 1
         assert nodes[0].concept == "sleep"
         assert nodes[0].id == wn.node_uuid
-
-    @pytest.mark.asyncio
-    async def test_raises_when_no_session_available(self):
-        """search_nodes raises ValueError when neither DB is available."""
-        engine = WorkerGraphEngine(write_session=None)
-
-        with pytest.raises(ValueError, match="requires either a graph-db or write-db session"):
-            await engine.search_nodes("anything")
