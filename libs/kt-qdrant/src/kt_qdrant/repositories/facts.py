@@ -134,15 +134,17 @@ class QdrantFactRepository:
     async def upsert_batch(
         self,
         facts: list[tuple[uuid.UUID, list[float], str | None]]
-        | list[tuple[uuid.UUID, list[float], str | None, str | None]],
+        | list[tuple[uuid.UUID, list[float], str | None, str | None]]
+        | list[tuple[uuid.UUID, list[float], str | None, str | None, list[uuid.UUID] | None]],
         *,
         chunk_size: int = 200,
     ) -> None:
         """Batch upsert fact vectors in chunks to avoid connection timeouts.
 
         Args:
-            facts: List of ``(fact_id, embedding, fact_type)`` 3-tuples or
-                ``(fact_id, embedding, fact_type, content)`` 4-tuples.
+            facts: List of ``(fact_id, embedding, fact_type)`` 3-tuples,
+                ``(fact_id, embedding, fact_type, content)`` 4-tuples, or
+                ``(fact_id, embedding, fact_type, content, node_ids)`` 5-tuples.
             chunk_size: Max points per Qdrant upsert call (default 200).
         """
         if not facts:
@@ -155,11 +157,14 @@ class QdrantFactRepository:
                 emb = item[1]
                 ft = item[2]
                 content = item[3] if len(item) > 3 else None  # type: ignore[misc]
+                node_ids = item[4] if len(item) > 4 else None  # type: ignore[misc]
                 payload: dict[str, object] = {}
                 if ft:
                     payload["fact_type"] = ft
                 if content:
                     payload["content"] = content
+                if node_ids is not None:
+                    payload["node_ids"] = [str(nid) for nid in node_ids]
                 points.append(PointStruct(id=str(fid), vector=emb, payload=payload))
             await self._client.upsert(
                 collection_name=FACTS_COLLECTION,
@@ -383,6 +388,62 @@ class QdrantFactRepository:
             payload={"node_ids": [str(nid) for nid in node_ids]},
             points=[str(fact_id)],
         )
+
+    async def append_node_id(self, fact_id: uuid.UUID, node_id: uuid.UUID) -> None:
+        """Append a node_id to the fact's node_ids payload (idempotent).
+
+        No-op if the fact point does not exist in Qdrant yet (e.g. the
+        embedding upsert hasn't happened).
+
+        Note: the retrieve → check → set_payload sequence is not atomic.
+        Concurrent calls for the same fact could lose an append.  This is
+        acceptable because Qdrant is a secondary index (PostgreSQL NodeFact
+        is authoritative) and the backfill script can repair any drift.
+        """
+        points = await self._client.retrieve(
+            collection_name=FACTS_COLLECTION,
+            ids=[str(fact_id)],
+            with_payload=["node_ids"],
+            with_vectors=False,
+        )
+        if not points:
+            return
+        existing: list[str] = []
+        if points[0].payload:
+            existing = points[0].payload.get("node_ids", [])
+        nid_str = str(node_id)
+        if nid_str not in existing:
+            existing.append(nid_str)
+            await self._client.set_payload(
+                collection_name=FACTS_COLLECTION,
+                payload={"node_ids": existing},
+                points=[str(fact_id)],
+            )
+
+    async def remove_node_id(self, fact_id: uuid.UUID, node_id: uuid.UUID) -> None:
+        """Remove a node_id from the fact's node_ids payload (idempotent).
+
+        No-op if the fact point does not exist in Qdrant.
+        """
+        points = await self._client.retrieve(
+            collection_name=FACTS_COLLECTION,
+            ids=[str(fact_id)],
+            with_payload=["node_ids"],
+            with_vectors=False,
+        )
+        if not points:
+            return
+        existing: list[str] = []
+        if points[0].payload:
+            existing = points[0].payload.get("node_ids", [])
+        nid_str = str(node_id)
+        if nid_str in existing:
+            existing.remove(nid_str)
+            await self._client.set_payload(
+                collection_name=FACTS_COLLECTION,
+                payload={"node_ids": existing},
+                points=[str(fact_id)],
+            )
 
     async def count(self) -> int:
         """Count total facts in the collection."""

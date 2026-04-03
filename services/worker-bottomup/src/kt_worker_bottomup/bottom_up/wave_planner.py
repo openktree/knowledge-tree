@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 from kt_worker_bottomup.bottom_up.state import ScopeBriefing, ScopePlan
@@ -60,8 +61,9 @@ coverage and lets later waves make informed decisions about where to invest more
 Wave 2 decisions about where to go deeper.
 
 **Wave 1 — Broad Coverage (~60% of explore budget):**
-- Plan 3-4+ scopes covering as many DISTINCT angles of the query as possible
+- Plan enough scopes to USE the full wave explore budget
 - Each scope gets 3-5 explore budget
+- Aim for approximately wave_explore / 4 scopes (rounded)
 - Focus on breadth: cover the full landscape of the topic
 
 **Subsequent Waves — Informed by Prior Waves (remaining budget):**
@@ -78,17 +80,29 @@ and surprises from earlier waves, NOT pre-planned topics.
 ## Budget Allocation Guidance
 
 Each sub-explorer should get 3-5 explore budget (max 5 per scope). \
+The NUMBER of scopes must scale with the budget — plan enough scopes to \
+use the FULL wave explore budget. Aim for approximately wave_explore / 4 scopes. \
 Total explore across all scopes MUST NOT exceed the wave explore budget. \
 Total nav across all scopes MUST NOT exceed the wave nav budget.
 
 Examples for different budget levels:
-- wave_explore=12: 3x4 or 4x3 scopes
-- wave_explore=9: 3x3 scopes
-- wave_explore=6: 2x3 scopes
-- wave_explore=4: 1x4 scope
 - wave_explore=3: 1x3 scope
+- wave_explore=4: 1x4 scope
+- wave_explore=6: 2x3 scopes
+- wave_explore=9: 3x3 scopes
+- wave_explore=12: 3x4 or 4x3 scopes
+- wave_explore=20: 5x4 scopes (5 distinct angles)
+- wave_explore=30: 8x4 or 10x3 scopes (8-10 distinct angles)
+- wave_explore=60: 15x4 scopes (15 distinct research angles)
+- wave_explore=90: 18-22 scopes covering every angle, sub-angle, and tangent
+- wave_explore=150: 30-38 scopes — deep, comprehensive coverage of every facet
 
 (Notation: "3x4" means 3 scopes with 4 explore each)
+
+**IMPORTANT: For large budgets (>20), think of it as a research team — each \
+scope is one researcher's focused investigation. A budget of 90 means you have \
+18-22 researchers. Give each a distinct angle. DO NOT plan only 3-5 scopes \
+and waste the budget.**
 
 **Nav budget per scope:** Give each sub-explorer at least 5x its explore budget \
 in nav budget. Sub-explorers need nav to read back nodes they built, check \
@@ -206,7 +220,7 @@ def parse_scope_plans(raw: str, wave_explore: int, wave_nav: int) -> list[ScopeP
             skipped.append(str(p)[:100])
             continue
 
-        exp = min(int(p.get("explore_budget", 3)), remaining_explore, 5)
+        exp = min(int(p.get("explore_budget", 3)), remaining_explore)
         nav = min(int(p.get("nav_budget", exp * 5)), remaining_nav)
 
         if exp <= 0 and nav <= 0:
@@ -231,6 +245,157 @@ def parse_scope_plans(raw: str, wave_explore: int, wave_nav: int) -> list[ScopeP
         )
 
     return plans
+
+
+# ── Scope subdivision ───────────────────────────────────────────
+
+MAX_SCOPE_EXPLORE = 5  # Atomic execution unit — each scope gets at most this
+SUBDIVISION_THRESHOLD = 20  # Above this, use LLM-based subdivision
+MIN_UTILIZATION = 0.7  # Retry if planned explore < 70% of wave budget
+
+SUBDIVISION_PROMPT = """\
+You are breaking a research scope into smaller, more specific sub-scopes \
+for a knowledge graph exploration system.
+
+Given a parent scope and a budget, output a JSON array of sub-scopes that \
+together cover the parent scope comprehensively. Each sub-scope should be \
+a focused investigation area with 3-5 explore budget.
+
+Output ONLY a JSON array, no markdown fencing:
+[{{"scope": "<specific sub-scope>", "explore_budget": <int>, "nav_budget": <int>}}]
+"""
+
+
+def subdivide_scopes(
+    scopes: list[ScopePlan],
+    wave_explore: int,
+    wave_nav: int,
+) -> list[ScopePlan]:
+    """Break large scopes into atomic sub-scopes of MAX_SCOPE_EXPLORE each.
+
+    Scopes with explore_budget <= MAX_SCOPE_EXPLORE pass through unchanged.
+    Larger scopes are split into ceil(explore / MAX_SCOPE_EXPLORE) sub-scopes
+    with "(part N/M)" suffixes and proportional nav budget.
+    """
+    result: list[ScopePlan] = []
+    remaining_explore = wave_explore
+    remaining_nav = wave_nav
+
+    for scope in scopes:
+        if remaining_explore <= 0:
+            break
+
+        exp = min(scope.explore_budget, remaining_explore)
+        nav = min(scope.nav_budget, remaining_nav)
+
+        if exp <= MAX_SCOPE_EXPLORE:
+            result.append(
+                ScopePlan(
+                    scope=scope.scope,
+                    explore_budget=exp,
+                    nav_budget=nav,
+                    search_hints=scope.search_hints,
+                )
+            )
+            remaining_explore -= exp
+            remaining_nav -= nav
+        else:
+            n_parts = math.ceil(exp / MAX_SCOPE_EXPLORE)
+            nav_per_part = nav // n_parts if n_parts > 0 else nav
+            for i in range(n_parts):
+                part_exp = min(MAX_SCOPE_EXPLORE, remaining_explore)
+                part_nav = min(nav_per_part, remaining_nav)
+                if part_exp <= 0:
+                    break
+                result.append(
+                    ScopePlan(
+                        scope=f"{scope.scope} (part {i + 1}/{n_parts})",
+                        explore_budget=part_exp,
+                        nav_budget=part_nav,
+                        search_hints=scope.search_hints,
+                    )
+                )
+                remaining_explore -= part_exp
+                remaining_nav -= part_nav
+
+    return result
+
+
+async def subdivide_large_scopes_with_llm(
+    scopes: list[ScopePlan],
+    wave_explore: int,
+    wave_nav: int,
+    agent_ctx: Any,
+) -> list[ScopePlan]:
+    """Subdivide scopes above SUBDIVISION_THRESHOLD via LLM, then apply mechanical split.
+
+    For scopes with explore > SUBDIVISION_THRESHOLD, calls the LLM to generate
+    meaningful sub-scope descriptions. Falls back to mechanical subdivision on
+    failure. Scopes between MAX_SCOPE_EXPLORE+1 and SUBDIVISION_THRESHOLD go
+    directly to mechanical subdivision.
+    """
+    result: list[ScopePlan] = []
+    remaining_explore = wave_explore
+    remaining_nav = wave_nav
+
+    for scope in scopes:
+        if remaining_explore <= 0:
+            break
+
+        exp = min(scope.explore_budget, remaining_explore)
+        nav = min(scope.nav_budget, remaining_nav)
+
+        if exp <= SUBDIVISION_THRESHOLD:
+            sub = subdivide_scopes(
+                [ScopePlan(scope=scope.scope, explore_budget=exp, nav_budget=nav, search_hints=scope.search_hints)],
+                exp,
+                nav,
+            )
+            result.extend(sub)
+            remaining_explore -= sum(s.explore_budget for s in sub)
+            remaining_nav -= sum(s.nav_budget for s in sub)
+        else:
+            # Large scope — ask LLM to break it into meaningful sub-scopes
+            try:
+                target_count_lo = exp // 5
+                target_count_hi = exp // 3
+                user_msg = (
+                    f'Parent scope: "{scope.scope}"\n'
+                    f"Explore budget to distribute: {exp}\n"
+                    f"Nav budget to distribute: {nav}\n"
+                    f"Break this into {target_count_lo}-{target_count_hi} specific sub-scopes, "
+                    f"each with 3-5 explore budget."
+                )
+                response = await agent_ctx.model_gateway.generate(
+                    messages=[
+                        {"role": "system", "content": SUBDIVISION_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    model_id=agent_ctx.model_gateway.orchestrator_model,
+                )
+                raw_text = response if isinstance(response, str) else str(response)
+                sub_scopes = parse_scope_plans(raw_text, exp, nav)
+                # Apply mechanical subdivision to any that are still > MAX_SCOPE_EXPLORE
+                sub_scopes = subdivide_scopes(sub_scopes, exp, nav)
+                result.extend(sub_scopes)
+                remaining_explore -= sum(s.explore_budget for s in sub_scopes)
+                remaining_nav -= sum(s.nav_budget for s in sub_scopes)
+            except Exception:
+                logger.warning(
+                    "LLM subdivision failed for scope '%s', falling back to mechanical split",
+                    scope.scope,
+                    exc_info=True,
+                )
+                sub = subdivide_scopes(
+                    [ScopePlan(scope=scope.scope, explore_budget=exp, nav_budget=nav, search_hints=scope.search_hints)],
+                    exp,
+                    nav,
+                )
+                result.extend(sub)
+                remaining_explore -= sum(s.explore_budget for s in sub)
+                remaining_nav -= sum(s.nav_budget for s in sub)
+
+    return result
 
 
 def generate_scout_queries(query: str) -> list[str]:

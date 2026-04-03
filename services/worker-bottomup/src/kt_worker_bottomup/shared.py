@@ -116,13 +116,17 @@ async def _plan_wave(
     fallback.
     """
     from kt_worker_bottomup.bottom_up.wave_planner import (
+        MIN_UTILIZATION,
+        SUBDIVISION_THRESHOLD,
         WAVE_PLANNER_PROMPT,
         WavePlanParseError,
         build_wave_planner_user_msg,
         parse_scope_plans,
+        subdivide_large_scopes_with_llm,
+        subdivide_scopes,
     )
 
-    user_msg = build_wave_planner_user_msg(
+    base_user_msg = build_wave_planner_user_msg(
         query,
         wave,
         total_waves,
@@ -133,6 +137,7 @@ async def _plan_wave(
     )
 
     last_exc: Exception | None = None
+    user_msg = base_user_msg
     for attempt in range(_WAVE_PLAN_MAX_RETRIES):
         try:
             response = await agent_ctx.model_gateway.generate(
@@ -156,7 +161,44 @@ async def _plan_wave(
                 await asyncio.sleep(delay)
                 continue
 
-            return parse_scope_plans(raw_text, wave_explore, wave_nav)
+            scopes = parse_scope_plans(raw_text, wave_explore, wave_nav)
+
+            # Check budget utilization — retry with hint if too low
+            total_planned = sum(s.explore_budget for s in scopes)
+            utilization = total_planned / wave_explore if wave_explore > 0 else 1.0
+
+            if utilization < MIN_UTILIZATION and attempt < _WAVE_PLAN_MAX_RETRIES - 1:
+                logger.info(
+                    "Wave planner used only %d/%d explore (%.0f%%), retrying with hint",
+                    total_planned,
+                    wave_explore,
+                    utilization * 100,
+                )
+                hint = (
+                    f"\n\nIMPORTANT: Your previous plan only used {total_planned} "
+                    f"out of {wave_explore} explore budget ({utilization:.0%}). "
+                    f"You MUST plan more scopes to use at least "
+                    f"{int(wave_explore * MIN_UTILIZATION)} explore budget. "
+                    f"Plan approximately {wave_explore // 4} scopes with 3-5 "
+                    f"explore each."
+                )
+                user_msg = base_user_msg + hint
+                delay = _WAVE_PLAN_RETRY_DELAY * (2**attempt)
+                await asyncio.sleep(delay)
+                continue
+
+            # Apply subdivision: LLM-based for large scopes, mechanical for the rest
+            if any(s.explore_budget > SUBDIVISION_THRESHOLD for s in scopes):
+                scopes = await subdivide_large_scopes_with_llm(
+                    scopes,
+                    wave_explore,
+                    wave_nav,
+                    agent_ctx,
+                )
+            else:
+                scopes = subdivide_scopes(scopes, wave_explore, wave_nav)
+
+            return scopes
 
         except WavePlanParseError as exc:
             last_exc = exc
