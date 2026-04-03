@@ -211,8 +211,9 @@ async def test_subdivide_large_passes_small_through() -> None:
 
 
 @pytest.mark.asyncio
-async def test_plan_wave_retries_on_low_utilization() -> None:
+async def test_plan_wave_retries_on_low_utilization(monkeypatch) -> None:
     """_plan_wave retries with a hint when the LLM underutilizes the budget."""
+    monkeypatch.setattr("kt_worker_bottomup.shared.asyncio.sleep", AsyncMock())
     from kt_worker_bottomup.shared import _plan_wave
 
     wave_explore = 60
