@@ -375,14 +375,16 @@ class HatchetPipeline:
             dim_pipeline = DimensionPipeline(ctx)
             dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
 
-            # Track fact count at build time for staleness detection
+            await session.commit()
+
+            # Track fact count at build time for staleness detection.
+            # Committed after graph-db so the watermark only advances
+            # when the graph-db side has succeeded.
             if facts:
                 write_node_repo = WriteNodeRepository(write_session)
                 node_key = write_node_repo.node_key(node_type, node.concept)
                 await write_node_repo.update_facts_at_last_build(node_key, len(facts))
                 await write_session.commit()
-
-            await session.commit()
 
         dimensions_created = len(dim_result.dim_results)
         if not facts:
@@ -448,13 +450,14 @@ class HatchetPipeline:
             dim_pipeline = DimensionPipeline(ctx)
             dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
 
-            # Update watermark
+            await session.commit()
+
+            # Update watermark after graph-db commit so it only
+            # advances when dimensions are persisted.
             if facts:
                 write_node_repo = WriteNodeRepository(write_session)
                 await write_node_repo.update_facts_at_last_build(node_key, len(facts))
                 await write_session.commit()
-
-            await session.commit()
 
         dimensions_created = len(dim_result.dim_results)
         logger.info(
