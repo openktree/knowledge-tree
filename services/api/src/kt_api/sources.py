@@ -4,21 +4,28 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from kt_api.auth.tokens import require_admin
 from kt_api.dependencies import get_db_session
 from kt_api.schemas import (
+    DailyFailureCount,
+    DomainFailureCount,
+    ErrorGroupCount,
     FactResponse,
     FactSourceInfo,
     PaginatedSourcesResponse,
     ProhibitedChunkResponse,
     SourceDetailResponse,
+    SourceInsightsResponse,
     SourceLinkedNode,
     SourceReingestResponse,
     SourceResponse,
 )
+from kt_db.models import User
 from kt_db.repositories.sources import SourceRepository
 
 logger = logging.getLogger(__name__)
@@ -151,6 +158,29 @@ async def list_sources(
         total=total,
         offset=offset,
         limit=limit,
+    )
+
+
+@router.get("/insights", response_model=SourceInsightsResponse)
+async def get_source_insights(
+    since: datetime | None = Query(None, description="Only include sources retrieved after this ISO datetime"),
+    _admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+) -> SourceInsightsResponse:
+    """Get aggregate insights about source fetch health (admin only)."""
+    repo = SourceRepository(session)
+    # Queries are sequential because they share one AsyncSession (single DB connection).
+    summary = await repo.get_insights_summary(since)
+    top_domains = await repo.get_top_failed_domains(since)
+    errors = await repo.get_common_fetch_errors(since)
+    daily = await repo.get_failures_per_day(since)
+    return SourceInsightsResponse(
+        total_count=summary["total_count"],
+        failed_count=summary["failed_count"],
+        pending_super_count=summary["pending_super_count"],
+        top_failed_domains=[DomainFailureCount(**d) for d in top_domains],
+        common_errors=[ErrorGroupCount(**e) for e in errors],
+        failures_per_day=[DailyFailureCount(**d) for d in daily],
     )
 
 

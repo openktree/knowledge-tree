@@ -1,13 +1,36 @@
 import hashlib
 import uuid
+from datetime import datetime
+from typing import TypedDict
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import Date, case, cast, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from kt_config.types import RawSearchResult
 from kt_db.models import Fact, FactSource, ProhibitedChunk, RawSource
+
+
+class InsightsSummary(TypedDict):
+    total_count: int
+    failed_count: int
+    pending_super_count: int
+
+
+class DomainFailure(TypedDict):
+    domain: str
+    failure_count: int
+
+
+class ErrorGroup(TypedDict):
+    error_group: str
+    count: int
+
+
+class DailyFailure(TypedDict):
+    day: str
+    failure_count: int
 
 
 class SourceRepository:
@@ -263,3 +286,92 @@ class SourceRepository:
             }
             for row in result.all()
         ]
+
+    # ── Insights aggregate queries ─────────────────────────────────────
+
+    async def get_insights_summary(self, since: datetime | None = None) -> InsightsSummary:
+        """Get aggregate counts: total, failed fetches, pending super sources.
+
+        ``pending_super_count`` is always unfiltered — a pending source is
+        still pending regardless of when it was created.
+        """
+        stmt = select(
+            func.count(RawSource.id).label("total_count"),
+            func.count(
+                case(
+                    (
+                        (RawSource.is_full_text.is_(False)) & (RawSource.fetch_attempted.is_(True)),
+                        RawSource.id,
+                    ),
+                )
+            ).label("failed_count"),
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        row = (await self._session.execute(stmt)).one()
+
+        pending_stmt = select(func.count(RawSource.id)).where(
+            RawSource.is_super_source.is_(True),
+            RawSource.fetch_attempted.is_(False),
+        )
+        pending_count = (await self._session.execute(pending_stmt)).scalar_one()
+
+        return InsightsSummary(
+            total_count=row.total_count,
+            failed_count=row.failed_count,
+            pending_super_count=pending_count,
+        )
+
+    async def get_top_failed_domains(self, since: datetime | None = None, limit: int = 15) -> list[DomainFailure]:
+        """Get domains with the most fetch failures."""
+        domain_expr = func.substring(RawSource.uri, "://([^/]+)")
+        stmt = (
+            select(
+                domain_expr.label("domain"),
+                func.count(RawSource.id).label("failure_count"),
+            )
+            .where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(True))
+            .group_by(domain_expr)
+            .having(domain_expr.isnot(None))
+            .order_by(func.count(RawSource.id).desc())
+            .limit(limit)
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        result = await self._session.execute(stmt)
+        return [DomainFailure(domain=row.domain, failure_count=row.failure_count) for row in result.all()]
+
+    async def get_common_fetch_errors(self, since: datetime | None = None, limit: int = 15) -> list[ErrorGroup]:
+        """Get most common fetch error messages (grouped by first 150 chars)."""
+        error_group = func.left(RawSource.fetch_error, 150)
+        stmt = (
+            select(
+                error_group.label("error_group"),
+                func.count(RawSource.id).label("count"),
+            )
+            .where(RawSource.fetch_error.isnot(None))
+            .group_by(error_group)
+            .order_by(func.count(RawSource.id).desc())
+            .limit(limit)
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        result = await self._session.execute(stmt)
+        return [ErrorGroup(error_group=row.error_group, count=row.count) for row in result.all()]
+
+    async def get_failures_per_day(self, since: datetime | None = None) -> list[DailyFailure]:
+        """Get daily failure counts for charting."""
+        day_expr = cast(RawSource.retrieved_at, Date)
+        stmt = (
+            select(
+                day_expr.label("day"),
+                func.count(RawSource.id).label("failure_count"),
+            )
+            .where(RawSource.is_full_text.is_(False), RawSource.fetch_attempted.is_(True))
+            .group_by(day_expr)
+            .order_by(day_expr.asc())
+        )
+        if since is not None:
+            stmt = stmt.where(RawSource.retrieved_at >= since)
+        result = await self._session.execute(stmt)
+        return [DailyFailure(day=str(row.day), failure_count=row.failure_count) for row in result.all()]

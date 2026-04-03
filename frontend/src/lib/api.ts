@@ -13,6 +13,7 @@ import type {
   SourceDetailResponse,
   PaginatedSourcesResponse,
   SourceReingestResponse,
+  SourceInsightsResponse,
   SubgraphResponse,
   GraphStatsResponse,
   NodeVersionResponse,
@@ -560,6 +561,11 @@ export const api = {
         `/sources/${encodeURIComponent(id)}/reingest`,
         { method: "POST" },
       );
+    },
+
+    getInsights(since?: string): Promise<SourceInsightsResponse> {
+      const qs = buildQuery({ since });
+      return request<SourceInsightsResponse>(`/sources/insights${qs}`);
     },
   },
 
