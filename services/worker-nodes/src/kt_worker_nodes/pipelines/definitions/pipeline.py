@@ -52,8 +52,6 @@ class DefinitionPipeline:
     ) -> str | None:
         """Generate a definition for a node from its dimensions.
 
-        Skips regeneration for crystallized nodes (ontology_stable).
-
         Args:
             node_id: UUID of the node.
             node_concept: The concept name of the node.
@@ -61,14 +59,7 @@ class DefinitionPipeline:
         Returns:
             The generated definition text, or None if no dimensions exist.
         """
-        from kt_ontology.crystallization import _is_crystallized
-
         ctx = self._ctx
-
-        # Preserve crystallized definitions
-        node = await ctx.graph_engine.get_node(node_id)
-        if node is not None and _is_crystallized(node):
-            return node.definition
 
         dims = await ctx.graph_engine.get_dimensions(node_id)
 

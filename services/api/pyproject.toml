@@ -11,7 +11,6 @@ dependencies = [
     "kt-models",
     "kt-providers",
     "kt-facts",
-    "kt-ontology",
     "kt-agents-core",
     "kt-worker-ingest",
     "kt-worker-synthesis",
@@ -39,7 +38,6 @@ kt-graph = { workspace = true }
 kt-models = { workspace = true }
 kt-providers = { workspace = true }
 kt-facts = { workspace = true }
-kt-ontology = { workspace = true }
 kt-agents-core = { workspace = true }
 kt-worker-ingest = { workspace = true }
 kt-worker-synthesis = { workspace = true }

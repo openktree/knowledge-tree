@@ -494,10 +494,10 @@ async def rebuild_node(
     scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
     await dispatch_workflow(
-        "rebuild_node",
+        "node_pipeline",
         {
+            "mode": f"rebuild_{mode}",
             "node_id": node_id,
-            "mode": mode,
             "scope": scope,
             "recalculate_pair": True,
             "api_key": api_key,
@@ -670,7 +670,7 @@ async def enrich_node(
 
     from kt_hatchet.client import dispatch_workflow
 
-    await dispatch_workflow("rebuild_node", {"node_id": node_id, "mode": "full", "scope": "all"})
+    await dispatch_workflow("node_pipeline", {"mode": "rebuild_full", "node_id": node_id, "scope": "all"})
     return {"status": "started", "node_id": node_id}
 
 
@@ -704,10 +704,10 @@ async def quick_add_node(
         from kt_hatchet.client import dispatch_workflow
 
         await dispatch_workflow(
-            "rebuild_node",
+            "node_pipeline",
             {
+                "mode": "rebuild_full",
                 "node_id": str(match.id),
-                "mode": "full",
                 "scope": "all",
                 "recalculate_pair": True,
             },
