@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { KeyRound, ExternalLink } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
@@ -16,8 +16,32 @@ export default function ProfilePage() {
   const [hasKey, setHasKey] = useState(user?.has_api_key ?? false);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [emailVerificationEnabled, setEmailVerificationEnabled] = useState(false);
+  const [verifyRequesting, setVerifyRequesting] = useState(false);
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api.auth.authFeatures().then((f) => {
+      setEmailVerificationEnabled(f.email_verification_enabled);
+    }).catch(() => {
+      // ignore — feature flag unavailable
+    });
+  }, []);
 
   if (!user) return null;
+
+  const handleRequestVerify = async () => {
+    setVerifyRequesting(true);
+    setVerifyMessage(null);
+    try {
+      await api.auth.requestVerifyToken(user.email);
+      setVerifyMessage("Verification email sent — check your inbox.");
+    } catch (err) {
+      setVerifyMessage(err instanceof Error ? err.message : "Failed to send verification email");
+    } finally {
+      setVerifyRequesting(false);
+    }
+  };
 
   const handleSaveKey = async () => {
     if (!apiKey.trim()) return;
@@ -50,12 +74,27 @@ export default function ProfilePage() {
     }
   };
 
-  const rows = [
+  const showVerifyButton = emailVerificationEnabled && !user.is_verified && !verifyMessage;
+
+  const rows: { label: string; value: React.ReactNode }[] = [
     { label: "Display name", value: user.display_name ?? "\u2014" },
     { label: "Email", value: user.email },
     { label: "Account ID", value: user.id },
     { label: "Role", value: user.is_superuser ? "Admin" : "User" },
-    { label: "Email verified", value: user.is_verified ? "Yes" : "No" },
+    {
+      label: "Email verified",
+      value: user.is_verified ? (
+        "Yes"
+      ) : showVerifyButton ? (
+        <Button size="sm" onClick={handleRequestVerify} disabled={verifyRequesting}>
+          {verifyRequesting ? "Sending..." : "Verify my account"}
+        </Button>
+      ) : verifyMessage ? (
+        <span className="text-xs text-muted-foreground">{verifyMessage}</span>
+      ) : (
+        "No"
+      ),
+    },
     { label: "Member since", value: new Date(user.created_at).toLocaleDateString() },
   ];
 

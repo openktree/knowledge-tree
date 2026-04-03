@@ -1009,8 +1009,22 @@ export const api = {
       return request<RegistrationStatusResponse>("/auth/registration-status");
     },
 
-    authFeatures(): Promise<{ google_oauth_enabled: boolean }> {
-      return request<{ google_oauth_enabled: boolean }>("/auth/features");
+    authFeatures(): Promise<{ google_oauth_enabled: boolean; email_verification_enabled: boolean }> {
+      return request<{ google_oauth_enabled: boolean; email_verification_enabled: boolean }>("/auth/features");
+    },
+
+    requestVerifyToken(email: string): Promise<void> {
+      return request<void>("/auth/request-verify-token", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+    },
+
+    verify(token: string): Promise<UserRead> {
+      return request<UserRead>("/auth/verify", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      });
     },
   },
 
