@@ -107,8 +107,10 @@ async def auto_build_graph(input: AutoBuildInput, ctx: Context) -> dict:
 async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> tuple[int, int]:
     """Promote active seeds to stub nodes.
 
-    Loops in batches until all eligible seeds are promoted so a single
-    auto_build run drains the full backlog.
+    Snapshots all eligible seed keys up front, then processes them in
+    batches.  This avoids re-querying during promotion, which could
+    pick up seeds still being created by a concurrent ingestion and
+    run indefinitely.
 
     Returns (nodes_promoted, 0).  Enrichment is NOT dispatched here —
     ``_check_fact_stale_nodes`` detects newly promoted stubs (facts_at_last_build=0)
@@ -130,18 +132,42 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
         logger.error("No write session factory available")
         return 0, 0
 
-    while True:
+    # Snapshot eligible seed keys once to avoid chasing a moving target
+    seed_keys: list[str] = []
+    async with write_sf() as ws:
+        seed_repo = WriteSeedRepository(ws)
+        all_seeds = await seed_repo.get_promotable_seeds(min_facts, limit=10_000)
+        seed_keys = [s.key for s in all_seeds]
+
+    if not seed_keys:
+        return 0, 0
+
+    logger.info("Found %d promotable seeds to process", len(seed_keys))
+
+    # Process in batches
+    for i in range(0, len(seed_keys), batch_size):
+        batch_keys = seed_keys[i : i + batch_size]
         batch_promoted = 0
 
         async with write_sf() as ws:
             seed_repo = WriteSeedRepository(ws)
             node_repo = WriteNodeRepository(ws)
 
-            seeds = await seed_repo.get_promotable_seeds(min_facts, limit=batch_size)
-            if not seeds:
-                break
+            # Re-fetch seeds by key (they may have been merged/promoted
+            # by a concurrent process since the snapshot)
+            seeds = [await seed_repo.get_seed_by_key(k) for k in batch_keys]
+            seeds = [s for s in seeds if s is not None and s.status == "active"]
 
-            logger.info("Promoting batch of %d seeds (%d promoted so far)", len(seeds), promoted)
+            if not seeds:
+                continue
+
+            total_batches = -(-len(seed_keys) // batch_size)
+            logger.info(
+                "Promoting batch %d/%d (%d seeds)",
+                i // batch_size + 1,
+                total_batches,
+                len(seeds),
+            )
 
             # Batch embed concept names
             names = [s.name for s in seeds]
@@ -194,10 +220,6 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
             await ws.commit()
 
         promoted += batch_promoted
-
-        # If this batch was smaller than the limit, there are no more
-        if len(seeds) < batch_size:
-            break
 
     logger.info("Promoted %d seeds to stub nodes", promoted)
     try:
