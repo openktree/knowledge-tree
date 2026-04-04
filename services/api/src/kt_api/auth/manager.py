@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 import logging
 import uuid
 from collections.abc import AsyncGenerator
@@ -125,7 +124,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             return
 
         base_url = settings.frontend_url.rstrip("/")
-        verify_url = html.escape(f"{base_url}/verify?token={token}")
+        verify_url = f"{base_url}/verify?token={token}"
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,
@@ -143,7 +142,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             return
 
         base_url = settings.frontend_url.rstrip("/")
-        reset_url = html.escape(f"{base_url}/reset-password?token={token}")
+        reset_url = f"{base_url}/reset-password?token={token}"
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,

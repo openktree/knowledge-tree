@@ -238,7 +238,7 @@ _register(
 _register(
     "frontend",
     {
-        "frontend_url": "url",
+        "frontend_url": "base_url",
     },
 )
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 # Shared inline styles for email-safe rendering (no external CSS).
 _WRAPPER_STYLE = (
     "margin:0;padding:0;background-color:#f4f4f5;"
@@ -50,23 +52,28 @@ def _wrap(header_text: str, body_html: str) -> str:
 
 
 def verification_email_html(verify_url: str, user_email: str) -> str:
-    """Return the HTML body for a verification email."""
+    """Return the HTML body for a verification email.
+
+    All dynamic values are HTML-escaped internally for defense-in-depth.
+    """
+    safe_url = html.escape(verify_url)
+    safe_email = html.escape(user_email)
     body = f"""\
 <p style="margin:0 0 16px;font-size:16px;color:#18181b">
   Welcome to <strong>Knowledge Tree</strong>!
 </p>
 <p style="margin:0 0 24px;font-size:15px;color:#3f3f46;line-height:1.6">
   We're excited to have you on board. To get started, please verify your email
-  address (<strong>{user_email}</strong>) by clicking the button below.
+  address (<strong>{safe_email}</strong>) by clicking the button below.
 </p>
 <p style="text-align:center;margin:0 0 24px">
-  <a href="{verify_url}" style="{_BTN_STYLE}">Verify Email Address</a>
+  <a href="{safe_url}" style="{_BTN_STYLE}">Verify Email Address</a>
 </p>
 <p style="margin:0 0 8px;{_MUTED_STYLE}">
   If the button doesn't work, copy and paste this link into your browser:
 </p>
 <p style="margin:0 0 24px;{_MUTED_STYLE}">
-  <a href="{verify_url}" style="{_LINK_STYLE}">{verify_url}</a>
+  <a href="{safe_url}" style="{_LINK_STYLE}">{safe_url}</a>
 </p>
 <p style="margin:0;{_MUTED_STYLE}">
   If you did not create an account with Knowledge Tree, you can safely ignore
@@ -76,23 +83,28 @@ def verification_email_html(verify_url: str, user_email: str) -> str:
 
 
 def password_reset_email_html(reset_url: str, user_email: str) -> str:
-    """Return the HTML body for a password-reset email."""
+    """Return the HTML body for a password-reset email.
+
+    All dynamic values are HTML-escaped internally for defense-in-depth.
+    """
+    safe_url = html.escape(reset_url)
+    safe_email = html.escape(user_email)
     body = f"""\
 <p style="margin:0 0 16px;font-size:16px;color:#18181b">
   Password Reset Request
 </p>
 <p style="margin:0 0 24px;font-size:15px;color:#3f3f46;line-height:1.6">
   We received a request to reset the password for the account associated with
-  <strong>{user_email}</strong>. Click the button below to choose a new password.
+  <strong>{safe_email}</strong>. Click the button below to choose a new password.
 </p>
 <p style="text-align:center;margin:0 0 24px">
-  <a href="{reset_url}" style="{_BTN_STYLE}">Reset Password</a>
+  <a href="{safe_url}" style="{_BTN_STYLE}">Reset Password</a>
 </p>
 <p style="margin:0 0 8px;{_MUTED_STYLE}">
   If the button doesn't work, copy and paste this link into your browser:
 </p>
 <p style="margin:0 0 24px;{_MUTED_STYLE}">
-  <a href="{reset_url}" style="{_LINK_STYLE}">{reset_url}</a>
+  <a href="{safe_url}" style="{_LINK_STYLE}">{safe_url}</a>
 </p>
 <p style="margin:0;{_MUTED_STYLE}">
   If you did not request a password reset, you can safely ignore this email.
