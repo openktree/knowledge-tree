@@ -262,9 +262,8 @@ class WriteNodeRepository:
             return nodes
 
         # Fallback: ILIKE for exact substring matches.
-        # Note: % and _ in query are not escaped — parameterized by SQLAlchemy
-        # but wildcard characters in user input will match more broadly.
-        stmt2 = select(WriteNode).where(WriteNode.concept.ilike(f"%{query}%"))
+        escaped = query.replace("%", r"\%").replace("_", r"\_")
+        stmt2 = select(WriteNode).where(WriteNode.concept.ilike(f"%{escaped}%"))
         if node_type is not None:
             stmt2 = stmt2.where(WriteNode.node_type == node_type)
         stmt2 = stmt2.limit(limit)

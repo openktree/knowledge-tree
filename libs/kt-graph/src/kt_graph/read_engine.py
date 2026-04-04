@@ -1207,6 +1207,7 @@ class ReadGraphEngine:
 
             await node_repo.delete(absorb_id)
 
+            await session.commit()
             await session.refresh(keep)
             return keep
 

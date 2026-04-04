@@ -634,13 +634,7 @@ class WorkerGraphEngine:
         if wn and wn.fact_ids:
             fact_uuids = [uuid.UUID(fid) for fid in wn.fact_ids]
             write_facts = await self._write_fact_repo.get_facts_with_sources_by_ids(fact_uuids)
-            facts: list[Fact] = []
-            for wf in write_facts:
-                fact = self._write_fact_to_fact(wf)
-                # Attach sources as a transient attribute for callers
-                fact._write_sources = wf.sources  # type: ignore[attr-defined]
-                facts.append(fact)
-            return facts
+            return [self._write_fact_to_fact(wf) for wf in write_facts]
         return []
 
     async def get_facts_by_ids(self, fact_ids: list[uuid.UUID]) -> list[Fact]:
