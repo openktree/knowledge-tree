@@ -10,7 +10,7 @@
 6. [Knowledge Provider Layer](#6-knowledge-provider-layer)
 7. [Fact Decomposition Pipeline](#7-fact-decomposition-pipeline)
 8. [Graph Engine](#8-graph-engine)
-9. [Query & Navigation Flow](#9-query--navigation-flow)
+9. [Research & Synthesis Flow](#9-research--synthesis-flow)
 10. [Convergence & Node Splitting](#10-convergence--node-splitting)
 11. [Multimodel Dimensional Analysis](#11-multimodel-dimensional-analysis)
 12. [API Design](#12-api-design)
@@ -41,7 +41,7 @@ A knowledge integration system that builds understanding exclusively from raw ex
 ### 2.1 Functional Requirements
 
 #### FR-1: Knowledge Graph Management
-- **FR-1.1:** The system SHALL maintain a persistent knowledge graph where nodes represent concepts, perspectives, entities, or events. Nodes have a `node_type` field: `concept` (abstract topics), `entity` (named real-world things), `perspective` (debatable claims with a parent concept), or `event` (temporal occurrences).
+- **FR-1.1:** The system SHALL maintain a persistent knowledge graph where nodes represent concepts, perspectives, entities, events, locations, syntheses, or supersyntheses. Nodes have a `node_type` field: `concept` (abstract topics), `entity` (subjects capable of intent — person, organization), `perspective` (debatable claims with a parent concept), `event` (temporal occurrences), `location` (geographic places), `synthesis` (composite document synthesizing multiple source nodes), or `supersynthesis` (meta-synthesis combining multiple synthesis nodes).
 - **FR-1.2:** Nodes SHALL be linked to other nodes via typed, weighted edges. The graph is flat — all nodes are peers. Perspective nodes link to their parent concept via the `parent_id` FK. Circular references are valid and expected.
 - **FR-1.3:** Edges SHALL only be created from shared factual evidence (seed co-occurrence candidates) — semantic proximity alone does NOT create edges. Embedding similarity is a search tool, not a structural mechanism.
 - **FR-1.4:** Nodes SHALL reference facts, and facts SHALL reference their original raw sources with stored links.
@@ -58,7 +58,7 @@ A knowledge integration system that builds understanding exclusively from raw ex
 - **FR-2.6:** The system SHALL expose the full subgraph used to generate each answer for user exploration.
 
 #### FR-3: Fact Decomposition
-- **FR-3.1:** Raw data from providers SHALL be decomposed by the decomposition pipeline into typed elements: claims, accounts, measurements, formulas, quotes, procedures, references, code, statistical, legal, image, and document.
+- **FR-3.1:** Raw data from providers SHALL be decomposed by the decomposition pipeline into typed elements: claims, accounts, measurements, formulas, quotes, procedures, references, code, images, and perspectives.
 - **FR-3.2:** Decomposition SHALL be objective — elements are recorded as reported in the source without judgment.
 - **FR-3.3:** Each decomposed fact SHALL retain its source attribution (who said it, where, when, in what context).
 - **FR-3.4:** Raw source data SHALL be stored for potential reprocessing.
@@ -75,13 +75,13 @@ A knowledge integration system that builds understanding exclusively from raw ex
 - **FR-5.3:** A convergence report SHALL be auto-generated for each node comparing all dimensions.
 - **FR-5.4:** Models SHALL serve as reasoning engines over facts, not as knowledge sources.
 
-#### FR-6: Orchestrator Agent
-- **FR-6.1:** An orchestrator agent SHALL plan and execute knowledge graph exploration using tool-based agentic patterns.
-- **FR-6.2:** The orchestrator SHALL follow a three-phase strategy: reconnaissance (scout), plan & gather facts, assemble nodes & synthesize.
-- **FR-6.3:** Fact gathering (expensive API calls) SHALL be separated from node assembly (organizing existing facts into nodes). This is the "fact pool" pattern.
-- **FR-6.4:** The orchestrator SHALL ensure at least two perspectives are explored for debatable topics.
-- **FR-6.5:** Exploration SHALL stop when the budget is exhausted or when the agent determines sufficient coverage.
-- **FR-6.6:** The legacy Navigation Agent is deprecated but preserved for backward compatibility.
+#### FR-6: Research & Synthesis Agents
+- **FR-6.1:** The system SHALL support document-based research through specialized agents: a synthesizer agent that navigates the graph to produce synthesis documents, and an ingest agent that builds nodes from uploaded sources.
+- **FR-6.2:** The synthesizer agent SHALL navigate the knowledge graph using an exploration budget (number of nodes it can visit) and produce a standalone research document grounded in graph evidence.
+- **FR-6.3:** A super-synthesizer agent SHALL combine multiple synthesis documents into a comprehensive meta-synthesis.
+- **FR-6.4:** Fact gathering (via ingestion/bottom-up workflows) SHALL be separated from synthesis (document creation from existing graph). The graph grows through ingestion; synthesis reads from it.
+- **FR-6.5:** The ingest agent SHALL build nodes from a pre-filled fact pool extracted from uploaded documents, links, and search results.
+- **FR-6.6:** Bottom-up workflows SHALL orchestrate scope-based research: planning scopes, extracting facts, promoting seeds to nodes, and building perspectives.
 
 #### FR-7: Source Tracking
 - **FR-7.1:** All data added to nodes SHALL have stored links to their original sources.
@@ -122,36 +122,37 @@ A knowledge integration system that builds understanding exclusively from raw ex
 ```mermaid
 graph TB
     subgraph UI["UI Layer (Next.js 16 + React 19)"]
-        CI[Chat Interface]
+        RI[Research Interface]
         GV[Graph Visualizer]
         NE[Node/Edge/Fact Explorer]
         PP[Pipeline Progress]
         IG[Ingest Upload]
     end
 
-    subgraph API["API Layer (FastAPI + SSE)"]
+    subgraph API["API Layer (FastAPI + SSE + MCP)"]
         REST[REST Endpoints]
         SSE[SSE Streaming]
-        AUTH[Auth - JWT + OAuth]
+        AUTH[Auth - JWT + OAuth 2.1]
+        MCP[MCP Server]
     end
 
     subgraph ORCH["Orchestration (Hatchet)"]
-        EW[exploration_wf]
-        SEW[sub_explore_wf]
+        BUW[bottom_up_wf]
+        SYW[synthesizer_wf]
+        SSW[super_synthesizer_wf]
         NPW[node_pipeline_wf]
-        SW[synthesis_wf]
-        CW[conversations_wf]
+        IW[ingest_build_wf]
+        SYNCW[sync_wf]
     end
 
     subgraph AGENTS["Agent Layer (LangGraph)"]
-        OA[Orchestrator Agent]
-        SE[Sub-Explorer]
+        SYA[Synthesizer Agent]
+        SSA[SuperSynthesizer Agent]
         IA[Ingest Agent]
-        SA[Synthesis Tool]
     end
 
     subgraph PIPELINE["Node Pipeline"]
-        BP[BatchPipeline]
+        NP[node_pipeline_wf]
         DP[Decomposition]
         DIM[Dimensions - Multi-model]
         DEF[Definitions]
@@ -160,9 +161,9 @@ graph TB
     end
 
     subgraph GRAPH["Graph Engine"]
-        GE[GraphEngine]
+        RGE[ReadGraphEngine]
+        WGE[WorkerGraphEngine]
         CS[Convergence Scorer]
-        ONT[Ontology - Wikidata]
     end
 
     subgraph PROVIDERS["Knowledge Provider Layer"]
@@ -178,48 +179,53 @@ graph TB
     end
 
     subgraph STORAGE["Persistence"]
-        PG[(PostgreSQL + pgvector)]
-        RD[(Redis - Ontology Cache)]
+        GDB[(graph-db - PostgreSQL + pgvector)]
+        WDB[(write-db - PostgreSQL)]
+        QD[(Qdrant - Vector Search)]
+        RD[(Redis)]
         HT[(Hatchet + own Postgres)]
     end
 
-    CI -->|REST + SSE| REST
+    RI -->|REST + SSE| REST
     GV --> REST
     NE --> REST
     PP -->|SSE| SSE
     IG --> REST
 
     REST --> AUTH
-    REST --> EW
-    REST --> CW
+    REST --> BUW
+    REST --> SYW
     SSE --> HT
+    MCP --> RGE
 
-    EW --> OA
-    SEW --> SE
-    NPW --> BP
-    SW --> SA
-    CW --> IA
+    SYW --> SYA
+    SSW --> SSA
+    IW --> IA
+    NPW --> NP
+    SYNCW -->|write-db → graph-db| GDB
 
-    OA --> SEW
-    SE --> NPW
-    SE --> PI
+    SYA --> RGE
+    IA --> WGE
+    BUW --> NPW
 
-    BP --> DP
-    BP --> DIM
-    BP --> DEF
-    BP --> EP
-    BP --> PP2
+    NP --> DP
+    NP --> DIM
+    NP --> DEF
+    NP --> EP
+    NP --> PP2
 
-    GE --> PG
-    CS --> PG
-    ONT --> RD
+    RGE --> GDB
+    RGE --> QD
+    WGE --> WDB
+    WGE --> QD
+    CS --> GDB
 
-    MG -.->|powers| OA
-    MG -.->|powers| SE
-    MG -.->|powers| SA
+    MG -.->|powers| SYA
+    MG -.->|powers| SSA
+    MG -.->|powers| IA
     MG -.->|powers| DIM
     MG -.->|powers| DEF
-    EM -.->|embeds| PG
+    EM -.->|embeds| QD
 
     PI --> SP
     PI --> BP2
@@ -242,24 +248,26 @@ The system follows a strict layered architecture with dependency inversion at ev
 
 | Layer | Responsibility | Depends On |
 |-------|---------------|------------|
-| **UI Layer** | Conversation-based research interface, graph visualization, entity browsing, file ingestion | API Layer (REST + SSE) |
-| **API Layer** | FastAPI endpoints with JWT/OAuth auth, SSE streaming (`services/api` / `kt_api`) | Orchestration (Hatchet dispatch), Graph Engine |
-| **Orchestration Layer** | Hatchet durable workflows: exploration, sub-exploration, node pipeline, synthesis, conversations. Each workflow type runs in its own worker service (`services/worker-*`). | Agent Layer, Node Pipeline |
-| **Agent Layer** | LangGraph agents within Hatchet tasks: orchestrator (`kt_worker_orchestrator`), query (`kt_worker_query`), ingest (`kt_worker_ingest`), conversations (`kt_worker_conv`) | Graph Engine, Provider Layer, Model Layer |
-| **Node Pipeline** | BatchPipeline 6-phase orchestrator: gather -> create -> dimensions -> definitions -> edges -> parents | Fact Store, Model Layer, Persistence |
-| **Graph Engine** | Node CRUD, cross-referencing, convergence scoring, splitting, ontology/ancestry | Fact Store, Persistence, Redis |
+| **UI Layer** | Document-based research interface, graph visualization, entity browsing, file ingestion | API Layer (REST + SSE) |
+| **API Layer** | FastAPI endpoints with JWT/OAuth auth, SSE streaming, MCP server (`services/api`, `services/mcp`) | Orchestration (Hatchet dispatch), ReadGraphEngine |
+| **Orchestration Layer** | Hatchet durable workflows: bottom-up research, synthesis, super-synthesis, node pipeline, ingest, search, sync. Each workflow type runs in its own worker service (`services/worker-*`). | Agent Layer, Node Pipeline |
+| **Agent Layer** | LangGraph agents within Hatchet tasks: synthesizer (`kt_worker_synthesis`), super-synthesizer (`kt_worker_synthesis`), ingest (`kt_worker_ingest`) | Graph Engine, Provider Layer, Model Layer |
+| **Node Pipeline** | Hatchet DAG: create_node -> dimensions -> definition -> parent | Fact Store, Model Layer, Persistence |
+| **Graph Engine** | Split into ReadGraphEngine (graph-db + Qdrant reads) and WorkerGraphEngine (write-db + Qdrant writes). Convergence scoring, splitting. | Fact Store, Persistence, Qdrant |
 | **Fact Store** | Typed fact storage, indexing, deduplication, retrieval by concept | Persistence |
 | **Provider Layer** | Raw data fetching from external sources (Serper, Brave, URL fetcher) | External APIs |
 | **Ingestion Layer** | File/link upload, content extraction (PDF, DOCX, etc.), partitioning, decomposition | Fact Store, Persistence |
-| **Auth Layer** | JWT + Google OAuth + API tokens via fastapi-users | Persistence |
+| **Auth Layer** | JWT + Google OAuth + OAuth 2.1 + API tokens via fastapi-users + kt-auth | Persistence |
 | **Model Layer** | AI model routing with per-agent overrides and thinking levels | OpenRouter / External AI APIs |
-| **Persistence** | PostgreSQL + pgvector, Redis (ontology cache), Hatchet (workflow state) | Infrastructure |
+| **Persistence** | Dual PostgreSQL (graph-db + write-db), Qdrant (vector search), Redis, Hatchet (workflow state) | Infrastructure |
 
 ---
 
 ## 4. Data Model
 
-### 4.1 Entity Relationship Diagram
+### 4.1 Entity Relationship Diagram (graph-db)
+
+> **Note:** This ER diagram shows the **graph-db** (read-optimized) schema. The **write-db** has a parallel schema with `Write*` prefixed models (WriteNode, WriteEdge, WriteDimension, WriteFact, WriteSeed, WriteEdgeCandidate, etc.) — see `kt_db/write_models.py`. Write-db entities have TEXT primary keys and no foreign key constraints. The sync worker propagates write-db data into graph-db.
 
 ```mermaid
 erDiagram
@@ -499,26 +507,28 @@ erDiagram
 #### Node
 The atomic unit of the knowledge graph. All nodes are flat peers — structure comes from edges. Nodes are typed:
 
-| Node Type | Description | Example |
-|-----------|-------------|---------|
-| `concept` | Abstract topic, idea, technique, phenomenon, or subject | "moon", "photosynthesis", "pyramid construction techniques" |
-| `entity` | A specific real-world thing with a proper name | "NASA" (organization), "Albert Einstein" (person), "Paris" (location) |
-| `perspective` | A debatable claim with a parent concept | "the moon is an artificial structure placed in orbit" |
-| `event` | A temporal occurrence (historical, scientific, ongoing) | "Apollo 11 Moon Landing", "2024 Solar Eclipse" |
+| Node Type | Category | Description | Example |
+|-----------|----------|-------------|---------|
+| `concept` | Base | Abstract topic, idea, technique, phenomenon, or subject | "moon", "photosynthesis", "pyramid construction techniques" |
+| `entity` | Base | A subject capable of intent (person, organization) | "NASA" (organization), "Albert Einstein" (person) |
+| `perspective` | Composite | A debatable claim with a parent concept and stance-classified facts | "the moon is an artificial structure placed in orbit" |
+| `event` | Base | A temporal occurrence (historical, scientific, ongoing) | "Apollo 11 Moon Landing", "2024 Solar Eclipse" |
+| `location` | Base | A geographic place (country, city, region, landmark) | "Tokyo", "Amazon Rainforest", "Mediterranean Sea" |
+| `synthesis` | Composite | Composite document synthesizing multiple source nodes | A synthesis combining "solar power", "wind power", and "energy storage" |
+| `supersynthesis` | Composite | Meta-synthesis combining multiple synthesis documents | A supersynthesis combining three synthesis documents on renewable energy |
+
+**Base node types** (`concept`, `entity`, `event`, `location`) are built from raw facts. **Composite node types** (`synthesis`, `supersynthesis`, `perspective`) are built from other nodes and linked via `draws_from` edges.
 
 Perspective nodes have a `parent_id` FK linking them to their parent concept node. Parent-child structure uses this FK, not edges.
 
 ```
 Node:
-  id:                 uuid                # primary key
+  id:                 uuid                # primary key (deterministic via key_to_uuid)
   concept:            string              # human-readable concept label
-  node_type:          string              # "concept" | "perspective" | "entity" | "event" (default: "concept")
-  parent_id:          uuid | null         # FK to parent node (tree structure)
-  source_concept_id:  uuid | null         # FK to source concept for derived nodes
+  node_type:          string              # "concept" | "perspective" | "entity" | "event" | "location" | "synthesis" | "supersynthesis"
+  parent_id:          uuid | null         # FK to parent node
   definition:         text | null         # synthesized definition from dimensions
   embedding:          float[]             # averaged across dimension embeddings
-  attractor:          string              # which attractor this node serves
-  filter_id:          string              # which filter config produced it
   max_content_tokens: int                 # configurable per node, default 500
   created_at:         timestamp
   updated_at:         timestamp
@@ -533,19 +543,18 @@ The structural unit of the graph. Connects two nodes with a typed relationship g
 ```
 Edge:
   id:                 uuid
-  source_node_id:     uuid                # one end (canonical: smaller UUID)
-  target_node_id:     uuid                # other end (canonical: larger UUID)
-  relationship_type:  string              # "related" | "cross_type" | "contradicts"
+  source_node_id:     uuid                # one end (canonical: smaller UUID for undirected)
+  target_node_id:     uuid                # other end (canonical: larger UUID for undirected)
+  relationship_type:  string              # "related" | "cross_type" | "draws_from"
   weight:             float               # shared fact count (positive, higher = stronger)
   justification:      text | null         # LLM reasoning with {fact:uuid} citation tokens
-  created_by_query:   uuid                # which query's exploration created this edge
   created_at:         timestamp
   metadata:           jsonb               # type-specific context
 ```
 
 **Key design principle:** Embedding proximity does NOT create edges. An edge exists because facts explicitly mention both concepts — every edge is grounded in shared factual evidence. Two nodes can be semantically close (similar embeddings) yet have no edge if no facts mention both.
 
-**Circular references are valid.** "Water" can link to "hydrogen" and "hydrogen" can link to "water." This is not a bug — it reflects real conceptual structure. The Navigation Agent handles cycles via its `visited_nodes` set.
+**Circular references are valid.** "Water" can link to "hydrogen" and "hydrogen" can link to "water." This is not a bug — it reflects real conceptual structure. Agents handle cycles by tracking visited nodes.
 
 #### Fact
 The atomic unit of knowledge derived from raw sources. Facts are typed and objective.
@@ -568,10 +577,8 @@ Fact Types:
   - "procedure"        # process, method, or step-by-step instructions
   - "reference"        # citation or pointer to another source
   - "code"             # code snippet or technical implementation
-  - "statistical"      # statistical data point or analysis
-  - "legal"            # legal ruling, legislation, regulation
   - "image"            # visual content description
-  - "document"         # document-level metadata or summary
+  - "perspective"      # stance-bearing claim or viewpoint
 ```
 
 #### Fact Source (Provenance Link)
@@ -603,17 +610,17 @@ RawSource:
 
 ### 4.3 Relationship Types (EDGE)
 
-Edge types are limited to 3 well-separated values. All edges are undirected with canonical UUID ordering enforced (smaller UUID always stored as `source_node_id`). The `weight` field is a **shared fact count** (positive float) — higher values indicate stronger evidence for the relationship.
+Edge types are limited to 3 well-separated values. The `weight` field is a **shared fact count** (positive float) — higher values indicate stronger evidence for the relationship.
 
-| Type | Category | Meaning | Example |
-|------|----------|---------|---------|
-| `related` | Same-type | Connects nodes of the same `node_type`. Created from seed co-occurrence candidates. | "solar power" ↔ "wind power" (both concepts) |
-| `cross_type` | Cross-type | Connects nodes of different `node_type`s (e.g., entity↔event, perspective↔concept). Eligible pairings defined in `nodes/edges/types.py`. | "NASA" (entity) ↔ "Apollo 11" (event) |
-| `contradicts` | Dialectic | Links thesis/antithesis perspective pairs. Created by the perspective builder during dialectic pair construction. | "AI is beneficial" ↔ contradicts ↔ "AI is dangerous" |
+| Type | Direction | Meaning | Example |
+|------|-----------|---------|---------|
+| `related` | Undirected | Connects nodes of the same `node_type`. Created from seed co-occurrence candidates. Canonical UUID ordering enforced (smaller UUID = source). | "solar power" ↔ "wind power" (both concepts) |
+| `cross_type` | Undirected | Connects nodes of different `node_type`s (e.g., entity↔event, concept↔location). Canonical UUID ordering enforced. | "NASA" (entity) ↔ "Apollo 11" (event) |
+| `draws_from` | Directed | Links composite nodes (synthesis, supersynthesis, perspective) to their source nodes. Programmatic — not LLM-created. | synthesis → concept (source material) |
 
 Edge `weight` = number of shared facts between the two nodes' seeds. The `justification` field contains LLM-generated reasoning with `{fact:uuid}` citation tokens for provenance.
 
-**Edge creation pipeline** (`nodes/edges/`): Candidate-based process — (1) during fact decomposition, seed co-occurrence creates `write_edge_candidates` rows for each fact mentioning multiple seeds; (2) when a node is built, `EdgeResolver.resolve_from_candidates()` reads pending candidates, loads shared facts, calls the LLM for a justification, and creates the edge with weight = fact count. Relationship type is determined by node types: same type → `related`, different types → `cross_type`.
+**Edge creation pipeline** (`nodes/edges/`): Candidate-based process — (1) during fact decomposition, seed co-occurrence creates `write_edge_candidates` rows for each fact mentioning multiple seeds; (2) when a node is built, `EdgeResolver.resolve_from_candidates()` reads pending candidates, loads shared facts, calls the LLM for a justification, and creates the edge with weight = fact count. Relationship type is determined by node types: same type → `related`, different types → `cross_type`. The `draws_from` edge type is created programmatically when composite nodes reference their source nodes.
 
 ### 4.4 Edges vs. Embedding Similarity
 
@@ -631,564 +638,186 @@ Semantic search is a **tool** the agent uses to find candidate nodes. Edges are 
 
 ## 5. Agent Architecture
 
-The system uses specialized agents, each with clearly defined tools and responsibilities. Agents use LangGraph's stateful tool-calling patterns.
+The system uses specialized LangGraph agents within Hatchet workflow tasks. Each agent extends `BaseAgent` from `kt_agents_core` and has clearly defined tools, state, and responsibilities. The primary interaction model is **document-based research** — users ingest sources to grow the graph, then create synthesis documents that weave evidence into analytical narratives.
 
-### 5.0 Orchestrator Agent (Primary Entry Point)
+### 5.0 Synthesizer Agent (Primary Synthesis)
 
-**Role:** The strategic coordinator. Receives a user query, plans exploration, delegates fact gathering and node building to specialized tools, assesses evidence gaps, and triggers synthesis. Replaces the Navigation Agent as the primary query entry point.
+**Role:** Navigates the knowledge graph with an exploration budget and produces a standalone research document. This is the primary agent for knowledge synthesis. Runs within `synthesizer_wf` (Hatchet workflow in `kt_worker_synthesis`).
 
-The Orchestrator separates **fact gathering** (expensive external API calls) from **node assembly** (organizing existing facts into structural nodes). This "fact pool" pattern allows facts to be gathered once and assembled into multiple nodes without redundant API calls.
+**Implementation:** `services/worker-synthesis/src/kt_worker_synthesis/agents/synthesizer_agent.py`
 
-#### 5.0.1 Three-Phase Strategy
-
-1. **RECONNAISSANCE** — Call `scout()` (free) to survey external sources and existing graph. Understand what exists, what's stale, what's missing.
-2. **SCOPED EXPLORATION** — Based on reconnaissance, plan 3-5 focused scopes covering different angles. Launch `explore_scope()` for each. Each sub-explorer gathers facts, builds concepts/entities/perspectives within its scope, and returns a briefing summary.
-3. **INTEGRATION** — Review sub-explorer briefings. Use `build_perspective()` for cross-scope perspectives. Call `synthesize()` when all angles are covered.
-
-#### 5.0.2 Orchestrator Tools
-
-| Tool | Purpose | Cost |
-|------|---------|------|
-| `scout(queries)` | Reconnaissance — returns search titles/snippets AND existing graph matches with richness/staleness info | Free |
-| `explore_scope(scope, explore_budget, nav_budget)` | Launch an isolated sub-explorer agent to investigate a focused scope. Sub-explorer gathers facts, builds concepts/entities/perspectives, and returns a briefing | Allocated explore_budget |
-| `build_perspective(claim, parent_concept_id)` | Assembles a perspective node from the fact pool with stance classification. Used for cross-scope integration after sub-explorers finish | Free if facts in pool; 1 explore_budget if search needed |
-| `read_node(node_id)` / `read_nodes(node_ids)` | Read node dimensions, edges, and suggested_concepts. Inspects nodes built by sub-explorers | 1 nav_budget per unvisited node |
-| `get_node_facts(node_id)` / `get_nodes_facts(node_ids)` | Inspect a node's facts with stance labels | Free if visited; 1 nav_budget if unvisited |
-| `get_budget()` | Check remaining nav and explore budgets | Free |
-| `synthesize()` | Generate final answer from all assembled nodes | Free |
-
-#### 5.0.3 Fact Pool Pattern
-
-Facts are gathered into a shared pool via `gather_facts()` (within sub-explorers), then assembled into nodes via `build_concept()` / `build_entity()` / `build_perspective()`. This separation means:
-- A single gather operation can supply facts to multiple nodes
-- Facts can be reorganized into different structural arrangements without re-fetching
-- Stance classification happens at assembly time, not gather time
-- The expensive operation (external search) is decoupled from the cheap operation (node assembly)
-
-#### 5.0.4 Perspective-Aware Assembly
-
-When building perspective nodes, the system:
-1. Searches the fact pool for facts relevant to the claim
-2. Classifies each fact's stance relative to the claim: `supports`, `challenges`, or `neutral`
-3. Creates the perspective node with `node_type="perspective"` and `parent_concept_id`
-4. Links facts with their stance classification
-5. Generates a "credulous" dimension — building the strongest case for this position
-6. Sets the `parent_id` FK to the parent concept node
-7. For dialectic pairs (thesis/antithesis), creates a `contradicts` edge. For sibling perspectives, edges are created from seed co-occurrence candidates via the standard edge pipeline.
-
-#### 5.0.5 Staleness-Aware Budget Allocation
-
-The orchestrator considers node staleness when planning:
-- Fresh, rich nodes → READ (free), don't recreate
-- Stale nodes → REFRESH with new fact gathering (costs 1 explore_budget)
-- Missing nodes → CREATE from fact pool or with new gathering
-- Thin areas → DEEPEN with additional fact gathering
-
-### 5.1 Navigation Agent (Deprecated)
-
-> **Deprecated:** The Navigation Agent is superseded by the Orchestrator Agent (Section 5.0). It is preserved for backward compatibility but new queries use `run_orchestrator`.
-
-**Role:** The original central intelligence of the system. Receives a user query, navigates and expands the knowledge graph to build sufficient understanding, then synthesizes an answer.
-
-#### 5.1.1 Input & State
+#### 5.0.1 Input & State
 
 ```
-NavigationAgent:
+SynthesizerAgent:
   input:
-    query:          string        # user's question
-    nav_budget:     int           # max nodes to read/visit (graph traversal width)
-    explore_budget: int           # max create/expand operations (knowledge creation)
-    config:         QueryConfig   # attractor, filter, model set
+    topic:              string        # what to synthesize about
+    exploration_budget: int           # max nodes to visit (controls depth)
 
   state:
-    visited_nodes:       Set<uuid>     # nodes read during this query (prevents cycles)
-    created_nodes:       Set<uuid>     # nodes created during this query
-    expanded_nodes:      Set<uuid>     # nodes expanded with new facts
-    created_edges:       List<Edge>    # edges created during this query
-    remaining_nav:       int           # decrements with each read_node
-    remaining_explore:   int           # decrements with create/expand (not reads)
-    exploration_path:    List<uuid>    # ordered path through graph
-    context_summary:     string        # running summary of what the agent knows so far
+    messages:           list          # LangGraph message history
+    nodes_visited_count: int          # tracks budget consumption
+    exploration_budget:  int          # total budget
+    synthesis_text:      string       # final output document
+    phase:               string       # "running" | "done"
 ```
 
-#### 5.1.2 Tools
+#### 5.0.2 Navigation Tools (8 tools)
 
-Each tool has a defined purpose, inputs, outputs, and budget cost. The agent selects tools based on its reasoning about what knowledge is needed next.
+These tools mirror the MCP server's read-only interface, giving the agent the same graph navigation capabilities as external MCP clients.
 
----
+| Tool | Purpose | Budget Cost |
+|------|---------|-------------|
+| `search_graph(query, limit, node_type)` | Find nodes matching a text query. Returns node ID, concept, type, fact count, edge count. | Free |
+| `search_facts(query, limit)` | Search across ALL facts in the entire graph by text content. Returns fact content, sources, and all linked nodes. Key for finding cross-cutting patterns. | Free |
+| `get_node(node_id)` | Load a node's core info: definition, type, fact count, edge count, dimension count. | 1 node visit |
+| `get_edges(node_id, limit, edge_type)` | Load edges for a node, sorted by weight (shared fact count). Paginated. | Free |
+| `get_facts(node_id, source_node_id, limit)` | Load facts for a node, grouped by source with attribution. Optional cross-reference filter via `source_node_id`. | Free |
+| `get_dimensions(node_id, limit)` | Load multi-model dimensional analyses for a node. Paginated. | Free |
+| `get_fact_sources(node_id, limit)` | Load deduplicated list of original sources (URLs, titles, authors, dates) for a node's facts. | Free |
+| `get_node_paths(source_id, target_id, max_depth)` | Find shortest paths between two nodes through intermediate nodes. | Free |
 
-**Tool: `read_node`**
+#### 5.0.3 Synthesis Tool
 
-```
-read_node(concept_or_id: string) → Node | null
+| Tool | Purpose | Budget Cost |
+|------|---------|-------------|
+| `finish_synthesis(text)` | Submit the final synthesis document as complete markdown. Sets phase to "done". | Free |
 
-Purpose:  Read an existing node from the graph. Returns the node with its
-          dimensions, convergence report, fact count, and a computed richness
-          score. Returns null if the node does not exist.
+#### 5.0.4 Budget & Termination
 
-Returns:
-  Node:
-    id, concept, dimensions[], convergence_report,
-    fact_count, richness_score, edge_count, last_updated
-
-  richness_score: float 0-1
-    Computed as: weighted(fact_count, dimension_count, convergence_score, freshness)
-    0.0-0.3 = thin (few facts, low confidence)
-    0.3-0.7 = moderate (some coverage, room to expand)
-    0.7-1.0 = rich (well-supported, high convergence, recent)
-
-Budget:   Consumes 1 nav_budget unit.
-          Returns null (without consuming budget) if node does not exist.
-
-Behavior: If the node exists in visited_nodes, returns cached version (no budget cost).
-          Otherwise reads from DB, adds to visited_nodes, decrements nav_budget.
-```
-
----
-
-**Tool: `explore_concept`**
-
-```
-explore_concept(concept: string) → ExploreResult
-
-Purpose:  The primary knowledge-building tool. The agent says "I need to understand
-          this concept" and the system decides HOW to fulfill that need:
-
-          1. If no node exists for this concept → CREATE a new node
-             (provider fetch → decomposition → dimension generation)
-          2. If a node exists but is thin (richness < 0.3) → EXPAND it
-             (additional provider fetch → decomposition → regenerate dimensions)
-          3. If a node exists and is rich (richness >= 0.3) → READ it
-             (return existing node, no external calls)
-
-Returns:
-  ExploreResult:
-    node:              Node         # the resulting node (created, expanded, or existing)
-    action_taken:      "created" | "expanded" | "read"
-    new_facts_count:   int          # how many new facts were added (0 if read)
-    suggested_concepts: string[]    # concepts this node suggests for further exploration
-
-Budget:   - "created" or "expanded" → consumes 1 explore_budget unit
-          - "read" → consumes 1 nav_budget unit (same as read_node)
-          The agent does NOT need to decide create vs expand vs read.
-          Budget is only consumed when actual work happens.
-
-Behavior: This is the workhorse tool. The agent's job is to decide WHAT concept
-          to explore. The system decides WHETHER that requires creation, expansion,
-          or just reading, based on the node's current state.
-```
-
----
-
-**Tool: `search_nodes`**
-
-```
-search_nodes(query: string, limit: int = 10) → NodeSummary[]
-
-Purpose:  Semantic vector search over existing nodes. Finds nodes whose concepts
-          are semantically similar to the query. This is a DISCOVERY tool — it
-          helps the agent find what's already in the graph. It does NOT create
-          any edges or nodes.
-
-Returns:
-  NodeSummary[]:
-    id, concept, richness_score, fact_count, convergence_score,
-    similarity_score (to the query)
-
-Budget:   Does NOT consume any budget. Search is always free.
-
-Use when: Starting exploration (find existing relevant nodes), identifying
-          gaps (what's NOT in the graph), finding connection candidates.
-```
-
----
-
-**Tool: `connect`**
-
-```
-connect(source_id: uuid, target_id: uuid) → Edge
-
-Purpose:  Tells the system "these two nodes are related in the context of my
-          current exploration." The SYSTEM computes the relationship type and
-          weight — the agent just identifies the connection.
-
-          The system determines:
-          - relationship_type: same node type → "related", different → "cross_type"
-          - weight: number of shared facts between the nodes' seeds
-
-Returns:
-  Edge:
-    id, source_node_id, target_node_id, relationship_type, weight,
-    created_by_query
-
-Budget:   Does NOT consume budget. Connecting is part of exploration,
-          not a separate billable operation.
-
-Behavior: If an edge already exists between these nodes, updates it with
-          the latest fact count and justification.
-```
-
----
-
-**Tool: `get_neighbors`**
-
-```
-get_neighbors(node_id: uuid, types: string[]? = null) → NeighborResult[]
-
-Purpose:  Returns all nodes connected to the given node via edges.
-          Optionally filtered by edge type. This is how the agent traverses
-          the graph structure — following existing connections.
-
-Returns:
-  NeighborResult[]:
-    node: NodeSummary   # the connected node
-    edge: Edge          # the edge connecting them
-    direction: "outgoing" | "incoming"
-
-Budget:   Does NOT consume budget. Traversal is free.
-
-Use when: Following the graph from a node to discover what's already connected,
-          identifying which branches need deeper exploration.
-```
-
----
-
-**Tool: `get_node_facts`**
-
-```
-get_node_facts(node_id: uuid, types: string[]? = null) → FactWithSource[]
-
-Purpose:  Returns all facts linked to a node, with their original sources.
-          Optionally filtered by fact type (experiment, observation, opinion, etc.).
-          Allows the agent to inspect the evidence base of a node.
-
-Returns:
-  FactWithSource[]:
-    fact: Fact          # content, type, attribution
-    sources: Source[]   # original raw sources with URIs
-
-Budget:   Does NOT consume budget.
-
-Use when: Evaluating node quality, understanding what evidence supports a claim,
-          deciding whether a node needs expansion.
-```
-
----
-
-**Tool: `summarize_subgraph`**
-
-```
-summarize_subgraph(node_ids: uuid[]) → SubgraphSummary
-
-Purpose:  When the agent has explored a large or wide section of the graph,
-          this tool compresses the visited nodes into a structured summary.
-          Prevents context window overflow on complex queries. The agent can
-          use the summary to reason about the overall picture without holding
-          every node's full content in context.
-
-Returns:
-  SubgraphSummary:
-    summary:            string      # narrative summary of the subgraph
-    key_claims:         string[]    # most important converged claims
-    open_questions:     string[]    # identified gaps or low-convergence areas
-    node_count:         int
-    avg_convergence:    float
-
-Budget:   Does NOT consume budget. Summarization uses the synthesis model
-          but is an internal reasoning aid, not knowledge creation.
-
-Use when: After exploring 20+ nodes, before deciding next steps.
-          When the exploration is becoming too wide and the agent needs
-          to refocus on what matters for answering the original query.
-```
-
----
-
-**Tool: `synthesize_answer`**
-
-```
-synthesize_answer(query: string, node_ids: uuid[]) → Answer
-
-Purpose:  Final step. Given the original query and the set of explored nodes,
-          generates a comprehensive answer grounded in the graph's knowledge.
-          The answer cites facts and sources transparently.
-
-Returns:
-  Answer:
-    text:              string       # the synthesized answer
-    confidence:        float 0-1    # derived from convergence scores
-    cited_facts:       FactRef[]    # which facts were used, with source links
-    cited_nodes:       uuid[]       # which nodes contributed
-    divergences:       Divergence[] # where models/facts disagreed (presented transparently)
-    subgraph:          GraphSnapshot # for UI visualization
-
-Budget:   Does NOT consume budget.
-
-Behavior: Uses converged claims as primary content. Presents divergences transparently:
-          "Evidence agrees that X. On Y, there are competing perspectives: [A] vs [B]."
-          Every claim in the answer traces to specific facts and sources.
-```
-
-#### 5.1.3 Agent Process (Step by Step)
-
-The Navigation Agent follows this process for every query. The core intelligence is in **step 4a** — deciding what concept to explore next.
-
-```
-PROCESS:
-
-1. RECEIVE QUERY
-   Input: query, nav_budget, explore_budget, config
-   Initialize state: visited_nodes={}, remaining_nav=nav_budget, remaining_explore=explore_budget
-
-2. DECOMPOSE QUERY INTO INITIAL CONCEPTS
-   The agent parses the query into its constituent concepts.
-   Example: "Why does water feel cold?" → ["water", "cold sensation", "thermal perception"]
-
-3. SEARCH EXISTING GRAPH
-   For each initial concept:
-     results = search_nodes(concept)
-     For each result with high similarity:
-       node = read_node(result.id)              # costs 1 nav_budget
-       neighbors = get_neighbors(node.id)        # free
-       Add node + neighbor summaries to working context
-
-4. EXPLORATION LOOP (core agent reasoning)
-   While (remaining_nav > 0 OR remaining_explore > 0) AND agent determines gaps exist:
-
-     a. IDENTIFY NEXT CONCEPT (this is where the AI reasons)
-        Based on:
-        - The original query (what are we trying to answer?)
-        - What we know so far (visited nodes, their content, their gaps)
-        - What suggested_concepts have been returned by explore_concept
-        - What the agent's own reasoning identifies as missing
-        The agent decides: "I need to understand [concept X] next"
-
-     b. EXPLORE
-        result = explore_concept(concept_x)
-        # System handles: create if new, expand if thin, read if rich
-        # Budget consumed only if creation/expansion actually happens
-
-     c. CONNECT
-        For each visited node that is meaningfully related to the new/explored node:
-          connect(result.node.id, related_node.id)
-        # System computes relationship types and weights
-
-     d. ASSESS
-        - Is the working context getting large? → summarize_subgraph(visited_node_ids)
-        - Does the agent have enough to answer? → exit loop
-        - Are there still important gaps? → continue loop
-        - Is budget running low? → prioritize most important remaining gaps
-
-5. SYNTHESIZE
-   answer = synthesize_answer(query, visited_node_ids)
-   Return answer + exploration metadata to the caller
-
-EXIT CONDITIONS (any of these ends the loop):
-  - remaining_nav = 0 AND remaining_explore = 0 (budget exhausted)
-  - Agent determines sufficient coverage to answer the query
-  - No more gaps identified (all relevant concepts explored)
-  - Max iterations reached (safety limit, configurable, default 200)
-```
-
-#### 5.1.4 Budget Interaction
+The exploration budget controls depth of investigation without limiting free operations like search. When the budget is exhausted, the agent receives a nudge to call `finish_synthesis`. The agent can also finish early if it determines sufficient coverage.
 
 ```
 Budget cost summary:
-
-  read_node            →  1 nav_budget
-  explore_concept      →  1 explore_budget (if create/expand) OR 1 nav_budget (if read)
-  search_nodes         →  free
-  connect              →  free
-  get_neighbors        →  free
-  get_node_facts       →  free
-  summarize_subgraph   →  free
-  synthesize_answer    →  free
-
-The two budgets serve different purposes:
-  nav_budget:     "How wide can I look?" (cheap — DB reads)
-  explore_budget: "How much new knowledge can I create?" (expensive — API calls)
-
-Examples:
-  nav=0,   explore=0   → Nothing. System reports query needs budget.
-  nav=100, explore=0   → Read-only. Traverse existing graph, synthesize from what exists.
-  nav=100, explore=20  → Standard. Navigate existing graph, fill 20 gaps with new knowledge.
-  nav=500, explore=100 → Deep. Extensive navigation and aggressive knowledge creation.
+  get_node             → 1 node visit (counted toward exploration_budget)
+  search_graph         → free
+  search_facts         → free
+  get_edges            → free
+  get_facts            → free
+  get_dimensions       → free
+  get_fact_sources     → free
+  get_node_paths       → free
+  finish_synthesis     → free
 ```
-
-#### 5.1.5 Cycle Handling
-
-The `visited_nodes` set prevents infinite loops in circular graphs. If the agent navigates A→B→C→A, when it reaches A the second time, `read_node` returns the cached version without consuming budget. The agent recognizes it has already visited A and moves on.
 
 ---
 
-### 5.2 Decomposition Agent
+### 5.1 SuperSynthesizer Agent
 
-**Role:** Receives raw data from providers. Decomposes it into typed facts with full attribution. No judgment — only objective decomposition of what the source says.
+**Role:** Reads multiple sub-synthesis documents and produces a comprehensive meta-synthesis. Runs within `super_synthesizer_wf` which orchestrates: reconnaissance → dispatch N `synthesizer_wf` in parallel → combine results.
 
-This agent is called internally by `explore_concept` when creating or expanding a node. It is not called directly by the Navigation Agent.
+**Implementation:** `services/worker-synthesis/src/kt_worker_synthesis/agents/super_synthesizer_agent.py`
 
-#### 5.2.1 Tools
+#### 5.1.1 Tools
+
+| Tool | Purpose |
+|------|---------|
+| `read_synthesis(synthesis_node_id)` | Read a sub-synthesis document's full text |
+| `get_synthesis_nodes(synthesis_node_id)` | Get all nodes referenced in a sub-synthesis |
+| `search_graph(query, limit)` | Search the graph for additional context |
+| `get_node(node_id)` | Get node details including definition and edges |
+| `finish_super_synthesis(text)` | Submit the combined super-synthesis document |
+
+#### 5.1.2 Process
 
 ```
-classify_segment(text: string) → ContentType
-  Purpose:  Classifies a text passage as experiment, observation, opinion, etc.
-  Returns:  One of the FactType enum values.
-
-extract_facts(text: string, content_type: ContentType) → RawFact[]
-  Purpose:  Extracts individual factual claims from a classified passage.
-  Returns:  List of facts, each with content and type.
-
-extract_attribution(text: string, fact: RawFact) → Attribution
-  Purpose:  Identifies who said/reported this fact and in what context.
-  Returns:  Attribution { who, role, affiliation, context, date, location }
-
-store_fact(fact: RawFact, attribution: Attribution, source: RawSource) → uuid
-  Purpose:  Persists the fact with its provenance link. Checks for duplicates
-            via embedding similarity — if a near-duplicate exists, links the
-            new source to the existing fact instead of creating a duplicate.
-  Returns:  Fact ID (new or existing).
+1. PLAN — super_synthesizer_wf analyzes the topic and plans N scopes
+2. DISPATCH — launches N synthesizer_wf instances in parallel, one per scope
+3. COMBINE — SuperSynthesizerAgent reads all sub-synthesis documents,
+   identifies themes/contradictions/gaps, and produces a unified meta-synthesis
 ```
 
-#### 5.2.2 Process
+---
+
+### 5.2 Decomposition Pipeline
+
+**Role:** Receives raw data from providers or uploaded documents. Decomposes it into typed facts with full attribution. No judgment — only objective decomposition of what the source says.
+
+Decomposition is prompt-based, implemented in `libs/kt-facts/`. It runs within Hatchet workflow tasks (search decomposition in `worker-search`, file decomposition in `worker-ingest`), not as a standalone LangGraph agent.
+
+#### 5.2.1 Process
 
 ```
 Input:  raw_sources: RawSource[], concept: string
 
 1. For each raw source:
    a. Segment the text into logical passages
-      - Paragraph-level for articles
-      - Section-level for academic papers
-      - Sentence-level for dense factual content
-
    b. For each passage:
-      i.   content_type = classify_segment(passage)
-      ii.  facts = extract_facts(passage, content_type)
-      iii. For each fact:
-           - attribution = extract_attribution(passage, fact)
-           - fact_id = store_fact(fact, attribution, raw_source)
+      - Extract typed facts with attribution via LLM prompt
+      - Extract entity co-occurrences for seed creation
+      - Embed each fact for dedup and semantic search
 
-2. Return all extracted fact IDs
+2. Deduplicate facts via embedding similarity (threshold ~0.92)
+   - If near-duplicate exists, link new source to existing fact
+   - Otherwise store as new fact
 
-DECOMPOSITION RULES (the agent follows these strictly):
-  - Experiments:  Record methodology, results, who conducted, when, where published.
-  - Observations: Record what was observed, by whom, under what conditions.
-  - Measurements: Record the value, units, methodology, source dataset.
-  - Opinions:     Record the opinion, who holds it, their affiliation, context.
-                  ALWAYS attribute. "X is bad" → "Reporter Y stated X is bad (Company Z, editorial)."
-  - Claims:       Record the claim, source, and whether evidence is cited in the source.
-  - Testimony:    Record the account, who gave it, their relationship to events.
-  - Stories:      Record the narrative, its source, the narrator.
+3. Create seeds from extracted entities
+   - Seeds accumulate facts and are promoted to nodes when they
+     reach a configurable minimum fact count
 
-The agent does NOT evaluate truth. It decomposes and attributes.
+4. Return extracted fact IDs and seed co-occurrence candidates
 ```
 
 ---
 
-### 5.3 Synthesis Agent
+### 5.3 Ingest Agent
 
-**Role:** Given a set of navigated nodes with their facts, dimensions, and convergence reports, produces a coherent answer to the user's query. Called by the Orchestrator's `synthesize()` tool.
+**Role:** Builds nodes from a pre-filled fact pool extracted from uploaded documents, images, and links. The fact pool is filled by the decomposition pipeline BEFORE this agent runs. The agent strategically picks which concepts to build, constrained by a node budget.
 
-#### 5.3.1 Perspective-Aware Synthesis
+**Implementation:** `services/worker-ingest/src/kt_worker_ingest/agents/ingest_agent.py`
 
-The synthesis agent groups nodes by type when building context:
+#### 5.3.1 Tools
 
-```
-## Core Concepts
-- Moon [concept] — 12 facts (last updated: 2 days ago)
+| Tool | Purpose | Budget Cost |
+|------|---------|-------------|
+| `browse_index(start, count)` | Browse section titles with index numbers | Free |
+| `get_summary(idx)` | Read the full summary for a section | Free |
+| `browse_facts(query, fact_type, unlinked_only, limit)` | Search the fact pool by topic or browse all | Free |
+| `build_nodes(nodes)` | Batch build up to 10 nodes in one call | 1 per node |
+| `build_perspectives(claims)` | Batch build perspective nodes with stance classification | Free |
+| `read_node(node_id)` | Read an existing node's dimensions and edges | 1 per read |
+| `get_budget()` | Check remaining budget | Free |
+| `finish_ingest(summary)` | End construction and submit summary | Free |
 
-## Perspectives on "Moon"
-### "The moon formed naturally via giant impact" [perspective]
-- Parent: Moon
-- 18 supporting facts, 3 challenging facts
+### 5.4 Agent Tool Interface (Python)
 
-### "The moon is an artificial structure" [perspective]
-- Parent: Moon
-- 6 supporting facts, 12 challenging facts
-```
-
-When perspectives are present, the synthesis agent:
-1. Presents EACH perspective with its strongest supporting facts
-2. Counts and compares evidence: quantity, source quality, diversity
-3. Notes evidence ASYMMETRY and reasons about what it means
-4. Flags cognitive manipulation tactics (appeals to authority, ad hominem, conspiracy logic)
-5. Renders a verdict clearly labeled as synthesis, not fact
-6. The verdict weighs evidence but never dismisses a perspective without engaging its arguments
-
-Facts displayed in synthesis include stance labels:
-```
-- [claim] [SUPPORTS] The moon rings like a bell when struck (who: NASA; source: Apollo data) {fact:uuid}
-- [measurement] [CHALLENGES] Seismic ringing consistent with solid mantle (who: USGS; source: Geophysics Journal) {fact:uuid}
-```
-
-#### 5.3.2 Process
-
-```
-Input:  query: string, node_ids: uuid[]
-
-1. Load full content for all specified nodes (dimensions, convergence, facts with stances)
-
-2. Group nodes by type: concepts, perspectives (grouped by parent), other
-
-3. Build the answer:
-   - For concepts: use convergence report's recommended_content
-   - For perspectives: present each perspective with supporting/challenging evidence
-   - Where convergence is high (>0.7), present claims as established
-   - Where convergence is moderate (0.4-0.7), note the uncertainty
-   - Where convergence is low (<0.4), present competing perspectives explicitly
-
-4. Cite provenance throughout with stance labels
-
-5. Present divergences transparently
-
-6. Package the subgraph (nodes + edges) for UI visualization
-
-Output: Answer { text, confidence, cited_facts, cited_nodes, divergences, subgraph }
-```
-
----
-
-### 5.4 Conversation Agent
-
-**Role:** Wraps the Orchestrator for follow-up turns in a conversation. Operates with smaller default budgets (nav=10, explore=2) and prior conversation context (original query, prior answer, visited nodes).
-
-Uses the same orchestrator tools (scout, explore_scope, build_perspective, read_node, get_node_facts, get_budget, synthesize) but with a conversation-aware system prompt that focuses on:
-1. NEW information not in the prior answer
-2. DEEPER exploration of what the user specifically asked about
-3. DIFFERENT perspectives or angles the user is seeking
-
-The synthesis agent sees the prior answer and builds on it rather than repeating known information.
-
-### 5.5 Agent Tool Interface (Python)
-
-All agent tools follow a consistent interface for LangGraph compatibility:
+All agent tools use LangGraph's `BaseTool` from `langchain_core`. Tools are created as closures that capture an `AgentContext` and a mutable state reference.
 
 ```python
-from pydantic import BaseModel
-from typing import Generic, TypeVar
+from langchain_core.tools import BaseTool, tool
+from kt_agents_core.state import AgentContext
 
-TInput = TypeVar("TInput", bound=BaseModel)
-TOutput = TypeVar("TOutput", bound=BaseModel)
+def build_navigation_tools(ctx: AgentContext, state_ref: list) -> list[BaseTool]:
+    """Build tools as closures over shared context."""
 
-class AgentTool(Generic[TInput, TOutput]):
-    """Base class for all agent tools."""
-    name: str
-    description: str                    # Used by the LLM to decide when to call this tool
-    input_schema: type[TInput]
-    output_schema: type[TOutput]
+    @tool
+    async def search_graph(query: str, limit: int = 20) -> str:
+        """Search for nodes matching a text query."""
+        nodes = await ctx.graph_engine.search_nodes(query, limit=limit)
+        # ... format and return results
+        return formatted_output
 
-    async def execute(self, input: TInput, context: AgentContext) -> TOutput:
-        raise NotImplementedError
+    @tool
+    async def get_node(node_id: str) -> str:
+        """Load node core info: definition, type, fact count, edge count."""
+        # Increments nodes_visited_count in state_ref
+        state = state_ref[0]
+        state.nodes_visited_count += 1
+        # ... load and format node
+        return formatted_output
 
-class AgentContext(BaseModel):
-    """Shared context available to all tools during a query."""
-    query_id: str
-    nav_budget: int
-    explore_budget: int
-    nav_used: int
-    explore_used: int
-    graph_engine: GraphEngine           # injected, not serialized
-    provider_registry: ProviderRegistry
+    return [search_graph, get_node, ...]
+```
+
+The `AgentContext` provides shared dependencies:
+
+```python
+@dataclass
+class AgentContext:
+    graph_engine: ReadGraphEngine | WorkerGraphEngine
+    embedding_service: EmbeddingService | None
     model_gateway: ModelGateway
+    emit: Callable  # SSE event emitter
 ```
 
 ---
@@ -1347,10 +976,8 @@ Each segment receives a content type classification:
 | `procedure` | Process, method, or step-by-step instructions | "First, heat the solution to 100°C, then..." |
 | `reference` | Citation or pointer to another source | "See Smith et al. (2024) for details" |
 | `code` | Code snippet or technical implementation | "The function returns `sorted(data, key=lambda x: x.score)`" |
-| `statistical` | Statistical analysis or dataset | "GDP grew 2.4% in Q3 2024" |
-| `legal` | Legal text or ruling | "The court ruled in favor of the plaintiff" |
 | `image` | Visual content description | "Figure 3 shows the protein folding structure" |
-| `document` | Document-level metadata or summary | "This 2024 WHO report covers global health trends" |
+| `perspective` | Stance-bearing claim or viewpoint | "Critics argue the policy disproportionately impacts rural communities" |
 
 ### 7.4 Attribution Extraction
 
@@ -1385,111 +1012,136 @@ This means a single fact (e.g., "water boils at 100C at sea level") may accumula
 
 ## 8. Graph Engine
 
-### 8.1 Core Interface
+### 8.0 Dual Database Architecture
 
-```typescript
-interface GraphEngine {
-  // Node operations
-  createNode(concept: string): Promise<Node>;
-  getNode(id: string): Promise<Node | null>;
-  getNodeByConcept(concept: string): Promise<Node | null>;
-  updateNode(id: string, updates: Partial<Node>): Promise<Node>;
+The system uses **two PostgreSQL databases** optimized for different workloads, plus **Qdrant** for vector search:
 
-  // Semantic search (tool for agents — does NOT create structure)
-  searchNodes(query: string, limit?: number): Promise<NodeSearchResult[]>;
-  findSimilarNodes(embedding: number[], threshold?: number): Promise<Node[]>;
+```mermaid
+graph LR
+    subgraph WORKERS["Worker Services"]
+        WN[worker-nodes]
+        WI[worker-ingest]
+        WB[worker-bottomup]
+        WS[worker-search]
+    end
 
-  // Edge operations (flat graph — no parent/child, weight = fact count)
-  createEdge(source: string, target: string, type: string, weight: number,
-             justification?: string, factIds?: string[]): Promise<Edge>;
-  getEdges(nodeId: string, options?: {
-    direction?: "outgoing" | "incoming" | "both";
-    types?: string[];
-  }): Promise<Edge[]>;
-  getNeighbors(nodeId: string, options?: {
-    types?: string[];
-    depth?: number;         // how many hops to follow (default 1)
-  }): Promise<Node[]>;
+    subgraph WRITE["Write Path"]
+        WDB[(write-db<br/>No FKs, TEXT keys)]
+        QD[(Qdrant<br/>Vector Search)]
+    end
 
-  // Subgraph extraction (for visualization)
-  getSubgraph(nodeIds: string[], depth?: number): Promise<GraphSnapshot>;
+    subgraph SYNC["Sync"]
+        SW[worker-sync<br/>watermark polling]
+    end
 
-  // Fact linking
-  linkFactToNode(nodeId: string, factId: string, relevance: number): Promise<void>;
-  getNodeFacts(nodeId: string, types?: string[]): Promise<FactWithSources[]>;
+    subgraph READ["Read Path"]
+        GDB[(graph-db<br/>pgvector, FKs)]
+    end
 
-  // Dimensions
-  addDimension(nodeId: string, dimension: Dimension): Promise<void>;
-  getDimensions(nodeId: string): Promise<Dimension[]>;
+    subgraph READERS["Read Clients"]
+        API[API]
+        MCP[MCP Server]
+        SYN[Synthesizer Agent]
+    end
 
-  // Convergence
-  computeConvergence(nodeId: string): Promise<ConvergenceReport>;
+    WORKERS --> WDB
+    WORKERS --> QD
+    SW -->|incremental upsert| GDB
+    SW -->|poll updated_at| WDB
+    READERS --> GDB
+    READERS --> QD
 
-  // Splitting (creates new nodes + perspective_of edges, not parent-child)
-  splitNode(nodeId: string, perspectives: PerspectiveDefinition[]): Promise<{
-    perspectiveNodes: Node[];
-    edges: Edge[];
-  }>;
-
-  // Merging (combine duplicate nodes)
-  mergeNodes(sourceId: string, targetId: string): Promise<Node>;
-
-  // Versioning
-  getNodeHistory(nodeId: string): Promise<NodeVersion[]>;
-}
-
-// GraphSnapshot is what the UI renders
-interface GraphSnapshot {
-  nodes: Node[];
-  edges: Edge[];
-}
+    style WRITE fill:#0d1117,stroke:#fbbf24,color:#e2e8f0
+    style READ fill:#0d1117,stroke:#34d399,color:#e2e8f0
+    style SYNC fill:#0d1117,stroke:#ff6b6b,color:#e2e8f0
 ```
 
-**Note:** There is no `getParent()` or `getChildren()` — the graph is flat. Use `getEdges()` or `getNeighbors()` to traverse in any direction. Circular traversal is handled by the caller (agent tracks visited nodes).
+| Component | Purpose | Key Characteristics |
+|-----------|---------|-------------------|
+| **graph-db** | Read-optimized graph database | pgvector, FK constraints, junction tables (NodeFact, EdgeFact, DimensionFact). API reads from here. |
+| **write-db** | Write-optimized database | No FKs, TEXT primary keys (deterministic), no deadlocks. Workers write here during pipelines. |
+| **Qdrant** | Vector search | Semantic search for nodes and facts. Both read and write paths use Qdrant directly. |
+| **Sync worker** | write-db → graph-db propagation | Single-threaded Hatchet worker polls `updated_at > watermark` per table, upserts into graph-db. Watermarks stored in `sync_watermarks` table. |
+| **PgBouncer** | Connection pooling | `pgbouncer-read` (port 5436) for graph-db, `pgbouncer-write` (port 5434) for write-db. |
+
+**Deterministic UUIDs** bridge the two databases: `key_to_uuid(write_key)` uses UUID5 to derive the same UUID from a write-db TEXT key, so both databases share identical IDs for every entity. Defined in `kt_db.keys`.
+
+**Write routing rules:**
+| Entity | Where agents write | Why |
+|---|---|---|
+| Nodes | write-db + Qdrant | Qdrant provides immediate vector search; sync worker creates graph-db Node + NodeFact junction rows |
+| Edges | write-db ONLY | Eliminates FK-validation deadlocks; sync worker creates graph-db Edge + EdgeFact junction rows |
+| Dimensions | write-db ONLY | Same reasoning; sync worker creates graph-db Dimension + DimensionFact junction rows |
+| Facts | write-db + Qdrant | WriteFact (UUID PK), WriteFactSource (denormalized); sync worker creates graph-db Fact + FactSource rows |
+| Definitions, Parents, Counters, Convergence | write-db ONLY | Sync worker propagates to graph-db |
+
+### 8.1 Graph Engine (Split Architecture)
+
+The graph engine is split into two classes optimized for their respective access patterns:
+
+**ReadGraphEngine** (`libs/kt-graph/src/kt_graph/read_engine.py`):
+- Read-only, uses graph-db + Qdrant
+- Used by API endpoints, MCP server, and synthesizer agent
+- Supports two modes:
+  - **API mode** (`session` provided): repos created once per request
+  - **Synthesis mode** (`session_factory` provided): short-lived sessions per method call to avoid holding connections during long agent runs
+- Key operations: `search_nodes()`, `get_node()`, `get_edges()`, `get_node_facts()`, `get_dimensions()`, `get_subgraph()`, `find_paths()`
+
+**WorkerGraphEngine** (`libs/kt-graph/src/kt_graph/worker_engine.py`):
+- Write-focused, uses write-db + Qdrant only (NO graph-db session)
+- Used by all worker services (node pipeline, ingest, bottom-up, etc.)
+- Maintains an in-memory `_node_cache` for pipeline-created nodes
+- Key operations: `create_node()`, `add_dimension()`, `create_edge()`, `set_parent()`, `link_fact_to_node()`, `search_nodes()` (via Qdrant)
+
+**Note:** There is no `getParent()` or `getChildren()` — the graph is flat. Use `get_edges()` to traverse in any direction. Circular traversal is handled by the caller (agent tracks visited nodes).
 
 ### 8.2 Node Creation Flow
 
 ```mermaid
 sequenceDiagram
-    participant OA as Orchestrator Agent
-    participant SE as Sub-Explorer (explore_scope)
-    participant BP as BatchPipeline (nodes/)
+    participant BU as bottom_up_wf
+    participant SC as bottom_up_scope_wf
+    participant NP as node_pipeline_wf
     participant PR as Provider Registry
     participant DP as Decomposition Pipeline
-    participant EP as Edge Pipeline
     participant OR as OpenRouter
-    participant DB as PostgreSQL
+    participant WDB as write-db
+    participant QD as Qdrant
+    participant SYNC as worker-sync
+    participant GDB as graph-db
 
-    OA->>SE: explore_scope("nuclear fusion", budget)
-    SE->>BP: gather_facts("nuclear fusion")
-    BP->>PR: searchAll("nuclear fusion")
-    PR-->>BP: RawSearchResult[]
-    BP->>DP: decompose(rawSources)
-    DP->>DP: Segment → Classify → Extract → Attribute
-    DP->>DB: Store facts with provenance
-    DP-->>BP: Fact[]
+    BU->>SC: scope("nuclear fusion", budget)
+    SC->>PR: searchAll("nuclear fusion")
+    PR-->>SC: RawSearchResult[]
+    SC->>DP: decompose(rawSources)
+    DP->>DP: Segment → Extract → Attribute
+    DP->>WDB: Store facts (WriteFact)
+    DP->>QD: Embed facts
+    DP-->>SC: Seeds with facts
 
-    SE->>BP: build_nodes(tasks)
-    Note over BP: Phase 1: Classify + Gather Facts
-    Note over BP: Phase 2: Create Nodes + Link Facts
-    BP->>DB: Insert node records
+    SC->>NP: node_pipeline_wf(seed) [fan-out per node]
 
-    Note over BP: Phase 3: Generate Dimensions
+    Note over NP: Task 1: create_node
+    NP->>WDB: WriteNode + link facts
+    NP->>QD: Embed node
+
+    Note over NP: Task 2: dimensions (parallel per model)
     loop For each configured model
-        BP->>OR: Generate dimension (facts as context)
-        OR-->>BP: Dimension content
-        BP->>DB: Store dimension
+        NP->>OR: Generate dimension (facts as context)
+        OR-->>NP: Dimension content
+        NP->>WDB: WriteDimension
     end
 
-    Note over BP: Phase 3.5: Synthesize Definitions
-    Note over BP: Phase 4: Resolve Edges from candidates
-    BP->>EP: read pending seed co-occurrence candidates
-    EP->>OR: Generate justification for each pair
-    EP->>DB: Create edges (weight=fact count, justification)
+    Note over NP: Task 3: definition
+    NP->>OR: Synthesize definition from dimensions
+    NP->>WDB: Update WriteNode.definition
 
-    Note over BP: Phase 5: Select Parents
+    Note over NP: Task 4: parent selection
+    NP->>WDB: Set WriteNode.parent_key
 
-    SE-->>OA: Briefing summary
+    Note over SYNC: Async: watermark-based sync
+    SYNC->>WDB: Poll updated_at > watermark
+    SYNC->>GDB: Upsert nodes, edges, dimensions, facts + junction rows
 ```
 
 ### 8.3 Semantic Search as Navigation Tool
@@ -1500,124 +1152,94 @@ Edges are created by the `EdgePipeline` from seed co-occurrence candidates — f
 
 ---
 
-## 9. Query & Navigation Flow
+## 9. Research & Synthesis Flow
 
-### 9.1 End-to-End Query Flow
+The primary interaction model is **document-based research**: users ingest sources to grow the graph, then create synthesis documents that weave evidence into analytical narratives.
+
+### 9.1 End-to-End Research Flow
 
 ```mermaid
 sequenceDiagram
     actor U as User
-    participant UI as UI
+    participant UI as Research UI
     participant API as API
-    participant OA as Orchestrator
-    participant SE as Sub-Explorer
-    participant BP as BatchPipeline
-    participant PR as Providers
-    participant EP as Edge Pipeline
+    participant IW as ingest_build_wf
+    participant BU as bottom_up_wf
+    participant NP as node_pipeline_wf
+    participant SY as synthesizer_wf
+    participant SSY as super_synthesizer_wf
 
-    U->>UI: "Why does water feel cold?"
-    UI->>API: POST /conversations {query, nav_budget: 100, explore_budget: 20}
-    API->>OA: Initialize(query, nav=100, explore=20)
+    Note over U,SSY: Phase 1 — INGESTION (grow the graph)
+    U->>UI: Upload documents / submit links
+    UI->>API: POST /api/v1/research/ingest
+    API->>IW: ingest_build_wf(sources)
+    IW->>IW: Decompose → extract facts → create seeds
+    IW-->>API: Seeds + facts created
 
-    Note over OA: Phase 1 — RECONNAISSANCE
-    OA->>OA: scout(["water cold sensation", "thermal perception"]) [free]
-    Note over OA: Surveys external sources + existing graph
+    Note over U,SSY: Phase 2 — BOTTOM-UP RESEARCH (build nodes)
+    U->>UI: Start research on topic
+    UI->>API: POST /api/v1/research/bottom-up
+    API->>BU: bottom_up_wf(topic, explore_budget)
+    BU->>BU: Plan scopes (LLM)
+    loop For each scope
+        BU->>NP: node_pipeline_wf(seed) [fan-out]
+        NP->>NP: create → dimensions → definition → parent
+    end
+    BU-->>API: Nodes + edges created (streamed via SSE)
 
-    Note over OA: Phase 2 — SCOPED EXPLORATION
-    OA->>SE: explore_scope("water thermal properties", explore=7, nav=30)
-    OA->>SE: explore_scope("cold sensation physiology", explore=7, nav=30)
-    OA->>SE: explore_scope("thermoreceptor mechanisms", explore=6, nav=30)
+    Note over U,SSY: Phase 3 — SYNTHESIS (produce documents)
+    U->>UI: Request synthesis on topic
+    UI->>API: POST /api/v1/syntheses
+    API->>SY: synthesizer_wf(topic, exploration_budget)
+    SY->>SY: Navigate graph (8 tools) → finish_synthesis
+    SY-->>API: Synthesis document (streamed via SSE)
 
-    Note over SE: Each sub-explorer runs in isolation
-    SE->>BP: gather_facts → build_nodes → edge pipeline
-    BP->>PR: searchAll(scope queries)
-    BP->>EP: Discover + classify edges from shared facts
-    SE-->>OA: Briefing summary
-
-    Note over OA: Phase 3 — INTEGRATION
-    OA->>OA: Review briefings, build cross-scope perspectives
-    OA->>OA: synthesize() → final answer
-
-    OA-->>API: QueryResult {nav_used: 42, explore_used: 20}
-    API-->>UI: Answer + explorable graph (streamed via WebSocket)
-    UI-->>U: Display answer + graph visualization
+    Note over U,SSY: Phase 4 — SUPER-SYNTHESIS (optional)
+    U->>UI: Request super-synthesis
+    UI->>API: POST /api/v1/super-syntheses
+    API->>SSY: super_synthesizer_wf(topic)
+    SSY->>SY: Dispatch N synthesizer_wf in parallel
+    SSY->>SSY: Combine sub-syntheses
+    SSY-->>API: Super-synthesis document
 ```
 
-### 9.2 Dual Budget System
+### 9.2 Exploration Budget
 
-The system uses two independent budgets to give precise cost control. Exploring existing knowledge (reading nodes, traversing edges) is vastly cheaper than creating new knowledge (provider calls, decomposition, dimension generation). Separating the budgets lets users control each dimension independently.
-
-```
-Two budgets:
-
-  NAVIGATION BUDGET (nav_budget):
-    Controls how wide the agent explores the existing graph.
-    Measured in nodes read/visited.
-    Example: nav_budget=50 means the agent can visit up to 50 existing nodes.
-    Cost: cheap (DB reads, no external API calls)
-
-  EXPLORATION BUDGET (explore_budget):
-    Controls how much new knowledge the agent can create.
-    Measured in node operations (create + expand).
-    Example: explore_budget=10 means up to 10 new nodes created or existing nodes expanded.
-    Cost: expensive (provider API calls, decomposition, model calls for dimensions)
-```
-
-**Operation costs by budget type:**
-
-| Operation | Nav Budget | Explore Budget | Notes |
-|-----------|-----------|---------------|-------|
-| `read_node` | 1 unit | 0 | Read existing node |
-| `explore_concept` (→ read) | 1 unit | 0 | Node exists and is rich |
-| `explore_concept` (→ create) | 0 | 1 unit | Node doesn't exist |
-| `explore_concept` (→ expand) | 0 | 1 unit | Node exists but is thin |
-| `search_nodes` | 0 | 0 | Always free |
-| `connect` | 0 | 0 | Always free |
-| `get_neighbors` | 0 | 0 | Always free |
-| `get_node_facts` | 0 | 0 | Always free |
-| `summarize_subgraph` | 0 | 0 | Always free |
-| `synthesize_answer` | 0 | 0 | Always free |
-
-**Budget strategy heuristics:**
+The synthesizer agent uses an **exploration budget** — the number of nodes it can visit during graph navigation. This controls investigation depth without limiting free operations like search, edge traversal, and fact retrieval.
 
 ```
-The Navigation Agent reasons about budget allocation dynamically:
-
-  1. Start by searching + reading existing graph (spends nav_budget)
-  2. Identify gaps: concepts that don't exist, thin nodes, unexplored connections
-  3. Use explore_concept for each gap (system decides create vs expand vs read):
-     a. Core query concepts get priority
-     b. Supporting concepts identified by dimension suggestions
-     c. Cross-cutting connections discovered during navigation
-  4. After each exploration, the agent re-assesses:
-     "Do I have enough to answer? What's still missing?"
-  5. Use summarize_subgraph when working context grows large (20+ nodes)
-  6. Reserve ~20% of explore_budget for concepts discovered mid-exploration
+Budget summary:
+  get_node             → 1 (counts toward exploration_budget)
+  search_graph         → free
+  search_facts         → free
+  get_edges            → free
+  get_facts            → free
+  get_dimensions       → free
+  get_fact_sources     → free
+  get_node_paths       → free
+  finish_synthesis     → free
 ```
 
-### 9.3 Budget Modes
+The budget ensures the agent produces focused, manageable synthesis documents. Higher budgets yield more comprehensive but longer documents. The agent can also finish early if it determines sufficient coverage.
 
-**nav=0, explore=0 (Instant mode):**
-- Returns nothing — no knowledge available. System reports the query needs budget.
+### 9.3 Workflow Architecture
 
-**nav=50, explore=0 (Read-only mode):**
-- Agent navigates up to 50 existing nodes, follows edges, synthesizes from what exists.
-- No new knowledge created. No external API calls.
-- Fast response. Uses accumulated knowledge from prior queries.
-- If existing graph is thin on this topic, answer acknowledges gaps and suggests explore_budget.
+All heavy processing runs as **durable Hatchet workflows**:
 
-**nav=50, explore=10 (Standard mode):**
-- Agent navigates existing graph (up to 50 nodes), identifies gaps, creates up to 10 new nodes/expansions.
-- Balanced cost vs. coverage.
-
-**nav=200, explore=50 (Deep mode):**
-- Wide navigation + significant knowledge creation.
-- Use for important queries or new topics with minimal existing coverage.
-
-**nav=0, explore=10 (Blind expansion — unusual):**
-- Agent can't read existing nodes but can create new ones.
-- Edge case: useful for seeding a fresh graph on a topic without being influenced by (possibly stale) existing content.
-- Rarely used in practice.
+| Workflow | Worker | Purpose |
+|----------|--------|---------|
+| `bottom_up_wf` | worker-bottomup | Top-level research orchestrator: plans scopes, dispatches node building |
+| `bottom_up_scope_wf` | worker-bottomup | Single scope: gather facts, filter, fan-out node pipelines, build perspectives |
+| `node_pipeline_wf` | worker-nodes | Node creation DAG: create → dimensions → definition → parent |
+| `composite_wf` | worker-nodes | Composite node generation (synthesis/supersynthesis node types) |
+| `auto_build_wf` | worker-nodes | Automatic node building from accumulated seeds |
+| `search_wf` | worker-search | Standalone search + decomposition |
+| `decompose_wf` | worker-search | Content decomposition into facts and seeds |
+| `seed_dedup_wf` | worker-search | Seed deduplication via embedding similarity |
+| `synthesizer_wf` | worker-synthesis | Synthesis document creation (SynthesizerAgent) |
+| `super_synthesizer_wf` | worker-synthesis | Multi-scope super-synthesis (plan → dispatch → combine) |
+| `ingest_build_wf` | worker-ingest | Source ingestion pipeline (decompose → build nodes) |
+| `sync_wf` | worker-sync | write-db → graph-db incremental sync |
 
 ---
 
@@ -1695,9 +1317,9 @@ function executeSplit(node, clusters):
   for perspective in perspectiveNodes:
     setParent(perspective.id, node.id)
 
-  # Link perspective nodes to each other via contradicts edges
+  # Link perspective nodes to each other via related edges
   for pair in combinations(perspectiveNodes, 2):
-    createEdge(pair[0].id, pair[1].id, "contradicts", weight=1.0)
+    createEdge(pair[0].id, pair[1].id, "related", weight=1.0)
 
   # Update original node to note the split
   updateNodeContent(node, """
@@ -1716,7 +1338,7 @@ graph TD
 
     A -->|"parent_id"| P
     B -->|"parent_id"| P
-    A <-.->|"contradicts"| B
+    A <-.->|"related"| B
 
     A --- FA1["Fact: GDP grew 4.2% during tenure<br/>Source: BLS data"]
     A --- FA2["Fact: Approved infrastructure bill<br/>Source: Congressional Record"]
@@ -1728,7 +1350,7 @@ graph TD
     style B fill:#1a2235,stroke:#f87171,color:#e2e8f0
 ```
 
-All three nodes are peers in the flat graph. The `parent_id` FK indicates that A and B are facets of the original concept. The `contradicts` edge between A and B captures the dialectic divergence. Other nodes in the graph can link to any of the three independently.
+All three nodes are peers in the flat graph. The `parent_id` FK indicates that A and B are facets of the original concept. The `related` edge between A and B captures their shared conceptual domain. Other nodes in the graph can link to any of the three independently.
 
 ---
 
@@ -1801,7 +1423,7 @@ function generateDimensions(node, facts):
 
 **Neighbor context flow:** When generating dimensions for a node, the system provides dimensions from all currently linked neighbor nodes (via edges). Each model sees what all other models said about the neighbors. This creates cross-pollination without requiring a tree hierarchy — any node connected via edges contributes context.
 
-**Suggested concepts:** Models suggest related concepts that would help explain the current node. These are suggestions for the Navigation Agent to consider — they do NOT automatically create nodes or edges. The agent decides whether to follow them based on budget and exploration strategy.
+**Suggested concepts:** Models suggest related concepts that would help explain the current node. These are suggestions for agents (synthesizer, ingest) to consider — they do NOT automatically create nodes or edges. The agent decides whether to follow them based on budget and exploration strategy.
 
 **Critical design principle:** The system prompt explicitly instructs models to reason ONLY from the provided facts, not from training knowledge. This ensures all knowledge traces back to the raw data base.
 
@@ -1854,7 +1476,7 @@ GET    /api/v1/conversations/:id
 
 POST   /api/v1/conversations/:id/messages
   Body: { content: string, nav_budget?: int, explore_budget?: int }
-  Response: ConversationMessageResponse (triggers Hatchet exploration_wf)
+  Response: ConversationMessageResponse
 
 GET    /api/v1/conversations/:id/messages/:msgId/stream
   Response: SSE stream of pipeline progress events
@@ -1913,6 +1535,42 @@ GET    /api/v1/facts
 GET    /api/v1/sources/:id
   Response: RawSource
 
+# === Research (primary interaction) ===
+
+POST   /api/v1/research/ingest
+  Body: { sources: IngestSource[], conversation_id }
+  Response: Triggers ingest_build_wf
+
+POST   /api/v1/research/bottom-up
+  Body: { topic, explore_budget, conversation_id }
+  Response: Triggers bottom_up_wf
+
+# === Syntheses ===
+
+POST   /api/v1/syntheses
+  Body: { topic, exploration_budget, conversation_id }
+  Response: Triggers synthesizer_wf
+
+POST   /api/v1/super-syntheses
+  Body: { topic, conversation_id }
+  Response: Triggers super_synthesizer_wf
+
+GET    /api/v1/syntheses/:id
+  Response: Synthesis node with document
+
+# === Seeds ===
+
+GET    /api/v1/seeds
+  Response: Seed[] (paginated, filterable by status)
+
+GET    /api/v1/seeds/:id
+  Response: Seed with facts
+
+# === Edge Candidates ===
+
+GET    /api/v1/edge-candidates
+  Response: EdgeCandidate[] (pending edge proposals)
+
 # === Ingest ===
 
 POST   /api/v1/ingest/upload
@@ -1944,33 +1602,56 @@ PUT    /api/v1/config/filters/:id
 
 POST   /api/v1/admin/reindex
 POST   /api/v1/admin/refresh-stale
+
+# === System Settings ===
+
+GET    /api/v1/system-settings
+PUT    /api/v1/system-settings
+
+# === Usage ===
+
+GET    /api/v1/usage
+  Response: LLM usage metrics
+
+# === Members / Invites / Waitlist ===
+
+GET    /api/v1/members
+POST   /api/v1/invites
+GET    /api/v1/invites
+GET    /api/v1/waitlist
+POST   /api/v1/waitlist
+
+# === Prompt Transparency ===
+
+GET    /api/v1/prompts/:agent
+  Response: System prompt used by the specified agent
+
+# === Graph Builder ===
+
+POST   /api/v1/graph-builder/auto-build
+  Response: Triggers auto_build_wf for accumulated seeds
 ```
 
 ### 12.2 SSE API (real-time pipeline progress)
 
-WebSocket has been replaced by **Server-Sent Events (SSE)** for real-time progress streaming. Hatchet tasks emit events via `ctx.aio_put_stream()`, which are proxied to the frontend.
+Progress is streamed via **Server-Sent Events (SSE)**. Hatchet tasks emit events via `ctx.aio_put_stream()`, which are proxied to the frontend.
 
 ```
-GET /api/v1/conversations/:id/messages/:msgId/stream
+GET /api/v1/progress/:workflow_run_id/stream
   Content-Type: text/event-stream
 
-Events:
-  { type: "scope_started",    scope, wave_number }
-  { type: "node_created",     node_id, concept, node_type }
-  { type: "node_visited",     node_id, concept }
-  { type: "edge_created",     edge_id, source_id, target_id }
-  { type: "pipeline_tool_call", tool, concept }
-  { type: "scope_result",     scope, nodes_created, summary }
-  { type: "synthesis_started" }
-  { type: "answer_chunk",     text }
-  { type: "budget_update",    nav_remaining, explore_remaining }
+Events (examples):
+  { type: "scope_started",       scope, wave_number }
+  { type: "node_created",        node_id, concept, node_type }
+  { type: "node_visited",        node_id, concept }
+  { type: "edge_created",        edge_id, source_id, target_id }
+  { type: "agent_started",       agent_type }
+  { type: "synthesis_completed", node_id }
+  { type: "budget_update",       remaining }
   { type: "done" }
-
-# For completed turns, the SSE endpoint sends "done" immediately.
-# Historical data is available via the pipeline snapshot endpoint.
 ```
 
-This allows the UI to show real-time graph exploration as the agent works.
+This allows the UI to show real-time graph building and synthesis progress.
 
 ---
 
@@ -2071,15 +1752,17 @@ While a query with budget > 0 is processing:
 | **AI Gateway** | LiteLLM -> OpenRouter | Unified API for all models (Grok, Claude, Gemini, GPT, GLM, Llama). Per-agent model overrides + thinking levels. |
 | **Primary Knowledge Provider** | Serper (Google search) | Fast, reliable. Brave Search available as alternative. Extensible via provider interface. |
 | **Auth** | fastapi-users + httpx-oauth | JWT + Google OAuth + long-lived API tokens. |
-| **Database** | PostgreSQL 16 + pgvector | Relational + vector search in one system. JSONB for flexible metadata. |
-| **Vector Search** | pgvector (HNSW, 3072d) | Sub-second similarity search at scale with text-embedding-3-large. |
-| **Cache** | Redis 7 | Ontology/ancestry cache with configurable TTL. |
+| **Database** | Dual PostgreSQL 16 (graph-db + write-db) | graph-db: read-optimized with pgvector + FK constraints. write-db: write-optimized, no FKs, deterministic TEXT keys. |
+| **Vector Search** | Qdrant + pgvector | Qdrant for primary semantic search (nodes + facts). pgvector on graph-db as fallback. |
+| **Connection Pool** | PgBouncer | pgbouncer-read (graph-db) + pgbouncer-write (write-db) for connection management. |
+| **Cache** | Redis 7 | General caching with configurable TTL. |
 | **Frontend** | Next.js 16 (App Router) + React 19 + TypeScript | Largest React ecosystem, SSR + client-side. |
 | **Real-time** | Server-Sent Events (SSE) | Hatchet `put_stream` -> SSE proxy. Unidirectional progress streaming. |
 | **Graph Visualization** | Cytoscape.js + react-cytoscapejs + fcose | Purpose-built for network graph exploration with cycles and force-directed layouts. |
 | **UI Components** | shadcn/ui + Tailwind CSS v4 | Accessible primitives, utility-first styling, no lock-in. |
 | **Embedding Generation** | OpenAI text-embedding-3-large via OpenRouter | 3072-dimension embeddings for high-quality semantic search. |
-| **Ontology** | Wikidata SPARQL + Redis cache | Taxonomy-aware node classification, ancestry calculation, crystallization. |
+| **MCP Server** | FastMCP + OAuth 2.1 (`services/mcp`) | Model Context Protocol server exposing read-only graph navigation tools for external AI clients. |
+| **Ontology** | Wikidata SPARQL + Redis cache | Taxonomy-aware node classification *(deprecated — scheduled for removal)*. |
 | **File Ingestion** | pymupdf + trafilatura + python-multipart | PDF/DOCX content extraction, URL fetching, file upload. |
 | **Configuration** | Pydantic Settings + YAML | Extensive per-agent model/thinking overrides via env vars. YAML for filters/models. |
 | **Dev Tooling** | justfile + Docker Compose | `just worker`, `just setup`, etc. Postgres + Redis + Hatchet in Docker. |
@@ -2095,21 +1778,23 @@ graph TB
 
     subgraph SERVER["Server (Python — uv workspace monorepo)"]
         API["FastAPI + uvicorn<br/>(services/api)"]
+        MCPS["MCP Server<br/>(services/mcp)"]
         WORKERS["Hatchet Workers<br/>(services/worker-*)"]
         AGENTS["LangGraph Agents<br/>(within worker tasks)"]
         LIBS["Shared Libraries<br/>(libs/kt-*)"]
     end
 
     subgraph DATA["Data Layer"]
-        PG[("PostgreSQL 16<br/>+ pgvector")]
-        REDIS[("Redis<br/>Ontology Cache")]
+        GDB[("graph-db<br/>PostgreSQL + pgvector")]
+        WDB[("write-db<br/>PostgreSQL")]
+        QD[("Qdrant<br/>Vector Search")]
+        REDIS[("Redis")]
         HATCHET[("Hatchet<br/>+ own Postgres")]
     end
 
     subgraph EXTERNAL["External Services"]
         OR["LiteLLM -> OpenRouter"]
         SP["Serper / Brave"]
-        WD["Wikidata"]
         GO["Google OAuth"]
     end
 
@@ -2117,13 +1802,16 @@ graph TB
     API --> HATCHET
     HATCHET --> WORKERS
     WORKERS --> AGENTS
-    AGENTS --> PG
+    AGENTS --> WDB
+    AGENTS --> QD
     AGENTS --> OR
     AGENTS --> SP
-    AGENTS --> REDIS
-    WORKERS --> WD
-    API --> PG
+    API --> GDB
+    API --> QD
     API --> GO
+    MCPS --> GDB
+    MCPS --> QD
+    WORKERS -->|sync worker| GDB
 
     style CLIENT fill:#0d1117,stroke:#22d3ee,color:#e2e8f0
     style SERVER fill:#0d1117,stroke:#4a7cff,color:#e2e8f0
@@ -2167,9 +1855,19 @@ graph TB
 | **Export/Import** | Full graph export and import endpoints. |
 | **Per-Agent Model Config** | Configurable model and thinking level overrides per agent role. |
 | **wiki-frontend** | Alternative wiki-style Astro frontend (experimental). |
-| **Microservices Decomposition** | Split monolithic `backend/` into uv workspace monorepo: 9 shared libraries (`libs/kt-*`) and 8 deployable services (`services/`). Each worker is independently deployable via Docker. 556+ tests distributed across per-package directories. |
-
-**Current test counts:** 556+ backend (across 10 packages), 124+ frontend.
+| **Microservices Decomposition** | Split monolithic `backend/` into uv workspace monorepo: 11 shared libraries (`libs/kt-*`) and 9 deployable services (`services/`). Each worker is independently deployable via Docker. |
+| **Dual Database Architecture** | Split single PostgreSQL into read-optimized graph-db + write-optimized write-db. Deterministic UUID bridging. Sync worker for incremental propagation. |
+| **Qdrant Vector Search** | Added Qdrant as dedicated vector database for semantic search, replacing pgvector for primary search workloads. |
+| **MCP Server** | Model Context Protocol server (`services/mcp`) with OAuth 2.1 authentication, exposing read-only graph navigation tools for external AI clients. |
+| **Synthesizer/SuperSynthesizer Agents** | Replaced Orchestrator/Navigation agents with document-focused Synthesizer Agent (graph navigation + synthesis) and SuperSynthesizer Agent (multi-scope meta-synthesis). |
+| **Bottom-up Research Workflows** | Scope-based research: plan scopes → extract facts → promote seeds to nodes → build perspectives. Replaced chat-based exploration model. |
+| **kt-auth Library** | Shared authentication utilities (API token verification, Redis-cached lookup) for API and MCP services. |
+| **kt-qdrant Library** | Qdrant vector search repositories for nodes and facts. |
+| **PgBouncer Connection Pooling** | Connection pools for both graph-db and write-db via PgBouncer. |
+| **Helm Charts / K3D** | Kubernetes deployment via Helm charts with local K3D cluster support. |
+| **Additional Node Types** | Added `synthesis`, `supersynthesis`, `location` node types. Added `draws_from` directed edge type. |
+| **OAuth 2.1 Server** | Full OAuth 2.1 provider for MCP authentication (authorization codes, access/refresh tokens, dynamic client registration). |
+| **docs-site / landing-page** | Docusaurus documentation site and Astro marketing landing page. |
 
 **Key rule:** Every task requires passing unit tests AND integration tests. Integration tests run against real PostgreSQL (Docker), real Redis (Docker), and real external APIs (Brave Search, OpenRouter via keys in `.env`). No phase can begin until the previous phase's full test suite passes.
 
@@ -2179,23 +1877,28 @@ graph TB
 
 | Term | Definition |
 |------|------------|
-| **Node** | Atomic unit of the knowledge graph. Typed as `concept`, `entity`, `perspective`, or `event`. All nodes are flat peers. |
-| **Edge** | A typed, weighted relationship between two nodes. Three types: `related` (same-type), `cross_type` (different-type), `contradicts` (dialectic). Weight = shared fact count. Created from seed co-occurrence candidates, not automatically from embedding similarity. |
-| **Fact Pool** | The collection of gathered facts not yet linked to nodes. Facts are gathered via `gather_facts()` (within sub-explorers) and later assembled into nodes via `build_concept()` / `build_entity()` / `build_perspective()`. |
+| **Node** | Atomic unit of the knowledge graph. Typed as `concept`, `entity`, `perspective`, `event`, `location`, `synthesis`, or `supersynthesis`. All nodes are flat peers. |
+| **Edge** | A typed, weighted relationship between two nodes. Three types: `related` (same-type, undirected), `cross_type` (different-type, undirected), `draws_from` (composite→source, directed). Weight = shared fact count. Created from seed co-occurrence candidates, not automatically from embedding similarity. |
+| **Fact Pool** | The collection of gathered facts extracted from sources. Facts are extracted during ingestion/bottom-up workflows and later linked to nodes during node pipeline execution. |
+| **Seed** | An entity or concept extracted during fact decomposition. Seeds accumulate facts and are promoted to full nodes when they reach a configurable minimum fact count. |
 | **Stance** | Classification of a fact relative to a perspective's claim: `supports`, `challenges`, or `neutral`. |
-| **Orchestrator** | The strategic coordinator that plans scoped explorations, delegates them to sub-explorer agents, and integrates findings. |
-| **Sub-Explorer** | An isolated agent launched by the orchestrator to investigate a focused scope. Has its own budget slice and produces a briefing summary. |
+| **Synthesizer Agent** | LangGraph agent that navigates the knowledge graph with an exploration budget and produces a standalone synthesis document. Has 8 navigation tools + `finish_synthesis`. |
+| **SuperSynthesizer Agent** | Agent that reads multiple sub-synthesis documents and produces a comprehensive meta-synthesis. |
+| **Ingest Agent** | Agent that builds nodes from a pre-filled fact pool extracted from uploaded documents, links, and search results. |
 | **Dimension** | A single model's perspective on a node's concept, generated from facts. |
-| **Fact** | A typed, attributed piece of information extracted from raw sources. |
+| **Fact** | A typed, attributed piece of information extracted from raw sources. Types: claim, account, measurement, formula, quote, procedure, reference, code, image, perspective. |
 | **Raw Source** | Original data fetched from a knowledge provider, stored append-only. |
 | **Convergence** | Degree of agreement across dimensions (models) within a node. |
-| **Node Split** | When a node's facts form contradictory but internally coherent clusters, creating perspective nodes linked via `parent_id` FK and `contradicts` edges. Also created proactively by the orchestrator via `build_perspective()`. |
-| **Nav Budget** | Maximum number of existing nodes the agent can read/visit during a query. Controls graph traversal width. Cheap. |
-| **Explore Budget** | Maximum number of new node creations or expansions during a query. Controls knowledge creation. Expensive. |
-| **Attractor** | An orientation concept that guides graph growth (e.g., "reality"). |
-| **Provider** | An external data source (e.g., Brave Search) that supplies raw data. |
+| **Node Split** | When a node's facts form contradictory but internally coherent clusters, creating perspective nodes linked via `parent_id` FK. |
+| **Exploration Budget** | Maximum number of nodes the synthesizer agent can visit during graph navigation. Controls investigation depth without limiting free operations like search. |
+| **graph-db** | Read-optimized PostgreSQL database with pgvector and FK constraints. API and synthesis agent read from here. |
+| **write-db** | Write-optimized PostgreSQL database with no FKs and deterministic TEXT keys. Workers write here during pipelines. |
+| **Qdrant** | Dedicated vector database for semantic search of nodes and facts. |
+| **Sync Worker** | Hatchet worker that polls write-db changes and propagates them to graph-db via incremental upserts. |
+| **MCP Server** | Model Context Protocol server exposing read-only graph navigation tools for external AI clients, with OAuth 2.1 authentication. |
+| **Provider** | An external data source (e.g., Serper, Brave Search) that supplies raw data. |
 | **Decomposition** | The process of breaking raw data into typed, attributed facts. |
-| **Semantic Search** | Embedding-based similarity lookup. A navigation tool for agents, NOT a structural mechanism that creates edges. Edges come from seed co-occurrence candidates instead. |
+| **Semantic Search** | Embedding-based similarity lookup via Qdrant. A navigation tool for agents, NOT a structural mechanism that creates edges. Edges come from seed co-occurrence candidates instead. |
 
 ## Appendix B: Design Decisions & Rationale
 
@@ -2248,16 +1951,16 @@ If edges were created automatically from embedding similarity, the graph would b
 
 ### B.8: Why 3 edge types?
 
-The original design had 16, then 8 edge types with increasingly overlapping semantics that LLMs couldn't reliably distinguish. The current 3-type system (`related`, `cross_type`, `contradicts`) maximizes simplicity:
+The original design had 16, then 8 edge types with increasingly overlapping semantics that LLMs couldn't reliably distinguish. The current 3-type system (`related`, `cross_type`, `draws_from`) maximizes simplicity:
 - `related` covers all same-type relationships — the weight (shared fact count) captures evidence strength, and the LLM justification explains the nature of the relationship.
 - `cross_type` covers all cross-type relationships (e.g., entity↔event), with eligible pairings defined explicitly. Same weight semantics.
-- `contradicts` is reserved specifically for dialectic thesis/antithesis perspective pairs, created by the perspective builder.
+- `draws_from` is a directed, programmatic edge from composite nodes (synthesis, supersynthesis, perspective) to their source nodes. Not LLM-created — it records structural provenance.
 
 The `justification` field with `{fact:uuid}` citation tokens provides the semantic richness that previously required fine-grained type distinctions.
 
 ### B.9: Why separate fact gathering from node assembly (fact pool)?
 
-In the original Navigation Agent, every `explore_concept()` call triggered both an external search AND node creation. This conflation meant:
+In the original agent design, every `explore_concept()` call triggered both an external search AND node creation. This conflation meant:
 - You couldn't gather facts for multiple topics cheaply and then organize them
 - The same facts might be fetched multiple times for related concepts
 - There was no way to reorganize facts into different structural arrangements
