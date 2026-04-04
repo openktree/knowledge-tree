@@ -46,6 +46,7 @@ secrets:
 # -- Email configuration (provider-scoped)
 email:
   provider: ""  # set to "resend" to enable
+  verification: false
   resend:
     fromAddress: ""
 
