@@ -472,6 +472,8 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
                 usage_by_model=None,
                 usage_by_task=None,
                 super_sources=accumulator.super_sources if accumulator.super_sources else None,
+                workflow_run_id=ctx.workflow_run_id,
+                report_type="graph_builder",
             )
 
     except Exception:
@@ -1100,6 +1102,8 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 total_cost_usd=0.0,
                 usage_by_model=None,
                 usage_by_task=None,
+                workflow_run_id=ctx.workflow_run_id,
+                summary_data=output.model_dump(),
             )
 
     except Exception:

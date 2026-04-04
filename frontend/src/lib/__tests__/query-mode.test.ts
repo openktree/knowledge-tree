@@ -164,6 +164,7 @@ describe("mode field defaults", () => {
       title: "Listed",
       mode: "query",
       message_count: 0,
+      latest_status: null,
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
     };

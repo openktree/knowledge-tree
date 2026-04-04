@@ -689,18 +689,24 @@ class ResearchReport(Base):
     __tablename__ = "research_reports"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    message_id: Mapped[uuid.UUID] = mapped_column(
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("conversation_messages.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         unique=True,
     )
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("conversations.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
+
+    # Hatchet workflow run ID for progress tracking
+    workflow_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+
+    # Flexible summary data (seeds, source_urls, fact_count, content_summary, etc.)
+    summary_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Outcome counts
     nodes_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -731,7 +737,7 @@ class ResearchReport(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Relationships
-    message: Mapped["ConversationMessage"] = relationship(back_populates="research_report")
+    message: Mapped["ConversationMessage | None"] = relationship(back_populates="research_report")
     usage_records: Mapped[list["LlmUsageRecord"]] = relationship(
         back_populates="research_report", cascade="all, delete-orphan"
     )

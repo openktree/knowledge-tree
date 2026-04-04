@@ -17,8 +17,7 @@ interface ResearchHistoryProps {
 type ResearchPhase = "gathering" | "completed";
 
 function getPhase(item: ConversationListItem): ResearchPhase {
-  // message_count: 2 = user + assistant pair — research complete
-  if (item.message_count >= 2) {
+  if (item.latest_status === "completed") {
     return "completed";
   }
   return "gathering";

@@ -136,7 +136,7 @@ export function ResearchBuildProgress({
     fetchProgress();
 
     // Only poll if still running
-    if (overallStatus === "running" && initialStatus === "running") {
+    if (overallStatus === "running") {
       const timer = setInterval(fetchProgress, 3000);
       return () => { cancelled = true; clearInterval(timer); };
     }

@@ -33,18 +33,19 @@ async def list_conversations(
 ) -> PaginatedConversationsResponse:
     """List conversations, optionally filtered by mode."""
     repo = ConversationRepository(session)
-    conversations = await repo.list_recent(limit=limit, offset=offset, mode=mode)
+    rows = await repo.list_with_stats(limit=limit, offset=offset, mode=mode)
     total = await repo.count(mode=mode)
 
     items = []
-    for conv in conversations:
-        msg_count = await repo.get_message_count(conv.id)
+    for row in rows:
+        conv = row["conversation"]
         items.append(
             ConversationListItem(
                 id=str(conv.id),
                 title=conv.title,
                 mode=conv.mode,
-                message_count=msg_count,
+                message_count=row["message_count"],
+                latest_status=row["latest_status"],
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
             )

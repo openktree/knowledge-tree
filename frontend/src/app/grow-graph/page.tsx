@@ -36,10 +36,16 @@ export default function ResearchPage() {
   const handleView = useCallback(async (conversationId: string) => {
     try {
       const conv = await api.conversations.get(conversationId);
-      const buildMsg = [...conv.messages]
-        .reverse()
-        .find((m) => m.role === "assistant");
-      if (!buildMsg) return;
+      const assistantMsgs = conv.messages.filter((m) => m.role === "assistant");
+
+      if (assistantMsgs.length <= 1) {
+        // Only prepare phase exists — show summary instead of build progress
+        handleResume(conversationId);
+        return;
+      }
+
+      // Build phase exists — show progress for the last assistant message (build msg)
+      const buildMsg = assistantMsgs[assistantMsgs.length - 1];
 
       const status =
         buildMsg.status === "completed" ? "completed" :
@@ -55,7 +61,7 @@ export default function ResearchPage() {
     } catch {
       // Silently ignore — user can try again
     }
-  }, []);
+  }, [handleResume]);
 
   const clearView = useCallback(() => {
     setViewingBuild(null);

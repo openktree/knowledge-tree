@@ -54,6 +54,55 @@ class ConversationRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_with_stats(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        mode: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List conversations with message count and latest assistant status in a single query.
+
+        Uses PostgreSQL DISTINCT ON to pick the latest assistant message per conversation.
+        """
+        # Subquery for latest assistant message status per conversation (Postgres DISTINCT ON)
+        latest_status_sq = (
+            select(
+                ConversationMessage.conversation_id,
+                ConversationMessage.status,
+            )
+            .where(ConversationMessage.role == "assistant")
+            .distinct(ConversationMessage.conversation_id)
+            .order_by(
+                ConversationMessage.conversation_id,
+                ConversationMessage.turn_number.desc(),
+            )
+            .subquery("latest_assistant")
+        )
+
+        stmt = (
+            select(
+                Conversation,
+                func.count(ConversationMessage.id).label("message_count"),
+                latest_status_sq.c.status.label("latest_status"),
+            )
+            .outerjoin(ConversationMessage, Conversation.id == ConversationMessage.conversation_id)
+            .outerjoin(latest_status_sq, Conversation.id == latest_status_sq.c.conversation_id)
+            .group_by(Conversation.id, latest_status_sq.c.status)
+        )
+        if mode is not None:
+            stmt = stmt.where(Conversation.mode == mode)
+        stmt = stmt.order_by(Conversation.updated_at.desc()).offset(offset).limit(limit)
+
+        result = await self._session.execute(stmt)
+        return [
+            {
+                "conversation": row.Conversation,
+                "message_count": row.message_count,
+                "latest_status": row.latest_status,
+            }
+            for row in result.all()
+        ]
+
     async def count(self, mode: str | None = None) -> int:
         """Count total conversations, optionally filtered by mode."""
         stmt = select(func.count(Conversation.id))
@@ -192,3 +241,16 @@ class ConversationRepository:
             select(func.count(ConversationMessage.id)).where(ConversationMessage.conversation_id == conversation_id)
         )
         return result.scalar_one()
+
+    async def get_latest_assistant_status(self, conversation_id: uuid.UUID) -> str | None:
+        """Get the status of the latest assistant message in a conversation."""
+        result = await self._session.execute(
+            select(ConversationMessage.status)
+            .where(
+                ConversationMessage.conversation_id == conversation_id,
+                ConversationMessage.role == "assistant",
+            )
+            .order_by(ConversationMessage.turn_number.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
