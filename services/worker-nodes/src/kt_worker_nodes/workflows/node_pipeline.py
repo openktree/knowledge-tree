@@ -28,7 +28,6 @@ only (``explore_budget=0``).
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid as _uuid
 from datetime import timedelta
@@ -95,18 +94,12 @@ async def prepare_node(input: NodePipelineInput, ctx: Context) -> dict:
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
-
     is_rebuild = input.mode.startswith("rebuild")
 
     if is_rebuild:
-        result = await _prepare_rebuild(input, state, ctx, emit)
+        result = await _prepare_rebuild(input, state, ctx)
     else:
-        result = await _prepare_create(input, state, ctx, emit)
+        result = await _prepare_create(input, state, ctx)
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "node_creation")
     return result
@@ -116,15 +109,9 @@ async def _prepare_create(
     input: NodePipelineInput,
     state: WorkerState,
     ctx: Context,
-    emit: object,
 ) -> dict:
     """Create mode: promote seed to node via NodeCreationPipeline."""
     ctx.log(f"prepare_node[create]: concept={input.concept!r}, type={input.node_type}")
-
-    await emit(  # type: ignore[operator]
-        "pipeline_phase",
-        {"scope_id": input.scope_id, "phase": "building", "status": "started"},
-    )
 
     result = await HatchetPipeline(state, api_key=input.api_key).create(
         concept=input.concept,
@@ -132,11 +119,6 @@ async def _prepare_create(
         seed_key=input.seed_key,
         query=input.concept,
         entity_subtype=input.entity_subtype,
-    )
-
-    await emit(  # type: ignore[operator]
-        "pipeline_phase",
-        {"scope_id": input.scope_id, "phase": "building", "status": "completed"},
     )
 
     node_id = result.get("node_id")
@@ -149,7 +131,6 @@ async def _prepare_rebuild(
     input: NodePipelineInput,
     state: WorkerState,
     ctx: Context,
-    emit: object,
 ) -> dict:
     """Rebuild mode: load existing node, enrich from seed pool."""
     from kt_db.repositories.write_nodes import WriteNodeRepository
@@ -165,34 +146,36 @@ async def _prepare_rebuild(
     if state.write_session_factory is None:
         raise RuntimeError("prepare_node[rebuild]: write_session_factory is required")
 
-    # Load node from write-db
+    # Load node + check fact count in a single session
     async with state.write_session_factory() as ws:
         wn = await WriteNodeRepository(ws).get_by_uuid(_uuid.UUID(nid))
-    if wn is None:
-        ctx.log(f"prepare_node[rebuild]: node {nid} not found in write-db")
-        return {"node_id": nid, "status": "error"}
+        if wn is None:
+            ctx.log(f"prepare_node[rebuild]: node {nid} not found in write-db")
+            return {"node_id": nid, "status": "error"}
 
-    node_concept = wn.concept
-    node_type = wn.node_type
+        node_concept = wn.concept
+        node_type = wn.node_type
+        node_key = wn.key
+        enrichment_status = wn.enrichment_status
+        node_fact_ids = wn.fact_ids
 
-    # Filter out composite nodes (perspectives, synthesis, supersynthesis)
-    from kt_config.types import COMPOSITE_NODE_TYPES
+        # Filter out composite nodes (perspectives, synthesis, supersynthesis)
+        from kt_config.types import COMPOSITE_NODE_TYPES
 
-    if node_type in COMPOSITE_NODE_TYPES:
-        ctx.log(f"prepare_node[rebuild]: skipping -- {node_type} is composite")
-        return {
-            "node_id": nid,
-            "concept": node_concept,
-            "node_type": node_type,
-            "status": "skipped",
-        }
+        if node_type in COMPOSITE_NODE_TYPES:
+            ctx.log(f"prepare_node[rebuild]: skipping -- {node_type} is composite")
+            return {
+                "node_id": nid,
+                "concept": node_concept,
+                "node_type": node_type,
+                "status": "skipped",
+            }
 
-    # Incremental mode: skip stub/partial nodes with too few facts
-    if input.mode == "rebuild_incremental":
-        settings = get_settings()
-        async with state.write_session_factory() as ws:
+        # Incremental mode: skip stub/partial nodes with too few facts
+        if input.mode == "rebuild_incremental":
+            settings = get_settings()
             seed_repo = WriteSeedRepository(ws)
-            seeds = await seed_repo.get_seeds_by_promoted_node_key(wn.key)
+            seeds = await seed_repo.get_seeds_by_promoted_node_key(node_key)
             fact_count = 0
             if seeds:
                 all_fact_ids: set[_uuid.UUID] = set()
@@ -201,29 +184,28 @@ async def _prepare_rebuild(
                     all_fact_ids.update(descendant_facts)
                 fact_count = len(all_fact_ids)
             else:
-                fact_count = len(wn.fact_ids or [])
+                fact_count = len(node_fact_ids or [])
 
-        min_facts = settings.enrichment_min_facts_for_dimensions
-        if fact_count < min_facts and wn.enrichment_status in ("stub", "partial"):
-            async with state.write_session_factory() as ws:
+            min_facts = settings.enrichment_min_facts_for_dimensions
+            if fact_count < min_facts and enrichment_status in ("stub", "partial"):
                 from sqlalchemy import text
 
                 await ws.execute(
                     text("UPDATE write_nodes SET enrichment_status = 'partial', updated_at = NOW() WHERE key = :key"),
-                    {"key": wn.key},
+                    {"key": node_key},
                 )
                 await ws.commit()
-            ctx.log(
-                f"prepare_node[rebuild]: node '{node_concept}' has {fact_count} facts "
-                f"(need {min_facts}) -- marked partial"
-            )
-            return {
-                "node_id": nid,
-                "concept": node_concept,
-                "node_type": node_type,
-                "status": "skipped",
-                "fact_count": fact_count,
-            }
+                ctx.log(
+                    f"prepare_node[rebuild]: node '{node_concept}' has {fact_count} facts "
+                    f"(need {min_facts}) -- marked partial"
+                )
+                return {
+                    "node_id": nid,
+                    "concept": node_concept,
+                    "node_type": node_type,
+                    "status": "skipped",
+                    "fact_count": fact_count,
+                }
 
     # Enrich: sync seed facts to node
     pipeline = HatchetPipeline(state, api_key=input.api_key)
@@ -259,12 +241,6 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
-
     prepare_result: dict = ctx.task_output(prepare_node)
     node_id_str: str | None = prepare_result.get("node_id")
     status = prepare_result.get("status", "ok")
@@ -283,11 +259,6 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
     # -- Generate dimensions -----------------------------------------------
     if input.scope in ("all", "dimensions"):
         ctx.log(f"generate_dimensions: node_id={node_id_str}, mode={input.mode}")
-
-        await emit(
-            "pipeline_phase",
-            {"scope_id": input.scope_id, "phase": "dimensions", "status": "started"},
-        )
 
         max_retries = 2
         dim_result: dict = {}
@@ -327,21 +298,11 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
                 f"but 0 dimensions were generated (LLM error or empty response)"
             )
 
-        await emit(
-            "pipeline_phase",
-            {"scope_id": input.scope_id, "phase": "dimensions", "status": "completed"},
-        )
-
     # -- Fan out edge resolution tasks -------------------------------------
     all_edge_ids: list[str] = []
 
     if input.scope in ("all", "edges"):
         ctx.log("generate_dimensions: spawning edge resolution task")
-
-        await emit(
-            "pipeline_phase",
-            {"scope_id": input.scope_id, "phase": "edges", "status": "started"},
-        )
 
         edge_results = await edge_task.aio_run_many(
             [
@@ -381,11 +342,6 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
                     exc_info=True,
                 )
 
-        await emit(
-            "pipeline_phase",
-            {"scope_id": input.scope_id, "phase": "edges", "status": "completed"},
-        )
-
     ctx.log(f"generate_dimensions: done -- {dims_created} dimensions, {len(all_edge_ids)} edges")
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "dimensions")
@@ -414,12 +370,6 @@ async def generate_definition(input: NodePipelineInput, ctx: Context) -> dict:
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
-
     prepare_result: dict = ctx.task_output(prepare_node)
     node_id_str: str | None = prepare_result.get("node_id")
     status = prepare_result.get("status", "ok")
@@ -435,17 +385,7 @@ async def generate_definition(input: NodePipelineInput, ctx: Context) -> dict:
 
     ctx.log(f"generate_definition: node_id={node_id_str}")
 
-    await emit(
-        "pipeline_phase",
-        {"scope_id": input.scope_id, "phase": "definitions", "status": "started"},
-    )
-
     result = await HatchetPipeline(state, api_key=input.api_key).definition(node_id_str)
-
-    await emit(
-        "pipeline_phase",
-        {"scope_id": input.scope_id, "phase": "definitions", "status": "completed"},
-    )
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "definition")
 
@@ -483,7 +423,8 @@ async def finalize_node(input: NodePipelineInput, ctx: Context) -> dict:
 
         from kt_db.repositories.write_nodes import WriteNodeRepository
 
-        # Load node key for write-db update
+        # Update enrichment status + check for dialectic pair in one session
+        pair_id_str: str | None = None
         async with state.write_session_factory() as ws:
             wn = await WriteNodeRepository(ws).get_by_uuid(_uuid.UUID(node_id_str))
             if wn:
@@ -495,47 +436,24 @@ async def finalize_node(input: NodePipelineInput, ctx: Context) -> dict:
                 await ws.commit()
                 ctx.log("finalize_node: enrichment_status='enriched'")
 
-        # Dialectic pair rebuild (full + all only)
-        if input.mode == "rebuild_full" and input.scope == "all" and input.recalculate_pair:
-            async with state.write_session_factory() as ws:
-                wn = await WriteNodeRepository(ws).get_by_uuid(_uuid.UUID(node_id_str))
-            if wn:
-                pair_id_str = (wn.metadata_ or {}).get("dialectic_pair_id")
-                if pair_id_str:
-                    ctx.log(f"finalize_node: triggering pair rebuild for {pair_id_str}")
-                    try:
-                        await node_pipeline_wf.aio_run_no_wait(
-                            NodePipelineInput(
-                                mode="rebuild_full",
-                                scope="all",
-                                node_id=str(pair_id_str),
-                                recalculate_pair=False,
-                                api_key=input.api_key,
-                            ),
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Failed to rebuild dialectic pair %s",
-                            pair_id_str,
-                            exc_info=True,
-                        )
+                if input.mode == "rebuild_full" and input.scope == "all" and input.recalculate_pair:
+                    pair_id_str = (wn.metadata_ or {}).get("dialectic_pair_id")
 
-    # Stream completion event
-    try:
-        dim_result: dict = ctx.task_output(generate_dimensions)
-        await ctx.aio_put_stream(
-            json.dumps(
-                {
-                    "type": "pipeline_complete",
-                    "node_id": node_id_str,
-                    "mode": input.mode,
-                    "dimensions_created": dim_result.get("dimensions_created", 0),
-                    "fact_count": dim_result.get("fact_count", 0),
-                }
-            )
-        )
-    except Exception:
-        pass
+        # Dispatch pair rebuild outside the session
+        if pair_id_str:
+            ctx.log(f"finalize_node: triggering pair rebuild for {pair_id_str}")
+            try:
+                await node_pipeline_wf.aio_run_no_wait(
+                    NodePipelineInput(
+                        mode="rebuild_full",
+                        scope="all",
+                        node_id=str(pair_id_str),
+                        recalculate_pair=False,
+                        api_key=input.api_key,
+                    ),
+                )
+            except Exception:
+                logger.warning("Failed to rebuild dialectic pair %s", pair_id_str, exc_info=True)
 
     ctx.log(f"finalize_node: completed node_id={node_id_str}")
     return {"node_id": node_id_str, "status": "completed"}

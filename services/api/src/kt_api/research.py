@@ -922,7 +922,14 @@ async def get_research_summary(
             detail="No summary found — research may still be running",
         )
 
-    # Build a minimal response from the report
+    # Build a degraded response from the report -- metadata_json was never
+    # stored (workflow failed or is still running).  Seeds and sources are
+    # unavailable; only scope summaries survive.
+    logger.warning(
+        "Research summary for conversation %s using fallback (ResearchReport) — "
+        "metadata_json was missing on all assistant messages",
+        conversation_id,
+    )
     content_summary = "\n\n".join(report.scope_summaries or [])
 
     return ResearchSummaryResponse(

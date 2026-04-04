@@ -7,7 +7,7 @@ Sets, BudgetTracker, and BarrierManager).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -92,8 +92,8 @@ class NodePipelineInput(BaseModel):
     """
 
     # Mode discriminator
-    mode: str = "create"  # "create" | "rebuild_incremental" | "rebuild_full"
-    scope: str = "all"  # "all" | "dimensions" | "edges"
+    mode: Literal["create", "rebuild_incremental", "rebuild_full"] = "create"
+    scope: Literal["all", "dimensions", "edges"] = "all"
 
     # Create-mode fields
     scope_id: str = ""

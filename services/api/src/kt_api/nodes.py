@@ -490,13 +490,14 @@ async def rebuild_node(
 
     from kt_hatchet.client import dispatch_workflow
 
-    mode = (body or {}).get("mode", "full")
+    raw_mode = (body or {}).get("mode", "full")
+    pipeline_mode = f"rebuild_{raw_mode}" if raw_mode in ("full", "incremental") else "rebuild_full"
     scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
     await dispatch_workflow(
         "node_pipeline",
         {
-            "mode": f"rebuild_{mode}",
+            "mode": pipeline_mode,
             "node_id": node_id,
             "scope": scope,
             "recalculate_pair": True,
