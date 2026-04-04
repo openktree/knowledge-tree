@@ -186,12 +186,7 @@ async def _prepare_rebuild(
 
             min_facts = settings.enrichment_min_facts_for_dimensions
             if fact_count < min_facts and enrichment_status in ("stub", "partial"):
-                from sqlalchemy import text
-
-                await ws.execute(
-                    text("UPDATE write_nodes SET enrichment_status = 'partial', updated_at = NOW() WHERE key = :key"),
-                    {"key": node_key},
-                )
+                await WriteNodeRepository(ws).set_enrichment_status(node_key, "partial")
                 await ws.commit()
                 ctx.log(
                     f"prepare_node[rebuild]: node '{node_concept}' has {fact_count} facts "
@@ -376,9 +371,8 @@ async def generate_definition(input: NodePipelineInput, ctx: Context) -> dict:
         ctx.log(f"generate_definition: skipping -- prepare_node status={status}")
         return {"node_id": None, "has_definition": False}
 
-    # Skip if scope doesn't include definitions
-    if input.scope not in ("all", "dimensions"):
-        ctx.log("generate_definition: skipping -- scope does not include definitions")
+    if input.scope == "edges":
+        ctx.log("generate_definition: skipping -- scope is edges-only")
         return {"node_id": node_id_str, "has_definition": False}
 
     ctx.log(f"generate_definition: node_id={node_id_str}")
@@ -417,27 +411,24 @@ async def finalize_node(input: NodePipelineInput, ctx: Context) -> dict:
     is_rebuild = input.mode.startswith("rebuild")
 
     if is_rebuild and state.write_session_factory:
-        from sqlalchemy import text
-
         from kt_db.repositories.write_nodes import WriteNodeRepository
 
         # Update enrichment status + check for dialectic pair in one session
         pair_id_str: str | None = None
         async with state.write_session_factory() as ws:
-            wn = await WriteNodeRepository(ws).get_by_uuid(_uuid.UUID(node_id_str))
+            node_repo = WriteNodeRepository(ws)
+            wn = await node_repo.get_by_uuid(_uuid.UUID(node_id_str))
             if wn:
-                await ws.execute(
-                    text("UPDATE write_nodes SET enrichment_status = 'enriched', updated_at = NOW() WHERE key = :key"),
-                    {"key": wn.key},
-                )
-                await WriteNodeRepository(ws).increment_update_count(wn.key)
+                await node_repo.set_enrichment_status(wn.key, "enriched")
+                await node_repo.increment_update_count(wn.key)
                 await ws.commit()
                 ctx.log("finalize_node: enrichment_status='enriched'")
 
                 if input.mode == "rebuild_full" and input.scope == "all" and input.recalculate_pair:
                     pair_id_str = (wn.metadata_ or {}).get("dialectic_pair_id")
 
-        # Dispatch pair rebuild outside the session
+        # Dispatch pair rebuild outside the session (fire-and-forget:
+        # pair failure doesn't affect the primary node's result).
         if pair_id_str:
             ctx.log(f"finalize_node: triggering pair rebuild for {pair_id_str}")
             try:

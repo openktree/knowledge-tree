@@ -112,7 +112,8 @@ class NodePipelineInput(BaseModel):
     api_key: str | None = None
 
 
-# Backward-compatible alias -- callers (bottom-up, ingest) pass mode="create" by default
+# Backward-compatible alias -- callers (bottom-up, ingest) use this name.
+# They only set create-mode fields; rebuild fields default to None/False.
 BuildNodeInput = NodePipelineInput
 
 
