@@ -41,18 +41,24 @@ class WorkerGraphEngine:
 
     def __init__(
         self,
-        write_session: AsyncSession,
+        write_session: AsyncSession | None = None,
         embedding_service: EmbeddingService | None = None,
         qdrant_client: AsyncQdrantClient | None = None,
     ) -> None:
         self._write_session = write_session
         self._embedding_service = embedding_service
 
-        # Write repositories
-        self._write_node_repo = WriteNodeRepository(write_session)
-        self._write_edge_repo = WriteEdgeRepository(write_session)
-        self._write_dim_repo = WriteDimensionRepository(write_session)
-        self._write_fact_repo = WriteFactRepository(write_session)
+        # Write repositories (None when write_session is None — e.g. contexts
+        # that only need model_gateway / embedding_service from AgentContext)
+        self._write_node_repo: WriteNodeRepository | None = None
+        self._write_edge_repo: WriteEdgeRepository | None = None
+        self._write_dim_repo: WriteDimensionRepository | None = None
+        self._write_fact_repo: WriteFactRepository | None = None
+        if write_session is not None:
+            self._write_node_repo = WriteNodeRepository(write_session)
+            self._write_edge_repo = WriteEdgeRepository(write_session)
+            self._write_dim_repo = WriteDimensionRepository(write_session)
+            self._write_fact_repo = WriteFactRepository(write_session)
 
         # Qdrant repositories (optional)
         self._qdrant_fact_repo = None
@@ -69,18 +75,31 @@ class WorkerGraphEngine:
         self._node_cache: OrderedDict[uuid.UUID, Node] = OrderedDict()
         self._node_cache_max = 5000
 
-        # Cache for edge UUID -> write-db key, populated by create_edge()
-        self._edge_key_cache: dict[uuid.UUID, str] = {}
+        # Cache for edge UUID -> write-db key, populated by create_edge().
+        # Capped to match _node_cache.
+        self._edge_key_cache: OrderedDict[uuid.UUID, str] = OrderedDict()
+        self._edge_key_cache_max = 5000
 
     # ── Properties ────────────────────────────────────────────────────
 
     @property
     def has_write_db(self) -> bool:
-        return True
+        return self._write_session is not None
 
     @property
     def has_graph_db(self) -> bool:
         return False
+
+    def _require_write_repos(
+        self,
+    ) -> tuple[WriteNodeRepository, WriteEdgeRepository, WriteDimensionRepository, WriteFactRepository]:
+        """Return write repos or raise if write_session was not provided."""
+        if self._write_node_repo is None:
+            raise RuntimeError(
+                "This WorkerGraphEngine operation requires a write-db session, "
+                "but was created without one. Pass write_session to the constructor."
+            )
+        return self._write_node_repo, self._write_edge_repo, self._write_dim_repo, self._write_fact_repo  # type: ignore[return-value]
 
     # ── Helpers ───────────────────────────────────────────────────────
 
@@ -602,11 +621,12 @@ class WorkerGraphEngine:
         return await self._write_fact_repo.get_rejected_fact_ids(node_id)
 
     async def snapshot_node(self, node_id: uuid.UUID) -> None:
-        """Write node version to write-db if needed.
+        """No-op — sync worker handles versioning for write-db nodes.
 
-        For now, just pass -- sync worker handles versioning.
+        Callers that need versioning should use WriteNodeVersionRepository
+        directly (e.g. composite.py already does this).
         """
-        pass
+        logger.debug("snapshot_node: no-op on WorkerGraphEngine (node %s)", node_id)
 
     # ── Node read operations ──────────────────────────────────────────
 
@@ -615,9 +635,19 @@ class WorkerGraphEngine:
         return await self._get_cached_or_write_db(node_id)
 
     async def get_nodes_by_ids(self, node_ids: list[uuid.UUID]) -> list[Node]:
-        """Get multiple nodes by their IDs from write-db."""
-        write_nodes = await self._write_node_repo.get_by_uuids(node_ids)
-        return [self._write_node_to_node(wn) for wn in write_nodes]
+        """Get multiple nodes by their IDs, checking cache first."""
+        result: list[Node] = []
+        missing: list[uuid.UUID] = []
+        for nid in node_ids:
+            cached = self._node_cache.get(nid)
+            if cached is not None:
+                result.append(cached)
+            else:
+                missing.append(nid)
+        if missing and self._write_node_repo is not None:
+            write_nodes = await self._write_node_repo.get_by_uuids(missing)
+            result.extend(self._write_node_to_node(wn) for wn in write_nodes)
+        return result
 
     async def get_node_facts(self, node_id: uuid.UUID) -> list[Fact]:
         """Get all facts linked to a node via write-db fact_ids."""
@@ -629,7 +659,14 @@ class WorkerGraphEngine:
         return []
 
     async def get_node_facts_with_sources(self, node_id: uuid.UUID) -> list[Fact]:
-        """Get all facts linked to a node with sources eagerly loaded."""
+        """Get all facts linked to a node.
+
+        Returns Fact objects with content and fact_type populated.
+        Source attribution (FactSource) is not included on the returned
+        objects — worker callers only need fact content for LLM prompts.
+        For full citation data, use ReadGraphEngine which eagerly loads
+        graph-db FactSource relations.
+        """
         wn = await self._write_node_repo.get_by_uuid(node_id)
         if wn and wn.fact_ids:
             fact_uuids = [uuid.UUID(fid) for fid in wn.fact_ids]

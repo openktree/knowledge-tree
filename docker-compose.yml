@@ -47,6 +47,9 @@ services:
       MIN_POOL_SIZE: "5"
       RESERVE_POOL_SIZE: "5"
       RESERVE_POOL_TIMEOUT: "3"
+      # RESET ALL is lighter than DISCARD ALL. Safe because asyncpg
+      # client-side prepared statements are disabled via
+      # connect_args={"statement_cache_size": 0} on all engines.
       SERVER_RESET_QUERY: "RESET ALL"
       SERVER_IDLE_TIMEOUT: "600"
       SERVER_LIFETIME: "3600"
