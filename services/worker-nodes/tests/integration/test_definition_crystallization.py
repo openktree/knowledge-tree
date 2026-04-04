@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_db.models import Node
 from kt_db.repositories.nodes import NodeRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 
 
@@ -23,10 +23,10 @@ def _make_agent_ctx(
     model_gateway: MagicMock,
     embedding_service: MagicMock | None = None,
 ) -> MagicMock:
-    """Build a mock AgentContext backed by a real GraphEngine."""
+    """Build a mock AgentContext backed by a real ReadGraphEngine."""
     from kt_agents_core.state import AgentContext
 
-    graph_engine = GraphEngine(session, embedding_service)
+    graph_engine = ReadGraphEngine(session=session)
     ctx = MagicMock(spec=AgentContext)
     ctx.graph_engine = graph_engine
     ctx.model_gateway = model_gateway

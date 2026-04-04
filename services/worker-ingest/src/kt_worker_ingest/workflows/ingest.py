@@ -43,41 +43,49 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 
 
 @asynccontextmanager
-async def _open_sessions(state: WorkerState) -> AsyncGenerator[tuple[Any, Any], None]:
-    """Open graph-db session and write-db session.
+async def _open_sessions(state: WorkerState) -> AsyncGenerator[tuple[None, Any], None]:
+    """Open write-db session for worker pipelines.
 
-    Yields ``(session, write_session)`` — caller must commit as needed.
+    Yields ``(session, write_session)`` where ``session`` is **None**.
+    Workers operate in write-db-only mode — all reads route through
+    write-db or Qdrant, and the sync worker propagates to graph-db.
+
+    Previously this opened a graph-db session that was held for the
+    entire pipeline (hours during large ingests), leaking connections.
     """
-    async with state.session_factory() as session:
-        write_session = state.write_session_factory()
-        try:
-            yield session, write_session
-        finally:
-            await write_session.close()
+    if state.write_session_factory is None:
+        raise RuntimeError("Ingest worker requires write_session_factory")
+    write_session = state.write_session_factory()
+    try:
+        yield None, write_session
+    finally:
+        await write_session.close()
 
 
 async def _build_agent_context(
     state: WorkerState,
-    session: Any,
     *,
     emit_event: Any | None = None,
-    write_session: Any | None = None,
+    write_session: Any,
     api_key: str | None = None,
 ) -> Any:
-    """Build an AgentContext from WorkerState and an open session.
+    """Build an AgentContext from WorkerState.
 
-    Optionally wires up an ``emit_event`` callback so that worker classes
-    (IngestWorker) can emit progress events through ``ctx.emit()``.
+    ``session`` (graph-db) is NOT passed — ingest operates in
+    write-db-only mode.  GraphEngine methods that have write-db
+    fallbacks will use write-db; conversation/message tracking uses
+    short-lived sessions from ``session_factory`` directly in the
+    workflow (not passed through AgentContext).
 
-    ``write_session`` is required for any task that writes facts, nodes,
-    edges, or dimensions.
+    Pass ``emit_event`` to wire AgentContext.emit() calls to the
+    Hatchet stream.
 
     When ``api_key`` is provided, per-request ``ModelGateway`` and
     ``EmbeddingService`` instances are created instead of using the shared
     ones from ``WorkerState``.
     """
     from kt_agents_core.state import AgentContext
-    from kt_graph.engine import GraphEngine
+    from kt_graph.worker_engine import WorkerGraphEngine
 
     if api_key:
         from kt_models.embeddings import EmbeddingService
@@ -89,10 +97,9 @@ async def _build_agent_context(
         model_gateway = state.model_gateway
         embedding_service = state.embedding_service
 
-    graph_engine = GraphEngine(
-        session,
+    graph_engine = WorkerGraphEngine(
+        write_session,
         embedding_service,
-        write_session=write_session,
         qdrant_client=state.qdrant_client,
     )
     return AgentContext(
@@ -100,7 +107,7 @@ async def _build_agent_context(
         provider_registry=state.provider_registry,
         model_gateway=model_gateway,
         embedding_service=embedding_service,
-        session=session,
+        session=None,
         emit_event=emit_event,
         content_fetcher=state.content_fetcher,
         session_factory=state.session_factory,
@@ -203,24 +210,26 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             },
         )
 
-        async with _open_sessions(worker_state) as (session, write_session):
+        async with _open_sessions(worker_state) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                session,
                 emit_event=emit_cb,
                 write_session=write_session,
                 api_key=input.api_key,
             )
 
-            processed = await process_ingest_sources(
-                conv_uuid,
-                agent_ctx.session,
-                agent_ctx.file_data_store,
-                emit=emit_cb,
-                write_session=write_session,
-            )
+            # process_ingest_sources needs graph-db for IngestSource table;
+            # open a short-lived session just for that.
+            async with worker_state.session_factory() as graph_session:
+                processed = await process_ingest_sources(
+                    conv_uuid,
+                    graph_session,
+                    agent_ctx.file_data_store,
+                    emit=emit_cb,
+                    write_session=write_session,
+                )
+                await graph_session.commit()
             await write_session.commit()
-            await agent_ctx.session.commit()
 
         if not processed:
             await emit(
@@ -308,10 +317,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             },
         )
 
-        async with _open_sessions(worker_state) as (session, write_session):
+        async with _open_sessions(worker_state) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                session,
                 emit_event=emit_cb,
                 write_session=write_session,
                 api_key=input.api_key,
@@ -324,7 +332,6 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 chunk_selection=chunk_selection,
             )
             await write_session.commit()
-            await agent_ctx.session.commit()
 
         await emit(
             "activity_log",
@@ -370,18 +377,19 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         content_index: ContentIndex | None = None
         try:
-            async with worker_state.session_factory() as session:
-                agent_ctx = await _build_agent_context(
-                    worker_state,
-                    session,
-                    emit_event=emit_cb,
-                    api_key=input.api_key,
-                )
-                content_index = await build_content_index(
-                    processed,
-                    agent_ctx.model_gateway,
-                    agent_ctx.file_data_store,
-                )
+            if input.api_key:
+                from kt_models.gateway import ModelGateway
+
+                _model_gateway = ModelGateway(api_key=input.api_key)
+            else:
+                _model_gateway = worker_state.model_gateway
+            from kt_providers.fetcher import FileDataStore as _FDS
+
+            content_index = await build_content_index(
+                processed,
+                _model_gateway,
+                _FDS(),
+            )
             if content_index:
                 backfill_fact_counts(
                     content_index,
@@ -470,8 +478,10 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             # Build subgraph from merged results
             from kt_agents_core.results import build_ingest_subgraph
 
-            async with worker_state.session_factory() as session:
-                merge_ctx = await _build_agent_context(worker_state, session, emit_event=emit_cb, api_key=input.api_key)
+            async with _open_sessions(worker_state) as (_, merge_ws):
+                merge_ctx = await _build_agent_context(
+                    worker_state, emit_event=emit_cb, write_session=merge_ws, api_key=input.api_key
+                )
                 subgraph = await build_ingest_subgraph(all_created_nodes, all_created_edges, merge_ctx)
 
             # Persist merged result
@@ -497,10 +507,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         else:
             # Small document or no index — single agent (existing path)
-            async with _open_sessions(worker_state) as (session, write_session):
+            async with _open_sessions(worker_state) as (_, write_session):
                 agent_ctx = await _build_agent_context(
                     worker_state,
-                    session,
                     emit_event=emit_cb,
                     write_session=write_session,
                     api_key=input.api_key,
@@ -515,7 +524,6 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 )
 
                 await write_session.commit()
-                await session.commit()
 
             # Persist result
             async with worker_state.session_factory() as session:
@@ -662,10 +670,9 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
         processed_sources = await reconstruct_processed_sources(conv_uuid, session)
 
     # Run the ingest agent scoped to this partition
-    async with _open_sessions(worker_state) as (session, write_session):
+    async with _open_sessions(worker_state) as (_, write_session):
         agent_ctx = await _build_agent_context(
             worker_state,
-            session,
             emit_event=emit_cb,
             write_session=write_session,
         )
@@ -680,7 +687,6 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
         )
 
         await write_session.commit()
-        await session.commit()
 
     ctx.log(
         f"Partition {input.partition_id[:8]} complete: "
@@ -751,23 +757,26 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             },
         )
 
-        async with _open_sessions(worker_state) as (session, write_session):
+        async with _open_sessions(worker_state) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                session,
                 emit_event=emit_cb,
                 write_session=write_session,
                 api_key=input.api_key,
             )
-            processed = await process_ingest_sources(
-                conv_uuid,
-                agent_ctx.session,
-                agent_ctx.file_data_store,
-                emit=emit_cb,
-                write_session=write_session,
-            )
+
+            # process_ingest_sources needs graph-db for IngestSource table;
+            # open a short-lived session just for that.
+            async with worker_state.session_factory() as graph_session:
+                processed = await process_ingest_sources(
+                    conv_uuid,
+                    graph_session,
+                    agent_ctx.file_data_store,
+                    emit=emit_cb,
+                    write_session=write_session,
+                )
+                await graph_session.commit()
             await write_session.commit()
-            await agent_ctx.session.commit()
 
         if not processed:
             raise ValueError("No sources could be processed")
@@ -805,10 +814,9 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         )
         await emit("phase_change", {"phase": "decomposing"})
 
-        async with _open_sessions(worker_state) as (session, write_session):
+        async with _open_sessions(worker_state) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                session,
                 emit_event=emit_cb,
                 write_session=write_session,
                 api_key=input.api_key,
@@ -820,7 +828,6 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                 chunk_selection=chunk_selection,
             )
             await write_session.commit()
-            await agent_ctx.session.commit()
 
         await emit("pipeline_scope_end", {"scope_id": "ingest-decomposition"})
         ctx.log(
@@ -841,7 +848,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
         proposed_nodes: list[ProposedNode] = []
         try:
-            async with _open_sessions(worker_state) as (session, write_session):
+            async with _open_sessions(worker_state) as (_, write_session):
                 if write_session is not None:
                     seed_repo = WriteSeedRepository(write_session)
                     seeds = await seed_repo.list_seeds(

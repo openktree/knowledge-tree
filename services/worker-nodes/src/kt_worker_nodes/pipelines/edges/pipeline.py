@@ -70,11 +70,11 @@ class EdgePipeline:
                 )
 
         try:
-            await self._ctx.graph_engine._write_session.commit()
+            await self._ctx.graph_engine.commit()
         except Exception:
             logger.exception("Error committing edge candidate batch")
             try:
-                await self._ctx.graph_engine._write_session.rollback()
+                await self._ctx.graph_engine.rollback()
             except Exception:
                 logger.debug("Rollback failed", exc_info=True)
 

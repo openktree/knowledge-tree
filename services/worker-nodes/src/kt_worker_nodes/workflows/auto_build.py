@@ -182,23 +182,27 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                     node_key = make_node_key(seed.node_type, seed.name)
                     node_uuid = key_to_uuid(node_key)
 
-                    # Create WriteNode with enrichment_status='stub'
-                    # facts_at_last_build=0 so _check_fact_stale_nodes picks it up
-                    await node_repo.upsert(
-                        node_type=seed.node_type,
-                        concept=seed.name,
-                        entity_subtype=seed.entity_subtype,
-                        metadata_=seed.metadata_,
-                        enrichment_status="stub",
-                    )
-                    await node_repo.update_facts_at_last_build(node_key, 0)
+                    async with ws.begin_nested():
+                        # Create WriteNode with enrichment_status='stub'
+                        # facts_at_last_build=0 so _check_fact_stale_nodes picks it up
+                        await node_repo.upsert(
+                            node_type=seed.node_type,
+                            concept=seed.name,
+                            entity_subtype=seed.entity_subtype,
+                            metadata_=seed.metadata_,
+                            enrichment_status="stub",
+                        )
+                        await node_repo.update_facts_at_last_build(node_key, 0)
 
-                    # Copy seed fact IDs to node
-                    seed_facts = await seed_repo.get_seed_fact_ids(seed.key)
-                    for fid in seed_facts:
-                        await node_repo.append_fact_id(node_key, str(fid))
+                        # Copy seed fact IDs to node
+                        seed_facts = await seed_repo.get_seed_fact_ids(seed.key)
+                        for fid in seed_facts:
+                            await node_repo.append_fact_id(node_key, str(fid))
 
-                    # Upsert to Qdrant if embedding available
+                        # Mark seed as promoted
+                        await seed_repo.mark_seed_promoted(seed.key, node_key)
+
+                    # Qdrant upsert outside savepoint (not transactional)
                     if embedding is not None and state.qdrant_client is not None:
                         from kt_qdrant.repositories.nodes import QdrantNodeRepository
 
@@ -210,8 +214,6 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                             embedding=embedding,
                         )
 
-                    # Mark seed as promoted
-                    await seed_repo.mark_seed_promoted(seed.key, node_key)
                     batch_promoted += 1
 
                 except Exception:
@@ -272,6 +274,7 @@ async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Contex
         logger.info("Found %d merged seeds with nodes to absorb", len(merged_seeds))
 
         for loser_seed in merged_seeds:
+            loser_node_key_for_qdrant: str | None = None
             try:
                 loser_node_key = loser_seed.promoted_node_key
                 if not loser_node_key:
@@ -291,101 +294,104 @@ async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Contex
                     # Winner not promoted yet — skip, will retry next run
                     continue
 
-                # Verify both nodes exist
-                winner_node = await node_repo.get_by_key(winner_node_key)
-                loser_node = await node_repo.get_by_key(loser_node_key)
-                if winner_node is None or loser_node is None:
-                    # Already absorbed or missing — clear and skip
-                    await seed_repo.clear_promoted_node_key(loser_seed.key)
-                    continue
-
-                # ── Absorb dimensions ──
-                loser_dims = await dim_repo.get_by_node_key(loser_node_key, limit=100)
-                for dim in loser_dims:
-                    # Upsert under the winner node key (handles duplicates via ON CONFLICT)
-                    await dim_repo.upsert(
-                        node_key=winner_node_key,
-                        model_id=dim.model_id,
-                        content=dim.content,
-                        confidence=dim.confidence,
-                        suggested_concepts=dim.suggested_concepts,
-                        batch_index=dim.batch_index,
-                        fact_count=dim.fact_count,
-                        is_definitive=dim.is_definitive,
-                        fact_ids=dim.fact_ids,
-                        metadata_=dim.metadata_,
-                    )
-                    await dim_repo.delete_by_key(dim.key)
-
-                # ── Absorb edges ──
-                loser_edges = await edge_repo.get_edges_for_node(loser_node_key)
-                for edge in loser_edges:
-                    # Determine the other node in the edge
-                    if edge.source_node_key == loser_node_key:
-                        other_key = edge.target_node_key
-                    else:
-                        other_key = edge.source_node_key
-
-                    # Self-edge after rewrite — delete
-                    if other_key == winner_node_key:
-                        await edge_repo.delete_by_key(edge.key)
+                async with ws.begin_nested():
+                    # Verify both nodes exist
+                    winner_node = await node_repo.get_by_key(winner_node_key)
+                    loser_node = await node_repo.get_by_key(loser_node_key)
+                    if winner_node is None or loser_node is None:
+                        # Already absorbed or missing — clear and skip
+                        await seed_repo.clear_promoted_node_key(loser_seed.key)
                         continue
 
-                    new_edge_key = make_edge_key(
-                        edge.relationship_type,
-                        winner_node_key,
-                        other_key,
-                    )
-                    old_edge_key = edge.key
+                    # ── Absorb dimensions ──
+                    loser_dims = await dim_repo.get_by_node_key(loser_node_key, limit=100)
+                    for dim in loser_dims:
+                        # Upsert under the winner node key (handles duplicates via ON CONFLICT)
+                        await dim_repo.upsert(
+                            node_key=winner_node_key,
+                            model_id=dim.model_id,
+                            content=dim.content,
+                            confidence=dim.confidence,
+                            suggested_concepts=dim.suggested_concepts,
+                            batch_index=dim.batch_index,
+                            fact_count=dim.fact_count,
+                            is_definitive=dim.is_definitive,
+                            fact_ids=dim.fact_ids,
+                            metadata_=dim.metadata_,
+                        )
+                        await dim_repo.delete_by_key(dim.key)
 
-                    # Merge fact_ids if winner already has an edge to the same node
-                    existing_new_facts = edge.fact_ids or []
-                    merged_facts = list(set(existing_new_facts))
+                    # ── Absorb edges ──
+                    loser_edges = await edge_repo.get_edges_for_node(loser_node_key)
+                    for edge in loser_edges:
+                        # Determine the other node in the edge
+                        if edge.source_node_key == loser_node_key:
+                            other_key = edge.target_node_key
+                        else:
+                            other_key = edge.source_node_key
 
-                    # Upsert the new edge (winner_node_key replaces loser)
-                    await edge_repo.upsert(
-                        rel_type=edge.relationship_type,
-                        source_node_key=winner_node_key,
-                        target_node_key=other_key,
-                        weight=edge.weight,
-                        justification=edge.justification,
-                        fact_ids=merged_facts,
-                        metadata_=edge.metadata_,
-                        weight_source=edge.weight_source,
-                    )
+                        # Self-edge after rewrite — delete
+                        if other_key == winner_node_key:
+                            await edge_repo.delete_by_key(edge.key)
+                            continue
 
-                    # Delete the old edge key if it changed
-                    if old_edge_key != new_edge_key:
-                        await edge_repo.delete_by_key(old_edge_key)
+                        new_edge_key = make_edge_key(
+                            edge.relationship_type,
+                            winner_node_key,
+                            other_key,
+                        )
+                        old_edge_key = edge.key
 
-                # ── Absorb facts ──
-                loser_fact_ids = loser_node.fact_ids or []
-                if loser_fact_ids:
-                    await node_repo.merge_fact_ids(winner_node_key, loser_fact_ids)
+                        # Merge fact_ids if winner already has an edge to the same node
+                        existing_new_facts = edge.fact_ids or []
+                        merged_facts = list(set(existing_new_facts))
 
-                # ── Clean up derived data ──
-                await dim_repo.delete_convergence_report(loser_node_key)
-                await dim_repo.delete_divergent_claims(loser_node_key)
+                        # Upsert the new edge (winner_node_key replaces loser)
+                        await edge_repo.upsert(
+                            rel_type=edge.relationship_type,
+                            source_node_key=winner_node_key,
+                            target_node_key=other_key,
+                            weight=edge.weight,
+                            justification=edge.justification,
+                            fact_ids=merged_facts,
+                            metadata_=edge.metadata_,
+                            weight_source=edge.weight_source,
+                        )
 
-                # ── Delete loser node ──
-                await node_repo.delete_by_key(loser_node_key)
+                        # Delete the old edge key if it changed
+                        if old_edge_key != new_edge_key:
+                            await edge_repo.delete_by_key(old_edge_key)
 
-                # Delete from Qdrant
-                if state.qdrant_client is not None:
+                    # ── Absorb facts ──
+                    loser_fact_ids = loser_node.fact_ids or []
+                    if loser_fact_ids:
+                        await node_repo.merge_fact_ids(winner_node_key, loser_fact_ids)
+
+                    # ── Clean up derived data ──
+                    await dim_repo.delete_convergence_report(loser_node_key)
+                    await dim_repo.delete_divergent_claims(loser_node_key)
+
+                    # ── Delete loser node ──
+                    await node_repo.delete_by_key(loser_node_key)
+
+                    # Mark as absorbed (clear promoted_node_key so not reprocessed)
+                    await seed_repo.clear_promoted_node_key(loser_seed.key)
+                    loser_node_key_for_qdrant = loser_node_key
+
+                # Qdrant delete outside savepoint (not transactional)
+                if loser_node_key_for_qdrant and state.qdrant_client is not None:
                     try:
                         from kt_qdrant.repositories.nodes import QdrantNodeRepository
 
                         qdrant_repo = QdrantNodeRepository(state.qdrant_client)
-                        await qdrant_repo.delete(key_to_uuid(loser_node_key))
+                        await qdrant_repo.delete(key_to_uuid(loser_node_key_for_qdrant))
                     except Exception:
                         logger.debug(
                             "Failed to delete Qdrant vector for %s",
-                            loser_node_key,
+                            loser_node_key_for_qdrant,
                             exc_info=True,
                         )
 
-                # Mark as absorbed (clear promoted_node_key so not reprocessed)
-                await seed_repo.clear_promoted_node_key(loser_seed.key)
                 absorbed += 1
 
                 logger.info(
@@ -469,14 +475,15 @@ async def _create_cooccurrence_edges(state: WorkerState, settings: object, ctx: 
                 # log₂(n+1): clear signal without overwhelming
                 weight = math.log2(shared_count + 1)
 
-                await edge_repo.upsert(
-                    rel_type=rel_type,
-                    source_node_key=node_key_a,
-                    target_node_key=node_key_b,
-                    weight=weight,
-                    fact_ids=fact_ids,
-                    weight_source="cooccurrence",
-                )
+                async with ws.begin_nested():
+                    await edge_repo.upsert(
+                        rel_type=rel_type,
+                        source_node_key=node_key_a,
+                        target_node_key=node_key_b,
+                        weight=weight,
+                        fact_ids=fact_ids,
+                        weight_source="cooccurrence",
+                    )
                 created += 1
 
             except Exception:

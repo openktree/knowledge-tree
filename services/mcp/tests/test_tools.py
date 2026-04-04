@@ -140,7 +140,7 @@ class TestSearchGraph:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.search_nodes = AsyncMock(return_value=[node])
@@ -163,7 +163,7 @@ class TestSearchGraph:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.search_nodes = AsyncMock(return_value=[])
@@ -180,7 +180,7 @@ class TestSearchGraph:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.search_nodes = AsyncMock(return_value=[])
@@ -200,7 +200,7 @@ class TestGetNode:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -229,7 +229,7 @@ class TestGetNode:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -252,7 +252,7 @@ class TestGetNode:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -274,7 +274,7 @@ class TestGetNode:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -294,7 +294,7 @@ class TestGetDimensions:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -317,7 +317,7 @@ class TestGetDimensions:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -342,7 +342,7 @@ class TestGetDimensions:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -376,7 +376,7 @@ class TestGetEdges:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -426,7 +426,7 @@ class TestGetEdges:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -460,7 +460,7 @@ class TestGetEdges:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -483,7 +483,7 @@ class TestGetEdges:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -511,7 +511,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -550,7 +550,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -583,7 +583,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -613,7 +613,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -628,7 +628,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -650,7 +650,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -695,7 +695,7 @@ class TestGetFactSources:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -759,7 +759,7 @@ class TestSearchFacts:
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
             patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.hybrid_search_facts = AsyncMock(return_value=[fact])
@@ -797,7 +797,7 @@ class TestSearchFacts:
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
             patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             # hybrid_search_facts returns all 5, slicing handles offset/limit
@@ -820,7 +820,7 @@ class TestSearchFacts:
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
             patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.hybrid_search_facts = AsyncMock(return_value=[])
@@ -842,7 +842,7 @@ class TestSearchFacts:
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
             patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.hybrid_search_facts = AsyncMock(return_value=[])
@@ -866,7 +866,7 @@ class TestSearchFacts:
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
             patch("kt_mcp.server.get_embedding_service_cached", return_value=None),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.count_facts = AsyncMock(return_value=0)
@@ -911,7 +911,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(
@@ -952,7 +952,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(
@@ -973,7 +973,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -990,7 +990,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             # First call returns source, second returns None (target)

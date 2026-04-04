@@ -54,9 +54,7 @@ async def enrich_edge(input: EnrichEdgeInput, ctx: Context) -> dict:
     settings = get_settings()
     pipeline = HatchetPipeline(state, api_key=input.api_key)
 
-    edge_id = uuid.UUID(input.edge_id)
-
-    async with pipeline._open_sessions() as (graph_session, write_session):
+    async with pipeline._open_sessions() as (_, write_session):
         from kt_models.gateway import ModelGateway
 
         if write_session is None:
@@ -71,15 +69,7 @@ async def enrich_edge(input: EnrichEdgeInput, ctx: Context) -> dict:
         we = result.scalar_one_or_none()
 
         if we is None:
-            # Try finding by edge UUID derivation
-            from kt_db.models import Edge
-
-            if graph_session:
-                edge = (await graph_session.execute(select(Edge).where(Edge.id == edge_id))).scalar_one_or_none()
-                if edge and edge.justification:
-                    return EnrichEdgeOutput(justified=False).model_dump()
-
-            logger.warning("Edge %s not found", input.edge_id)
+            logger.warning("Edge %s not found in write-db", input.edge_id)
             return EnrichEdgeOutput(justified=False).model_dump()
 
         if we.justification:

@@ -21,7 +21,7 @@ from kt_api.schemas import (
 )
 from kt_db.keys import key_to_uuid, url_key_to_node_key
 from kt_db.models import Edge, Fact, Node, RawSource
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/graph", tags=["graph"])
 
@@ -60,7 +60,7 @@ async def get_subgraph(
     session: AsyncSession = Depends(get_db_session),
 ) -> SubgraphResponse:
     """Get a subgraph containing the specified nodes and edges between them."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
     def _parse_node_id(nid: str) -> uuid.UUID:
         try:
@@ -161,7 +161,7 @@ async def get_paths(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid UUID format")
 
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
     source_node = await engine.get_node(source_uuid)
     if source_node is None:

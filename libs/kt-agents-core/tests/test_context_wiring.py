@@ -1,8 +1,8 @@
-"""AST-based regression test: every AgentContext() and GraphEngine() call
-in workflow/pipeline files must pass ``qdrant_client``.
+"""AST-based regression test: every AgentContext(), WorkerGraphEngine(), and
+ReadGraphEngine() call in workflow/pipeline files must pass ``qdrant_client``.
 
 This catches the class of bug where a new workflow helper constructs an
-AgentContext or GraphEngine without forwarding the Qdrant client, which
+AgentContext or graph engine without forwarding the Qdrant client, which
 silently disables vector-based deduplication and search.
 """
 
@@ -89,7 +89,8 @@ def test_all_agent_context_calls_pass_qdrant_client() -> None:
 
 
 def test_all_graph_engine_calls_pass_qdrant_client() -> None:
-    """Every GraphEngine() call in non-test service/lib code must include qdrant_client."""
+    """Every WorkerGraphEngine() and ReadGraphEngine() call must include qdrant_client."""
+    engine_names = {"WorkerGraphEngine", "ReadGraphEngine"}
     violations: list[_Violation] = []
 
     for path in _find_python_files(_SCAN_DIRS):
@@ -108,7 +109,7 @@ def test_all_graph_engine_calls_pass_qdrant_client() -> None:
             if not isinstance(node, ast.Call):
                 continue
             name = _callee_name(node)
-            if name == "GraphEngine" and not _has_keyword(node, "qdrant_client"):
-                violations.append(_Violation(path, node.lineno, "GraphEngine"))
+            if name in engine_names and not _has_keyword(node, "qdrant_client"):
+                violations.append(_Violation(path, node.lineno, name))
 
-    assert not violations, "GraphEngine() calls missing qdrant_client:\n" + "\n".join(f"  {v}" for v in violations)
+    assert not violations, "Graph engine calls missing qdrant_client:\n" + "\n".join(f"  {v}" for v in violations)

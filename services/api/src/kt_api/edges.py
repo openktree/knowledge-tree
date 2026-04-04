@@ -18,7 +18,7 @@ from kt_api.schemas import (
     PaginatedEdgesResponse,
 )
 from kt_db.models import User
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/edges", tags=["edges"])
 
@@ -58,7 +58,7 @@ async def list_edges(
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedEdgesResponse:
     """List edges with pagination and optional filters."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     parsed_node_id: uuid.UUID | None = None
     if node_id:
         try:
@@ -113,7 +113,7 @@ async def get_edges_between(
     source_id = _parse(source)
     target_id = _parse(target)
 
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     source_node = await engine.get_node(source_id)
     target_node = await engine.get_node(target_id)
     if not source_node or not target_node:
@@ -176,7 +176,7 @@ async def get_edge(
     session: AsyncSession = Depends(get_db_session),
 ) -> EdgeDetailResponse:
     """Get a single edge by ID with resolved node names and full facts."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(edge_id)
     except ValueError:
@@ -241,7 +241,7 @@ async def enrich_edge(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     """Trigger on-demand justification generation for a co-occurrence edge."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(edge_id)
     except ValueError:
@@ -263,7 +263,7 @@ async def delete_edge(
     session: AsyncSession = Depends(get_db_session),
 ) -> DeleteResponse:
     """Delete an edge by ID."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(edge_id)
     except ValueError:

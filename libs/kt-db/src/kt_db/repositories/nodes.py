@@ -107,7 +107,8 @@ class NodeRepository:
             return nodes
 
         # Tier 2 fallback: ILIKE for exact substring matches
-        stmt2 = select(Node).where(Node.concept.ilike(f"%{query}%"))
+        escaped = query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        stmt2 = select(Node).where(Node.concept.ilike(f"%{escaped}%"))
         if node_type is not None:
             stmt2 = stmt2.where(Node.node_type == node_type)
         stmt2 = stmt2.limit(limit)

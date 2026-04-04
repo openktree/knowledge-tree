@@ -18,6 +18,8 @@ def get_engine(
         max_overflow=max_overflow if max_overflow is not None else settings.db_max_overflow,
         pool_timeout=pool_timeout if pool_timeout is not None else settings.db_pool_timeout,
         pool_pre_ping=True,
+        pool_recycle=settings.db_pool_recycle,
+        connect_args={"statement_cache_size": 0},
     )
 
 
@@ -42,6 +44,7 @@ def get_write_engine(
         max_overflow=max_overflow if max_overflow is not None else settings.write_db_max_overflow,
         pool_timeout=pool_timeout if pool_timeout is not None else settings.write_db_pool_timeout,
         pool_pre_ping=True,
+        pool_recycle=settings.write_db_pool_recycle,
         connect_args={"statement_cache_size": 0},
     )
 

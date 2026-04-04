@@ -35,7 +35,7 @@ from kt_api.schemas import (
 from kt_config.settings import get_settings
 from kt_db.models import FactSource, Node, NodeFact, User
 from kt_graph.convergence import compute_convergence
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
@@ -278,7 +278,7 @@ async def list_nodes(
     if cached is not None:
         return PaginatedNodesResponse(**cached)
 
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     nodes = await engine.list_nodes(offset=offset, limit=limit, search=search, node_type=node_type, sort=sort)
     total = await engine.count_nodes(search=search, node_type=node_type)
     parent_map = await _batch_parent_concepts(session, nodes)
@@ -296,7 +296,7 @@ async def search_nodes(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Search nodes by concept name (text search)."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     nodes = await engine.search_nodes(query, limit=limit)
     parent_map = await _batch_parent_concepts(session, nodes)
     seed_fact_count_map = await _batch_seed_fact_counts(nodes)
@@ -314,7 +314,7 @@ async def get_node(
     serve stale counts while silently skipping increments for cache hits.
     Denormalized counters on the nodes table already keep this query fast.
     """
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -339,7 +339,7 @@ async def update_node(
     session: AsyncSession = Depends(get_db_session),
 ) -> NodeResponse:
     """Update a node's editable fields."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -370,7 +370,7 @@ async def delete_node(
     session: AsyncSession = Depends(get_db_session),
 ) -> DeleteResponse:
     """Delete a node and its edges, dimensions, versions (but not linked facts)."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -395,7 +395,7 @@ async def get_node_dimensions(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DimensionResponse]:
     """Get all dimensions (model perspectives) for a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -436,7 +436,7 @@ async def get_node_facts(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[FactResponse]:
     """Get all facts linked to a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -479,7 +479,7 @@ async def rebuild_node(
     Accepts optional JSON body ``{"mode": "full"|"incremental", "scope": "all"|"dimensions"|"edges"}``.
     Defaults to ``mode="full", scope="all"`` (full rebuild).
     """
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -529,7 +529,7 @@ async def get_node_edges(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[EdgeResponse]:
     """Get all edges connected to a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -565,7 +565,7 @@ async def get_node_history(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeVersionResponse]:
     """Get the version history for a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -593,7 +593,7 @@ async def get_node_convergence(
     session: AsyncSession = Depends(get_db_session),
 ) -> ConvergenceResponse:
     """Compute convergence analysis across model dimensions for a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -617,7 +617,7 @@ async def get_node_perspectives(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Get all perspective nodes for a concept node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -659,7 +659,7 @@ async def enrich_node(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     """Legacy endpoint — redirects to rebuild_node with mode=full, scope=all."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -689,7 +689,7 @@ async def quick_add_node(
     Hatchet node pipeline (create -> dimensions + edges + definition +
     ancestry + crystallization).  Costs 1 nav credit.
     """
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     existing = await engine.search_nodes(body.concept.strip(), limit=1)
 
     # Exact-ish match: first result whose concept matches case-insensitively
@@ -829,7 +829,7 @@ async def quick_add_perspective(
             validation=validation,
         )
 
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
     from kt_config.types import ALL_PERSPECTIVES_ID
     from kt_models.embeddings import EmbeddingService
@@ -962,7 +962,7 @@ async def regenerate_composite(
     Dispatches a Hatchet ``regenerate_composite`` task that re-runs the
     composite agent and saves a new version.
     """
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -991,7 +991,7 @@ async def get_source_nodes(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Get the source nodes for a composite node (via draws_from edges)."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:

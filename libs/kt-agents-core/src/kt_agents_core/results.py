@@ -127,6 +127,10 @@ async def build_ingest_subgraph(
 
     for eid in edge_ids:
         try:
+            if ctx.session is None:
+                # No graph-db session — skip edge loading (edge data
+                # is supplementary; nodes are the primary output).
+                continue
             from kt_db.repositories.edges import EdgeRepository
 
             edge_repo = EdgeRepository(ctx.session)

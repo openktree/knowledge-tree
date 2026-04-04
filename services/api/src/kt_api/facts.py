@@ -18,7 +18,7 @@ from kt_api.schemas import (
     PaginatedFactsResponse,
 )
 from kt_db.repositories.facts import FactRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ async def list_facts(
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedFactsResponse:
     """List facts with pagination and optional filters."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
     # Use hybrid search when a text query is provided, embeddings are available,
     # and no source-level filters are used (those require SQL joins).
@@ -183,7 +183,7 @@ async def get_fact_nodes(
         uid = uuid.UUID(fact_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid fact ID format")
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     # Verify fact exists
     repo = FactRepository(session)
     fact = await repo.get_by_id(uid)
@@ -210,7 +210,7 @@ async def update_fact(
     session: AsyncSession = Depends(get_db_session),
 ) -> FactResponse:
     """Update a fact's editable fields."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(fact_id)
     except ValueError:
@@ -238,7 +238,7 @@ async def delete_fact(
     session: AsyncSession = Depends(get_db_session),
 ) -> DeleteResponse:
     """Delete a fact and unlink it from all nodes."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(fact_id)
     except ValueError:

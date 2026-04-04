@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_agents_core.state import AgentContext, EventCallback
 from kt_config.settings import get_settings
 from kt_db.session import get_session_factory, get_write_session_factory
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_providers.brave import BraveSearchProvider
@@ -82,7 +82,7 @@ async def get_agent_context(
     session = factory()
     qdrant_client = get_qdrant_client_cached()
 
-    graph_engine = GraphEngine(session, qdrant_client=qdrant_client)
+    graph_engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
     embedding_service = EmbeddingService() if settings.openrouter_api_key else None
     model_gateway = ModelGateway()
 

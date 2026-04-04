@@ -5,13 +5,13 @@ from sqlalchemy import select
 
 from kt_db.models import NodeCounter
 from kt_db.repositories.facts import FactRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 pytestmark = pytest.mark.asyncio
 
 
 async def test_create_and_get_node(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     node = await engine.create_node("engine_water_test")
     assert node.id is not None
     assert node.concept == "engine_water_test"
@@ -22,27 +22,27 @@ async def test_create_and_get_node(db_session):
 
 
 async def test_update_node(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     node = await engine.create_node("engine_update_test")
     updated = await engine.update_node(node.id, concept="engine_updated_test")
     assert updated.concept == "engine_updated_test"
 
 
 async def test_update_node_not_found(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     with pytest.raises(ValueError, match="Node not found"):
         await engine.update_node(uuid.uuid4(), concept="nope")
 
 
 async def test_search_nodes(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     await engine.create_node("engine_searchable_unique_xyz")
     results = await engine.search_nodes("engine_searchable_unique_xyz")
     assert len(results) >= 1
 
 
 async def test_create_and_get_edge(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     n1 = await engine.create_node("engine_edge_a_test")
     n2 = await engine.create_node("engine_edge_b_test")
     edge = await engine.create_edge(n1.id, n2.id, "related", 0.9)
@@ -52,7 +52,7 @@ async def test_create_and_get_edge(db_session):
 
 
 async def test_get_edges(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     n1 = await engine.create_node("engine_edges_center_test")
     n2 = await engine.create_node("engine_edges_target_test")
     await engine.create_edge(n1.id, n2.id, "related", 0.5)
@@ -62,7 +62,7 @@ async def test_get_edges(db_session):
 
 
 async def test_get_neighbors(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     n1 = await engine.create_node("engine_neighbor_a_test")
     n2 = await engine.create_node("engine_neighbor_b_test")
     await engine.create_edge(n1.id, n2.id, "related", 0.5)
@@ -73,7 +73,7 @@ async def test_get_neighbors(db_session):
 
 
 async def test_link_fact_to_node(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     fact_repo = FactRepository(db_session)
 
     node = await engine.create_node("engine_fact_link_test")
@@ -86,7 +86,7 @@ async def test_link_fact_to_node(db_session):
 
 
 async def test_get_node_facts(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     fact_repo = FactRepository(db_session)
 
     node = await engine.create_node("engine_get_facts_test")
@@ -100,7 +100,7 @@ async def test_get_node_facts(db_session):
 
 
 async def test_add_and_get_dimensions(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     node = await engine.create_node("engine_dim_test")
 
     dim = await engine.add_dimension(
@@ -117,7 +117,7 @@ async def test_add_and_get_dimensions(db_session):
 
 
 async def test_save_and_get_version(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     node = await engine.create_node("engine_version_test")
 
     version = await engine.save_version(node.id)
@@ -131,7 +131,7 @@ async def test_save_and_get_version(db_session):
 
 
 async def test_get_node_history(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     node = await engine.create_node("engine_history_test")
     await engine.save_version(node.id)
     await engine.save_version(node.id)
@@ -142,13 +142,13 @@ async def test_get_node_history(db_session):
 
 
 async def test_save_version_not_found(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     with pytest.raises(ValueError, match="Node not found"):
         await engine.save_version(uuid.uuid4())
 
 
 async def test_get_subgraph(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     n1 = await engine.create_node("subgraph_a_test")
     n2 = await engine.create_node("subgraph_b_test")
     await engine.create_edge(n1.id, n2.id, "related", 0.5)
@@ -159,14 +159,14 @@ async def test_get_subgraph(db_session):
 
 
 async def test_get_subgraph_empty(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     subgraph = await engine.get_subgraph([])
     assert len(subgraph["nodes"]) == 0
     assert len(subgraph["edges"]) == 0
 
 
 async def test_compute_richness(db_session):
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     node = await engine.create_node("richness_test")
 
     # No facts, no dimensions, no access
@@ -185,7 +185,7 @@ async def test_compute_richness(db_session):
 
 async def test_full_workflow(db_session):
     """End-to-end test of the graph engine."""
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     fact_repo = FactRepository(db_session)
 
     # Create nodes
@@ -222,7 +222,7 @@ async def test_full_workflow(db_session):
 
 async def test_create_edge_low_weight_is_stored(db_session):
     """Edge with low abs(weight) is stored — no min_edge_weight filter."""
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     n1 = await engine.create_node("threshold_a_test")
     n2 = await engine.create_node("threshold_b_test")
 
@@ -233,7 +233,7 @@ async def test_create_edge_low_weight_is_stored(db_session):
 
 async def test_create_edge_negative_weight(db_session):
     """Negative weight creates the edge without filtering."""
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     n1 = await engine.create_node("neg_threshold_a_test")
     n2 = await engine.create_node("neg_threshold_b_test")
 
@@ -242,23 +242,11 @@ async def test_create_edge_negative_weight(db_session):
     assert edge.weight == -0.5
 
 
-async def test_increment_access_count_deadlock_retry(db_session):
-    """increment_access_count retries on deadlock and succeeds."""
-    from sqlalchemy.exc import DBAPIError
+async def test_increment_access_count(db_session):
+    """increment_access_count updates the node counter."""
+    engine = ReadGraphEngine(session=db_session)
+    node = await engine.create_node("access_count_test")
 
-    from kt_graph.engine import _is_deadlock
-
-    engine = GraphEngine(db_session)
-    node = await engine.create_node("deadlock_retry_test")
-
-    # Verify _is_deadlock helper recognises a fake deadlock
-    class FakeDeadlock:
-        sqlstate = "40P01"
-
-    fake_exc = DBAPIError("stmt", {}, FakeDeadlock())  # type: ignore[arg-type]
-    assert _is_deadlock(fake_exc)
-
-    # Verify the node's access count increments normally despite savepoints
     await engine.increment_access_count(node.id)
     result = await db_session.execute(select(NodeCounter).where(NodeCounter.node_id == node.id))
     counter = result.scalar_one()

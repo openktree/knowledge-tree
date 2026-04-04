@@ -151,6 +151,9 @@ class IngestWorker(BaseWorker):
                 )
             system_prompt += index_context
 
+        # Collect raw_source_ids from processed sources for browse_facts tool
+        raw_source_ids = [ps.raw_source_id for ps in processed_sources if ps.raw_source_id]
+
         # Build initial state — pre-populate with prior nodes for expansion
         state = IngestState(
             conversation_id=conversation_id,
@@ -164,6 +167,7 @@ class IngestWorker(BaseWorker):
             gathered_fact_count=decomp_summary.total_facts,
             content_index=content_index,
             partition_index_range=partition_index_range,
+            raw_source_ids=raw_source_ids,
             messages=messages,
             visited_nodes=list(prior_visited_nodes or []),
             created_nodes=list(prior_created_nodes or []),
@@ -241,14 +245,17 @@ class IngestWorker(BaseWorker):
 
         await ctx.emit("phase_change", data={"phase": "building"})
 
-        # Reconstruct fact pool summary and source list
-        decomp_summary = await reconstruct_decomp_summary(conv_uuid, ctx.session)
-        processed_sources = await reconstruct_processed_sources(conv_uuid, ctx.session)
+        # Reconstruct fact pool summary and source list using a short-lived
+        # graph-db session (these tables are graph-db only).
+        assert ctx.session_factory is not None, "session_factory required for expansion"
+        async with ctx.session_factory() as graph_session:
+            decomp_summary = await reconstruct_decomp_summary(conv_uuid, graph_session)
+            processed_sources = await reconstruct_processed_sources(conv_uuid, graph_session)
 
-        # Gather prior created/visited nodes
-        repo = ConversationRepository(ctx.session)
-        prior_created = await repo.get_all_created_nodes(conv_uuid)
-        prior_visited = await repo.get_all_visited_nodes(conv_uuid)
+            # Gather prior created/visited nodes
+            repo = ConversationRepository(graph_session)
+            prior_created = await repo.get_all_created_nodes(conv_uuid)
+            prior_visited = await repo.get_all_visited_nodes(conv_uuid)
 
         await ctx.emit(
             "activity_log",

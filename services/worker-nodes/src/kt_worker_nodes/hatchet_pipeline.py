@@ -41,34 +41,21 @@ class HatchetPipeline:
         self._api_key = api_key
 
     @asynccontextmanager
-    async def _open_sessions(
-        self,
-        *,
-        write_only: bool = False,
-    ) -> AsyncGenerator[tuple[Any, Any], None]:
-        """Open graph-db session and optional write-db session.
+    async def _open_sessions(self) -> AsyncGenerator[tuple[None, Any], None]:
+        """Open write-db session for worker pipelines.
 
-        When ``write_only=True`` the graph-db session is skipped entirely,
-        avoiding a connection checkout from the graph-db pool.  Use this for
-        phases that route all reads/writes through write-db + Qdrant.
+        Workers operate in write-db-only mode — all reads route through
+        write-db or Qdrant via WorkerGraphEngine.  No graph-db sessions
+        are opened.
         """
         write_session = None
         if self._state.write_session_factory is not None:
             write_session = self._state.write_session_factory()
-
-        if write_only:
-            try:
-                yield None, write_session
-            finally:
-                if write_session is not None:
-                    await write_session.close()
-        else:
-            async with self._state.session_factory() as session:
-                try:
-                    yield session, write_session
-                finally:
-                    if write_session is not None:
-                        await write_session.close()
+        try:
+            yield None, write_session
+        finally:
+            if write_session is not None:
+                await write_session.close()
 
     # -- Internal helpers --------------------------------------------------
 
@@ -84,7 +71,7 @@ class HatchetPipeline:
         EmbeddingService are created instead of using the shared worker instances.
         """
         from kt_agents_core.state import AgentContext
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         if self._api_key:
             from kt_models.embeddings import EmbeddingService
@@ -96,10 +83,9 @@ class HatchetPipeline:
             model_gateway = self._state.model_gateway  # type: ignore[assignment]
             embedding_service = self._state.embedding_service  # type: ignore[assignment]
 
-        graph_engine = GraphEngine(
-            session,
+        graph_engine = WorkerGraphEngine(
+            write_session,
             embedding_service,
-            write_session=write_session,
             qdrant_client=self._state.qdrant_client,
         )
         return AgentContext(
@@ -107,7 +93,7 @@ class HatchetPipeline:
             provider_registry=self._state.provider_registry,  # type: ignore[arg-type]
             model_gateway=model_gateway,
             embedding_service=embedding_service,
-            session=session,
+            session=None,
             session_factory=self._state.session_factory,
             content_fetcher=self._state.content_fetcher,  # type: ignore[arg-type]
             emit_event=emit_event,
@@ -427,7 +413,7 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions(write_only=True) as (_, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("full_dimensions: write_session is required")
             ctx = await self._build_ctx(None, write_session=write_session)
@@ -566,7 +552,7 @@ class HatchetPipeline:
         """
         from kt_ontology.crystallization import CrystallizationPipeline
 
-        async with self._open_sessions(write_only=True) as (session, write_session):
+        async with self._open_sessions() as (session, write_session):
             if write_session is None:
                 raise RuntimeError("crystallize: write_session is required")
             ctx = await self._build_ctx(session, write_session=write_session)
@@ -678,7 +664,6 @@ class HatchetPipeline:
         Returns ``{node_id, parent_id, nodes_created}``.
         """
         from kt_config.types import COMPOSITE_NODE_TYPES, DEFAULT_PARENTS
-        from kt_graph.engine import GraphEngine
         from kt_ontology.ancestry import AncestryPipeline
         from kt_ontology.registry import OntologyProviderRegistry
 
@@ -695,10 +680,11 @@ class HatchetPipeline:
         )
 
         async with self._open_sessions() as (session, write_session):
-            graph_engine = GraphEngine(
-                session,
+            from kt_graph.worker_engine import WorkerGraphEngine as _WGE
+
+            graph_engine = _WGE(
+                write_session,
                 self._state.embedding_service,  # type: ignore[arg-type]
-                write_session=write_session,
                 qdrant_client=self._state.qdrant_client,
             )
 
