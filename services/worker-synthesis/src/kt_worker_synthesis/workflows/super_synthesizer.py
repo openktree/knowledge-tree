@@ -58,6 +58,7 @@ async def reconnaissance(input: SuperSynthesizerInput, ctx: Context) -> dict[str
         model_gateway=worker_state.model_gateway,
         embedding_service=worker_state.embedding_service,
         session=None,
+        qdrant_client=worker_state.qdrant_client,
     )
 
     # Search broadly to map the landscape

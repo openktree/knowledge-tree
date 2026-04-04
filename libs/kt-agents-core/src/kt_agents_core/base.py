@@ -124,8 +124,11 @@ class BaseAgent(ABC, Generic[S]):
             )
             logger.info("[%s] tool_call: %s(%s)", self.emit_tool_label, name, args_summary)
             try:
-                async with self.ctx.session.begin_nested():
-                    tool_fn = tools_by_name[name]
+                tool_fn = tools_by_name[name]
+                if self.ctx.session is not None:
+                    async with self.ctx.session.begin_nested():
+                        result = await tool_fn.ainvoke(tc["args"])
+                else:
                     result = await tool_fn.ainvoke(tc["args"])
                 result_str = str(result)
                 result_preview = result_str[:200] + "..." if len(result_str) > 200 else result_str
@@ -147,10 +150,11 @@ class BaseAgent(ABC, Generic[S]):
                     )
                 )
 
-        try:
-            await self.ctx.session.flush()
-        except Exception:
-            logger.exception("Error flushing after tool execution")
+        if self.ctx.session is not None:
+            try:
+                await self.ctx.session.flush()
+            except Exception:
+                logger.exception("Error flushing after tool execution")
 
         return tool_messages
 
