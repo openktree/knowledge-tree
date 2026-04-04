@@ -805,7 +805,8 @@ async def test_import_facts_creates_new(api_session_factory):
     """Import a fact and verify it exists."""
     import uuid as _uuid
 
-    unique_content = f"Imported test fact for API test {_uuid.uuid4()}"
+    unique_id = str(_uuid.uuid4())
+    unique_content = f"Imported test fact {unique_id} with truly unique content xyzzy"
     async with api_session_factory() as session:
         app = create_app()
 
@@ -821,7 +822,7 @@ async def test_import_facts_creates_new(api_session_factory):
                 json={
                     "facts": [
                         {
-                            "id": "old-fact-id",
+                            "id": unique_id,
                             "content": unique_content,
                             "fact_type": "claim",
                             "created_at": "2025-01-01T00:00:00Z",
@@ -833,7 +834,7 @@ async def test_import_facts_creates_new(api_session_factory):
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["imported_facts"]) == 1
-            assert data["imported_facts"][0]["old_id"] == "old-fact-id"
+            assert data["imported_facts"][0]["old_id"] == unique_id
             assert data["imported_facts"][0]["is_new"] is True
 
             # Verify the fact exists
