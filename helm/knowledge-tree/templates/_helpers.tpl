@@ -192,6 +192,8 @@ Outputs a list of env var definitions.
   value: "true"
 - name: EMAIL_PROVIDER
   value: "resend"
+- name: EMAIL_VERIFICATION
+  value: {{ .Values.email.verification | default false | quote }}
 - name: EMAIL_FROM_ADDRESS
   value: {{ ((.Values.email).resend).fromAddress | default "" | quote }}
 - name: RESEND_API_KEY
