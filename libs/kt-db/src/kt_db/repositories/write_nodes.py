@@ -262,7 +262,7 @@ class WriteNodeRepository:
             return nodes
 
         # Fallback: ILIKE for exact substring matches.
-        escaped = query.replace("%", r"\%").replace("_", r"\_")
+        escaped = query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
         stmt2 = select(WriteNode).where(WriteNode.concept.ilike(f"%{escaped}%"))
         if node_type is not None:
             stmt2 = stmt2.where(WriteNode.node_type == node_type)

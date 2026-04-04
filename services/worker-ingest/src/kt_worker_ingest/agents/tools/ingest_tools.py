@@ -78,7 +78,7 @@ def create_ingest_tools(
             return json.dumps({"error": "No valid node entries provided"})
 
         result = await build_nodes_impl(node_dicts, ctx, state, scope_name=state.scope)
-        await ctx.graph_engine._write_session.commit()
+        await ctx.graph_engine.commit()
 
         result["nav_remaining"] = state.nav_remaining
         return json.dumps(result, default=str)

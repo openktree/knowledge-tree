@@ -399,7 +399,7 @@ class NodeCreationPipeline:
 
         # Commit all nodes so they're visible to each other in later phases
         try:
-            await ctx.graph_engine._write_session.commit()
+            await ctx.graph_engine.commit()
         except Exception:
             logger.exception("Error committing create_batch")
             try:

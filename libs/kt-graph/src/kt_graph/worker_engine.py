@@ -101,6 +101,14 @@ class WorkerGraphEngine:
             )
         return self._write_node_repo, self._write_edge_repo, self._write_dim_repo, self._write_fact_repo  # type: ignore[return-value]
 
+    async def commit(self) -> None:
+        """Commit the write-db session.
+
+        Callers should use this instead of accessing _write_session directly.
+        """
+        if self._write_session is not None:
+            await self._write_session.commit()
+
     # ── Helpers ───────────────────────────────────────────────────────
 
     @staticmethod
@@ -250,6 +258,7 @@ class WorkerGraphEngine:
         An in-memory Node object is returned (cached for subsequent methods).
         The sync worker propagates to graph-db.
         """
+        self._require_write_repos()
         node_key = make_node_key(node_type, concept)
         det_uuid = key_to_uuid(node_key)
 
@@ -277,7 +286,7 @@ class WorkerGraphEngine:
             metadata_=metadata_,
             entity_subtype=entity_subtype,
         )
-        await self._write_session.commit()
+        await self.commit()
 
         # Build in-memory Node object (not persisted to graph-db).
         node = Node(
@@ -340,7 +349,7 @@ class WorkerGraphEngine:
             fact_ids=fact_id_strs,
             metadata_=metadata,
         )
-        await self._write_session.commit()
+        await self.commit()
 
         # Cache edge UUID -> key for link_fact_to_edge
         self._edge_key_cache[key_to_uuid(edge_key)] = edge_key
@@ -361,7 +370,7 @@ class WorkerGraphEngine:
                 concept=node.concept,
                 parent_key=make_node_key(parent.node_type, parent.concept),
             )
-            await self._write_session.commit()
+            await self.commit()
             # Update cache so subsequent parent chain validation works
             if node_id in self._node_cache:
                 self._node_cache[node_id].parent_id = parent_id
@@ -459,7 +468,7 @@ class WorkerGraphEngine:
             is_definitive=is_definitive,
             fact_ids=fact_id_strs,
         )
-        await self._write_session.commit()
+        await self.commit()
 
     async def delete_dimensions(self, node_id: uuid.UUID) -> int:
         """Delete all dimensions for a node from write-db. Returns count deleted.
@@ -493,7 +502,7 @@ class WorkerGraphEngine:
                 definition=definition,
                 definition_source=source,
             )
-            await self._write_session.commit()
+            await self.commit()
             # Update cache so pipeline can read definition back
             if node_id in self._node_cache:
                 self._node_cache[node_id].definition = definition
@@ -522,7 +531,7 @@ class WorkerGraphEngine:
                 return
             node_key = wn.key
         await self._write_node_repo.append_fact_id(node_key, str(fact_id))
-        await self._write_session.commit()
+        await self.commit()
         await self._update_qdrant_node_id(fact_id, node_id, append=True)
 
     async def unlink_fact_from_node(self, node_id: uuid.UUID, fact_id: uuid.UUID) -> bool:
@@ -540,7 +549,7 @@ class WorkerGraphEngine:
                 return False
             node_key = wn.key
         await self._write_node_repo.remove_fact_id(node_key, str(fact_id))
-        await self._write_session.commit()
+        await self.commit()
         await self._update_qdrant_node_id(fact_id, node_id, append=False)
         return True
 
@@ -561,7 +570,7 @@ class WorkerGraphEngine:
             )
             return
         await self._write_edge_repo.append_fact_id(edge_key, str(fact_id))
-        await self._write_session.commit()
+        await self.commit()
 
     async def increment_access_count(self, node_id: uuid.UUID) -> None:
         """Increment a node's access_count by 1 (best-effort)."""
@@ -570,7 +579,7 @@ class WorkerGraphEngine:
             try:
                 node_key = make_node_key(node.node_type, node.concept)
                 await self._write_node_repo.increment_access_count(node_key)
-                await self._write_session.commit()
+                await self.commit()
             except Exception:
                 logger.warning("Non-critical: failed to increment access_count for node %s", node_id)
 
@@ -581,7 +590,7 @@ class WorkerGraphEngine:
             try:
                 node_key = make_node_key(node.node_type, node.concept)
                 await self._write_node_repo.increment_update_count(node_key)
-                await self._write_session.commit()
+                await self.commit()
             except Exception:
                 logger.warning("Non-critical: failed to increment update_count for node %s", node_id)
 
@@ -603,7 +612,7 @@ class WorkerGraphEngine:
             upsert_kwargs.update(kwargs)
             await self._write_node_repo.upsert(**upsert_kwargs)  # type: ignore[arg-type]
 
-        await self._write_session.commit()
+        await self.commit()
         # Re-fetch to get updated state
         wn = await self._write_node_repo.get_by_uuid(node_id)
         return self._write_node_to_node(wn)  # type: ignore[arg-type]
@@ -687,15 +696,25 @@ class WorkerGraphEngine:
         write_edges = await self._write_edge_repo.get_edges_for_node(node_key)
         edges: list[Edge] = []
         for we in write_edges:
+            edge_uuid = key_to_uuid(we.key)
+            # Filter by direction
+            src_uuid = key_to_uuid(we.source_node_key)
+            tgt_uuid = key_to_uuid(we.target_node_key)
+            if direction == "outgoing" and src_uuid != node_id:
+                continue
+            if direction == "incoming" and tgt_uuid != node_id:
+                continue
             edge = Edge(
-                id=key_to_uuid(we.key),
-                source_node_id=key_to_uuid(we.source_node_key),
-                target_node_id=key_to_uuid(we.target_node_key),
+                id=edge_uuid,
+                source_node_id=src_uuid,
+                target_node_id=tgt_uuid,
                 relationship_type=we.relationship_type,
                 weight=we.weight,
                 justification=we.justification,
             )
             edges.append(edge)
+            # Populate edge key cache for link_fact_to_edge
+            self._edge_key_cache[edge_uuid] = we.key
         return edges
 
     async def get_dimensions(self, node_id: uuid.UUID) -> list[Dimension]:

@@ -709,7 +709,7 @@ async def decompose_all_sources(
                 task.source_name,
             )
         if ctx.graph_engine._write_session is not None:
-            await ctx.graph_engine._write_session.commit()
+            await ctx.graph_engine.commit()
 
         if emit and (i + 1) % 3 == 0:
             await emit(

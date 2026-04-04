@@ -298,7 +298,7 @@ class IngestAgentImpl(BaseAgent[IngestState]):
                     )
                 tool_fn = tools_by_name[name]
                 result = await tool_fn.ainvoke(args)
-                await self.ctx.graph_engine._write_session.commit()
+                await self.ctx.graph_engine.commit()
                 tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=name))
             except Exception as exc:
                 logger.warning("Ingest tool %s error: %s: %s", name, type(exc).__name__, exc)

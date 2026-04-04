@@ -70,7 +70,7 @@ class EdgePipeline:
                 )
 
         try:
-            await self._ctx.graph_engine._write_session.commit()
+            await self._ctx.graph_engine.commit()
         except Exception:
             logger.exception("Error committing edge candidate batch")
             try:

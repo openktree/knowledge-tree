@@ -326,7 +326,7 @@ class DimensionPipeline:
                 )
 
         try:
-            await ctx.graph_engine._write_session.commit()
+            await ctx.graph_engine.commit()
         except Exception:
             logger.exception("Error committing dimension batch")
             try:
