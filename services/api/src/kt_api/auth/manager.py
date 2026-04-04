@@ -14,6 +14,7 @@ from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy import func, select
 
 from kt_api.auth.db import get_user_db
+from kt_api.auth.email_templates import password_reset_email_html, verification_email_html
 from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.system_settings import SystemSettingsRepository
@@ -123,13 +124,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         if not (settings.email_enabled and settings.email_verification):
             return
 
-        base_url = str(request.base_url).rstrip("/") if request else "http://localhost:3000"
+        base_url = settings.frontend_url.rstrip("/")
         verify_url = html.escape(f"{base_url}/verify?token={token}")
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,
-                subject="Verify your email — Knowledge Tree",
-                html=f'<p>Click <a href="{verify_url}">here</a> to verify your email address.</p>',
+                subject="Welcome to Knowledge Tree — Verify Your Email",
+                html=verification_email_html(verify_url, user.email),
             )
         )
         logger.info("Verification email sent to %s", user.email)
@@ -141,13 +142,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         if not settings.email_enabled:
             return
 
-        base_url = str(request.base_url).rstrip("/") if request else "http://localhost:3000"
+        base_url = settings.frontend_url.rstrip("/")
         reset_url = html.escape(f"{base_url}/reset-password?token={token}")
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,
-                subject="Reset your password — Knowledge Tree",
-                html=f'<p>Click <a href="{reset_url}">here</a> to reset your password.</p>',
+                subject="Reset Your Password — Knowledge Tree",
+                html=password_reset_email_html(reset_url, user.email),
             )
         )
         logger.info("Password reset email sent to %s", user.email)

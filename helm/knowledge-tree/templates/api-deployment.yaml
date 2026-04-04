@@ -32,6 +32,8 @@ spec:
               protocol: TCP
           env:
             {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+            - name: FRONTEND_URL
+              value: {{ .Values.api.frontendUrl | default (printf "https://research.%s" (.Values.global.siteDomain | default "openktree.com")) | quote }}
             {{- if .Values.api.corsOrigins }}
             - name: CORS_ORIGINS
               value: {{ .Values.api.corsOrigins | quote }}

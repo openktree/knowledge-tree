@@ -234,6 +234,14 @@ _register(
     },
 )
 
+# ---- Frontend --------------------------------------------------------------
+_register(
+    "frontend",
+    {
+        "frontend_url": "url",
+    },
+)
+
 # ---- Ingest ----------------------------------------------------------------
 _register(
     "ingest",
@@ -567,6 +575,9 @@ class Settings(BaseSettings):
     email_verification: bool = False
     email_from_address: str = ""
     resend_api_key: str = ""
+
+    # Frontend
+    frontend_url: str = "http://localhost:3000"
 
     model_config = {"extra": "ignore"}
 
