@@ -54,6 +54,52 @@ class ConversationRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_with_stats(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        mode: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List conversations with message count and latest assistant status in a single query."""
+        # Subquery for latest assistant message status per conversation
+        latest_status_sq = (
+            select(
+                ConversationMessage.conversation_id,
+                ConversationMessage.status,
+            )
+            .where(ConversationMessage.role == "assistant")
+            .distinct(ConversationMessage.conversation_id)
+            .order_by(
+                ConversationMessage.conversation_id,
+                ConversationMessage.turn_number.desc(),
+            )
+            .subquery("latest_assistant")
+        )
+
+        stmt = (
+            select(
+                Conversation,
+                func.count(ConversationMessage.id).label("message_count"),
+                latest_status_sq.c.status.label("latest_status"),
+            )
+            .outerjoin(ConversationMessage, Conversation.id == ConversationMessage.conversation_id)
+            .outerjoin(latest_status_sq, Conversation.id == latest_status_sq.c.conversation_id)
+            .group_by(Conversation.id, latest_status_sq.c.status)
+        )
+        if mode is not None:
+            stmt = stmt.where(Conversation.mode == mode)
+        stmt = stmt.order_by(Conversation.updated_at.desc()).offset(offset).limit(limit)
+
+        result = await self._session.execute(stmt)
+        return [
+            {
+                "conversation": row.Conversation,
+                "message_count": row.message_count,
+                "latest_status": row.latest_status,
+            }
+            for row in result.all()
+        ]
+
     async def count(self, mode: str | None = None) -> int:
         """Count total conversations, optionally filtered by mode."""
         stmt = select(func.count(Conversation.id))

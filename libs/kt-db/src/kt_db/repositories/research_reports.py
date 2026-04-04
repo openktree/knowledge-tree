@@ -82,6 +82,10 @@ class ResearchReportRepository:
         result = await self._session.execute(select(ResearchReport).where(ResearchReport.message_id == message_id))
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, report_id: uuid.UUID) -> ResearchReport | None:
+        result = await self._session.execute(select(ResearchReport).where(ResearchReport.id == report_id))
+        return result.scalar_one_or_none()
+
     async def get_by_workflow_run_id(self, workflow_run_id: str) -> ResearchReport | None:
         result = await self._session.execute(
             select(ResearchReport).where(ResearchReport.workflow_run_id == workflow_run_id)

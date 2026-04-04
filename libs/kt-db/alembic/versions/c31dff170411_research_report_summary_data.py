@@ -1,6 +1,6 @@
 """add summary_data, workflow_run_id to research_reports; make FKs nullable
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: c31dff170411
 Revises: v8w9x0y1z2a3
 Create Date: 2026-04-04 00:00:00.000000
 
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
+revision: str = "c31dff170411"
 down_revision: Union[str, None] = "v8w9x0y1z2a3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

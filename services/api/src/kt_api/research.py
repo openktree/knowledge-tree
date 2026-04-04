@@ -930,7 +930,6 @@ async def get_research_summary(
         )
 
     # ── Check if still running ───────────────────────────────────────
-    messages = messages or await conv_repo.get_messages(conv_uuid)
     for msg in reversed(messages):
         if msg.role == "assistant" and msg.status in ("pending", "running"):
             raise HTTPException(

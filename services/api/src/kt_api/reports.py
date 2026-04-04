@@ -14,33 +14,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.dependencies import get_db_session
 from kt_api.schemas import ReportResponse
+from kt_db.models import ResearchReport
 from kt_db.repositories.research_reports import ResearchReportRepository
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
 
 
-def _report_to_response(report: object) -> ReportResponse:
+def _report_to_response(report: ResearchReport) -> ReportResponse:
     """Convert a ResearchReport ORM object to the API response."""
     return ReportResponse(
-        id=str(report.id),  # type: ignore[attr-defined]
-        message_id=str(report.message_id) if report.message_id else None,  # type: ignore[attr-defined]
-        conversation_id=str(report.conversation_id) if report.conversation_id else None,  # type: ignore[attr-defined]
-        workflow_run_id=report.workflow_run_id,  # type: ignore[attr-defined]
-        report_type=report.report_type,  # type: ignore[attr-defined]
-        nodes_created=report.nodes_created,  # type: ignore[attr-defined]
-        edges_created=report.edges_created,  # type: ignore[attr-defined]
-        waves_completed=report.waves_completed,  # type: ignore[attr-defined]
-        explore_budget=report.explore_budget,  # type: ignore[attr-defined]
-        explore_used=report.explore_used,  # type: ignore[attr-defined]
-        nav_budget=report.nav_budget,  # type: ignore[attr-defined]
-        nav_used=report.nav_used,  # type: ignore[attr-defined]
-        scope_summaries=report.scope_summaries or [],  # type: ignore[attr-defined]
-        super_sources=report.super_sources,  # type: ignore[attr-defined]
-        summary_data=report.summary_data,  # type: ignore[attr-defined]
-        total_prompt_tokens=report.total_prompt_tokens,  # type: ignore[attr-defined]
-        total_completion_tokens=report.total_completion_tokens,  # type: ignore[attr-defined]
-        total_cost_usd=report.total_cost_usd,  # type: ignore[attr-defined]
-        created_at=report.created_at,  # type: ignore[attr-defined]
+        id=str(report.id),
+        message_id=str(report.message_id) if report.message_id else None,
+        conversation_id=str(report.conversation_id) if report.conversation_id else None,
+        workflow_run_id=report.workflow_run_id,
+        report_type=report.report_type,
+        nodes_created=report.nodes_created,
+        edges_created=report.edges_created,
+        waves_completed=report.waves_completed,
+        explore_budget=report.explore_budget,
+        explore_used=report.explore_used,
+        nav_budget=report.nav_budget,
+        nav_used=report.nav_used,
+        scope_summaries=report.scope_summaries or [],
+        super_sources=report.super_sources,
+        summary_data=report.summary_data,
+        total_prompt_tokens=report.total_prompt_tokens,
+        total_completion_tokens=report.total_completion_tokens,
+        total_cost_usd=report.total_cost_usd,
+        created_at=report.created_at,
     )
 
 
@@ -56,15 +57,7 @@ async def get_report(
         raise HTTPException(status_code=400, detail="Invalid report ID")
 
     repo = ResearchReportRepository(session)
-    report = await repo.get_by_message_id(report_uuid)
-    if report is None:
-        # Try by report ID directly
-        from sqlalchemy import select
-
-        from kt_db.models import ResearchReport
-
-        result = await session.execute(select(ResearchReport).where(ResearchReport.id == report_uuid))
-        report = result.scalar_one_or_none()
+    report = await repo.get_by_id(report_uuid)
 
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found")
