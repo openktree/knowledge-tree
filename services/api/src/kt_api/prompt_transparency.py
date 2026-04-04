@@ -153,7 +153,9 @@ def _load_prompts() -> list[PromptEntry]:
         pass
 
     try:
-        from kt_worker_nodes.pipelines.parent.pipeline import _SYSTEM_PROMPT as PARENT_PROMPT
+        from kt_worker_nodes.pipelines.parent.pipeline import (  # type: ignore[import-not-found]
+            _SYSTEM_PROMPT as PARENT_PROMPT,
+        )
 
         entries.append(
             PromptEntry(

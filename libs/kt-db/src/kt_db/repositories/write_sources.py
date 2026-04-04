@@ -10,6 +10,7 @@ import uuid
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_db.write_models import WriteRawSource
@@ -74,6 +75,9 @@ class WriteSourceRepository:
             content_hash = self.compute_hash(raw_content or "")
         source_id = uri_to_source_id(uri)
 
+        # Use ON CONFLICT (id) DO NOTHING to avoid cross-index deadlocks.
+        # The deterministic id (from URI) means same-URI concurrent inserts
+        # conflict only on the PK — no multi-index lock ordering issues.
         stmt = (
             pg_insert(WriteRawSource)
             .values(
@@ -85,18 +89,34 @@ class WriteSourceRepository:
                 provider_id=provider_id,
                 provider_metadata=provider_metadata,
             )
-            .on_conflict_do_update(
-                index_elements=["content_hash"],
-                set_={"content_hash": pg_insert(WriteRawSource).excluded.content_hash},
-            )
+            .on_conflict_do_nothing(index_elements=["id"])
             .returning(WriteRawSource.id)
         )
-        result = await self._session.execute(stmt)
-        returned_id = result.scalar_one()
 
-        source = await self.get_by_id(returned_id)
-        assert source is not None  # noqa: S101
-        return source
+        returned_id = None
+        try:
+            async with self._session.begin_nested():
+                result = await self._session.execute(stmt)
+                returned_id = result.scalar_one_or_none()
+        except IntegrityError:
+            # content_hash collision from a different URI — savepoint
+            # rolls back the INSERT, fall through to lookup below.
+            pass
+
+        if returned_id is not None:
+            source = await self.get_by_id(returned_id)
+            assert source is not None  # noqa: S101
+            return source
+
+        # Row already exists — look up by deterministic id first, then content_hash
+        existing = await self.get_by_id(source_id)
+        if existing is not None:
+            return existing
+        existing = await self.get_by_content_hash(content_hash)
+        if existing is not None:
+            return existing
+
+        raise RuntimeError(f"create_or_get: could not insert or find source for uri={uri}")
 
     async def update_content(
         self,

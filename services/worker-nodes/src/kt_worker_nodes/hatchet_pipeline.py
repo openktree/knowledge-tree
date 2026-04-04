@@ -194,8 +194,8 @@ class HatchetPipeline:
             from kt_db.repositories.write_nodes import WriteNodeRepository
 
             nid = uuid.UUID(existing_node_id)
-            async with self._open_sessions() as (session, write_session):
-                ctx = await self._build_ctx(session, write_session=write_session)
+            async with self._open_sessions() as (_, write_session):
+                ctx = await self._build_ctx(None, write_session=write_session)
                 node_pipeline = NodeCreationPipeline(ctx)
 
                 wn = await WriteNodeRepository(write_session).get_by_uuid(nid) if write_session else None
@@ -212,16 +212,16 @@ class HatchetPipeline:
                         await node_pipeline.create_batch([task], orch_state)
 
                 try:
-                    await session.commit()
+                    await write_session.commit()
                 except Exception:
-                    await session.rollback()
+                    await write_session.rollback()
 
             # Extract scalar values while task is still populated
             node_id_str = str(task.node.id) if task.node is not None else existing_node_id
             result_node_type = task.node.node_type if task.node is not None else node_type
         else:
-            async with self._open_sessions() as (session, write_session):
-                ctx = await self._build_ctx(session, write_session=write_session)
+            async with self._open_sessions() as (_, write_session):
+                ctx = await self._build_ctx(None, write_session=write_session)
                 node_pipeline = NodeCreationPipeline(ctx)
 
                 await node_pipeline.classify_and_gather_batch([task], orch_state)
@@ -238,9 +238,9 @@ class HatchetPipeline:
                 # back explicitly so we can still read the task results -- the node
                 # was already committed by create_batch's internal commit.
                 try:
-                    await session.commit()
+                    await write_session.commit()
                 except Exception:
-                    await session.rollback()
+                    await write_session.rollback()
 
             # Extract scalar values before the session closes -- accessing
             # expired ORM attributes after session.close() raises
@@ -273,10 +273,10 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("enrich: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
             node = Node(id=nid, concept=wn.concept, node_type=wn.node_type) if wn else None
@@ -316,7 +316,7 @@ class HatchetPipeline:
 
             enricher = PoolEnricher(ctx)
             result = await enricher.enrich(node)
-            await session.commit()
+            await write_session.commit()
 
         return {
             "node_id": node_id,
@@ -339,10 +339,10 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("dimensions: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
             node = Node(id=nid, concept=wn.concept, node_type=wn.node_type) if wn else None
@@ -361,7 +361,7 @@ class HatchetPipeline:
             dim_pipeline = DimensionPipeline(ctx)
             dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
 
-            await session.commit()
+            await write_session.commit()
 
             # Track fact count at build time for staleness detection.
             # Committed after graph-db so the watermark only advances
@@ -550,8 +550,8 @@ class HatchetPipeline:
         # earlier create_node task via the Hatchet input.
         node = Node(id=nid, concept=concept, node_type=node_type)
 
-        async with self._open_sessions() as (session, write_session):
-            ctx = await self._build_ctx(session, write_session=write_session)
+        async with self._open_sessions() as (_, write_session):
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             task = CreateNodeTask(name=concept, node_type=node_type, seed_key=f"{node_type}:{concept}")
             task.node = node
@@ -566,7 +566,7 @@ class HatchetPipeline:
             edge_pipeline = EdgePipeline(ctx)
             await edge_pipeline.resolve_from_candidates_batch([task], orch_state)
 
-            await session.commit()
+            await write_session.commit()
 
         edge_ids = [str(eid) for eid in task.result.get("edge_ids", [])]
         return {"edge_ids": edge_ids, "edges_created": task.edges_created}
@@ -593,10 +593,10 @@ class HatchetPipeline:
         nid = __import__("uuid").UUID(node_id)
         node = Node(id=nid, concept=concept, node_type=node_type)
 
-        async with self._open_sessions() as (session, write_session):
-            ctx = await self._build_ctx(session, write_session=write_session)
+        async with self._open_sessions() as (_, write_session):
+            ctx = await self._build_ctx(None, write_session=write_session)
             resolver = EdgeResolver(ctx)
             result = await resolver.refresh_existing_edges(node)
-            await session.commit()
+            await write_session.commit()
 
         return result
