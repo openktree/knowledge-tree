@@ -187,6 +187,8 @@ api:
     repository: ""
     tag: ""
   port: 8000
+  # Override frontend URL for email links (default: https://research.<global.siteDomain>)
+  frontendUrl: ""
   resources:
     requests:
       memory: 256Mi

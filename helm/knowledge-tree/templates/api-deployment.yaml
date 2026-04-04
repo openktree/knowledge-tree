@@ -32,6 +32,10 @@ spec:
               protocol: TCP
           env:
             {{- include "knowledge-tree.sharedEnv" . | nindent 12 }}
+            # Empty string in values.yaml is treated as falsy by Helm `default`,
+            # so the siteDomain-based fallback kicks in unless explicitly overridden.
+            - name: FRONTEND_URL
+              value: {{ .Values.api.frontendUrl | default (printf "https://research.%s" (.Values.global.siteDomain | default "openktree.com")) | quote }}
             {{- if .Values.api.corsOrigins }}
             - name: CORS_ORIGINS
               value: {{ .Values.api.corsOrigins | quote }}
