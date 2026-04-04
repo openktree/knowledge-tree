@@ -45,7 +45,7 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 @hatchet.task(
     name="decompose_source",
     input_validator=DecomposeSourceInput,
-    execution_timeout=timedelta(minutes=10),
+    execution_timeout=timedelta(minutes=30),
     schedule_timeout=_schedule_timeout,
     concurrency=ConcurrencyExpression(
         expression="'decompose_source'",
@@ -542,7 +542,7 @@ reingest_source_wf = hatchet.workflow(
 
 
 @reingest_source_wf.task(
-    execution_timeout=timedelta(minutes=10),
+    execution_timeout=timedelta(minutes=30),
     schedule_timeout=_schedule_timeout,
 )
 async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict:
