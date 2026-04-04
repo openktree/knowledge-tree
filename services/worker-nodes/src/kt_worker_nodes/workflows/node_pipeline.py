@@ -157,7 +157,6 @@ async def _prepare_rebuild(
         node_concept = wn.concept
         node_type = wn.node_type
         node_key = wn.key
-        enrichment_status = wn.enrichment_status
         node_fact_ids = wn.fact_ids
 
         if node_type in COMPOSITE_NODE_TYPES:
@@ -185,7 +184,7 @@ async def _prepare_rebuild(
                 fact_count = len(node_fact_ids or [])
 
             min_facts = settings.enrichment_min_facts_for_dimensions
-            if fact_count < min_facts and enrichment_status in ("stub", "partial"):
+            if fact_count < min_facts:
                 await WriteNodeRepository(ws).set_enrichment_status(node_key, "partial")
                 await ws.commit()
                 ctx.log(
