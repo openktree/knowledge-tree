@@ -539,7 +539,7 @@ async def decompose_all_sources(
     source_task_ranges: list[tuple[str, int, int]] = []  # (source_name, start_idx, end_idx)
 
     for ps in processed_sources:
-        raw_source = await _lookup_raw_source(ps.raw_source_id, ctx.session)
+        raw_source = await _lookup_raw_source(ps.raw_source_id, ctx.graph_engine._write_session)
         if raw_source is None:
             logger.warning("No raw source for %s, skipping decomposition", ps.source_id)
             source_summaries.append(
@@ -696,7 +696,7 @@ async def decompose_all_sources(
             facts = await decomp_pipeline.store_extracted_facts(
                 task.extracted,
                 task.raw_source,
-                ctx.session,
+                None,  # graph-db session no longer needed (FactRepository is vestigial)
                 ctx.embedding_service,
                 qdrant_client=ctx.qdrant_client,
                 write_session=ctx.graph_engine._write_session,
@@ -710,7 +710,6 @@ async def decompose_all_sources(
             )
         if ctx.graph_engine._write_session is not None:
             await ctx.graph_engine._write_session.commit()
-        await ctx.session.commit()
 
         if emit and (i + 1) % 3 == 0:
             await emit(
@@ -788,12 +787,32 @@ async def _lookup_raw_source(
     raw_source_id: str | None,
     session: AsyncSession,
 ) -> RawSource | None:
-    """Look up a RawSource by ID."""
+    """Look up a RawSource by ID from write-db (WriteRawSource).
+
+    Returns a graph-db RawSource-shaped object constructed from the
+    write-db record so callers (decomposition pipeline) can use it
+    without a graph-db connection.
+    """
     if raw_source_id is None:
         return None
     try:
-        result = await session.execute(select(RawSource).where(RawSource.id == uuid.UUID(raw_source_id)))
-        return result.scalar_one_or_none()
+        from kt_db.write_models import WriteRawSource
+
+        result = await session.execute(select(WriteRawSource).where(WriteRawSource.id == uuid.UUID(raw_source_id)))
+        ws = result.scalar_one_or_none()
+        if ws is None:
+            return None
+        # Build a RawSource-shaped object for callers
+        return RawSource(
+            id=ws.id,
+            uri=ws.uri,
+            title=ws.title,
+            raw_content=ws.raw_content,
+            content_hash=ws.content_hash,
+            content_type=ws.content_type,
+            provider_id=ws.provider_id,
+            is_full_text=ws.is_full_text,
+        )
     except Exception:
         logger.exception("Error looking up raw source %s", raw_source_id)
         return None

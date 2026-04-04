@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections import OrderedDict
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -63,8 +64,10 @@ class WorkerGraphEngine:
             self._qdrant_fact_repo = QdrantFactRepository(qdrant_client)
             self._qdrant_node_repo = QdrantNodeRepository(qdrant_client)
 
-        # In-memory cache for nodes created in this pipeline run.
-        self._node_cache: dict[uuid.UUID, Node] = {}
+        # In-memory LRU cache for nodes created in this pipeline run.
+        # Capped to prevent unbounded growth in long-running pipelines.
+        self._node_cache: OrderedDict[uuid.UUID, Node] = OrderedDict()
+        self._node_cache_max = 5000
 
         # Cache for edge UUID -> write-db key, populated by create_edge()
         self._edge_key_cache: dict[uuid.UUID, str] = {}
@@ -272,6 +275,8 @@ class WorkerGraphEngine:
             embedding=embedding,
         )
         self._node_cache[det_uuid] = node
+        if len(self._node_cache) > self._node_cache_max:
+            self._node_cache.popitem(last=False)  # evict oldest
 
         # Upsert embedding to Qdrant for vector search
         if embedding is not None and self._qdrant_node_repo is not None:
@@ -529,7 +534,12 @@ class WorkerGraphEngine:
         """Link a fact to an edge via write-db (appends to WriteEdge.fact_ids)."""
         edge_key = self._edge_key_cache.get(edge_id)
         if edge_key is None:
-            logger.warning("link_fact_to_edge: edge %s not found in edge key cache", edge_id)
+            logger.warning(
+                "link_fact_to_edge: edge %s not in cache — edge was likely "
+                "created in a previous pipeline run. Fact link will be "
+                "established by the sync worker instead.",
+                edge_id,
+            )
             return
         await self._write_edge_repo.append_fact_id(edge_key, str(fact_id))
         await self._write_session.commit()

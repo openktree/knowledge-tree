@@ -1158,7 +1158,7 @@ class ReadGraphEngine:
                 try:
                     await fact_repo.link_to_node(keep_id, nf.fact_id, nf.relevance_score)
                 except Exception:
-                    pass
+                    logger.warning("merge_nodes: failed to link fact %s to node %s", nf.fact_id, keep_id, exc_info=True)
 
             # Transfer edges
             absorb_edges = await edge_repo.get_edges(absorb_id, direction="both")

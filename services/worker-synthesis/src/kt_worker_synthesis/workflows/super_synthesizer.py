@@ -242,10 +242,9 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
     from kt_worker_synthesis.prompts.super_synthesizer import build_super_synthesizer_system_message
 
     write_session = None
-    if worker_state.write_session_factory is not None:
-        write_session = worker_state.write_session_factory()
-
     try:
+        if worker_state.write_session_factory is not None:
+            write_session = worker_state.write_session_factory()
         # ReadGraphEngine for graph reads during agent navigation (short-lived sessions)
         read_engine = ReadGraphEngine(
             session_factory=worker_state.session_factory,

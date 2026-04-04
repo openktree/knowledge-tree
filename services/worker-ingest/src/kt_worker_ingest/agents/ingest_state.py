@@ -52,6 +52,10 @@ class IngestState(BaseModel):
     # Partition range if running as a parallel partition agent
     partition_index_range: tuple[int, int] | None = None
 
+    # Raw source IDs for this ingest (populated from ProcessedSource),
+    # used by browse_facts tool to query write-db without hitting graph-db.
+    raw_source_ids: list[str] = Field(default_factory=list)
+
     scope: str = "ingest-building"  # pipeline tracker scope id
     phase: str = "building"  # building | done
     nudge_count: int = 0  # How many times the agent has been nudged to continue

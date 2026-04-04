@@ -424,7 +424,7 @@ All custom components use **named exports** (not default exports), except page c
 6. **Hardcoded API keys** — Never hardcode keys. Use `.env` + Pydantic Settings.
 7. **Direct DB queries outside repositories** — All SQL goes through repository classes in `kt_db.repositories`.
 8. **Missing type annotations** — All Python functions need return types. All TypeScript props need interfaces.
-9. **Using `begin_nested()`** — Use `pg_insert().on_conflict_do_nothing/update()` for upserts instead.
+9. **Using `begin_nested()` for upserts** — Use `pg_insert().on_conflict_do_nothing/update()` instead. `begin_nested()` IS appropriate for error isolation in batch loops (e.g. auto_build savepoints) where one item's failure should not poison the whole transaction.
 10. **Background tasks without Hatchet** — Heavy processing must go through Hatchet workflows, not `BackgroundTasks`.
 11. **Cross-worker direct imports** — Workers communicate via Hatchet workflow dispatch only. Use lazy imports (inside functions) when a service needs another service's types for dispatch.
 12. **Agent code in shared libs** — Only base classes (`kt_agents_core`) go in libs. Agent implementations belong in their worker service.

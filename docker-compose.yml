@@ -208,12 +208,10 @@ services:
       dockerfile: services/worker-search/Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
+      # No DATABASE_URL — worker-search uses write-db only (WorkerGraphEngine)
       WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
       REDIS_URL: "redis://redis:6379/0"
     depends_on:
-      pgbouncer-read:
-        condition: service_healthy
       pgbouncer-write:
         condition: service_healthy
       hatchet:
@@ -229,12 +227,10 @@ services:
       dockerfile: services/worker-nodes/Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-read:5432/knowledge_tree"
+      # No DATABASE_URL — worker-nodes uses write-db only (WorkerGraphEngine)
       WRITE_DATABASE_URL: "postgresql+asyncpg://kt:localdev@pgbouncer-write:5432/knowledge_tree_write"
       REDIS_URL: "redis://redis:6379/0"
     depends_on:
-      pgbouncer-read:
-        condition: service_healthy
       pgbouncer-write:
         condition: service_healthy
       hatchet:
