@@ -303,7 +303,7 @@ class IngestAgentImpl(BaseAgent[IngestState]):
             except Exception as exc:
                 logger.warning("Ingest tool %s error: %s: %s", name, type(exc).__name__, exc)
                 try:
-                    await self.ctx.graph_engine._write_session.rollback()
+                    await self.ctx.graph_engine.rollback()
                 except Exception:
                     logger.debug("Rollback failed", exc_info=True)
                 tool_messages.append(

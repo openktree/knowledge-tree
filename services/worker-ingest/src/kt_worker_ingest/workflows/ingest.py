@@ -53,6 +53,8 @@ async def _open_sessions(state: WorkerState) -> AsyncGenerator[tuple[None, Any],
     Previously this opened a graph-db session that was held for the
     entire pipeline (hours during large ingests), leaking connections.
     """
+    if state.write_session_factory is None:
+        raise RuntimeError("Ingest worker requires write_session_factory")
     write_session = state.write_session_factory()
     try:
         yield None, write_session
@@ -64,7 +66,7 @@ async def _build_agent_context(
     state: WorkerState,
     *,
     emit_event: Any | None = None,
-    write_session: Any | None = None,
+    write_session: Any,
     api_key: str | None = None,
 ) -> Any:
     """Build an AgentContext from WorkerState.
@@ -375,15 +377,18 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         content_index: ContentIndex | None = None
         try:
-            agent_ctx = await _build_agent_context(
-                worker_state,
-                emit_event=emit_cb,
-                api_key=input.api_key,
-            )
+            if input.api_key:
+                from kt_models.gateway import ModelGateway
+
+                _model_gateway = ModelGateway(api_key=input.api_key)
+            else:
+                _model_gateway = worker_state.model_gateway
+            from kt_providers.fetcher import FileDataStore as _FDS
+
             content_index = await build_content_index(
                 processed,
-                agent_ctx.model_gateway,
-                agent_ctx.file_data_store,
+                _model_gateway,
+                _FDS(),
             )
             if content_index:
                 backfill_fact_counts(
@@ -473,8 +478,11 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             # Build subgraph from merged results
             from kt_agents_core.results import build_ingest_subgraph
 
-            merge_ctx = await _build_agent_context(worker_state, emit_event=emit_cb, api_key=input.api_key)
-            subgraph = await build_ingest_subgraph(all_created_nodes, all_created_edges, merge_ctx)
+            async with _open_sessions(worker_state) as (_, merge_ws):
+                merge_ctx = await _build_agent_context(
+                    worker_state, emit_event=emit_cb, write_session=merge_ws, api_key=input.api_key
+                )
+                subgraph = await build_ingest_subgraph(all_created_nodes, all_created_edges, merge_ctx)
 
             # Persist merged result
             merged_answer = "\n\n---\n\n".join(partition_summaries) if partition_summaries else ""

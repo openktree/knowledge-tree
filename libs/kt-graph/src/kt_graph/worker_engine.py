@@ -41,24 +41,18 @@ class WorkerGraphEngine:
 
     def __init__(
         self,
-        write_session: AsyncSession | None = None,
+        write_session: AsyncSession,
         embedding_service: EmbeddingService | None = None,
         qdrant_client: AsyncQdrantClient | None = None,
     ) -> None:
         self._write_session = write_session
         self._embedding_service = embedding_service
 
-        # Write repositories (None when write_session is None — e.g. contexts
-        # that only need model_gateway / embedding_service from AgentContext)
-        self._write_node_repo: WriteNodeRepository | None = None
-        self._write_edge_repo: WriteEdgeRepository | None = None
-        self._write_dim_repo: WriteDimensionRepository | None = None
-        self._write_fact_repo: WriteFactRepository | None = None
-        if write_session is not None:
-            self._write_node_repo = WriteNodeRepository(write_session)
-            self._write_edge_repo = WriteEdgeRepository(write_session)
-            self._write_dim_repo = WriteDimensionRepository(write_session)
-            self._write_fact_repo = WriteFactRepository(write_session)
+        # Write repositories — always initialized (write_session is required)
+        self._write_node_repo = WriteNodeRepository(write_session)
+        self._write_edge_repo = WriteEdgeRepository(write_session)
+        self._write_dim_repo = WriteDimensionRepository(write_session)
+        self._write_fact_repo = WriteFactRepository(write_session)
 
         # Qdrant repositories (optional)
         self._qdrant_fact_repo = None
@@ -90,17 +84,6 @@ class WorkerGraphEngine:
     def has_graph_db(self) -> bool:
         return False
 
-    def _require_write_repos(
-        self,
-    ) -> tuple[WriteNodeRepository, WriteEdgeRepository, WriteDimensionRepository, WriteFactRepository]:
-        """Return write repos or raise if write_session was not provided."""
-        if self._write_node_repo is None:
-            raise RuntimeError(
-                "This WorkerGraphEngine operation requires a write-db session, "
-                "but was created without one. Pass write_session to the constructor."
-            )
-        return self._write_node_repo, self._write_edge_repo, self._write_dim_repo, self._write_fact_repo  # type: ignore[return-value]
-
     async def commit(self) -> None:
         """Commit the write-db session.
 
@@ -108,6 +91,11 @@ class WorkerGraphEngine:
         """
         if self._write_session is not None:
             await self._write_session.commit()
+
+    async def rollback(self) -> None:
+        """Rollback the write-db session."""
+        if self._write_session is not None:
+            await self._write_session.rollback()
 
     # ── Helpers ───────────────────────────────────────────────────────
 
@@ -258,7 +246,6 @@ class WorkerGraphEngine:
         An in-memory Node object is returned (cached for subsequent methods).
         The sync worker propagates to graph-db.
         """
-        self._require_write_repos()
         node_key = make_node_key(node_type, concept)
         det_uuid = key_to_uuid(node_key)
 

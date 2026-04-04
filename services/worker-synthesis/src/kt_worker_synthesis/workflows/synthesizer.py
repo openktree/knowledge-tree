@@ -42,10 +42,10 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
     from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
     from kt_worker_synthesis.prompts.synthesizer import build_synthesizer_system_message
 
-    write_session = None
+    if worker_state.write_session_factory is None:
+        raise RuntimeError("Synthesis worker requires write_session_factory")
+    write_session = worker_state.write_session_factory()
     try:
-        if worker_state.write_session_factory is not None:
-            write_session = worker_state.write_session_factory()
         # ReadGraphEngine for graph reads during agent navigation (short-lived sessions)
         read_engine = ReadGraphEngine(
             session_factory=worker_state.session_factory,

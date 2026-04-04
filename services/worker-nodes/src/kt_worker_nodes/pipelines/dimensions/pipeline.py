@@ -330,7 +330,7 @@ class DimensionPipeline:
         except Exception:
             logger.exception("Error committing dimension batch")
             try:
-                await ctx.graph_engine._write_session.rollback()
+                await ctx.graph_engine.rollback()
             except Exception:
                 logger.debug("Rollback failed after dimension batch commit error", exc_info=True)
 
