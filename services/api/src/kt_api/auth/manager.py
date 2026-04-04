@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator
+from urllib.parse import quote
 
 from fastapi import Depends, HTTPException
 from fastapi_users import BaseUserManager, UUIDIDMixin
@@ -124,11 +125,11 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             return
 
         base_url = settings.frontend_url.rstrip("/")
-        verify_url = f"{base_url}/verify?token={token}"
+        verify_url = f"{base_url}/verify?token={quote(token, safe='')}"
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,
-                subject="Welcome to Knowledge Tree — Verify Your Email",
+                subject="Verify Your Email — Knowledge Tree",
                 html=verification_email_html(verify_url, user.email),
             )
         )
@@ -142,7 +143,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             return
 
         base_url = settings.frontend_url.rstrip("/")
-        reset_url = f"{base_url}/reset-password?token={token}"
+        reset_url = f"{base_url}/reset-password?token={quote(token, safe='')}"
         await self._email_provider.send_email(
             EmailMessage(
                 to=user.email,
