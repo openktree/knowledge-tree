@@ -242,23 +242,11 @@ async def test_create_edge_negative_weight(db_session):
     assert edge.weight == -0.5
 
 
-async def test_increment_access_count_deadlock_retry(db_session):
-    """increment_access_count retries on deadlock and succeeds."""
-    from sqlalchemy.exc import DBAPIError
-
-    from kt_graph.read_engine import _is_deadlock
-
+async def test_increment_access_count(db_session):
+    """increment_access_count updates the node counter."""
     engine = ReadGraphEngine(session=db_session)
-    node = await engine.create_node("deadlock_retry_test")
+    node = await engine.create_node("access_count_test")
 
-    # Verify _is_deadlock helper recognises a fake deadlock
-    class FakeDeadlock:
-        sqlstate = "40P01"
-
-    fake_exc = DBAPIError("stmt", {}, FakeDeadlock())  # type: ignore[arg-type]
-    assert _is_deadlock(fake_exc)
-
-    # Verify the node's access count increments normally despite savepoints
     await engine.increment_access_count(node.id)
     result = await db_session.execute(select(NodeCounter).where(NodeCounter.node_id == node.id))
     counter = result.scalar_one()

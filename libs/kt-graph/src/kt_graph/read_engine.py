@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
 
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
@@ -22,17 +21,6 @@ from kt_db.repositories.facts import FactRepository
 from kt_db.repositories.nodes import NodeRepository
 
 logger = logging.getLogger(__name__)
-
-
-def _is_deadlock(exc: Exception) -> bool:
-    """Check if an exception is a PostgreSQL deadlock (SQLSTATE 40P01)."""
-    if isinstance(exc, DBAPIError) and exc.orig is not None:
-        sqlstate = getattr(exc.orig, "sqlstate", None)
-        if sqlstate == "40P01":
-            return True
-        if "DeadlockDetected" in type(exc.orig).__name__:
-            return True
-    return False
 
 
 class SubgraphResult(TypedDict):
@@ -151,7 +139,9 @@ class ReadGraphEngine:
         """Create a node directly in graph-db."""
         async with self._get_session() as session:
             node_repo, _, _ = self._repos_from_session(session)
-            return await node_repo.create(concept=concept, **kwargs)
+            node = await node_repo.create(concept=concept, **kwargs)
+            await session.commit()
+            return node
 
     async def create_edge(
         self,
@@ -164,23 +154,25 @@ class ReadGraphEngine:
         """Create an edge directly in graph-db."""
         async with self._get_session() as session:
             _, edge_repo, _ = self._repos_from_session(session)
-            return await edge_repo.create(
+            edge = await edge_repo.create(
                 source_node_id=source_id,
                 target_node_id=target_id,
                 relationship_type=rel_type,
                 weight=weight,
                 **kwargs,
             )
+            await session.commit()
+            return edge
 
     async def update_node(self, node_id: uuid.UUID, **kwargs: Any) -> Node:
         """Update a node's fields directly in graph-db."""
         async with self._get_session() as session:
             node_repo, _, _ = self._repos_from_session(session)
             await node_repo.update_fields(node_id, **kwargs)
+            await session.commit()
             node = await node_repo.get_by_id(node_id)
             if node is None:
                 raise ValueError(f"Node not found: {node_id}")
-            await session.refresh(node)
             return node
 
     async def update_fact(self, fact_id: uuid.UUID, **kwargs: Any) -> Fact:
@@ -188,10 +180,10 @@ class ReadGraphEngine:
         async with self._get_session() as session:
             _, _, fact_repo = self._repos_from_session(session)
             await fact_repo.update_fields(fact_id, **kwargs)
+            await session.commit()
             fact = await fact_repo.get_by_id(fact_id)
             if fact is None:
                 raise ValueError(f"Fact not found: {fact_id}")
-            await session.refresh(fact)
             return fact
 
     async def add_dimension(
@@ -227,6 +219,7 @@ class ReadGraphEngine:
                 for fid in fact_ids:
                     session.add(DimensionFact(dimension_id=dim.id, fact_id=fid))
                 await session.flush()
+            await session.commit()
             return dim
 
     async def link_fact_to_node(
@@ -239,7 +232,9 @@ class ReadGraphEngine:
         """Link a fact to a node directly in graph-db."""
         async with self._get_session() as session:
             _, _, fact_repo = self._repos_from_session(session)
-            return await fact_repo.link_to_node(node_id, fact_id, relevance_score=relevance, stance=stance)
+            result = await fact_repo.link_to_node(node_id, fact_id, relevance_score=relevance, stance=stance)
+            await session.commit()
+            return result
 
     async def save_version(self, node_id: uuid.UUID) -> NodeVersion:
         """Save a snapshot of the current node state as a new version."""
@@ -269,6 +264,7 @@ class ReadGraphEngine:
             )
             session.add(version)
             await session.flush()
+            await session.commit()
             return version
 
     async def increment_access_count(self, node_id: uuid.UUID) -> None:
@@ -306,6 +302,7 @@ class ReadGraphEngine:
                 definition_source=source,
                 definition_generated_at=_now(),
             )
+            await session.commit()
 
     # ── Node reads ────────────────────────────────────────────────────
 

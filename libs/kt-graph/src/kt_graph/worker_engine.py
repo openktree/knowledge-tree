@@ -438,7 +438,11 @@ class WorkerGraphEngine:
         await self._write_session.commit()
 
     async def delete_dimensions(self, node_id: uuid.UUID) -> int:
-        """Delete all dimensions for a node from write-db. Returns count deleted."""
+        """Delete all dimensions for a node from write-db. Returns count deleted.
+
+        Note: pre-existing graph-db dimensions are cleaned by the sync worker
+        when it processes the write-db deletions.
+        """
         wn = await self._write_node_repo.get_by_uuid(node_id)
         if wn is None:
             return 0
@@ -553,20 +557,27 @@ class WorkerGraphEngine:
                 logger.warning("Non-critical: failed to increment update_count for node %s", node_id)
 
     async def update_node(self, node_id: uuid.UUID, **kwargs: object) -> Node:
-        """Update a node's fields and return the refreshed node.
+        """Update a node's fields via write-db and return the refreshed node."""
+        wn = await self._write_node_repo.get_by_uuid(node_id)
+        if wn is None:
+            raise ValueError(f"Node not found in write-db: {node_id}")
 
-        Routes metadata updates to write-db.
-        """
         if "metadata_" in kwargs:
-            wn = await self._write_node_repo.get_by_uuid(node_id)
-            if wn is not None:
-                await self._write_node_repo.update_metadata(wn.key, kwargs["metadata_"])  # type: ignore[arg-type]
-                await self._write_session.commit()
-                return self._write_node_to_node(wn, metadata_=kwargs["metadata_"])
-        node = await self._get_cached_or_write_db(node_id)
-        if node is None:
-            raise ValueError(f"Node not found: {node_id}")
-        return node
+            await self._write_node_repo.update_metadata(wn.key, kwargs.pop("metadata_"))  # type: ignore[arg-type]
+
+        # Pass remaining fields through upsert (concept, node_type, etc.)
+        if kwargs:
+            upsert_kwargs: dict[str, object] = {
+                "node_type": wn.node_type,
+                "concept": wn.concept,
+            }
+            upsert_kwargs.update(kwargs)
+            await self._write_node_repo.upsert(**upsert_kwargs)  # type: ignore[arg-type]
+
+        await self._write_session.commit()
+        # Re-fetch to get updated state
+        wn = await self._write_node_repo.get_by_uuid(node_id)
+        return self._write_node_to_node(wn)  # type: ignore[arg-type]
 
     async def record_fact_rejection(
         self,
@@ -903,35 +914,28 @@ class WorkerGraphEngine:
             logger.error("find_nodes_with_similar_facts called but Qdrant fact repo is not available")
             return []
 
-        node_counts: dict[uuid.UUID, int] = {}
+        # Collect all candidate fact IDs from Qdrant vector search
+        all_candidate_facts: list[uuid.UUID] = []
         for emb in fact_embeddings:
             results = await self._qdrant_fact_repo.search_similar(
                 emb,
                 limit=20,
                 score_threshold=threshold,
             )
-            if not results:
-                continue
-            candidate_fact_ids = [r.fact_id for r in results]
-            candidate_str_ids = {str(fid) for fid in candidate_fact_ids}
+            if results:
+                all_candidate_facts.extend(r.fact_id for r in results)
 
-            # Find nodes owning these facts via write-db
-            from kt_db.write_models import WriteNode as _WN
+        if not all_candidate_facts:
+            return []
 
-            all_nodes_result = await self._write_session.execute(
-                select(_WN).where(
-                    _WN.node_uuid != exclude_node_id,
-                    _WN.fact_ids.isnot(None),
-                )
-            )
-            for wn in all_nodes_result.scalars().all():
-                if not wn.fact_ids:
-                    continue
-                if candidate_str_ids & set(wn.fact_ids):
-                    node_counts[wn.node_uuid] = node_counts.get(wn.node_uuid, 0) + 1
-
-        sorted_nodes = sorted(node_counts.items(), key=lambda x: x[1], reverse=True)
-        return sorted_nodes[:limit]
+        # Use WriteFactRepository's indexed query instead of full table scan
+        node_results = await self._write_fact_repo.find_nodes_by_embedding_facts(
+            all_candidate_facts,
+            exclude_node_id,
+            node_limit=limit,
+        )
+        # Convert from (node_id, concept, fact_ids) to (node_id, count)
+        return [(nid, len(fids)) for nid, _concept, fids in node_results]
 
     # ── Edge queries ──────────────────────────────────────────────────
 
