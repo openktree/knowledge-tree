@@ -100,6 +100,11 @@ class ReadGraphEngine:
         else:
             raise RuntimeError("ReadGraphEngine requires either session or session_factory")
 
+    async def _maybe_commit(self, session: AsyncSession) -> None:
+        """Commit only in session_factory mode; skip when caller owns the session."""
+        if self._session is None:
+            await session.commit()
+
     def _repos_from_session(self, session: AsyncSession) -> tuple[NodeRepository, EdgeRepository, FactRepository]:
         """Return repos — cached when using a static session, fresh otherwise."""
         if self._node_repo is not None:
@@ -140,7 +145,7 @@ class ReadGraphEngine:
         async with self._get_session() as session:
             node_repo, _, _ = self._repos_from_session(session)
             node = await node_repo.create(concept=concept, **kwargs)
-            await session.commit()
+            await self._maybe_commit(session)
             return node
 
     async def create_edge(
@@ -161,7 +166,7 @@ class ReadGraphEngine:
                 weight=weight,
                 **kwargs,
             )
-            await session.commit()
+            await self._maybe_commit(session)
             return edge
 
     async def update_node(self, node_id: uuid.UUID, **kwargs: Any) -> Node:
@@ -169,7 +174,7 @@ class ReadGraphEngine:
         async with self._get_session() as session:
             node_repo, _, _ = self._repos_from_session(session)
             await node_repo.update_fields(node_id, **kwargs)
-            await session.commit()
+            await self._maybe_commit(session)
             node = await node_repo.get_by_id(node_id)
             if node is None:
                 raise ValueError(f"Node not found: {node_id}")
@@ -180,7 +185,7 @@ class ReadGraphEngine:
         async with self._get_session() as session:
             _, _, fact_repo = self._repos_from_session(session)
             await fact_repo.update_fields(fact_id, **kwargs)
-            await session.commit()
+            await self._maybe_commit(session)
             fact = await fact_repo.get_by_id(fact_id)
             if fact is None:
                 raise ValueError(f"Fact not found: {fact_id}")
@@ -219,7 +224,7 @@ class ReadGraphEngine:
                 for fid in fact_ids:
                     session.add(DimensionFact(dimension_id=dim.id, fact_id=fid))
                 await session.flush()
-            await session.commit()
+            await self._maybe_commit(session)
             return dim
 
     async def link_fact_to_node(
@@ -233,7 +238,7 @@ class ReadGraphEngine:
         async with self._get_session() as session:
             _, _, fact_repo = self._repos_from_session(session)
             result = await fact_repo.link_to_node(node_id, fact_id, relevance_score=relevance, stance=stance)
-            await session.commit()
+            await self._maybe_commit(session)
             return result
 
     async def save_version(self, node_id: uuid.UUID) -> NodeVersion:
@@ -264,7 +269,7 @@ class ReadGraphEngine:
             )
             session.add(version)
             await session.flush()
-            await session.commit()
+            await self._maybe_commit(session)
             return version
 
     async def increment_access_count(self, node_id: uuid.UUID) -> None:
@@ -302,7 +307,7 @@ class ReadGraphEngine:
                 definition_source=source,
                 definition_generated_at=_now(),
             )
-            await session.commit()
+            await self._maybe_commit(session)
 
     # ── Node reads ────────────────────────────────────────────────────
 
@@ -1207,7 +1212,7 @@ class ReadGraphEngine:
 
             await node_repo.delete(absorb_id)
 
-            await session.commit()
+            await self._maybe_commit(session)
             await session.refresh(keep)
             return keep
 
