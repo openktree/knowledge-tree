@@ -29,7 +29,7 @@ class TestVerificationEmailHtml:
         assert "</html>" in html
 
     def test_escapes_user_email(self) -> None:
-        malicious = '<script>alert(1)</script>@evil.com'
+        malicious = "<script>alert(1)</script>@evil.com"
         result = verification_email_html("https://example.com/verify?token=x", malicious)
         assert "<script>" not in result
         assert "&lt;script&gt;" in result
@@ -61,7 +61,7 @@ class TestPasswordResetEmailHtml:
         assert "</html>" in html
 
     def test_escapes_user_email(self) -> None:
-        malicious = '<script>alert(1)</script>@evil.com'
+        malicious = "<script>alert(1)</script>@evil.com"
         result = password_reset_email_html("https://example.com/reset?token=x", malicious)
         assert "<script>" not in result
         assert "&lt;script&gt;" in result
