@@ -133,6 +133,7 @@ async def _prepare_rebuild(
     ctx: Context,
 ) -> dict:
     """Rebuild mode: load existing node, enrich from seed pool."""
+    from kt_config.types import COMPOSITE_NODE_TYPES
     from kt_db.repositories.write_nodes import WriteNodeRepository
     from kt_db.repositories.write_seeds import WriteSeedRepository
 
@@ -158,9 +159,6 @@ async def _prepare_rebuild(
         node_key = wn.key
         enrichment_status = wn.enrichment_status
         node_fact_ids = wn.fact_ids
-
-        # Filter out composite nodes (perspectives, synthesis, supersynthesis)
-        from kt_config.types import COMPOSITE_NODE_TYPES
 
         if node_type in COMPOSITE_NODE_TYPES:
             ctx.log(f"prepare_node[rebuild]: skipping -- {node_type} is composite")
