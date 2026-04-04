@@ -47,6 +47,7 @@ from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.conversations import ConversationRepository
 from kt_db.repositories.ingest_sources import IngestSourceRepository
+from kt_db.repositories.research_reports import ResearchReportRepository
 
 logger = logging.getLogger(__name__)
 
@@ -898,8 +899,6 @@ async def get_research_summary(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # ── Primary: read from ResearchReport.summary_data ───────────────
-    from kt_db.repositories.research_reports import ResearchReportRepository
-
     report_repo = ResearchReportRepository(session)
     report = await report_repo.get_latest_by_conversation_id(conv_uuid)
 

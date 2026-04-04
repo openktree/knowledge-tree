@@ -60,8 +60,11 @@ class ConversationRepository:
         offset: int = 0,
         mode: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List conversations with message count and latest assistant status in a single query."""
-        # Subquery for latest assistant message status per conversation
+        """List conversations with message count and latest assistant status in a single query.
+
+        Uses PostgreSQL DISTINCT ON to pick the latest assistant message per conversation.
+        """
+        # Subquery for latest assistant message status per conversation (Postgres DISTINCT ON)
         latest_status_sq = (
             select(
                 ConversationMessage.conversation_id,

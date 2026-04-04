@@ -65,7 +65,7 @@ async def get_report(
     return _report_to_response(report)
 
 
-@router.get("/reports", response_model=ReportResponse)
+@router.get("/reports/lookup", response_model=ReportResponse)
 async def get_report_by_query(
     conversation_id: str | None = Query(None, description="Get latest report for a conversation"),
     workflow_run_id: str | None = Query(None, description="Get report by Hatchet workflow run ID"),
