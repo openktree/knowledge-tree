@@ -200,6 +200,11 @@ class WriteNodeRepository:
         )
         await self._session.execute(stmt, {"key": target_key, "new_ids": source_fact_ids})
 
+    async def set_enrichment_status(self, node_key: str, status: str) -> None:
+        """Update the enrichment_status for a node."""
+        stmt = text("UPDATE write_nodes SET enrichment_status = :status, updated_at = NOW() WHERE key = :key")
+        await self._session.execute(stmt, {"key": node_key, "status": status})
+
     async def update_facts_at_last_build(self, node_key: str, count: int) -> None:
         """Update the facts_at_last_build counter for a node."""
         stmt = text("UPDATE write_nodes SET facts_at_last_build = :count, updated_at = NOW() WHERE key = :key")

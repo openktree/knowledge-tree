@@ -37,7 +37,6 @@ class WorkerState:
     embedding_service: EmbeddingService
     provider_registry: ProviderRegistry
     content_fetcher: ContentFetcher | None
-    ontology_registry: object | None = None  # OntologyProviderRegistry | None
     qdrant_client: AsyncQdrantClient | None = None
 
 
@@ -95,22 +94,6 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
             max_concurrent=settings.full_text_fetch_max_urls,
         )
 
-    # Ontology provider setup
-    ontology_registry = None
-    if settings.enable_ontology_ancestry:
-        from kt_ontology.cache import CachedOntologyProvider
-        from kt_ontology.registry import OntologyProviderRegistry
-        from kt_ontology.wikidata import WikidataOntologyProvider
-
-        ontology_registry = OntologyProviderRegistry()
-        wikidata = WikidataOntologyProvider(user_agent=settings.wikidata_user_agent)
-        cached_wikidata = CachedOntologyProvider(
-            inner=wikidata,
-            redis_url=settings.redis_url,
-            ttl=settings.ontology_cache_ttl,
-        )
-        ontology_registry.register(cached_wikidata, default=True)
-
     # Qdrant vector search client (required for all vector search)
     from kt_qdrant.client import get_qdrant_client
     from kt_qdrant.repositories.facts import QdrantFactRepository
@@ -130,7 +113,6 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         embedding_service=embedding_service,
         provider_registry=provider_registry,
         content_fetcher=content_fetcher,
-        ontology_registry=ontology_registry,
         qdrant_client=qdrant_client,
     )
 
@@ -201,21 +183,6 @@ async def build_worker_state() -> WorkerState:
             max_concurrent=settings.full_text_fetch_max_urls,
         )
 
-    ontology_registry = None
-    if settings.enable_ontology_ancestry:
-        from kt_ontology.cache import CachedOntologyProvider
-        from kt_ontology.registry import OntologyProviderRegistry
-        from kt_ontology.wikidata import WikidataOntologyProvider
-
-        ontology_registry = OntologyProviderRegistry()
-        wikidata = WikidataOntologyProvider(user_agent=settings.wikidata_user_agent)
-        cached_wikidata = CachedOntologyProvider(
-            inner=wikidata,
-            redis_url=settings.redis_url,
-            ttl=settings.ontology_cache_ttl,
-        )
-        ontology_registry.register(cached_wikidata, default=True)
-
     # Qdrant vector search client (required for all vector search)
     from kt_qdrant.client import get_qdrant_client
     from kt_qdrant.repositories.facts import QdrantFactRepository
@@ -235,6 +202,5 @@ async def build_worker_state() -> WorkerState:
         embedding_service=embedding_service,
         provider_registry=provider_registry,
         content_fetcher=content_fetcher,
-        ontology_registry=ontology_registry,
         qdrant_client=qdrant_client,
     )

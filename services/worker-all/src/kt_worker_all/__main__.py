@@ -57,13 +57,10 @@ def main() -> None:
         build_composite_task,
         regenerate_composite_task,
     )
-    from kt_worker_nodes.workflows.enrich_node import enrich_edge_task
     from kt_worker_nodes.workflows.node_pipeline import (
-        crystallize_task,
         edge_task,
         node_pipeline_wf,
     )
-    from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task
     from kt_worker_search.workflows.decompose import (
         decompose_source_task,
         decompose_sources_wf,
@@ -101,10 +98,7 @@ def main() -> None:
             reingest_source_wf,
             node_pipeline_wf,
             edge_task,
-            crystallize_task,
-            rebuild_node_task,
             auto_build_task,
-            enrich_edge_task,
             build_composite_task,
             regenerate_composite_task,
             ingest_build_wf,

@@ -1,13 +1,12 @@
 """Phased build pipeline for batch node creation.
 
-Thin 6-phase orchestrator delegating to sub-pipelines:
+Thin 5-phase orchestrator delegating to sub-pipelines:
   1.   Classify + Gather Facts     -> NodeCreationPipeline
   1.5  Enrich Existing Nodes       -> NodeCreationPipeline
   2.   Create Nodes + Link Facts   -> NodeCreationPipeline
   3.   Generate Dimensions         -> DimensionPipeline
   3.5. Synthesize Definitions      -> DefinitionPipeline
   4.   Resolve Edges (candidates)  -> EdgePipeline
-  5.   Select Parents              -> ParentSelectionPipeline
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from kt_worker_nodes.pipelines.dimensions.pipeline import DimensionPipeline
 from kt_worker_nodes.pipelines.edges.pipeline import EdgePipeline
 from kt_worker_nodes.pipelines.models import CreateNodeTask
 from kt_worker_nodes.pipelines.nodes.pipeline import NodeCreationPipeline
-from kt_worker_nodes.pipelines.parent.pipeline import ParentSelectionPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,6 @@ class BatchPipeline:
         self._dim_pipeline = DimensionPipeline(ctx)
         self._def_pipeline = DefinitionPipeline(ctx)
         self._edge_pipeline = EdgePipeline(ctx)
-        self._parent_pipeline = ParentSelectionPipeline(ctx)
 
     async def build_batch(
         self,
@@ -143,19 +140,10 @@ class BatchPipeline:
         edges_before = sum(t.edges_created for t in tasks)
         edge_metrics = await self._edge_pipeline.resolve_from_candidates_batch(tasks, state)
 
-        # Phase 5: Select Parents (tree structure)
-        await self._ctx.emit("activity_log", action="Pipeline: selecting parents", tool="build_pipeline")
-        if scope_name:
-            await self._ctx.emit("scope_phase", data={"scope": scope_name, "phase": "parents"})
         if tracker and scope_name:
             total_edges = sum(t.edges_created for t in tasks) - edges_before
             await tracker.end_phase(scope_name, "edges")
             await tracker.log_phase_outcome(scope_name, "edges", edge_count=total_edges, metrics=edge_metrics)
-            await tracker.start_phase(scope_name, "parents")
-        parent_metrics = await self._parent_pipeline.select_parents_batch(tasks)
-        if tracker and scope_name:
-            await tracker.end_phase(scope_name, "parents")
-            await tracker.log_phase_outcome(scope_name, "parents", metrics=parent_metrics)
 
         # Build final results for create/refresh tasks that don't have results yet
         for t in tasks:

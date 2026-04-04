@@ -497,80 +497,36 @@ class HatchetPipeline:
     async def definition(self, node_id: str) -> dict:
         """Phase 3.5: generate a textual definition for a node.
 
-        Skips regeneration for crystallized nodes (ontology_stable).
-
         Returns ``{node_id, has_definition}``.
         """
-        from kt_db.models import Node
         from kt_db.repositories.write_nodes import WriteNodeRepository
-        from kt_ontology.crystallization import _is_crystallized
         from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("definition: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
-            node = (
-                Node(
-                    id=nid,
-                    concept=wn.concept,
-                    node_type=wn.node_type,
-                    definition=wn.definition,
-                    metadata_=wn.metadata_,
-                )
-                if wn
-                else None
-            )
-            if node is None:
+            if wn is None:
                 logger.warning("definition: node %s not found", node_id)
                 return {"node_id": node_id, "has_definition": False}
 
-            # Skip definition regeneration for crystallized nodes
-            if _is_crystallized(node):
-                logger.debug("definition: skipping crystallized node %s", node_id)
-                return {"node_id": node_id, "has_definition": node.definition is not None}
-
             def_pipeline = DefinitionPipeline(ctx)
-            definition = await def_pipeline.generate_definition(nid, node.concept)
-            await session.commit()
-
-        return {"node_id": node_id, "has_definition": definition is not None}
-
-    # -- Crystallization ---------------------------------------------------
-
-    async def crystallize(self, parent_node_id: str) -> dict:
-        """Check and perform crystallization for a parent node.
-
-        Returns ``{parent_node_id, crystallized}``.
-
-        Runs in write-only mode — no graph-db connection is checked out.
-        All reads route through write-db + Qdrant.
-        """
-        from kt_ontology.crystallization import CrystallizationPipeline
-
-        async with self._open_sessions() as (session, write_session):
-            if write_session is None:
-                raise RuntimeError("crystallize: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
-            pipeline = CrystallizationPipeline(ctx)
-            crystallized = await pipeline.check_and_crystallize(parent_node_id)
+            definition = await def_pipeline.generate_definition(nid, wn.concept)
             await write_session.commit()
 
-        return {"parent_node_id": parent_node_id, "crystallized": crystallized}
+        return {"node_id": node_id, "has_definition": definition is not None}
 
     # -- Phase 4: edge resolution ------------------------------------------
 
     async def edges(
         self,
         node_id: str,
-        mode: str,
         concept: str = "",
         node_type: str = "concept",
-        cross_type_pair: str | None = None,
     ) -> dict:
         """Phase 4: resolve edges from candidates for a node.
 
@@ -578,9 +534,8 @@ class HatchetPipeline:
         avoid a graph-db lookup for the current node.  The node was just
         created in write-db / Qdrant and may not be in graph-db yet.
 
-        The ``mode`` and ``cross_type_pair`` parameters are retained for
-        API compatibility but are no longer used — the candidate-based
-        resolver handles both same-type and cross-type edges in one pass.
+        The candidate-based resolver handles both same-type and cross-type
+        edges in one pass.
 
         Returns ``{edge_ids, edges_created}``.
         """
@@ -645,136 +600,3 @@ class HatchetPipeline:
             await session.commit()
 
         return result
-
-    # -- Phase 5: ancestry resolution --------------------------------------
-
-    async def ancestry(
-        self,
-        node_id: str,
-        node_name: str,
-        node_type: str,
-        definition: str | None = None,
-    ) -> dict:
-        """Phase 5: determine ontological ancestry for a node.
-
-        Uses the AncestryPipeline to propose, merge, and resolve ancestry
-        against the system graph.  The pipeline creates lightweight stub nodes
-        for any gaps and wires all parent_id relationships immediately.
-
-        Returns ``{node_id, parent_id, nodes_created}``.
-        """
-        from kt_config.types import COMPOSITE_NODE_TYPES, DEFAULT_PARENTS
-        from kt_ontology.ancestry import AncestryPipeline
-        from kt_ontology.registry import OntologyProviderRegistry
-
-        nid = uuid.UUID(node_id)
-
-        # Composite nodes (synthesis, perspective) have no ancestry/parents.
-        if node_type in COMPOSITE_NODE_TYPES:
-            logger.info("ancestry: skipping — %s is composite, no ancestry", node_type)
-            return {"node_id": node_id, "parent_id": "", "nodes_created": []}
-
-        # Get ontology registry from worker state (may not be set)
-        ontology_registry: OntologyProviderRegistry = (
-            getattr(self._state, "ontology_registry", None) or OntologyProviderRegistry()
-        )
-
-        async with self._open_sessions() as (session, write_session):
-            from kt_graph.worker_engine import WorkerGraphEngine as _WGE
-
-            graph_engine = _WGE(
-                write_session,
-                self._state.embedding_service,  # type: ignore[arg-type]
-                qdrant_client=self._state.qdrant_client,
-            )
-
-            if write_session is None:
-                raise RuntimeError("ancestry: write_session is required")
-
-            # Fetch definition and dimension snippets from write-db.
-            if definition is None:
-                from kt_db.repositories.write_nodes import WriteNodeRepository
-
-                wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
-                if wn and wn.definition:
-                    definition = wn.definition
-
-            from kt_db.keys import make_node_key
-            from kt_db.repositories.write_dimensions import WriteDimensionRepository
-
-            write_dim_repo = WriteDimensionRepository(write_session)
-            wn_key = make_node_key(node_type, node_name)
-            write_dims = await write_dim_repo.get_by_node_key(wn_key, limit=3)
-            dim_snippets: list[str] | None = None
-            if write_dims:
-                dim_snippets = [d.content[:300] for d in write_dims]
-
-            ancestry_pipeline = AncestryPipeline(
-                session=session,
-                model_gateway=self._state.model_gateway,  # type: ignore[arg-type]
-                embedding_service=self._state.embedding_service,  # type: ignore[arg-type]
-                ontology_registry=ontology_registry,
-                write_session=write_session,
-                qdrant_client=self._state.qdrant_client,
-            )
-
-            try:
-                result = await ancestry_pipeline.determine_ancestry(
-                    node_name=node_name,
-                    node_type=node_type,
-                    definition=definition,
-                    node_id=nid,
-                    dimension_snippets=dim_snippets,
-                )
-
-                # Entities have no parent -- skip set_parent entirely
-                if result.parent_id is None:
-                    await session.commit()
-                    return {
-                        "node_id": node_id,
-                        "parent_id": "",
-                        "nodes_created": [],
-                    }
-
-                # Set parent on the original node (guard against self-reference)
-                if result.parent_id == nid:
-                    logger.warning(
-                        "ancestry: pipeline returned self-referential parent for %s, falling back to default",
-                        node_id,
-                    )
-                    default_parent = DEFAULT_PARENTS.get(node_type, DEFAULT_PARENTS["concept"])
-                    await graph_engine.set_parent(nid, default_parent)
-                    await session.commit()
-                    return {
-                        "node_id": node_id,
-                        "parent_id": str(default_parent),
-                        "nodes_created": [str(n) for n in result.nodes_created],
-                    }
-
-                await graph_engine.set_parent(nid, result.parent_id)
-                await session.commit()
-
-                return {
-                    "node_id": node_id,
-                    "parent_id": str(result.parent_id),
-                    "nodes_created": [str(nid) for nid in result.nodes_created],
-                }
-            except Exception:
-                logger.warning(
-                    "ancestry: pipeline failed for node %s, assigning default parent",
-                    node_id,
-                    exc_info=True,
-                )
-                default_parent = DEFAULT_PARENTS.get(node_type)
-                if default_parent is not None:
-                    try:
-                        await graph_engine.set_parent(nid, default_parent)
-                        await session.commit()
-                    except Exception:
-                        logger.warning("ancestry: failed to set default parent for %s", node_id, exc_info=True)
-
-                return {
-                    "node_id": node_id,
-                    "parent_id": str(default_parent) if default_parent else "",
-                    "nodes_created": [],
-                }

@@ -1042,10 +1042,12 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         async with _open_sessions(state) as (session, write_session):
             if write_session is not None:
                 seed_repo = WriteSeedRepository(write_session)
-                # Get all active seeds — these were created during gathering
+                # Get all active seeds created during gathering.  The high limit
+                # ensures the summary reflects the full scope; each SeedSummary
+                # is lightweight (~200 bytes) so 10k is ~2 MB in memory.
                 all_seeds = await seed_repo.list_seeds(
                     status="active",
-                    limit=500,
+                    limit=10_000,
                 )
                 for seed in all_seeds:
                     aliases = list((seed.metadata_ or {}).get("aliases", []))
@@ -1075,7 +1077,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         source_count=len(all_source_urls),
         source_urls=all_source_urls,
         seeds=seed_summaries,
-        content_summary=combined_summary[:2000],
+        content_summary=combined_summary,
         explore_used=total_explore_used,
     )
 
