@@ -79,6 +79,7 @@ class ConversationListItem(BaseModel):
     title: str | None = None
     mode: str = "research"
     message_count: int = 0
+    latest_status: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -625,6 +626,30 @@ class ResearchReportResponse(BaseModel):
     created_at: datetime
 
 
+class ReportResponse(BaseModel):
+    """Full report response including summary data and workflow tracking."""
+
+    id: str
+    message_id: str | None = None
+    conversation_id: str | None = None
+    workflow_run_id: str | None = None
+    report_type: str = "research"
+    nodes_created: int = 0
+    edges_created: int = 0
+    waves_completed: int = 0
+    explore_budget: int | None = None
+    explore_used: int = 0
+    nav_budget: int | None = None
+    nav_used: int = 0
+    scope_summaries: list[str] = Field(default_factory=list)
+    super_sources: list[dict[str, Any]] | None = None
+    summary_data: dict[str, Any] | None = None
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_cost_usd: float = 0.0
+    created_at: datetime
+
+
 class TokenUsageByModel(BaseModel):
     """Per-model token usage breakdown."""
 
@@ -939,6 +964,7 @@ class IngestBuildResponse(BaseModel):
     message_id: str
     node_count: int = 0
     status: str = "running"
+    workflow_run_id: str | None = None
 
 
 # ── Seed schemas ─────────────────────────────────────────────────────

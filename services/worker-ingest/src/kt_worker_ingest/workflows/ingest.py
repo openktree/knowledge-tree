@@ -573,6 +573,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                     usage_by_model=None,
                     usage_by_task=None,
                     report_type="ingestion",
+                    workflow_run_id=ctx.workflow_run_id,
                 )
                 await session.commit()
         except Exception:
@@ -1192,6 +1193,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
                     usage_by_model=None,
                     usage_by_task=None,
                     report_type="ingestion",
+                    workflow_run_id=ctx.workflow_run_id,
                 )
                 await session.commit()
         except Exception:

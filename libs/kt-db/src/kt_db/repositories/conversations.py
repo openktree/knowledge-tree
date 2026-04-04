@@ -192,3 +192,16 @@ class ConversationRepository:
             select(func.count(ConversationMessage.id)).where(ConversationMessage.conversation_id == conversation_id)
         )
         return result.scalar_one()
+
+    async def get_latest_assistant_status(self, conversation_id: uuid.UUID) -> str | None:
+        """Get the status of the latest assistant message in a conversation."""
+        result = await self._session.execute(
+            select(ConversationMessage.status)
+            .where(
+                ConversationMessage.conversation_id == conversation_id,
+                ConversationMessage.role == "assistant",
+            )
+            .order_by(ConversationMessage.turn_number.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

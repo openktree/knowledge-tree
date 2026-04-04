@@ -56,7 +56,7 @@ async def get_message_progress(
         raise HTTPException(status_code=404, detail="Message not found in this conversation")
 
     # Base response from DB fields
-    status = msg.status or "completed"
+    status = msg.status or "pending"
     error: str | None = msg.error
     task_items: list[PipelineTaskItem] = []
 

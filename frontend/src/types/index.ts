@@ -121,6 +121,7 @@ export interface ConversationMessageResponse {
   subgraph: SubgraphResponse | null;
   status: string | null;
   error: string | null;
+  workflow_run_id: string | null;
   created_at: string; // ISO 8601 datetime
 }
 
@@ -138,6 +139,7 @@ export interface ConversationListItem {
   title: string | null;
   mode: string; // "query" | "ingest"
   message_count: number;
+  latest_status: string | null;
   created_at: string; // ISO 8601 datetime
   updated_at: string; // ISO 8601 datetime
 }

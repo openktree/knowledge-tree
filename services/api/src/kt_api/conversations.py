@@ -39,12 +39,14 @@ async def list_conversations(
     items = []
     for conv in conversations:
         msg_count = await repo.get_message_count(conv.id)
+        latest_status = await repo.get_latest_assistant_status(conv.id)
         items.append(
             ConversationListItem(
                 id=str(conv.id),
                 title=conv.title,
                 mode=conv.mode,
                 message_count=msg_count,
+                latest_status=latest_status,
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
             )

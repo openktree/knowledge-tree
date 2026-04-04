@@ -679,6 +679,7 @@ async def build_ingest(
         message_id=str(assistant_msg.id),
         node_count=node_count,
         status="running",
+        workflow_run_id=run_id,
     )
 
 
@@ -833,6 +834,46 @@ async def get_bottom_up_proposals(
     )
 
 
+def _build_summary_from_metadata(
+    metadata: dict,
+    conversation_id: str,
+    message_id: str,
+) -> ResearchSummaryResponse:
+    """Build a ResearchSummaryResponse from summary_data or metadata_json dict."""
+    raw_seeds = metadata.get("seeds", [])
+    seeds = [
+        ResearchSeedResponse(
+            key=s.get("key", ""),
+            name=s.get("name", ""),
+            node_type=s.get("node_type", "concept"),
+            fact_count=s.get("fact_count", 0),
+            aliases=s.get("aliases", []),
+            status=s.get("status", "active"),
+            entity_subtype=s.get("entity_subtype"),
+        )
+        for s in raw_seeds
+        if isinstance(s, dict) and s.get("key")
+    ]
+
+    raw_sources = metadata.get("source_urls", [])
+    source_urls = [
+        BottomUpSourceUrl(url=s.get("url", ""), title=s.get("title", ""))
+        for s in raw_sources
+        if isinstance(s, dict) and s.get("url")
+    ]
+
+    return ResearchSummaryResponse(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        fact_count=metadata.get("fact_count", 0),
+        source_count=len(source_urls) or metadata.get("source_count", 0),
+        source_urls=source_urls,
+        seeds=seeds,
+        content_summary=metadata.get("content_summary", ""),
+        explore_used=metadata.get("explore_used", 0),
+    )
+
+
 @router.get(
     "/research/{conversation_id}/summary",
     response_model=ResearchSummaryResponse,
@@ -841,10 +882,10 @@ async def get_research_summary(
     conversation_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> ResearchSummaryResponse:
-    """Fetch research summary (facts + seeds) from completed prepare workflow.
+    """Fetch research summary from completed prepare workflow.
 
-    Works for both bottom_up_ingest and ingest conversations.
-    Reads the metadata_json stored on the assistant message.
+    Primary source: ResearchReport.summary_data (persisted by workflow).
+    Legacy fallback: metadata_json on the assistant message.
     """
     try:
         conv_uuid = uuid.UUID(conversation_id)
@@ -856,91 +897,50 @@ async def get_research_summary(
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Find the latest assistant message with metadata
+    # ── Primary: read from ResearchReport.summary_data ───────────────
+    from kt_db.repositories.research_reports import ResearchReportRepository
+
+    report_repo = ResearchReportRepository(session)
+    report = await report_repo.get_latest_by_conversation_id(conv_uuid)
+
+    if report is not None and report.summary_data:
+        metadata = report.summary_data
+        return _build_summary_from_metadata(
+            metadata, conversation_id, str(report.message_id) if report.message_id else ""
+        )
+
+    # ── Legacy fallback: metadata_json on assistant message ──────────
     messages = await conv_repo.get_messages(conv_uuid)
-    metadata = None
-    msg_id = None
     for msg in reversed(messages):
         if msg.role == "assistant" and msg.metadata_json:
-            metadata = msg.metadata_json
-            msg_id = str(msg.id)
-            break
+            return _build_summary_from_metadata(msg.metadata_json, conversation_id, str(msg.id))
 
-    if metadata is not None:
-        # Parse seeds from metadata
-        raw_seeds = metadata.get("seeds", [])
-        seeds = [
-            ResearchSeedResponse(
-                key=s.get("key", ""),
-                name=s.get("name", ""),
-                node_type=s.get("node_type", "concept"),
-                fact_count=s.get("fact_count", 0),
-                aliases=s.get("aliases", []),
-                status=s.get("status", "active"),
-                entity_subtype=s.get("entity_subtype"),
-            )
-            for s in raw_seeds
-            if isinstance(s, dict) and s.get("key")
-        ]
-
-        # Parse source URLs
-        raw_sources = metadata.get("source_urls", [])
-        source_urls = [
-            BottomUpSourceUrl(url=s.get("url", ""), title=s.get("title", ""))
-            for s in raw_sources
-            if isinstance(s, dict) and s.get("url")
-        ]
-
+    # ── Degraded: report exists but without summary_data ─────────────
+    if report is not None:
+        content_summary = "\n\n".join(report.scope_summaries or [])
         return ResearchSummaryResponse(
             conversation_id=conversation_id,
-            message_id=msg_id or "",
-            fact_count=metadata.get("fact_count", 0),
-            source_count=len(source_urls) or metadata.get("source_count", 0),
-            source_urls=source_urls,
-            seeds=seeds,
-            content_summary=metadata.get("content_summary", ""),
-            explore_used=metadata.get("explore_used", 0),
+            message_id=str(report.message_id) if report.message_id else "",
+            fact_count=0,
+            source_count=0,
+            source_urls=[],
+            seeds=[],
+            content_summary=content_summary,
+            explore_used=report.explore_used,
         )
 
-    # Fallback: metadata_json missing (workflow failed before storing it).
-    # Try to reconstruct from ResearchReport table + live seed data.
-    from sqlalchemy import select
+    # ── Check if still running ───────────────────────────────────────
+    messages = messages or await conv_repo.get_messages(conv_uuid)
+    for msg in reversed(messages):
+        if msg.role == "assistant" and msg.status in ("pending", "running"):
+            raise HTTPException(
+                status_code=404,
+                detail="Research is still running — please wait",
+            )
 
-    from kt_db.models import ResearchReport
-
-    result = await session.execute(
-        select(ResearchReport)
-        .where(ResearchReport.conversation_id == conv_uuid)
-        .order_by(ResearchReport.created_at.desc())
-        .limit(1)
-    )
-    report = result.scalar_one_or_none()
-
-    if report is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No summary found — research may still be running",
-        )
-
-    # Build a degraded response from the report -- metadata_json was never
-    # stored (workflow failed or is still running).  Seeds and sources are
-    # unavailable; only scope summaries survive.
-    logger.warning(
-        "Research summary for conversation %s using fallback (ResearchReport) — "
-        "metadata_json was missing on all assistant messages",
-        conversation_id,
-    )
-    content_summary = "\n\n".join(report.scope_summaries or [])
-
-    return ResearchSummaryResponse(
-        conversation_id=conversation_id,
-        message_id=str(report.message_id),
-        fact_count=0,
-        source_count=0,
-        source_urls=[],
-        seeds=[],
-        content_summary=content_summary,
-        explore_used=report.explore_used,
+    raise HTTPException(
+        status_code=404,
+        detail="No summary available — research may have failed",
     )
 
 
