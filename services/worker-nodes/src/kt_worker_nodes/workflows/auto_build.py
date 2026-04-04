@@ -280,7 +280,9 @@ async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Contex
                     # ── Absorb edges ──
                     loser_edges = await edge_repo.get_edges_for_node(loser_node_key)
                     for edge in loser_edges:
-                        other_key = edge.target_node_key if edge.source_node_key == loser_node_key else edge.source_node_key
+                        other_key = (
+                            edge.target_node_key if edge.source_node_key == loser_node_key else edge.source_node_key
+                        )
                         if other_key == winner_node_key:
                             await edge_repo.delete_by_key(edge.key)
                             continue
