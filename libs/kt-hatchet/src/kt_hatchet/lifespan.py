@@ -11,9 +11,10 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_config.settings import Settings
+from kt_db.session import get_engine, get_write_engine
 
 if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
@@ -44,32 +45,10 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     """Async context manager that Hatchet calls at worker start/stop."""
     settings = Settings()
 
-    engine = create_async_engine(
-        settings.database_url,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
-        pool_timeout=settings.db_pool_timeout,
-        pool_pre_ping=True,
-        pool_recycle=settings.db_pool_recycle,
-        connect_args={
-            "statement_cache_size": 0,
-            "server_settings": {"application_name": "kt-worker"},
-        },
-    )
+    engine = get_engine(application_name="kt-worker")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    write_engine = create_async_engine(
-        settings.write_database_url,
-        pool_size=settings.write_db_pool_size,
-        max_overflow=settings.write_db_max_overflow,
-        pool_timeout=settings.write_db_pool_timeout,
-        pool_pre_ping=True,
-        pool_recycle=settings.write_db_pool_recycle,
-        connect_args={
-            "statement_cache_size": 0,
-            "server_settings": {"application_name": "kt-worker"},
-        },
-    )
+    write_engine = get_write_engine(application_name="kt-worker")
     write_session_factory = async_sessionmaker(write_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Lazy imports to avoid circular dependencies
@@ -140,32 +119,10 @@ async def build_worker_state() -> WorkerState:
     """
     settings = Settings()
 
-    engine = create_async_engine(
-        settings.database_url,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
-        pool_timeout=settings.db_pool_timeout,
-        pool_pre_ping=True,
-        pool_recycle=settings.db_pool_recycle,
-        connect_args={
-            "statement_cache_size": 0,
-            "server_settings": {"application_name": "kt-worker"},
-        },
-    )
+    engine = get_engine(application_name="kt-worker")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    write_engine = create_async_engine(
-        settings.write_database_url,
-        pool_size=settings.write_db_pool_size,
-        max_overflow=settings.write_db_max_overflow,
-        pool_timeout=settings.write_db_pool_timeout,
-        pool_pre_ping=True,
-        pool_recycle=settings.write_db_pool_recycle,
-        connect_args={
-            "statement_cache_size": 0,
-            "server_settings": {"application_name": "kt-worker"},
-        },
-    )
+    write_engine = get_write_engine(application_name="kt-worker")
     write_session_factory = async_sessionmaker(write_engine, class_=AsyncSession, expire_on_commit=False)
 
     from kt_models.embeddings import EmbeddingService
