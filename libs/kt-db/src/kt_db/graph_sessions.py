@@ -80,19 +80,29 @@ class GraphSessionResolver:
         self._control_sf = control_session_factory
         self._settings = settings or get_settings()
         self._cache: dict[uuid.UUID, GraphSessions] = {}
-        self._lock = asyncio.Lock()
+        self._locks: dict[uuid.UUID, asyncio.Lock] = {}
+        self._meta_lock = asyncio.Lock()  # protects _locks dict creation only
         # Reuse existing system-level session factories for the default graph
         # to avoid creating duplicate connection pools
         self._default_graph_sf = default_graph_session_factory
         self._default_write_sf = default_write_session_factory
+
+    async def _get_lock(self, graph_id: uuid.UUID) -> asyncio.Lock:
+        """Get or create a per-graph lock (meta_lock only protects dict insertion)."""
+        if graph_id in self._locks:
+            return self._locks[graph_id]
+        async with self._meta_lock:
+            if graph_id not in self._locks:
+                self._locks[graph_id] = asyncio.Lock()
+            return self._locks[graph_id]
 
     async def resolve(self, graph_id: uuid.UUID) -> GraphSessions:
         """Return cached GraphSessions for a graph, creating engines if needed."""
         if graph_id in self._cache:
             return self._cache[graph_id]
 
-        async with self._lock:
-            # Re-check after acquiring lock
+        lock = await self._get_lock(graph_id)
+        async with lock:
             if graph_id in self._cache:
                 return self._cache[graph_id]
 
@@ -105,22 +115,22 @@ class GraphSessionResolver:
 
     async def resolve_by_slug(self, slug: str) -> GraphSessions:
         """Resolve by slug, with caching."""
-        # Check cache first (linear scan — small N)
         for gs in self._cache.values():
             if gs.graph.slug == slug:
                 return gs
 
-        async with self._lock:
-            # Re-check after acquiring lock
-            for gs in self._cache.values():
-                if gs.graph.slug == slug:
-                    return gs
+        # Need to look up the graph ID first to get the per-graph lock
+        async with self._control_sf() as session:
+            result = await session.execute(select(Graph).where(Graph.slug == slug))
+            graph_row = result.scalar_one_or_none()
+            if graph_row is None:
+                raise ValueError(f"Graph with slug '{slug}' not found")
 
-            async with self._control_sf() as session:
-                result = await session.execute(select(Graph).where(Graph.slug == slug))
-                graph_row = result.scalar_one_or_none()
-                if graph_row is None:
-                    raise ValueError(f"Graph with slug '{slug}' not found")
+            lock = await self._get_lock(graph_row.id)
+            async with lock:
+                # Re-check cache
+                if graph_row.id in self._cache:
+                    return self._cache[graph_row.id]
                 return await self._build_and_cache(graph_row, session)
 
     async def list_active_graphs(self) -> list[GraphInfo]:

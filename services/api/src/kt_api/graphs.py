@@ -120,6 +120,9 @@ async def _require_graph_access(
         raise HTTPException(status_code=404, detail="Graph not found")
 
     if graph.is_default:
+        # Default graph: still enforce min_role for write operations
+        if min_role and not user.is_superuser:
+            raise HTTPException(status_code=403, detail=f"Requires {min_role} role (admin only for default graph)")
         return graph
 
     if user.is_superuser:
@@ -188,6 +191,13 @@ async def create_graph(
     existing = await repo.get_by_slug(body.slug)
     if existing:
         raise HTTPException(status_code=409, detail=f"Graph with slug '{body.slug}' already exists")
+
+    # Validate storage_mode=database requires a connection key
+    if body.storage_mode == "database" and not body.database_connection_config_key:
+        raise HTTPException(
+            status_code=400,
+            detail="storage_mode='database' requires database_connection_config_key",
+        )
 
     # Resolve database connection if specified
     db_conn_id: uuid.UUID | None = None

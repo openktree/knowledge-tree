@@ -478,7 +478,7 @@ class WriteLlmUsage(WriteBase):
 class SyncWatermark(WriteBase):
     """Tracks the last synced timestamp per table for incremental sync.
 
-    The graph_slug column scopes watermarks per-graph. NULL means the default graph.
+    The graph_slug column scopes watermarks per-graph. Defaults to "default".
     """
 
     __tablename__ = "sync_watermarks"

@@ -2,11 +2,16 @@
 
 Seeds the default graph row so existing data continues to work.
 
+NOTE: These are control-plane tables that only belong in the public schema.
+When ALEMBIC_SCHEMA is set (per-graph migration), this migration is skipped
+because per-graph schemas should not contain graph/member management tables.
+
 Revision ID: zzai
 Revises: zzah
 Create Date: 2026-04-05
 """
 
+import os
 import uuid
 
 import sqlalchemy as sa
@@ -22,6 +27,12 @@ DEFAULT_GRAPH_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
 def upgrade() -> None:
+    # Control-plane tables only belong in the public schema.
+    # Skip when running per-graph migrations (ALEMBIC_SCHEMA != public).
+    schema = os.environ.get("ALEMBIC_SCHEMA")
+    if schema and schema != "public":
+        return
+
     # -- database_connections --
     op.create_table(
         "database_connections",
@@ -96,6 +107,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    schema = os.environ.get("ALEMBIC_SCHEMA")
+    if schema and schema != "public":
+        return
     op.drop_table("graph_members")
     op.drop_table("graphs")
     op.drop_table("database_connections")
