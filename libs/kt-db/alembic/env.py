@@ -1,8 +1,9 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from kt_config.settings import get_settings
@@ -18,6 +19,10 @@ target_metadata = Base.metadata
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
+# Optional schema override for multi-graph migrations.
+# Set ALEMBIC_SCHEMA=graph_acme to run migrations in a non-default schema.
+_schema_override = os.environ.get("ALEMBIC_SCHEMA")
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -32,7 +37,12 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
-    context.configure(connection=connection, target_metadata=target_metadata)
+    opts = {"connection": connection, "target_metadata": target_metadata}
+    if _schema_override:
+        opts["version_table_schema"] = _schema_override
+    context.configure(**opts)
+    if _schema_override:
+        connection.execute(text(f'SET search_path TO "{_schema_override}", public'))
     with context.begin_transaction():
         context.run_migrations()
 

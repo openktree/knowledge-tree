@@ -3,12 +3,23 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
     PydanticBaseSettingsSource,
 )
+
+
+class GraphDatabaseConfig(BaseModel):
+    """Connection config for a named database pair used by non-default graphs."""
+
+    graph_database_url: str
+    write_database_url: str
+    pool_size: int = 5
+    max_overflow: int = 10
+
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
@@ -580,6 +591,10 @@ class Settings(BaseSettings):
 
     # Frontend
     frontend_url: str = "http://localhost:3000"
+
+    # Multi-graph: named database connections (config_key → connection config)
+    # Configured via YAML under a "graph_databases" section or env vars.
+    graph_databases: dict[str, GraphDatabaseConfig] = {}
 
     model_config = {"extra": "ignore"}
 

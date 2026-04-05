@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_config.settings import Settings
+from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.session import get_engine, get_write_engine
 
 if TYPE_CHECKING:
@@ -39,6 +40,9 @@ class WorkerState:
     provider_registry: ProviderRegistry
     content_fetcher: ContentFetcher | None
     qdrant_client: AsyncQdrantClient | None = None
+
+    # Multi-graph session resolver (resolves graph_id to per-graph session factories)
+    graph_resolver: GraphSessionResolver | None = None
 
 
 async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
@@ -90,6 +94,8 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     await QdrantNodeRepository(qdrant_client).ensure_collection()
     await QdrantSeedRepository(qdrant_client).ensure_collection()
 
+    graph_resolver = GraphSessionResolver(session_factory, settings)
+
     yield WorkerState(
         session_factory=session_factory,
         write_session_factory=write_session_factory,
@@ -99,6 +105,7 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         provider_registry=provider_registry,
         content_fetcher=content_fetcher,
         qdrant_client=qdrant_client,
+        graph_resolver=graph_resolver,
     )
 
     if qdrant_client is not None:
@@ -163,6 +170,8 @@ async def build_worker_state() -> WorkerState:
     await QdrantNodeRepository(qdrant_client).ensure_collection()
     await QdrantSeedRepository(qdrant_client).ensure_collection()
 
+    graph_resolver = GraphSessionResolver(session_factory, settings)
+
     return WorkerState(
         session_factory=session_factory,
         write_session_factory=write_session_factory,
@@ -172,4 +181,5 @@ async def build_worker_state() -> WorkerState:
         provider_registry=provider_registry,
         content_fetcher=content_fetcher,
         qdrant_client=qdrant_client,
+        graph_resolver=graph_resolver,
     )

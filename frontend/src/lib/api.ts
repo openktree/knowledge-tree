@@ -86,6 +86,12 @@ import type {
   SentenceFactLink,
   SynthesisNodeResponse,
   PipelineSnapshotResponse,
+  GraphResponse,
+  CreateGraphRequest,
+  UpdateGraphRequest,
+  GraphMemberResponse,
+  AddGraphMemberRequest,
+  UpdateGraphMemberRoleRequest,
 } from "@/types";
 
 const BASE_URL =
@@ -1288,5 +1294,71 @@ export async function updateSynthesisVisibility(id: string, visibility: string) 
   return request<{ id: string; visibility: string }>(
     `/syntheses/${id}`,
     { method: "PATCH", body: JSON.stringify({ visibility }) }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Graphs (multi-graph management)
+// ---------------------------------------------------------------------------
+
+export async function listGraphs() {
+  return request<GraphResponse[]>("/graphs");
+}
+
+export async function createGraph(data: CreateGraphRequest) {
+  return request<GraphResponse>("/graphs", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getGraph(slug: string) {
+  return request<GraphResponse>(`/graphs/${encodeURIComponent(slug)}`);
+}
+
+export async function updateGraph(slug: string, data: UpdateGraphRequest) {
+  return request<GraphResponse>(`/graphs/${encodeURIComponent(slug)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteGraph(slug: string) {
+  return request<void>(`/graphs/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listGraphMembers(slug: string) {
+  return request<GraphMemberResponse[]>(
+    `/graphs/${encodeURIComponent(slug)}/members`
+  );
+}
+
+export async function addGraphMember(
+  slug: string,
+  data: AddGraphMemberRequest
+) {
+  return request<GraphMemberResponse>(
+    `/graphs/${encodeURIComponent(slug)}/members`,
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function updateGraphMemberRole(
+  slug: string,
+  userId: string,
+  data: UpdateGraphMemberRoleRequest
+) {
+  return request<GraphMemberResponse>(
+    `/graphs/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
+    { method: "PUT", body: JSON.stringify(data) }
+  );
+}
+
+export async function removeGraphMember(slug: string, userId: string) {
+  return request<void>(
+    `/graphs/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" }
   );
 }

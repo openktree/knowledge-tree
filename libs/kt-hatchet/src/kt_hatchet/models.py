@@ -11,6 +11,19 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# -- Graph-aware mixin -------------------------------------------------
+
+
+class GraphAwareMixin(BaseModel):
+    """Mixin that adds optional graph_id to workflow inputs.
+
+    When graph_id is None, the workflow operates on the default graph.
+    When set, workers resolve per-graph session factories via GraphSessionResolver.
+    """
+
+    graph_id: str | None = None
+
+
 # -- Token usage -------------------------------------------------------
 
 
@@ -82,7 +95,7 @@ class DecomposeChunkOutput(BaseModel):
 # -- Node pipeline -----------------------------------------------------
 
 
-class NodePipelineInput(BaseModel):
+class NodePipelineInput(GraphAwareMixin):
     """Unified input for the node pipeline DAG workflow.
 
     Supports three modes:
@@ -175,7 +188,7 @@ class EdgeOutput(BaseModel):
 # -- Bottom-up exploration ---------------------------------------------
 
 
-class BottomUpInput(BaseModel):
+class BottomUpInput(GraphAwareMixin):
     """Input for the bottom-up exploration workflow."""
 
     query: str
@@ -275,7 +288,7 @@ class ProposedNode(BaseModel):
     ambiguity: ProposedNodeAmbiguity | None = None
 
 
-class BottomUpPrepareInput(BaseModel):
+class BottomUpPrepareInput(GraphAwareMixin):
     """Phase 1: gather facts, extract candidate nodes, return proposals."""
 
     query: str
@@ -331,7 +344,7 @@ class AgentSelectOutput(BaseModel):
 # -- Conversations -----------------------------------------------------
 
 
-class QueryInput(BaseModel):
+class QueryInput(GraphAwareMixin):
     """Input for lightweight query workflow (graph navigation + synthesis)."""
 
     query: str
@@ -341,7 +354,7 @@ class QueryInput(BaseModel):
     api_key: str | None = None
 
 
-class FollowUpInput(BaseModel):
+class FollowUpInput(GraphAwareMixin):
     """Input for follow-up conversation turns."""
 
     follow_up_query: str
@@ -374,7 +387,7 @@ class IngestConfirmInput(BaseModel):
     api_key: str | None = None
 
 
-class IngestDecomposeInput(BaseModel):
+class IngestDecomposeInput(GraphAwareMixin):
     """Input for the phased ingest decompose workflow (Phase 1)."""
 
     conversation_id: str
@@ -394,7 +407,7 @@ class IngestDecomposeOutput(BaseModel):
     fact_type_counts: dict[str, int] = Field(default_factory=dict)
 
 
-class IngestBuildInput(BaseModel):
+class IngestBuildInput(GraphAwareMixin):
     """Input for the phased ingest build workflow (Phase 2)."""
 
     selected_nodes: list[ConfirmedNode]
@@ -589,7 +602,7 @@ class ResearchSummaryOutput(BaseModel):
 # -- Auto Build ------------------------------------------------------------
 
 
-class AutoBuildInput(BaseModel):
+class AutoBuildInput(GraphAwareMixin):
     """Input for auto_build_graph task (no params, reads thresholds from settings)."""
 
     pass
@@ -624,7 +637,7 @@ class ReingestSourceOutput(BaseModel):
 # -- Synthesis workflows -----------------------------------------------
 
 
-class SynthesizerInput(BaseModel):
+class SynthesizerInput(GraphAwareMixin):
     """Input for the synthesizer workflow."""
 
     topic: str = ""
@@ -644,7 +657,7 @@ class SynthesizerOutput(BaseModel):
     nodes_referenced: int = 0
 
 
-class SuperSynthesizerInput(BaseModel):
+class SuperSynthesizerInput(GraphAwareMixin):
     """Input for the super-synthesizer workflow."""
 
     topic: str = ""

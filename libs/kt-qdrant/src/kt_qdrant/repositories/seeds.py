@@ -36,23 +36,24 @@ class SeedSearchResult:
 class QdrantSeedRepository:
     """Repository for seed name vectors in Qdrant."""
 
-    def __init__(self, client: AsyncQdrantClient) -> None:
+    def __init__(self, client: AsyncQdrantClient, collection_name: str = SEEDS_COLLECTION) -> None:
         self._client = client
+        self._collection_name = collection_name
 
     async def ensure_collection(self) -> None:
         """Create the seeds collection if it doesn't exist."""
         settings = get_settings()
         collections = await self._client.get_collections()
         existing = {c.name for c in collections.collections}
-        if SEEDS_COLLECTION not in existing:
+        if self._collection_name not in existing:
             await self._client.create_collection(
-                collection_name=SEEDS_COLLECTION,
+                collection_name=self._collection_name,
                 vectors_config=VectorParams(
                     size=settings.embedding_dimensions,
                     distance=Distance.COSINE,
                 ),
             )
-            logger.info("Created Qdrant collection '%s' (dim=%d)", SEEDS_COLLECTION, settings.embedding_dimensions)
+            logger.info("Created Qdrant collection '%s' (dim=%d)", self._collection_name, settings.embedding_dimensions)
 
     async def upsert(
         self,
@@ -82,7 +83,7 @@ class QdrantSeedRepository:
             payload=payload,
         )
         await self._client.upsert(
-            collection_name=SEEDS_COLLECTION,
+            collection_name=self._collection_name,
             points=[point],
         )
 
@@ -125,7 +126,7 @@ class QdrantSeedRepository:
         for i in range(0, len(qdrant_points), chunk_size):
             chunk = qdrant_points[i : i + chunk_size]
             await self._client.upsert(
-                collection_name=SEEDS_COLLECTION,
+                collection_name=self._collection_name,
                 points=chunk,
             )
 
@@ -143,7 +144,7 @@ class QdrantSeedRepository:
             query_filter = Filter(must=[FieldCondition(key="node_type", match=MatchValue(value=node_type))])
 
         results = await self._client.query_points(
-            collection_name=SEEDS_COLLECTION,
+            collection_name=self._collection_name,
             query=embedding,
             query_filter=query_filter,
             limit=limit + len(exclude_keys or set()),
@@ -177,6 +178,6 @@ class QdrantSeedRepository:
 
         point_id = str(key_to_uuid(seed_key))
         await self._client.delete(
-            collection_name=SEEDS_COLLECTION,
+            collection_name=self._collection_name,
             points_selector=[point_id],
         )

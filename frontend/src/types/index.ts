@@ -1383,3 +1383,57 @@ export interface SynthesisModelOption {
   display_name: string;
   provider: string;
 }
+
+// ── Graphs (multi-graph) ─────────────────────────────────────────────
+
+export interface GraphResponse {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  graph_type: string;
+  byok_enabled: boolean;
+  storage_mode: string;
+  schema_name: string;
+  database_connection_id: string | null;
+  status: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+  node_count: number;
+}
+
+export interface CreateGraphRequest {
+  slug: string;
+  name: string;
+  description?: string;
+  graph_type?: string;
+  byok_enabled?: boolean;
+  storage_mode?: string;
+  database_connection_config_key?: string;
+}
+
+export interface UpdateGraphRequest {
+  name?: string;
+  description?: string;
+}
+
+export interface GraphMemberResponse {
+  id: string;
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  created_at: string;
+}
+
+export interface AddGraphMemberRequest {
+  user_id: string;
+  role?: string;
+}
+
+export interface UpdateGraphMemberRoleRequest {
+  role: string;
+}
