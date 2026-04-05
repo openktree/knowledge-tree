@@ -228,6 +228,10 @@ async def test_gather_extraction_mode_includes_extracted_nodes() -> None:
 
     assert "extracted_nodes" in result
 
+    # Verify the factory-created session was closed after image decomposition
+    factory_session = ctx.write_session_factory.return_value
+    factory_session.close.assert_awaited_once()
+
 
 @pytest.mark.asyncio
 async def test_gather_default_mode_calls_summary_not_extraction() -> None:
