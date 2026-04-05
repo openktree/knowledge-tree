@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_db.models import DatabaseConnection, Graph, GraphMember
+
+_SCHEMA_NAME_RE = re.compile(r"^[a-z0-9_]+$")
 
 
 class GraphRepository:
@@ -61,6 +64,10 @@ class GraphRepository:
         is_default: bool = False,
         status: str = "provisioning",
     ) -> Graph:
+        resolved_schema = schema_name or f"graph_{slug}"
+        if not _SCHEMA_NAME_RE.match(resolved_schema):
+            raise ValueError(f"Invalid schema_name '{resolved_schema}': must match ^[a-z0-9_]+$")
+
         graph = Graph(
             id=uuid.uuid4(),
             slug=slug,
@@ -69,7 +76,7 @@ class GraphRepository:
             graph_type=graph_type,
             byok_enabled=byok_enabled,
             storage_mode=storage_mode,
-            schema_name=schema_name or f"graph_{slug}",
+            schema_name=resolved_schema,
             database_connection_id=database_connection_id,
             created_by=created_by,
             is_default=is_default,

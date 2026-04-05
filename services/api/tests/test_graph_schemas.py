@@ -17,11 +17,12 @@ from kt_api.graphs import (
 
 class TestSlugValidation:
     def test_valid_slugs(self):
-        for slug in ["my-graph", "test123", "a1b", "graph_test_data"]:
+        for slug in ["my_graph", "test123", "a1b", "graph_test_data"]:
             assert _SLUG_RE.match(slug), f"Should match: {slug}"
 
     def test_invalid_slugs(self):
-        for slug in ["", "ab", "-start", "end-", "UPPER", "has space", "a" * 200]:
+        # Hyphens are disallowed to prevent schema name collisions
+        for slug in ["", "ab", "-start", "end-", "my-graph", "UPPER", "has space", "a" * 200]:
             assert not _SLUG_RE.match(slug), f"Should not match: {slug}"
 
     def test_default_reserved(self):
@@ -40,7 +41,7 @@ class TestSchemaNameValidation:
 
 class TestCreateGraphRequest:
     def test_defaults(self):
-        req = CreateGraphRequest(slug="test-graph", name="Test Graph")
+        req = CreateGraphRequest(slug="test_graph", name="Test Graph")
         assert req.storage_mode == "schema"
         assert req.graph_type == "v1"
         assert req.byok_enabled is False
@@ -48,7 +49,7 @@ class TestCreateGraphRequest:
 
     def test_custom_values(self):
         req = CreateGraphRequest(
-            slug="test-graph",
+            slug="test_graph",
             name="Test Graph",
             description="A test graph",
             graph_type="v1",

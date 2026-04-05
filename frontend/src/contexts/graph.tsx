@@ -39,8 +39,16 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await listGraphs();
       setGraphs(data);
-    } catch {
-      // If listing fails, keep whatever we have
+
+      // Validate stored graph slug still exists; reset to default if deleted
+      const stored = localStorage.getItem("active_graph");
+      if (stored && stored !== "default" && !data.some((g) => g.slug === stored)) {
+        setActiveGraphState("default");
+        setActiveGraphSlug("default");
+        localStorage.setItem("active_graph", "default");
+      }
+    } catch (err) {
+      console.error("Failed to load graphs:", err);
     } finally {
       setLoading(false);
     }

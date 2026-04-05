@@ -6,6 +6,7 @@ engine pool scoped to the correct database + PostgreSQL schema.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
@@ -79,6 +80,7 @@ class GraphSessionResolver:
         self._control_sf = control_session_factory
         self._settings = settings or get_settings()
         self._cache: dict[uuid.UUID, GraphSessions] = {}
+        self._lock = asyncio.Lock()
         # Reuse existing system-level session factories for the default graph
         # to avoid creating duplicate connection pools
         self._default_graph_sf = default_graph_session_factory
@@ -89,12 +91,17 @@ class GraphSessionResolver:
         if graph_id in self._cache:
             return self._cache[graph_id]
 
-        async with self._control_sf() as session:
-            graph = await session.execute(select(Graph).where(Graph.id == graph_id))
-            graph_row = graph.scalar_one_or_none()
-            if graph_row is None:
-                raise ValueError(f"Graph {graph_id} not found")
-            return await self._build_and_cache(graph_row, session)
+        async with self._lock:
+            # Re-check after acquiring lock
+            if graph_id in self._cache:
+                return self._cache[graph_id]
+
+            async with self._control_sf() as session:
+                graph = await session.execute(select(Graph).where(Graph.id == graph_id))
+                graph_row = graph.scalar_one_or_none()
+                if graph_row is None:
+                    raise ValueError(f"Graph {graph_id} not found")
+                return await self._build_and_cache(graph_row, session)
 
     async def resolve_by_slug(self, slug: str) -> GraphSessions:
         """Resolve by slug, with caching."""
@@ -103,12 +110,18 @@ class GraphSessionResolver:
             if gs.graph.slug == slug:
                 return gs
 
-        async with self._control_sf() as session:
-            result = await session.execute(select(Graph).where(Graph.slug == slug))
-            graph_row = result.scalar_one_or_none()
-            if graph_row is None:
-                raise ValueError(f"Graph with slug '{slug}' not found")
-            return await self._build_and_cache(graph_row, session)
+        async with self._lock:
+            # Re-check after acquiring lock
+            for gs in self._cache.values():
+                if gs.graph.slug == slug:
+                    return gs
+
+            async with self._control_sf() as session:
+                result = await session.execute(select(Graph).where(Graph.slug == slug))
+                graph_row = result.scalar_one_or_none()
+                if graph_row is None:
+                    raise ValueError(f"Graph with slug '{slug}' not found")
+                return await self._build_and_cache(graph_row, session)
 
     async def list_active_graphs(self) -> list[GraphInfo]:
         """Return all active graphs from the control plane."""
@@ -247,8 +260,13 @@ def _make_session_factory(
 
     Returns (engine, session_factory) so callers can store the engine for disposal.
     """
+    import re
+
     server_settings: dict[str, str] = {"application_name": application_name}
     if schema_name and schema_name != "public":
+        # Defense-in-depth: validate schema name even though it should be clean from the DB
+        if not re.match(r"^[a-z0-9_]+$", schema_name):
+            raise ValueError(f"Invalid schema_name for search_path: {schema_name!r}")
         server_settings["search_path"] = f"{schema_name},public"
 
     engine = create_async_engine(

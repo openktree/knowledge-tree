@@ -131,18 +131,22 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
     """Resolve a graph slug to the correct session factory.
 
     For "default", returns the system session factory.
-    For other slugs, uses GraphSessionResolver to get the graph-specific factory.
-    Raises ValueError if the graph doesn't exist.
-
-    Note: Per-user access control (graph membership + token scope validation)
-    should be checked by the caller using the MCP auth context. Currently,
-    MCP tools are read-only and access is gated at the graph resolver level
-    (non-existent slugs raise ValueError). Full per-user RBAC enforcement
-    requires threading the authenticated user through the MCP tool context,
-    which is planned for a follow-up.
+    For other slugs, uses GraphSessionResolver and checks OAuth token scopes.
+    Raises ValueError if the graph doesn't exist or access is denied.
     """
     if graph == "default":
         return get_session_factory_cached()
+
+    # Check OAuth token graph scopes — if the token has graph:* scopes,
+    # the requested graph must be in the allowed set
+    from fastmcp.server.dependencies import get_access_token
+
+    token = get_access_token()
+    if token is not None and token.scopes:
+        graph_scopes = [s.removeprefix("graph:") for s in token.scopes if s.startswith("graph:")]
+        if graph_scopes and graph not in graph_scopes:
+            raise ValueError(f"Token does not have access to graph '{graph}'")
+
     resolver = get_graph_resolver_cached()
     gs = await resolver.resolve_by_slug(graph)
     return gs.graph_session_factory

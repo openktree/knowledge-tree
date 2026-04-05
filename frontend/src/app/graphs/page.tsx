@@ -102,10 +102,10 @@ export default function GraphsPage() {
               <input
                 id="g-slug"
                 required
-                pattern="[a-z0-9][a-z0-9_-]{1,98}[a-z0-9]"
+                pattern="[a-z0-9][a-z0-9_]{1,98}[a-z0-9]"
                 value={newSlug}
                 onChange={(e) => setNewSlug(e.target.value)}
-                placeholder="my-research"
+                placeholder="my_research"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>

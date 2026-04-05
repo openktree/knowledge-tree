@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/graphs", tags=["graphs"])
 
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,98}[a-z0-9]$")
+# No hyphens — prevents schema name collisions (my_graph vs my-graph both → graph_my_graph)
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,98}[a-z0-9]$")
 _SCHEMA_NAME_RE = re.compile(r"^[a-z0-9_]+$")  # Strict: only lowercase alnum + underscore
 
 
@@ -50,7 +51,7 @@ class GraphResponse(BaseModel):
 
 
 class CreateGraphRequest(BaseModel):
-    slug: str = Field(..., min_length=3, max_length=100)
+    slug: str = Field(..., min_length=3, max_length=100, pattern=r"^[a-z0-9][a-z0-9_]{1,98}[a-z0-9]$")
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
     graph_type: str = Field(default="v1", pattern="^v[0-9]+$")
@@ -176,8 +177,8 @@ async def create_graph(
     if not _SLUG_RE.match(body.slug):
         raise HTTPException(
             status_code=400,
-            detail="Slug must be 3-100 chars, lowercase alphanumeric/hyphens/underscores, "
-            "starting and ending with alphanumeric",
+            detail="Slug must be 3-100 chars, lowercase alphanumeric + underscores only, "
+            "starting and ending with alphanumeric (no hyphens)",
         )
 
     if body.slug == "default":
@@ -199,7 +200,7 @@ async def create_graph(
             )
         db_conn_id = db_conn.id
 
-    schema_name = f"graph_{body.slug.replace('-', '_')}"
+    schema_name = f"graph_{body.slug}"
 
     graph = await repo.create(
         slug=body.slug,
@@ -282,6 +283,7 @@ async def delete_graph(
     slug: str,
     _admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
+    resolver: GraphSessionResolver = Depends(get_graph_session_resolver),
 ) -> None:
     """Soft-delete a graph (superadmin only). Default graph cannot be deleted."""
     repo = GraphRepository(session)
@@ -292,6 +294,8 @@ async def delete_graph(
         raise HTTPException(status_code=400, detail="Cannot delete the default graph")
     await repo.update(graph, status="deleted")
     await session.commit()
+    # Evict from cache and dispose engine pools
+    await resolver.invalidate(graph.id)
 
 
 # -- Member management ------------------------------------------------------
@@ -386,6 +390,14 @@ async def update_graph_member_role(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user_id")
 
+    # Prevent demoting the last admin
+    current_role = await repo.get_member_role(graph.id, target_id)
+    if current_role == "admin" and body.role != "admin":
+        members = await repo.get_members(graph.id)
+        admin_count = sum(1 for m in members if m.role == "admin")
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot demote the last admin of a graph")
+
     member = await repo.update_member_role(graph.id, target_id, body.role)
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -420,6 +432,14 @@ async def remove_graph_member(
         target_id = uuid.UUID(user_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user_id")
+
+    # Prevent removing the last admin
+    current_role = await repo.get_member_role(graph.id, target_id)
+    if current_role == "admin":
+        members = await repo.get_members(graph.id)
+        admin_count = sum(1 for m in members if m.role == "admin")
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last admin of a graph")
 
     removed = await repo.remove_member(graph.id, target_id)
     if not removed:
