@@ -60,6 +60,8 @@ graphDb:
   storage:
     size: 20Gi
     storageClass: ""
+  # All values under postgresql (except shared_preload_libraries) are passed
+  # as CNPG postgresql.parameters and must be scalars (string/number).
   postgresql:
     shared_preload_libraries:
       - "vector.so"
@@ -78,6 +80,8 @@ writeDb:
   storage:
     size: 20Gi
     storageClass: ""
+  # All values under postgresql are passed as CNPG postgresql.parameters
+  # and must be scalars (string/number).
   postgresql:
     max_connections: "400"
   resources:
