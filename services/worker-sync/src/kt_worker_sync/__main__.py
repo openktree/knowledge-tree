@@ -21,13 +21,13 @@ def main() -> None:
 
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
-    from kt_worker_sync.workflows.sync import sync_wf
+    from kt_worker_sync.workflows.sync import sync_dispatch_wf, sync_graph_wf
 
     hatchet = get_hatchet()
     worker = hatchet.worker(
         "knowledge-tree-sync",
-        slots=1,  # Single-threaded — only one sync cycle at a time
-        workflows=[sync_wf],
+        slots=10,  # Allow parallel per-graph sync tasks
+        workflows=[sync_dispatch_wf, sync_graph_wf],
         lifespan=worker_lifespan,
     )
     logging.getLogger(__name__).info("Starting sync worker")
