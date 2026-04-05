@@ -440,20 +440,21 @@ async def update_graph_member_role(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user_id")
 
-    # Prevent demoting the last admin
-    # Lock members to prevent concurrent last-admin demotion (TOCTOU)
+    # Lock admin members first, then check role — prevents TOCTOU race
+    # where two concurrent requests both read admin_count=2 before either demotes.
     from kt_db.models import GraphMember as GraphMemberModel
 
-    current_role = await repo.get_member_role(graph.id, target_id)
-    if current_role == "admin" and body.role != "admin":
+    if body.role != "admin":
         lock_stmt = (
             select(GraphMemberModel)
             .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == "admin")
             .with_for_update()
         )
         result = await session.execute(lock_stmt)
-        admin_count = len(result.scalars().all())
-        if admin_count <= 1:
+        locked_admins = result.scalars().all()
+        # Check if the target is an admin being demoted and is the last one
+        target_is_admin = any(m.user_id == target_id for m in locked_admins)
+        if target_is_admin and len(locked_admins) <= 1:
             raise HTTPException(status_code=400, detail="Cannot demote the last admin of a graph")
 
     member = await repo.update_member_role(graph.id, target_id, body.role)
@@ -491,20 +492,19 @@ async def remove_graph_member(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user_id")
 
-    # Prevent removing the last admin — lock to prevent TOCTOU race
+    # Lock admin members, then check — prevents TOCTOU race on last-admin removal
     from kt_db.models import GraphMember as GraphMemberModel
 
-    current_role = await repo.get_member_role(graph.id, target_id)
-    if current_role == "admin":
-        lock_stmt = (
-            select(GraphMemberModel)
-            .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == "admin")
-            .with_for_update()
-        )
-        result = await session.execute(lock_stmt)
-        admin_count = len(result.scalars().all())
-        if admin_count <= 1:
-            raise HTTPException(status_code=400, detail="Cannot remove the last admin of a graph")
+    lock_stmt = (
+        select(GraphMemberModel)
+        .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == "admin")
+        .with_for_update()
+    )
+    result = await session.execute(lock_stmt)
+    locked_admins = result.scalars().all()
+    target_is_admin = any(m.user_id == target_id for m in locked_admins)
+    if target_is_admin and len(locked_admins) <= 1:
+        raise HTTPException(status_code=400, detail="Cannot remove the last admin of a graph")
 
     removed = await repo.remove_member(graph.id, target_id)
     if not removed:
@@ -559,6 +559,8 @@ async def _provision_graph(
     import kt_db
 
     kt_db_root = Path(kt_db.__file__).resolve().parents[2]  # kt_db/__init__.py -> src/kt_db -> kt-db/
+    # Inherits parent env (DATABASE_URL, etc.) which is intentional — Alembic
+    # reads DB URLs from Settings/env. ALEMBIC_SCHEMA is the only override.
     env = {**os.environ, "ALEMBIC_SCHEMA": schema}
 
     def _run_migrations() -> None:

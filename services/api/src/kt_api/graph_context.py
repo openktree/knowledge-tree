@@ -87,11 +87,15 @@ async def get_graph_context(
 
 
 def require_writer(ctx: GraphContext) -> GraphContext:
-    """Verify the user has at least writer access on the graph."""
-    if ctx.graph.is_default:
-        return ctx
+    """Verify the user has at least writer access on the graph.
+
+    Default graph: superuser-only for writes (no membership model).
+    Non-default graphs: requires writer or admin role.
+    """
     if ctx.user.is_superuser:
         return ctx
+    if ctx.graph.is_default:
+        raise HTTPException(status_code=403, detail="Admin access required for default graph writes")
     if ctx.user_role in ("writer", "admin"):
         return ctx
     raise HTTPException(status_code=403, detail="Requires at least writer role")

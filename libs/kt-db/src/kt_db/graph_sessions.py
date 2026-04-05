@@ -121,18 +121,22 @@ class GraphSessionResolver:
         if graph_id is not None and graph_id in self._cache:
             return self._cache[graph_id]
 
-        # Need to look up the graph ID first to get the per-graph lock
+        # Look up graph ID, then release session before acquiring lock
+        # to avoid holding a connection pool slot while waiting on the lock
         async with self._control_sf() as session:
             result = await session.execute(select(Graph).where(Graph.slug == slug))
             graph_row = result.scalar_one_or_none()
             if graph_row is None:
                 raise ValueError(f"Graph with slug '{slug}' not found")
+            graph_id = graph_row.id
 
-            lock = await self._get_lock(graph_row.id)
-            async with lock:
-                # Re-check cache
-                if graph_row.id in self._cache:
-                    return self._cache[graph_row.id]
+        lock = await self._get_lock(graph_id)
+        async with lock:
+            if graph_id in self._cache:
+                return self._cache[graph_id]
+            # Open a fresh session inside the lock for _build_and_cache
+            async with self._control_sf() as session:
+                graph_row = (await session.execute(select(Graph).where(Graph.id == graph_id))).scalar_one()
                 return await self._build_and_cache(graph_row, session)
 
     async def list_active_graphs(self) -> list[GraphInfo]:
