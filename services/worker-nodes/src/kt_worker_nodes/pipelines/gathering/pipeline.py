@@ -313,193 +313,241 @@ class GatherFactsPipeline:
             # Commit all sources so durable tasks can load them
             await write_session.commit()
             await _emit_budget(ctx, state)
+        # Session closed here by _ensure_write_session — connection returned
+        # to pool BEFORE dispatching long-running workflows.  Holding it open
+        # during decompose_sources (up to 60 min) caused the underlying
+        # connection to be recycled by pool_recycle, leading to InterfaceError
+        # on rollback/close.
 
-            # ── Phase 2: Dispatch all decompose workflows concurrently ────
-            text_coros: list[tuple[int, Any]] = []  # (plan_index, coroutine)
-            image_coros: list[tuple[int, Any]] = []
+        # ── Phase 2: Dispatch all decompose workflows concurrently ────
+        # No write session is held open during this phase — text
+        # decomposition runs as a separate Hatchet workflow (own session),
+        # and image decomposition gets a short-lived session below.
+        text_coros: list[tuple[int, Any]] = []  # (plan_index, coroutine)
+        image_coros: list[tuple[int, Any]] = []
 
-            for i, plan in enumerate(query_plans):
-                if plan.text_input:
-                    text_coros.append((i, run_workflow("decompose_sources", plan.text_input.model_dump())))
-                if plan.image_sources:
-                    img_pipeline = DecompositionPipeline(ctx.model_gateway)
-                    image_coros.append(
-                        (
-                            i,
-                            img_pipeline.decompose(
-                                plan.image_sources,
-                                plan.query,
-                                ctx.session,
-                                ctx.embedding_service,
-                                query_context=state.query,
-                                file_data_store=ctx.file_data_store,
-                                qdrant_client=ctx.qdrant_client,
-                                write_session=ctx.graph_engine._write_session,
-                            ),
-                        )
+        for i, plan in enumerate(query_plans):
+            if plan.text_input:
+                text_coros.append((i, run_workflow("decompose_sources", plan.text_input.model_dump())))
+            if plan.image_sources:
+                image_coros.append(
+                    (
+                        i,
+                        _decompose_images_with_session(
+                            plan.image_sources,
+                            plan.query,
+                            ctx,
+                            state,
+                        ),
                     )
-
-            # Run all text decompositions concurrently
-            text_results: dict[int, DecomposeSourcesOutput] = {}
-            if text_coros:
-                raw_results_list = await asyncio.gather(
-                    *[coro for _, coro in text_coros],
-                    return_exceptions=True,
                 )
-                for (plan_idx, _), raw_result in zip(text_coros, raw_results_list):
-                    if isinstance(raw_result, BaseException):
-                        logger.exception(
-                            "Decompose workflow failed for query '%s': %s",
-                            query_plans[plan_idx].query,
-                            raw_result,
-                        )
-                    else:
-                        # Workflow results are wrapped as {"task_name": output_dict};
-                        # unwrap by task name before validation.
-                        result = raw_result
-                        task_data = result.get("decompose_sources", result) if isinstance(result, dict) else result
-                        text_results[plan_idx] = DecomposeSourcesOutput.model_validate(task_data)
 
-            # Run all image decompositions concurrently
-            image_results: dict[int, Any] = {}
-            if image_coros:
-                raw_img_results = await asyncio.gather(
-                    *[coro for _, coro in image_coros],
-                    return_exceptions=True,
+        # Run all text decompositions concurrently
+        text_results: dict[int, DecomposeSourcesOutput] = {}
+        if text_coros:
+            raw_results_list = await asyncio.gather(
+                *[coro for _, coro in text_coros],
+                return_exceptions=True,
+            )
+            for (plan_idx, _), raw_result in zip(text_coros, raw_results_list):
+                if isinstance(raw_result, BaseException):
+                    logger.exception(
+                        "Decompose workflow failed for query '%s': %s",
+                        query_plans[plan_idx].query,
+                        raw_result,
+                    )
+                else:
+                    # Workflow results are wrapped as {"task_name": output_dict};
+                    # unwrap by task name before validation.
+                    result = raw_result
+                    task_data = result.get("decompose_sources", result) if isinstance(result, dict) else result
+                    text_results[plan_idx] = DecomposeSourcesOutput.model_validate(task_data)
+
+        # Run all image decompositions concurrently
+        image_results: dict[int, Any] = {}
+        if image_coros:
+            raw_img_results = await asyncio.gather(
+                *[coro for _, coro in image_coros],
+                return_exceptions=True,
+            )
+            for (plan_idx, _), img_result in zip(image_coros, raw_img_results):
+                if isinstance(img_result, BaseException):
+                    logger.exception(
+                        "Image decomposition failed for query '%s': %s",
+                        query_plans[plan_idx].query,
+                        img_result,
+                    )
+                else:
+                    image_results[plan_idx] = img_result
+
+        # ── Phase 3: Reconcile results & refund budgets ───────────────
+        for i, plan in enumerate(query_plans):
+            facts_from_query = 0
+
+            if i in text_results:
+                decomp = text_results[i]
+                facts_from_query += decomp.total_fact_count
+                for fid in decomp.fact_ids:
+                    all_gathered_facts.append(Fact(id=uuid.UUID(fid), content="", fact_type=""))
+                if decomp.extracted_nodes:
+                    all_extracted_nodes.extend(decomp.extracted_nodes)
+                if decomp.seed_keys:
+                    all_seed_keys.extend(decomp.seed_keys)
+
+            if i in image_results:
+                img_result = image_results[i]
+                facts_from_query += len(img_result.facts)
+                all_gathered_facts.extend(img_result.facts)
+                if img_result.extracted_nodes:
+                    all_extracted_nodes.extend(img_result.extracted_nodes)
+                if img_result.seed_keys:
+                    all_seed_keys.extend(img_result.seed_keys)
+
+            total_facts_gathered += facts_from_query
+            state.gathered_fact_count += facts_from_query
+
+            # Refund budget if decomposition was attempted but produced zero
+            # facts (e.g. model JSON parse failures or workflow errors).
+            if plan.decomposition_attempted and facts_from_query == 0:
+                state.explore_used -= 1
+                queries_executed -= 1
+                logger.info(
+                    "gather_facts: refunded explore_budget for query %r (decomposition produced 0 facts)",
+                    plan.query,
                 )
-                for (plan_idx, _), img_result in zip(image_coros, raw_img_results):
-                    if isinstance(img_result, BaseException):
-                        logger.exception(
-                            "Image decomposition failed for query '%s': %s",
-                            query_plans[plan_idx].query,
-                            img_result,
+
+        # Dispatch seed dedup as independent Hatchet tasks (non-fatal)
+        if all_seed_keys:
+            try:
+                from kt_hatchet.client import dispatch_workflow
+
+                unique_keys = list(dict.fromkeys(all_seed_keys))
+                batch_size = 10
+                batches = [unique_keys[i : i + batch_size] for i in range(0, len(unique_keys), batch_size)]
+                scope_id = getattr(state, "scope_id", "") or ""
+                await asyncio.gather(
+                    *[
+                        dispatch_workflow(
+                            "seed_dedup_batch",
+                            {"seed_keys": b, "scope_id": scope_id},
                         )
-                    else:
-                        image_results[plan_idx] = img_result
+                        for b in batches
+                    ]
+                )
+                logger.info(
+                    "gather_facts: dispatched %d seed dedup tasks (%d seeds)",
+                    len(batches),
+                    len(unique_keys),
+                )
+            except Exception:
+                logger.debug("Seed dedup dispatch failed (non-fatal)", exc_info=True)
 
-            # ── Phase 3: Reconcile results & refund budgets ───────────────
-            for i, plan in enumerate(query_plans):
-                facts_from_query = 0
+        result: dict[str, object] = {
+            "queries_executed": queries_executed,
+            "facts_gathered": total_facts_gathered,
+            "explore_used": state.explore_used,
+            "explore_remaining": state.explore_remaining,
+            "source_titles_by_query": source_titles_by_query,
+            "source_urls": all_source_urls,
+        }
 
-                if i in text_results:
-                    decomp = text_results[i]
-                    facts_from_query += decomp.total_fact_count
-                    for fid in decomp.fact_ids:
-                        all_gathered_facts.append(Fact(id=uuid.UUID(fid), content="", fact_type=""))
-                    if decomp.extracted_nodes:
-                        all_extracted_nodes.extend(decomp.extracted_nodes)
-                    if decomp.seed_keys:
-                        all_seed_keys.extend(decomp.seed_keys)
+        if all_super_sources:
+            result["super_sources"] = all_super_sources
 
-                if i in image_results:
-                    img_result = image_results[i]
-                    facts_from_query += len(img_result.facts)
-                    all_gathered_facts.extend(img_result.facts)
-                    if img_result.extracted_nodes:
-                        all_extracted_nodes.extend(img_result.extracted_nodes)
-                    if img_result.seed_keys:
-                        all_seed_keys.extend(img_result.seed_keys)
+        # Post-processing: summary and/or extraction
+        if all_gathered_facts:
+            scope = getattr(state, "scope_description", None) or getattr(state, "query", "")
 
-                total_facts_gathered += facts_from_query
-                state.gathered_fact_count += facts_from_query
+            if enable_summary:
+                from kt_models.usage import clear_usage_task, set_usage_task
 
-                # Refund budget if decomposition was attempted but produced zero
-                # facts (e.g. model JSON parse failures or workflow errors).
-                if plan.decomposition_attempted and facts_from_query == 0:
-                    state.explore_used -= 1
-                    queries_executed -= 1
-                    logger.info(
-                        "gather_facts: refunded explore_budget for query %r (decomposition produced 0 facts)",
-                        plan.query,
-                    )
+                set_usage_task("gather_summary")
+                summary = await _summarize_gathered_facts(
+                    all_gathered_facts,
+                    ctx.model_gateway,
+                    scope=scope,
+                )
+                clear_usage_task()
+                if summary:
+                    result.update(summary)
 
-            # Dispatch seed dedup as independent Hatchet tasks (non-fatal)
-            if all_seed_keys:
-                try:
-                    from kt_hatchet.client import dispatch_workflow
+            if enable_extraction:
+                # Entity extraction already ran in decompose() — use those results
+                extracted = all_extracted_nodes or None
 
-                    unique_keys = list(dict.fromkeys(all_seed_keys))
-                    batch_size = 10
-                    batches = [unique_keys[i : i + batch_size] for i in range(0, len(unique_keys), batch_size)]
-                    scope_id = getattr(state, "scope_id", "") or ""
-                    await asyncio.gather(
-                        *[
-                            dispatch_workflow(
-                                "seed_dedup_batch",
-                                {"seed_keys": b, "scope_id": scope_id},
-                            )
-                            for b in batches
-                        ]
-                    )
-                    logger.info(
-                        "gather_facts: dispatched %d seed dedup tasks (%d seeds)",
-                        len(batches),
-                        len(unique_keys),
-                    )
-                except Exception:
-                    logger.debug("Seed dedup dispatch failed (non-fatal)", exc_info=True)
-
-            result: dict[str, object] = {
-                "queries_executed": queries_executed,
-                "facts_gathered": total_facts_gathered,
-                "explore_used": state.explore_used,
-                "explore_remaining": state.explore_remaining,
-                "source_titles_by_query": source_titles_by_query,
-                "source_urls": all_source_urls,
-            }
-
-            if all_super_sources:
-                result["super_sources"] = all_super_sources
-
-            # Post-processing: summary and/or extraction
-            if all_gathered_facts:
-                scope = getattr(state, "scope_description", None) or getattr(state, "query", "")
-
-                if enable_summary:
-                    from kt_models.usage import clear_usage_task, set_usage_task
-
-                    set_usage_task("gather_summary")
-                    summary = await _summarize_gathered_facts(
+                # Extract source-level authors and merge as entity suggestions
+                source_author_map = await _extract_all_source_authors(
+                    all_source_snapshots,
+                    ctx.model_gateway,
+                )
+                if source_author_map:
+                    result["source_authors"] = {
+                        uri: {"person": a.person, "organization": a.organization}
+                        for uri, a in source_author_map.items()
+                        if a.person or a.organization
+                    }
+                    author_entities = authors_to_entity_suggestions(
+                        source_author_map,
                         all_gathered_facts,
-                        ctx.model_gateway,
-                        scope=scope,
                     )
-                    clear_usage_task()
-                    if summary:
-                        result.update(summary)
-
-                if enable_extraction:
-                    # Entity extraction already ran in decompose() — use those results
-                    extracted = all_extracted_nodes or None
-
-                    # Extract source-level authors and merge as entity suggestions
-                    source_author_map = await _extract_all_source_authors(
-                        all_source_snapshots,
-                        ctx.model_gateway,
-                    )
-                    if source_author_map:
-                        result["source_authors"] = {
-                            uri: {"person": a.person, "organization": a.organization}
-                            for uri, a in source_author_map.items()
-                            if a.person or a.organization
-                        }
-                        author_entities = authors_to_entity_suggestions(
-                            source_author_map,
-                            all_gathered_facts,
+                    if author_entities:
+                        extracted = merge_extracted_nodes(
+                            extracted or [],
+                            author_entities,
                         )
-                        if author_entities:
-                            extracted = merge_extracted_nodes(
-                                extracted or [],
-                                author_entities,
-                            )
 
-                    if extracted:
-                        result["extracted_nodes"] = extracted
+                if extracted:
+                    result["extracted_nodes"] = extracted
 
-            return result
+        return result
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
+
+async def _decompose_images_with_session(
+    image_sources: list[WriteRawSource],
+    query: str,
+    ctx: AgentContext,
+    state: PipelineState,
+) -> Any:
+    """Run image decomposition with its own short-lived write session.
+
+    If the graph engine already holds a write session (e.g. caller-managed
+    lifetime), that session is reused. Otherwise a fresh session is created
+    from the factory and closed after decomposition completes.
+    """
+    existing = ctx.graph_engine._write_session
+    if existing is not None:
+        pipeline = DecompositionPipeline(ctx.model_gateway)
+        return await pipeline.decompose(
+            image_sources,
+            query,
+            ctx.session,
+            ctx.embedding_service,
+            query_context=state.query,
+            file_data_store=ctx.file_data_store,
+            qdrant_client=ctx.qdrant_client,
+            write_session=existing,
+        )
+
+    if ctx.write_session_factory is None:
+        raise RuntimeError("write_session_factory required for image decomposition")
+    ws = ctx.write_session_factory()
+    try:
+        pipeline = DecompositionPipeline(ctx.model_gateway)
+        return await pipeline.decompose(
+            image_sources,
+            query,
+            ctx.session,
+            ctx.embedding_service,
+            query_context=state.query,
+            file_data_store=ctx.file_data_store,
+            qdrant_client=ctx.qdrant_client,
+            write_session=ws,
+        )
+    finally:
+        await ws.close()
 
 
 async def _summarize_gathered_facts(
