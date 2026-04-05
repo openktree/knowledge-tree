@@ -12,7 +12,10 @@ def get_qdrant_client() -> AsyncQdrantClient:
     global _client
     if _client is None:
         settings = get_settings()
-        _client = AsyncQdrantClient(url=settings.qdrant_url, timeout=settings.qdrant_timeout)
+        url = settings.qdrant_url
+        if settings.qdrant_tls and url.startswith("http://"):
+            url = "https://" + url[len("http://") :]
+        _client = AsyncQdrantClient(url=url, timeout=settings.qdrant_timeout)
     return _client
 
 

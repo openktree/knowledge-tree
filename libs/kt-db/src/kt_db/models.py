@@ -6,6 +6,8 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, Str
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from kt_db.encrypted_type import EncryptedString
+
 
 def _utcnow() -> datetime:
     """Return current UTC time as a naive datetime (no tzinfo).
@@ -583,7 +585,7 @@ class OAuthClient(Base):
     __tablename__ = "oauth_clients"
 
     client_id: Mapped[str] = mapped_column(String(200), primary_key=True)
-    client_secret: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    client_secret: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
     client_id_issued_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     client_secret_expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)

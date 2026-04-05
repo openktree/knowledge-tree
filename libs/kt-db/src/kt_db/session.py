@@ -3,6 +3,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from kt_config.settings import get_settings
 
 
+def _ssl_connect_args(sslmode: str) -> dict:
+    """Build asyncpg ssl connect_args from a PostgreSQL sslmode string."""
+    if not sslmode:
+        return {}
+    import ssl as _ssl
+
+    if sslmode == "require":
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        return {"ssl": ctx}
+    if sslmode in ("verify-ca", "verify-full"):
+        ctx = _ssl.create_default_context()
+        if sslmode == "verify-ca":
+            ctx.check_hostname = False
+        return {"ssl": ctx}
+    return {}
+
+
 def get_engine(
     database_url: str | None = None,
     pool_size: int | None = None,
@@ -12,6 +31,11 @@ def get_engine(
 ):
     settings = get_settings()
     url = database_url or settings.database_url
+    connect_args: dict = {
+        "statement_cache_size": 0,
+        "server_settings": {"application_name": application_name},
+        **_ssl_connect_args(settings.db_sslmode),
+    }
     return create_async_engine(
         url,
         echo=False,
@@ -20,10 +44,7 @@ def get_engine(
         pool_timeout=pool_timeout if pool_timeout is not None else settings.db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.db_pool_recycle,
-        connect_args={
-            "statement_cache_size": 0,
-            "server_settings": {"application_name": application_name},
-        },
+        connect_args=connect_args,
     )
 
 
@@ -45,6 +66,11 @@ def get_write_engine(
     """Create an engine for the write-optimized database."""
     settings = get_settings()
     url = database_url or settings.write_database_url
+    connect_args: dict = {
+        "statement_cache_size": 0,
+        "server_settings": {"application_name": application_name},
+        **_ssl_connect_args(settings.db_sslmode),
+    }
     return create_async_engine(
         url,
         echo=False,
@@ -53,10 +79,7 @@ def get_write_engine(
         pool_timeout=pool_timeout if pool_timeout is not None else settings.write_db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.write_db_pool_recycle,
-        connect_args={
-            "statement_cache_size": 0,
-            "server_settings": {"application_name": application_name},
-        },
+        connect_args=connect_args,
     )
 
 
