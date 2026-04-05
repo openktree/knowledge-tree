@@ -66,6 +66,14 @@ See the [development setup guide](https://docs.openktree.com/contributing/develo
 - [MCP Integration](https://docs.openktree.com/mcp/overview) — Connect AI tools to the knowledge graph
 - [Contributing](https://docs.openktree.com/contributing/architecture-overview) — Architecture, core objects, services, and development setup
 
+## Contributing
+
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md)
+first. All contributors must sign our
+[Contributor License Agreement](CLA.md) before contributions can be merged.
+See our [CLA documentation](https://docs.openktree.com/contributing/cla) for
+details on why we require a CLA and what it means for you.
+
 ## License
 
 This project is licensed under AGPL-3.0. See [LICENSE](LICENSE) for details.
