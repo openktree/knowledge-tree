@@ -26,7 +26,10 @@ def main() -> None:
     hatchet = get_hatchet()
     worker = hatchet.worker(
         "knowledge-tree-sync",
-        slots=10,  # Allow parallel per-graph sync tasks
+        # Connection budget: each graph sync uses pool_size=5, max_overflow=10
+        # per DB. 10 slots × 15 connections × 2 DBs = up to 300 connections max.
+        # Adjust if the PG max_connections budget is tight.
+        slots=10,
         workflows=[sync_dispatch_wf, sync_graph_wf],
         lifespan=worker_lifespan,
     )

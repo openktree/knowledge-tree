@@ -119,9 +119,11 @@ async def _require_graph_access(
         raise HTTPException(status_code=404, detail="Graph not found")
 
     if graph.is_default:
-        # Default graph: still enforce min_role for write operations
+        # Default graph policy: open for reads, superuser-only for writes (update/delete).
+        # The default graph has no membership — all authenticated users can read it,
+        # but only superusers can modify its metadata.
         if min_role and not user.is_superuser:
-            raise HTTPException(status_code=403, detail=f"Requires {min_role} role (admin only for default graph)")
+            raise HTTPException(status_code=403, detail="Admin access required for default graph management")
         return graph
 
     if user.is_superuser:
@@ -283,6 +285,45 @@ async def update_graph(
     repo = GraphRepository(session)
     graph = await repo.update(graph, name=body.name, description=body.description)
     await session.commit()
+    members = await repo.get_members(graph.id)
+    return _graph_response(graph, member_count=len(members))
+
+
+@router.post("/{slug}/retry-provision", response_model=GraphResponse)
+async def retry_provision(
+    slug: str,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+    resolver: GraphSessionResolver = Depends(get_graph_session_resolver),
+) -> GraphResponse:
+    """Retry provisioning for a graph stuck in 'error' status (admin only).
+
+    CREATE SCHEMA IF NOT EXISTS and Alembic migrations are idempotent,
+    so retrying is safe even if the schema/tables already exist.
+    """
+    repo = GraphRepository(session)
+    graph = await repo.get_by_slug(slug)
+    if graph is None:
+        raise HTTPException(status_code=404, detail="Graph not found")
+    if graph.status != "error":
+        raise HTTPException(status_code=400, detail="Only graphs in 'error' status can be re-provisioned")
+
+    try:
+        await _provision_graph(graph, session, resolver)
+        graph = await repo.update(graph, status="active")
+        # Add admin member if none exist (handles the orphaned-graph case)
+        members = await repo.get_members(graph.id)
+        if not members:
+            await repo.add_member(graph.id, admin.id, role="admin")
+        await session.commit()
+        await resolver.invalidate(graph.id)
+    except Exception:
+        logger.exception("Retry provisioning failed for graph '%s'", slug)
+        graph = await repo.update(graph, status="error")
+        await session.commit()
+        await resolver.invalidate(graph.id)
+        raise HTTPException(status_code=500, detail="Provisioning retry failed")
+
     members = await repo.get_members(graph.id)
     return _graph_response(graph, member_count=len(members))
 
@@ -475,18 +516,24 @@ async def _provision_graph(
 
     validate_schema_name(schema)
 
+    # SECURITY: f-string in DDL is safe ONLY because validate_schema_name() above
+    # enforces ^[a-z0-9_]+$ — if that regex is ever loosened, these become injectable.
+
     # Create schema in graph-db
     await session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
     await session.commit()
 
-    # Create schema in write-db using a temporary session
+    # Create schema in write-db using a one-off engine
     # (don't go through resolver — that would cache engines before migrations finish)
-    from kt_db.session import get_write_session_factory
+    from kt_db.session import get_write_engine
 
-    tmp_write_sf = get_write_session_factory(application_name="kt-provision")
-    async with tmp_write_sf() as write_session:
-        await write_session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-        await write_session.commit()
+    provision_engine = get_write_engine(application_name="kt-provision")
+    try:
+        async with provision_engine.connect() as conn:
+            await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+            await conn.commit()
+    finally:
+        await provision_engine.dispose()
 
     # Run Alembic migrations in a thread pool to avoid blocking the event loop
     import asyncio

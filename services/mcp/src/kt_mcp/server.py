@@ -137,14 +137,16 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
     if graph == "default":
         return get_session_factory_cached()
 
-    # Check OAuth token graph scopes — if the token has graph:* scopes,
-    # the requested graph must be in the allowed set
+    # Non-default graphs require explicit graph:{slug} scope in the token.
+    # Tokens without any graph:* scopes are denied access to non-default graphs.
     from fastmcp.server.dependencies import get_access_token
 
     token = get_access_token()
-    if token is not None and token.scopes:
-        graph_scopes = [s.removeprefix("graph:") for s in token.scopes if s.startswith("graph:")]
-        if graph_scopes and graph not in graph_scopes:
+    if token is not None:
+        graph_scopes = [s.removeprefix("graph:") for s in (token.scopes or []) if s.startswith("graph:")]
+        if not graph_scopes:
+            raise ValueError(f"Token does not have graph scope for '{graph}' — add graph:{graph} scope")
+        if graph not in graph_scopes:
             raise ValueError(f"Token does not have access to graph '{graph}'")
 
     resolver = get_graph_resolver_cached()

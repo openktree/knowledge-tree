@@ -44,6 +44,7 @@ def do_run_migrations(connection):
         opts["version_table_schema"] = _schema_override
     context.configure(**opts)
     if _schema_override:
+        # SECURITY: safe because validate_schema_name() enforces ^[a-z0-9_]+$ above
         connection.execute(text(f"SET search_path TO {_schema_override}, public"))
     with context.begin_transaction():
         context.run_migrations()
