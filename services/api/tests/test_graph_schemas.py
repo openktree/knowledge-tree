@@ -6,12 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 from kt_api.graphs import (
+    _SCHEMA_NAME_RE,
+    _SLUG_RE,
     AddMemberRequest,
     CreateGraphRequest,
     GraphResponse,
     UpdateMemberRoleRequest,
-    _SCHEMA_NAME_RE,
-    _SLUG_RE,
 )
 
 
