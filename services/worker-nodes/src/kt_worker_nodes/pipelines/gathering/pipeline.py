@@ -513,38 +513,26 @@ async def _decompose_images_with_session(
 ) -> Any:
     """Run image decomposition with its own short-lived write session.
 
-    If the graph engine already holds a write session (e.g. caller-managed
-    lifetime), that session is reused. Otherwise a fresh session is created
-    from the factory and closed after decomposition completes.
+    Always creates a fresh session from the factory so that the caller's
+    session (if any) is not held open for the duration of decomposition.
     """
-    existing = ctx.graph_engine._write_session
-    if existing is not None:
-        pipeline = DecompositionPipeline(ctx.model_gateway)
-        return await pipeline.decompose(
-            image_sources,
-            query,
-            ctx.session,
-            ctx.embedding_service,
-            query_context=state.query,
-            file_data_store=ctx.file_data_store,
-            qdrant_client=ctx.qdrant_client,
-            write_session=existing,
-        )
-
     if ctx.write_session_factory is None:
         raise RuntimeError("write_session_factory required for image decomposition")
     ws = ctx.write_session_factory()
     try:
+        kwargs: dict[str, Any] = dict(
+            query_context=state.query,
+            file_data_store=ctx.file_data_store,
+            qdrant_client=ctx.qdrant_client,
+            write_session=ws,
+        )
         pipeline = DecompositionPipeline(ctx.model_gateway)
         return await pipeline.decompose(
             image_sources,
             query,
             ctx.session,
             ctx.embedding_service,
-            query_context=state.query,
-            file_data_store=ctx.file_data_store,
-            qdrant_client=ctx.qdrant_client,
-            write_session=ws,
+            **kwargs,
         )
     finally:
         await ws.close()
