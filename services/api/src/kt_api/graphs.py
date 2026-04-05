@@ -218,17 +218,19 @@ async def create_graph(
     # Provision schema + Qdrant collections synchronously
     try:
         await _provision_graph(graph, session, resolver)
+        # Combine status update + admin member in a single commit
+        # to avoid orphaned graphs with no admin on crash
         graph = await repo.update(graph, status="active")
+        await repo.add_member(graph.id, admin.id, role="admin")
         await session.commit()
+        # Invalidate cached GraphInfo so next resolve() sees status="active"
+        await resolver.invalidate(graph.id)
     except Exception:
         logger.exception("Failed to provision graph '%s'", body.slug)
         graph = await repo.update(graph, status="error")
         await session.commit()
+        await resolver.invalidate(graph.id)
         raise HTTPException(status_code=500, detail="Graph provisioning failed")
-
-    # Add creator as admin member
-    await repo.add_member(graph.id, admin.id, role="admin")
-    await session.commit()
 
     return _graph_response(graph, member_count=1)
 
@@ -457,7 +459,8 @@ async def _provision_graph(
         await write_session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         await write_session.commit()
 
-    # Run Alembic migrations for both graph-db and write-db schemas
+    # Run Alembic migrations in a thread pool to avoid blocking the event loop
+    import asyncio
     import os
     import subprocess
     import sys
@@ -467,17 +470,20 @@ async def _provision_graph(
     kt_db_root = Path(kt_db.__file__).resolve().parents[2]  # kt_db/__init__.py -> src/kt_db -> kt-db/
     env = {**os.environ, "ALEMBIC_SCHEMA": schema}
 
-    for ini_file in ("alembic.ini", "alembic_write.ini"):
-        result = subprocess.run(
-            [sys.executable, "-m", "alembic", "-c", str(kt_db_root / ini_file), "upgrade", "head"],
-            env=env,
-            capture_output=True,
-            text=True,
-            cwd=str(kt_db_root),
-        )
-        if result.returncode != 0:
-            logger.error("Migration failed for graph '%s': %s", graph.slug, result.stderr)
-            raise RuntimeError(f"Migration failed for graph '{graph.slug}'")
+    def _run_migrations() -> None:
+        for ini_file in ("alembic.ini", "alembic_write.ini"):
+            result = subprocess.run(
+                [sys.executable, "-m", "alembic", "-c", str(kt_db_root / ini_file), "upgrade", "head"],
+                env=env,
+                capture_output=True,
+                text=True,
+                cwd=str(kt_db_root),
+            )
+            if result.returncode != 0:
+                logger.error("Migration failed for graph '%s': %s", graph.slug, result.stderr)
+                raise RuntimeError(f"Migration failed for graph '{graph.slug}'")
+
+    await asyncio.to_thread(_run_migrations)
 
     # Create Qdrant collections
     try:

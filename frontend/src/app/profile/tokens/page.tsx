@@ -129,7 +129,7 @@ function CreateTokenForm({ onCreated }: { onCreated: (t: ApiTokenCreated) => voi
   const [restrictGraphs, setRestrictGraphs] = useState(false);
 
   useEffect(() => {
-    listGraphs().then(setGraphs).catch(() => {});
+    listGraphs().then(setGraphs).catch((err) => console.error("Failed to load graphs:", err));
   }, []);
 
   function toggleGraph(slug: string) {
@@ -304,7 +304,7 @@ export default function TokensPage() {
     let cancelled = false;
     api.auth.listTokens()
       .then((list) => { if (!cancelled) setTokens(list); })
-      .catch(() => {});
+      .catch((err: unknown) => console.error("Failed to load tokens:", err));
     return () => { cancelled = true; };
   }, []);
 

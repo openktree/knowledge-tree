@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from kt_config.settings import Settings, get_settings
 from kt_db.models import DatabaseConnection, Graph
@@ -54,6 +54,9 @@ class GraphSessions:
     graph_session_factory: async_sessionmaker[AsyncSession]
     write_session_factory: async_sessionmaker[AsyncSession]
     qdrant_collection_prefix: str  # "" for default, "{slug}__" for non-default
+    # Engines stored for proper disposal — None for default graph (reused system pools)
+    _graph_engine: AsyncEngine | None = None
+    _write_engine: AsyncEngine | None = None
 
 
 class GraphSessionResolver:
@@ -117,15 +120,12 @@ class GraphSessionResolver:
         """Remove a graph from the cache and dispose its engine pools."""
         gs = self._cache.pop(graph_id, None)
         if gs is not None and not gs.graph.is_default:
-            # Dispose non-default engine pools to avoid connection leaks
-            try:
-                await gs.graph_session_factory.kw["bind"].dispose()
-            except Exception:
-                pass
-            try:
-                await gs.write_session_factory.kw["bind"].dispose()
-            except Exception:
-                pass
+            for engine in (gs._graph_engine, gs._write_engine):
+                if engine is not None:
+                    try:
+                        await engine.dispose()
+                    except Exception:
+                        pass
 
     async def _build_and_cache(self, graph: Graph, session: AsyncSession) -> GraphSessions:
         """Build engines for a graph and cache the result."""
@@ -135,13 +135,16 @@ class GraphSessionResolver:
         settings = self._settings
         info = GraphInfo.from_orm(graph)
 
+        graph_engine: AsyncEngine | None = None
+        write_engine: AsyncEngine | None = None
+
         if graph.is_default:
             # Reuse existing system-level session factories to avoid duplicate pools
             if self._default_graph_sf and self._default_write_sf:
                 graph_sf = self._default_graph_sf
                 write_sf = self._default_write_sf
             else:
-                graph_sf = _make_session_factory(
+                graph_engine, graph_sf = _make_session_factory(
                     settings.database_url,
                     pool_size=settings.db_pool_size,
                     max_overflow=settings.db_max_overflow,
@@ -149,7 +152,7 @@ class GraphSessionResolver:
                     pool_recycle=settings.db_pool_recycle,
                     application_name="kt-graph-default",
                 )
-                write_sf = _make_session_factory(
+                write_engine, write_sf = _make_session_factory(
                     settings.write_database_url,
                     pool_size=settings.write_db_pool_size,
                     max_overflow=settings.write_db_max_overflow,
@@ -167,14 +170,14 @@ class GraphSessionResolver:
                     f"Graph '{graph.slug}' references config_key '{db_conn.config_key}' "
                     f"not found in settings.graph_databases"
                 )
-            graph_sf = _make_session_factory(
+            graph_engine, graph_sf = _make_session_factory(
                 graph_db_config.graph_database_url,
                 pool_size=graph_db_config.pool_size,
                 max_overflow=graph_db_config.max_overflow,
                 schema_name=graph.schema_name,
                 application_name=f"kt-graph-{graph.slug}",
             )
-            write_sf = _make_session_factory(
+            write_engine, write_sf = _make_session_factory(
                 graph_db_config.write_database_url,
                 pool_size=graph_db_config.pool_size,
                 max_overflow=graph_db_config.max_overflow,
@@ -184,14 +187,14 @@ class GraphSessionResolver:
             prefix = f"{graph.slug}__"
         else:
             # Same database, different schema
-            graph_sf = _make_session_factory(
+            graph_engine, graph_sf = _make_session_factory(
                 settings.database_url,
                 pool_size=5,
                 max_overflow=10,
                 schema_name=graph.schema_name,
                 application_name=f"kt-graph-{graph.slug}",
             )
-            write_sf = _make_session_factory(
+            write_engine, write_sf = _make_session_factory(
                 settings.write_database_url,
                 pool_size=5,
                 max_overflow=10,
@@ -205,6 +208,8 @@ class GraphSessionResolver:
             graph_session_factory=graph_sf,
             write_session_factory=write_sf,
             qdrant_collection_prefix=prefix,
+            _graph_engine=graph_engine,
+            _write_engine=write_engine,
         )
         self._cache[graph.id] = gs
         logger.info(
@@ -237,12 +242,13 @@ def _make_session_factory(
     pool_recycle: int = 1800,
     schema_name: str | None = None,
     application_name: str = "kt",
-) -> async_sessionmaker[AsyncSession]:
-    """Create an engine + session factory, optionally scoped to a schema."""
+) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+    """Create an engine + session factory, optionally scoped to a schema.
+
+    Returns (engine, session_factory) so callers can store the engine for disposal.
+    """
     server_settings: dict[str, str] = {"application_name": application_name}
     if schema_name and schema_name != "public":
-        # Set search_path so all unqualified table references resolve to this schema,
-        # falling back to public for shared tables (user, system_settings, etc.)
         server_settings["search_path"] = f"{schema_name},public"
 
     engine = create_async_engine(
@@ -258,4 +264,5 @@ def _make_session_factory(
             "server_settings": server_settings,
         },
     )
-    return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    sf = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return engine, sf

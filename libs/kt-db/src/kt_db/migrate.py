@@ -31,7 +31,7 @@ from kt_db.models import Graph
 
 logger = logging.getLogger(__name__)
 
-_KT_DB_ROOT = Path(__file__).resolve().parents[2]  # libs/kt-db/
+_KT_DB_ROOT = Path(__file__).resolve().parents[2]  # kt_db/migrate.py -> src/kt_db -> kt-db/
 
 
 async def migrate_all_graphs() -> None:
