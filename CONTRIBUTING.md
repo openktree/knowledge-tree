@@ -6,6 +6,8 @@ below.
 ## Contributor License Agreement (CLA)
 
 All contributors **must sign the CLA** before any contribution can be merged.
+See our [CLA documentation](https://docs.openktree.com/contributing/cla) for
+full details on why we require a CLA and what it means for you.
 
 - **Individuals:** Read the [Individual CLA](CLA.md) and sign by commenting on
   your pull request with:

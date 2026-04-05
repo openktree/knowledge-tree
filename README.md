@@ -71,6 +71,8 @@ See the [development setup guide](https://docs.openktree.com/contributing/develo
 We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md)
 first. All contributors must sign our
 [Contributor License Agreement](CLA.md) before contributions can be merged.
+See our [CLA documentation](https://docs.openktree.com/contributing/cla) for
+details on why we require a CLA and what it means for you.
 
 ## License
 

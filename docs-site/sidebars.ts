@@ -41,6 +41,7 @@ const sidebars: SidebarsConfig = {
         "contributing/services",
         "contributing/libraries",
         "contributing/development-setup",
+        "contributing/cla",
       ],
     },
   ],
