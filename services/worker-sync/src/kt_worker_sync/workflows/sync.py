@@ -17,8 +17,6 @@ from kt_hatchet.lifespan import WorkerState
 logger = logging.getLogger(__name__)
 
 hatchet = get_hatchet()
-# Read at import time — required because @sync_wf.task decorator evaluates
-# execution_timeout at decoration time (not at call time).
 _settings = get_settings()
 
 sync_wf = hatchet.workflow(
