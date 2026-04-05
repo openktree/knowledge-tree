@@ -318,7 +318,7 @@ export default function TokensPage() {
   function handleCreated(token: ApiTokenCreated) {
     setNewToken(token);
     setTokens((prev) => [
-      { id: token.id, name: token.name, created_at: token.created_at, expires_at: token.expires_at, last_used_at: null },
+      { id: token.id, name: token.name, created_at: token.created_at, expires_at: token.expires_at, last_used_at: null, graph_slugs: token.graph_slugs },
       ...prev,
     ]);
   }
