@@ -932,6 +932,9 @@ class WriteSeedRepository:
         """
         if not seeds:
             return
+        # Deduplicate by key — PostgreSQL ON CONFLICT DO UPDATE cannot
+        # affect the same row twice in a single statement.
+        seeds_deduped = list({s["key"]: s for s in seeds}.values())
         rows = [
             {
                 "key": s["key"],
@@ -941,7 +944,7 @@ class WriteSeedRepository:
                 "entity_subtype": s.get("entity_subtype"),
                 "fact_count": 0,
             }
-            for s in seeds
+            for s in seeds_deduped
         ]
         chunk_size = 4000
         for i in range(0, len(rows), chunk_size):
