@@ -109,7 +109,7 @@ class NodePipelineInput(BaseModel):
     # Shared
     message_id: str = ""
     conversation_id: str = ""
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 # Backward-compatible alias -- callers (bottom-up, ingest) use this name.
@@ -132,7 +132,7 @@ class GenerateDimensionsInput(BaseModel):
     scope_id: str
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class DimensionsOutput(BaseModel):
@@ -150,7 +150,7 @@ class GenerateDefinitionInput(BaseModel):
     node_id: str
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class UpdateEdgesInput(BaseModel):
@@ -162,7 +162,7 @@ class UpdateEdgesInput(BaseModel):
     scope_id: str = ""
     message_id: str = ""
     conversation_id: str = ""
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class EdgeOutput(BaseModel):
@@ -183,7 +183,7 @@ class BottomUpInput(BaseModel):
     nav_budget: int = 0
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpScopeInput(BaseModel):
@@ -196,7 +196,7 @@ class BottomUpScopeInput(BaseModel):
     wave_number: int = 0
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpScopeOutput(BaseModel):
@@ -229,7 +229,7 @@ class BottomUpPrepareScopeInput(BaseModel):
     explore_slice: int
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpPrepareScopeOutput(BaseModel):
@@ -282,7 +282,7 @@ class BottomUpPrepareInput(BaseModel):
     explore_budget: int
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpPrepareOutput(BaseModel):
@@ -319,7 +319,7 @@ class AgentSelectInput(BaseModel):
     instructions: str = ""
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class AgentSelectOutput(BaseModel):
@@ -338,7 +338,7 @@ class QueryInput(BaseModel):
     nav_budget: int
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class FollowUpInput(BaseModel):
@@ -352,7 +352,7 @@ class FollowUpInput(BaseModel):
     wave_count: int = 1
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class ResynthesizeInput(BaseModel):
@@ -361,7 +361,7 @@ class ResynthesizeInput(BaseModel):
     query: str
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestConfirmInput(BaseModel):
@@ -371,7 +371,7 @@ class IngestConfirmInput(BaseModel):
     selected_chunks: list[int] | None = None
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestDecomposeInput(BaseModel):
@@ -380,7 +380,7 @@ class IngestDecomposeInput(BaseModel):
     conversation_id: str
     message_id: str
     selected_chunks: list[int] | None = None
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestDecomposeOutput(BaseModel):
@@ -400,7 +400,7 @@ class IngestBuildInput(BaseModel):
     selected_nodes: list[ConfirmedNode]
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestPartitionInput(BaseModel):

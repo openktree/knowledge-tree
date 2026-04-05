@@ -67,7 +67,7 @@ async def _build_agent_context(
     *,
     emit_event: Any | None = None,
     write_session: Any,
-    api_key: str | None = None,
+    user_id: str | None = None,
 ) -> Any:
     """Build an AgentContext from WorkerState.
 
@@ -80,13 +80,15 @@ async def _build_agent_context(
     Pass ``emit_event`` to wire AgentContext.emit() calls to the
     Hatchet stream.
 
-    When ``api_key`` is provided, per-request ``ModelGateway`` and
-    ``EmbeddingService`` instances are created instead of using the shared
-    ones from ``WorkerState``.
+    When ``user_id`` is provided, the user's API key is resolved from the
+    database and per-request ``ModelGateway`` / ``EmbeddingService``
+    instances are created instead of using the shared ones from ``WorkerState``.
     """
     from kt_agents_core.state import AgentContext
     from kt_graph.worker_engine import WorkerGraphEngine
+    from kt_hatchet.keys import resolve_user_api_key
 
+    api_key = await resolve_user_api_key(state.session_factory, user_id) if user_id else None
     if api_key:
         from kt_models.embeddings import EmbeddingService
         from kt_models.gateway import ModelGateway
@@ -215,7 +217,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
-                api_key=input.api_key,
+                user_id=input.user_id,
             )
 
             # process_ingest_sources needs graph-db for IngestSource table;
@@ -322,7 +324,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
-                api_key=input.api_key,
+                user_id=input.user_id,
             )
 
             decomp_summary = await decompose_all_sources(
@@ -377,10 +379,15 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         content_index: ContentIndex | None = None
         try:
-            if input.api_key:
+            from kt_hatchet.keys import resolve_user_api_key
+
+            _resolved_key = (
+                await resolve_user_api_key(worker_state.session_factory, input.user_id) if input.user_id else None
+            )
+            if _resolved_key:
                 from kt_models.gateway import ModelGateway
 
-                _model_gateway = ModelGateway(api_key=input.api_key)
+                _model_gateway = ModelGateway(api_key=_resolved_key)
             else:
                 _model_gateway = worker_state.model_gateway
             from kt_providers.fetcher import FileDataStore as _FDS
@@ -480,7 +487,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
             async with _open_sessions(worker_state) as (_, merge_ws):
                 merge_ctx = await _build_agent_context(
-                    worker_state, emit_event=emit_cb, write_session=merge_ws, api_key=input.api_key
+                    worker_state, emit_event=emit_cb, write_session=merge_ws, user_id=input.user_id
                 )
                 subgraph = await build_ingest_subgraph(all_created_nodes, all_created_edges, merge_ctx)
 
@@ -512,7 +519,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                     worker_state,
                     emit_event=emit_cb,
                     write_session=write_session,
-                    api_key=input.api_key,
+                    user_id=input.user_id,
                 )
 
                 result = await IngestWorker(agent_ctx).run(
@@ -763,7 +770,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
-                api_key=input.api_key,
+                user_id=input.user_id,
             )
 
             # process_ingest_sources needs graph-db for IngestSource table;
@@ -820,7 +827,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
-                api_key=input.api_key,
+                user_id=input.user_id,
             )
             decomp_summary = await decompose_all_sources(
                 processed,

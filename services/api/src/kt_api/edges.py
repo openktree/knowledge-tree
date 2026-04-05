@@ -252,8 +252,8 @@ async def enrich_edge(
 
     from kt_hatchet.client import dispatch_workflow
 
-    api_key = require_api_key(user)
-    await dispatch_workflow("enrich_edge", {"edge_id": edge_id, "api_key": api_key})
+    require_api_key(user)  # fail-fast validation
+    await dispatch_workflow("enrich_edge", {"edge_id": edge_id, "user_id": str(user.id)})
     return {"status": "started", "edge_id": edge_id}
 
 
