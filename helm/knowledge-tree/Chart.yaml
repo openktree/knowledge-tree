@@ -2,8 +2,8 @@ apiVersion: v2
 name: knowledge-tree
 description: Knowledge Tree - AI knowledge integration system
 type: application
-version: 0.29.9
-appVersion: "0.29.9"
+version: 0.29.10
+appVersion: "0.29.10"
 keywords:
   - knowledge-graph
   - ai
