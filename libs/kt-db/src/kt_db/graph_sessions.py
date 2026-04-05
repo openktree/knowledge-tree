@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from kt_config.settings import Settings, get_settings
+from kt_db.keys import validate_schema_name
 from kt_db.models import DatabaseConnection, Graph
 
 logger = logging.getLogger(__name__)
@@ -270,13 +271,9 @@ def _make_session_factory(
 
     Returns (engine, session_factory) so callers can store the engine for disposal.
     """
-    import re
-
     server_settings: dict[str, str] = {"application_name": application_name}
     if schema_name and schema_name != "public":
-        # Defense-in-depth: validate schema name even though it should be clean from the DB
-        if not re.match(r"^[a-z0-9_]+$", schema_name):
-            raise ValueError(f"Invalid schema_name for search_path: {schema_name!r}")
+        validate_schema_name(schema_name)
         server_settings["search_path"] = f"{schema_name},public"
 
     engine = create_async_engine(

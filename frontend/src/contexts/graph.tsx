@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { listGraphs, setActiveGraphSlug } from "@/lib/api";
+import { useAuth } from "@/contexts/auth";
 import type { GraphResponse } from "@/types";
 
 interface GraphState {
@@ -22,6 +23,7 @@ interface GraphState {
 const GraphContext = createContext<GraphState | null>(null);
 
 export function GraphProvider({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [activeGraph, setActiveGraphState] = useState<string>("default");
   const [graphs, setGraphs] = useState<GraphResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,9 +56,16 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Wait for auth to complete before fetching graphs
   useEffect(() => {
-    refreshGraphs();
-  }, [refreshGraphs]);
+    if (!authLoading && user) {
+      refreshGraphs();
+    } else if (!authLoading && !user) {
+      // Not logged in — reset to defaults
+      setGraphs([]);
+      setLoading(false);
+    }
+  }, [authLoading, user, refreshGraphs]);
 
   const setActiveGraph = useCallback(
     (slug: string) => {

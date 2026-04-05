@@ -6,13 +6,13 @@ import pytest
 from pydantic import ValidationError
 
 from kt_api.graphs import (
-    _SCHEMA_NAME_RE,
     _SLUG_RE,
     AddMemberRequest,
     CreateGraphRequest,
     GraphResponse,
     UpdateMemberRoleRequest,
 )
+from kt_db.keys import validate_schema_name
 
 
 class TestSlugValidation:
@@ -32,11 +32,12 @@ class TestSlugValidation:
 class TestSchemaNameValidation:
     def test_valid_schema_names(self):
         for name in ["graph_test", "graph_my_research", "abc123"]:
-            assert _SCHEMA_NAME_RE.match(name), f"Should match: {name}"
+            validate_schema_name(name)  # should not raise
 
     def test_invalid_schema_names(self):
         for name in ["graph-test", "graph test", 'graph"test', "GRAPH_TEST", ""]:
-            assert not _SCHEMA_NAME_RE.match(name), f"Should not match: {name}"
+            with pytest.raises(ValueError):
+                validate_schema_name(name)
 
 
 class TestCreateGraphRequest:

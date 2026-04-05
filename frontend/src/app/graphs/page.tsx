@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth";
@@ -167,7 +168,7 @@ export default function GraphsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {graphs.map((g) => (
-          <a
+          <Link
             key={g.id}
             href={`/graphs/${g.slug}`}
             className="rounded-xl border border-border bg-card p-4 hover:border-ring transition-colors block"
@@ -200,7 +201,7 @@ export default function GraphsPage() {
               <span>Type: {g.graph_type}</span>
               {g.byok_enabled && <Badge variant="outline" className="text-[10px] h-4">BYOK</Badge>}
             </div>
-          </a>
+          </Link>
         ))}
       </div>
 

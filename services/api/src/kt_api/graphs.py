@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_api.auth.tokens import require_admin, require_auth
 from kt_api.dependencies import get_db_session, get_graph_session_resolver
 from kt_db.graph_sessions import GraphSessionResolver
+from kt_db.keys import validate_schema_name
 from kt_db.models import Graph, Node, User
 from kt_db.repositories.graphs import GraphRepository
 
@@ -25,8 +26,6 @@ router = APIRouter(prefix="/api/v1/graphs", tags=["graphs"])
 
 # No hyphens — prevents schema name collisions (my_graph vs my-graph both → graph_my_graph)
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,98}[a-z0-9]$")
-_SCHEMA_NAME_RE = re.compile(r"^[a-z0-9_]+$")  # Strict: only lowercase alnum + underscore
-
 
 # -- Schemas ----------------------------------------------------------------
 
@@ -474,18 +473,18 @@ async def _provision_graph(
     if schema == "public":
         return  # Default graph, nothing to provision
 
-    # Strict validation: schema name must be lowercase alphanumeric + underscores only.
-    # This is the sole injection guard — no f-string DDL without this check.
-    if not _SCHEMA_NAME_RE.match(schema):
-        raise ValueError(f"Invalid schema name: {schema}")
+    validate_schema_name(schema)
 
     # Create schema in graph-db
     await session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
     await session.commit()
 
-    # Create schema in write-db
-    gs = await resolver.resolve(graph.id)
-    async with gs.write_session_factory() as write_session:
+    # Create schema in write-db using a temporary session
+    # (don't go through resolver — that would cache engines before migrations finish)
+    from kt_db.session import get_write_session_factory
+
+    tmp_write_sf = get_write_session_factory(application_name="kt-provision")
+    async with tmp_write_sf() as write_session:
         await write_session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         await write_session.commit()
 
@@ -515,18 +514,15 @@ async def _provision_graph(
 
     await asyncio.to_thread(_run_migrations)
 
-    # Create Qdrant collections
-    try:
-        from kt_qdrant.client import get_qdrant_client
-        from kt_qdrant.repositories.facts import QdrantFactRepository
-        from kt_qdrant.repositories.nodes import QdrantNodeRepository
-        from kt_qdrant.repositories.seeds import QdrantSeedRepository
+    # Create Qdrant collections — failure here should prevent graph going active
+    from kt_qdrant.client import get_qdrant_client
+    from kt_qdrant.repositories.facts import QdrantFactRepository
+    from kt_qdrant.repositories.nodes import QdrantNodeRepository
+    from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
-        client = get_qdrant_client()
-        prefix = gs.qdrant_collection_prefix
+    client = get_qdrant_client()
+    prefix = f"{graph.slug}__"
 
-        await QdrantFactRepository(client, f"{prefix}facts").ensure_collection()
-        await QdrantNodeRepository(client, f"{prefix}nodes").ensure_collection()
-        await QdrantSeedRepository(client, f"{prefix}seeds").ensure_collection()
-    except Exception:
-        logger.warning("Qdrant collection creation failed for graph '%s'", graph.slug, exc_info=True)
+    await QdrantFactRepository(client, f"{prefix}facts").ensure_collection()
+    await QdrantNodeRepository(client, f"{prefix}nodes").ensure_collection()
+    await QdrantSeedRepository(client, f"{prefix}seeds").ensure_collection()
