@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 from logging.config import fileConfig
 
 from alembic import context
@@ -22,6 +23,8 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 # Optional schema override for multi-graph migrations.
 # Set ALEMBIC_SCHEMA=graph_acme to run migrations in a non-default schema.
 _schema_override = os.environ.get("ALEMBIC_SCHEMA")
+if _schema_override and not re.match(r"^[a-z0-9_]+$", _schema_override):
+    raise ValueError(f"Invalid ALEMBIC_SCHEMA: {_schema_override!r} — must be lowercase alphanumeric + underscores")
 
 
 def run_migrations_offline() -> None:

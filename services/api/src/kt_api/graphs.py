@@ -6,6 +6,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -441,16 +442,16 @@ async def _provision_graph(
     if schema == "public":
         return  # Default graph, nothing to provision
 
-    # Strict validation: schema name must be alphanumeric + underscores only
+    # Strict validation: schema name must be lowercase alphanumeric + underscores only.
+    # This is the sole injection guard — no f-string DDL without this check.
     if not _SCHEMA_NAME_RE.match(schema):
         raise ValueError(f"Invalid schema name: {schema}")
 
-    # Create schema in graph-db (parameterized via quote_ident)
-    await session.execute(text("SELECT pg_catalog.quote_ident(:schema)").bindparams(schema=schema))
+    # Create schema in graph-db
     await session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
     await session.commit()
 
-    # Create schema in write-db (same DB for schema mode, different for database mode)
+    # Create schema in write-db
     gs = await resolver.resolve(graph.id)
     async with gs.write_session_factory() as write_session:
         await write_session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
@@ -460,9 +461,10 @@ async def _provision_graph(
     import os
     import subprocess
     import sys
-    from pathlib import Path
 
-    kt_db_root = Path(__file__).resolve().parents[5] / "libs" / "kt-db"
+    import kt_db
+
+    kt_db_root = Path(kt_db.__file__).resolve().parents[2]  # kt_db/__init__.py -> src/kt_db -> kt-db/
     env = {**os.environ, "ALEMBIC_SCHEMA": schema}
 
     for ini_file in ("alembic.ini", "alembic_write.ini"):

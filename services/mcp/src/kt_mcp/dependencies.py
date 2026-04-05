@@ -27,6 +27,9 @@ def get_graph_resolver_cached() -> GraphSessionResolver:
     global _graph_resolver  # noqa: PLW0603
     if _graph_resolver is None:
         sf = get_session_factory_cached()
+        # MCP is read-only — no default_write_session_factory needed.
+        # Non-default graphs that use database mode will lazily create write pools
+        # only if write operations are attempted (they won't be from MCP tools).
         _graph_resolver = GraphSessionResolver(sf, default_graph_session_factory=sf)
     return _graph_resolver
 

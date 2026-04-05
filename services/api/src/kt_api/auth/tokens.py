@@ -141,8 +141,8 @@ async def require_auth(
         result = await session.execute(select(User).where(User.id == api_token.user_id))
         user = result.unique().scalar_one_or_none()
         if user is not None and user.is_active:
-            # Attach token's graph scope as a transient attribute
-            user._token_graph_slugs = api_token.graph_slugs  # type: ignore[attr-defined]
+            # Store token's graph scope on request.state for GraphContext to check
+            request.state.token_graph_slugs = api_token.graph_slugs
             return user
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")

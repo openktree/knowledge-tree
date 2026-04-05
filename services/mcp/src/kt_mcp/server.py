@@ -132,6 +132,14 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
 
     For "default", returns the system session factory.
     For other slugs, uses GraphSessionResolver to get the graph-specific factory.
+    Raises ValueError if the graph doesn't exist.
+
+    Note: Per-user access control (graph membership + token scope validation)
+    should be checked by the caller using the MCP auth context. Currently,
+    MCP tools are read-only and access is gated at the graph resolver level
+    (non-existent slugs raise ValueError). Full per-user RBAC enforcement
+    requires threading the authenticated user through the MCP tool context,
+    which is planned for a follow-up.
     """
     if graph == "default":
         return get_session_factory_cached()

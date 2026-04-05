@@ -24,8 +24,8 @@ export default function GraphsPage() {
     try {
       const data = await listGraphs();
       setGraphs(data);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to load graphs:", err);
     } finally {
       setLoading(false);
     }
