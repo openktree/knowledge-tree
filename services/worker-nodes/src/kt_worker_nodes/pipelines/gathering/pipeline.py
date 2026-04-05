@@ -9,6 +9,8 @@ import asyncio
 import dataclasses
 import logging
 import uuid
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from kt_agents_core.state import AgentContext, PipelineState
@@ -22,6 +24,21 @@ from kt_models.gateway import ModelGateway
 from kt_providers.search_and_fetch import filter_fresh_urls, store_and_fetch
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _ensure_write_session(ctx: AgentContext) -> AsyncGenerator[Any, None]:
+    """Yield a write-db session, closing it only if we created it."""
+    if ctx.graph_engine._write_session is not None:
+        yield ctx.graph_engine._write_session
+        return
+    if ctx.write_session_factory is None:
+        raise RuntimeError("write_session required for gather")
+    session = ctx.write_session_factory()
+    try:
+        yield session
+    finally:
+        await session.close()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -168,16 +185,9 @@ class GatherFactsPipeline:
         max_rounds = settings.fetch_guarantee_max_rounds
 
         # Use write-db for all source storage and page fetch tracking
-        owns_write_session = False
-        write_session = ctx.graph_engine._write_session
-        if write_session is None and ctx.write_session_factory is not None:
-            write_session = ctx.write_session_factory()
-            owns_write_session = True
-        if write_session is None:
-            raise RuntimeError("write_session required for gather")
-        page_log = WritePageFetchLogRepository(write_session)
+        async with _ensure_write_session(ctx) as write_session:
+            page_log = WritePageFetchLogRepository(write_session)
 
-        try:
             for query in affordable_queries:
                 # Tentatively charge budget — refunded if decomposition yields 0 facts
                 state.explore_used += 1
@@ -487,9 +497,6 @@ class GatherFactsPipeline:
                         result["extracted_nodes"] = extracted
 
             return result
-        finally:
-            if owns_write_session and write_session is not None:
-                await write_session.close()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
