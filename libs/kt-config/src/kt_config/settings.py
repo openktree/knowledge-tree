@@ -50,6 +50,7 @@ _register(
         "sync_batch_size": "sync_batch_size",
         "sync_max_retries": "sync_max_retries",
         "sync_retry_base_seconds": "sync_retry_base_seconds",
+        "sync_task_timeout_minutes": "sync_task_timeout_minutes",
         "log_level": "log_level",
         "pipeline_concurrency": "pipeline_concurrency",
     },
@@ -546,6 +547,7 @@ class Settings(BaseSettings):
     sync_batch_size: int = 1000
     sync_max_retries: int = 5
     sync_retry_base_seconds: int = 60
+    sync_task_timeout_minutes: int = 15
 
     log_level: str = "INFO"
 
