@@ -16,7 +16,7 @@ def get_session_factory_cached() -> async_sessionmaker[AsyncSession]:
     """Return a cached async session factory (singleton) for graph-db (read-only)."""
     global _session_factory  # noqa: PLW0603
     if _session_factory is None:
-        _session_factory = get_session_factory()
+        _session_factory = get_session_factory(application_name="kt-mcp")
     return _session_factory
 
 

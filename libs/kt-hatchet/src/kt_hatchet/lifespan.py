@@ -51,7 +51,10 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         pool_timeout=settings.db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.db_pool_recycle,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {"application_name": "kt-worker"},
+        },
     )
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -62,7 +65,10 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         pool_timeout=settings.write_db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.write_db_pool_recycle,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {"application_name": "kt-worker"},
+        },
     )
     write_session_factory = async_sessionmaker(write_engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -141,7 +147,10 @@ async def build_worker_state() -> WorkerState:
         pool_timeout=settings.db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.db_pool_recycle,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {"application_name": "kt-worker"},
+        },
     )
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -152,7 +161,10 @@ async def build_worker_state() -> WorkerState:
         pool_timeout=settings.write_db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.write_db_pool_recycle,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {"application_name": "kt-worker"},
+        },
     )
     write_session_factory = async_sessionmaker(write_engine, class_=AsyncSession, expire_on_commit=False)
 

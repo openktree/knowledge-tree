@@ -8,6 +8,7 @@ def get_engine(
     pool_size: int | None = None,
     max_overflow: int | None = None,
     pool_timeout: int | None = None,
+    application_name: str = "kt",
 ):
     settings = get_settings()
     url = database_url or settings.database_url
@@ -19,12 +20,18 @@ def get_engine(
         pool_timeout=pool_timeout if pool_timeout is not None else settings.db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.db_pool_recycle,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {"application_name": application_name},
+        },
     )
 
 
-def get_session_factory(database_url: str | None = None) -> async_sessionmaker[AsyncSession]:
-    engine = get_engine(database_url)
+def get_session_factory(
+    database_url: str | None = None,
+    application_name: str = "kt",
+) -> async_sessionmaker[AsyncSession]:
+    engine = get_engine(database_url, application_name=application_name)
     return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -33,6 +40,7 @@ def get_write_engine(
     pool_size: int | None = None,
     max_overflow: int | None = None,
     pool_timeout: int | None = None,
+    application_name: str = "kt",
 ):
     """Create an engine for the write-optimized database."""
     settings = get_settings()
@@ -45,11 +53,17 @@ def get_write_engine(
         pool_timeout=pool_timeout if pool_timeout is not None else settings.write_db_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=settings.write_db_pool_recycle,
-        connect_args={"statement_cache_size": 0},
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {"application_name": application_name},
+        },
     )
 
 
-def get_write_session_factory(database_url: str | None = None) -> async_sessionmaker[AsyncSession]:
+def get_write_session_factory(
+    database_url: str | None = None,
+    application_name: str = "kt",
+) -> async_sessionmaker[AsyncSession]:
     """Create a session factory for the write-optimized database."""
-    engine = get_write_engine(database_url)
+    engine = get_write_engine(database_url, application_name=application_name)
     return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

@@ -12,7 +12,9 @@ spec:
 
   postgresql:
     parameters:
-      max_connections: {{ .Values.writeDb.postgresql.max_connections | quote }}
+      {{- range $key, $value := .Values.writeDb.postgresql }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
 
   bootstrap:
     initdb:
