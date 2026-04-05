@@ -26,7 +26,8 @@ def get_graph_resolver_cached() -> GraphSessionResolver:
     """Return a cached GraphSessionResolver singleton."""
     global _graph_resolver  # noqa: PLW0603
     if _graph_resolver is None:
-        _graph_resolver = GraphSessionResolver(get_session_factory_cached())
+        sf = get_session_factory_cached()
+        _graph_resolver = GraphSessionResolver(sf, default_graph_session_factory=sf)
     return _graph_resolver
 
 

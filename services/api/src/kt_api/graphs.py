@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/graphs", tags=["graphs"])
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,98}[a-z0-9]$")
+_SCHEMA_NAME_RE = re.compile(r"^[a-z0-9_]+$")  # Strict: only lowercase alnum + underscore
 
 
 # -- Schemas ----------------------------------------------------------------
@@ -143,14 +144,24 @@ async def list_graphs(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[GraphResponse]:
     """List graphs accessible to the current user."""
+    from kt_db.models import GraphMember
+
     repo = GraphRepository(session)
     graphs = await repo.list_accessible(user.id, user.is_superuser)
 
-    results = []
-    for g in graphs:
-        members = await repo.get_members(g.id)
-        results.append(_graph_response(g, member_count=len(members)))
-    return results
+    # Batch-fetch member counts in a single query
+    graph_ids = [g.id for g in graphs]
+    member_counts: dict[str, int] = {}
+    if graph_ids:
+        count_stmt = (
+            select(GraphMember.graph_id, func.count(GraphMember.id))
+            .where(GraphMember.graph_id.in_(graph_ids))
+            .group_by(GraphMember.graph_id)
+        )
+        count_result = await session.execute(count_stmt)
+        member_counts = {str(row[0]): row[1] for row in count_result.all()}
+
+    return [_graph_response(g, member_count=member_counts.get(str(g.id), 0)) for g in graphs]
 
 
 @router.post("", response_model=GraphResponse, status_code=201)
@@ -430,15 +441,41 @@ async def _provision_graph(
     if schema == "public":
         return  # Default graph, nothing to provision
 
-    # Create schema in graph-db
-    await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    # Strict validation: schema name must be alphanumeric + underscores only
+    if not _SCHEMA_NAME_RE.match(schema):
+        raise ValueError(f"Invalid schema name: {schema}")
+
+    # Create schema in graph-db (parameterized via quote_ident)
+    await session.execute(text("SELECT pg_catalog.quote_ident(:schema)").bindparams(schema=schema))
+    await session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
     await session.commit()
 
     # Create schema in write-db (same DB for schema mode, different for database mode)
     gs = await resolver.resolve(graph.id)
     async with gs.write_session_factory() as write_session:
-        await write_session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+        await write_session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
         await write_session.commit()
+
+    # Run Alembic migrations for both graph-db and write-db schemas
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    kt_db_root = Path(__file__).resolve().parents[5] / "libs" / "kt-db"
+    env = {**os.environ, "ALEMBIC_SCHEMA": schema}
+
+    for ini_file in ("alembic.ini", "alembic_write.ini"):
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", str(kt_db_root / ini_file), "upgrade", "head"],
+            env=env,
+            capture_output=True,
+            text=True,
+            cwd=str(kt_db_root),
+        )
+        if result.returncode != 0:
+            logger.error("Migration failed for graph '%s': %s", graph.slug, result.stderr)
+            raise RuntimeError(f"Migration failed for graph '{graph.slug}'")
 
     # Create Qdrant collections
     try:

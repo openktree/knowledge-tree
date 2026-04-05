@@ -39,8 +39,10 @@ async def list_graph_nodes(
             count_stmt = count_stmt.where(Node.node_type == node_type)
 
         if search:
-            stmt = stmt.where(Node.concept.ilike(f"%{search}%"))
-            count_stmt = count_stmt.where(Node.concept.ilike(f"%{search}%"))
+            # Escape ILIKE special characters to prevent pattern injection
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            stmt = stmt.where(Node.concept.ilike(f"%{escaped}%"))
+            count_stmt = count_stmt.where(Node.concept.ilike(f"%{escaped}%"))
 
         total = (await session.execute(count_stmt)).scalar_one()
 

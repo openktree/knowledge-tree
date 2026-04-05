@@ -20,10 +20,37 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class GraphInfo:
+    """Detached snapshot of a Graph row — safe to cache after session closes."""
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    schema_name: str
+    storage_mode: str
+    is_default: bool
+    database_connection_id: uuid.UUID | None
+    status: str
+
+    @staticmethod
+    def from_orm(graph: Graph) -> GraphInfo:
+        return GraphInfo(
+            id=graph.id,
+            slug=graph.slug,
+            name=graph.name,
+            schema_name=graph.schema_name,
+            storage_mode=graph.storage_mode,
+            is_default=graph.is_default,
+            database_connection_id=graph.database_connection_id,
+            status=graph.status,
+        )
+
+
+@dataclass(frozen=True)
 class GraphSessions:
     """Session factories and metadata for a single graph."""
 
-    graph: Graph
+    graph: GraphInfo
     graph_session_factory: async_sessionmaker[AsyncSession]
     write_session_factory: async_sessionmaker[AsyncSession]
     qdrant_collection_prefix: str  # "" for default, "{slug}__" for non-default
@@ -42,10 +69,17 @@ class GraphSessionResolver:
         self,
         control_session_factory: async_sessionmaker[AsyncSession],
         settings: Settings | None = None,
+        *,
+        default_graph_session_factory: async_sessionmaker[AsyncSession] | None = None,
+        default_write_session_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self._control_sf = control_session_factory
         self._settings = settings or get_settings()
         self._cache: dict[uuid.UUID, GraphSessions] = {}
+        # Reuse existing system-level session factories for the default graph
+        # to avoid creating duplicate connection pools
+        self._default_graph_sf = default_graph_session_factory
+        self._default_write_sf = default_write_session_factory
 
     async def resolve(self, graph_id: uuid.UUID) -> GraphSessions:
         """Return cached GraphSessions for a graph, creating engines if needed."""
@@ -73,15 +107,25 @@ class GraphSessionResolver:
                 raise ValueError(f"Graph with slug '{slug}' not found")
             return await self._build_and_cache(graph_row, session)
 
-    async def list_active_graphs(self) -> list[Graph]:
+    async def list_active_graphs(self) -> list[GraphInfo]:
         """Return all active graphs from the control plane."""
         async with self._control_sf() as session:
             result = await session.execute(select(Graph).where(Graph.status == "active"))
-            return list(result.scalars().all())
+            return [GraphInfo.from_orm(g) for g in result.scalars().all()]
 
-    def invalidate(self, graph_id: uuid.UUID) -> None:
-        """Remove a graph from the cache (e.g. after deletion)."""
-        self._cache.pop(graph_id, None)
+    async def invalidate(self, graph_id: uuid.UUID) -> None:
+        """Remove a graph from the cache and dispose its engine pools."""
+        gs = self._cache.pop(graph_id, None)
+        if gs is not None and not gs.graph.is_default:
+            # Dispose non-default engine pools to avoid connection leaks
+            try:
+                await gs.graph_session_factory.kw["bind"].dispose()
+            except Exception:
+                pass
+            try:
+                await gs.write_session_factory.kw["bind"].dispose()
+            except Exception:
+                pass
 
     async def _build_and_cache(self, graph: Graph, session: AsyncSession) -> GraphSessions:
         """Build engines for a graph and cache the result."""
@@ -89,25 +133,30 @@ class GraphSessionResolver:
             return self._cache[graph.id]
 
         settings = self._settings
+        info = GraphInfo.from_orm(graph)
 
         if graph.is_default:
-            # Default graph uses the system-level engines
-            graph_sf = _make_session_factory(
-                settings.database_url,
-                pool_size=settings.db_pool_size,
-                max_overflow=settings.db_max_overflow,
-                pool_timeout=settings.db_pool_timeout,
-                pool_recycle=settings.db_pool_recycle,
-                application_name="kt-graph-default",
-            )
-            write_sf = _make_session_factory(
-                settings.write_database_url,
-                pool_size=settings.write_db_pool_size,
-                max_overflow=settings.write_db_max_overflow,
-                pool_timeout=settings.write_db_pool_timeout,
-                pool_recycle=settings.write_db_pool_recycle,
-                application_name="kt-write-default",
-            )
+            # Reuse existing system-level session factories to avoid duplicate pools
+            if self._default_graph_sf and self._default_write_sf:
+                graph_sf = self._default_graph_sf
+                write_sf = self._default_write_sf
+            else:
+                graph_sf = _make_session_factory(
+                    settings.database_url,
+                    pool_size=settings.db_pool_size,
+                    max_overflow=settings.db_max_overflow,
+                    pool_timeout=settings.db_pool_timeout,
+                    pool_recycle=settings.db_pool_recycle,
+                    application_name="kt-graph-default",
+                )
+                write_sf = _make_session_factory(
+                    settings.write_database_url,
+                    pool_size=settings.write_db_pool_size,
+                    max_overflow=settings.write_db_max_overflow,
+                    pool_timeout=settings.write_db_pool_timeout,
+                    pool_recycle=settings.write_db_pool_recycle,
+                    application_name="kt-write-default",
+                )
             prefix = ""
         elif graph.storage_mode == "database":
             # Different database — load connection config
@@ -152,7 +201,7 @@ class GraphSessionResolver:
             prefix = f"{graph.slug}__"
 
         gs = GraphSessions(
-            graph=graph,
+            graph=info,
             graph_session_factory=graph_sf,
             write_session_factory=write_sf,
             qdrant_collection_prefix=prefix,

@@ -78,6 +78,7 @@ async def sync_task(input: dict, ctx: Context) -> dict:
                         embedding_service=worker_state.embedding_service,
                         batch_size=worker_state.settings.sync_batch_size,
                         qdrant_client=worker_state.qdrant_client,
+                        graph_slug=graph.slug,
                     )
                     graph_counts = await graph_engine.sync_cycle()
                     if sum(graph_counts.values()) > 0:

@@ -58,7 +58,11 @@ def get_graph_session_resolver() -> GraphSessionResolver:
     global _graph_session_resolver  # noqa: PLW0603
     if _graph_session_resolver is None:
         control_sf = get_session_factory_cached()
-        _graph_session_resolver = GraphSessionResolver(control_sf)
+        _graph_session_resolver = GraphSessionResolver(
+            control_sf,
+            default_graph_session_factory=control_sf,
+            default_write_session_factory=get_write_session_factory_cached(),
+        )
     return _graph_session_resolver
 
 

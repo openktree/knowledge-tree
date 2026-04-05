@@ -42,8 +42,8 @@ export default function GraphDetailPage() {
       setMembers(m);
       setEditName(g.name);
       setEditDescription(g.description || "");
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Graph operation failed:", err);
     } finally {
       setLoading(false);
     }
@@ -62,8 +62,8 @@ export default function GraphDetailPage() {
       });
       setGraph(updated);
       setEditing(false);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Graph operation failed:", err);
     }
   };
 
@@ -91,18 +91,17 @@ export default function GraphDetailPage() {
     try {
       await removeGraphMember(slug, userId);
       fetchData();
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Graph operation failed:", err);
     }
   };
 
-  const handleChangeRole = async (userId: string, currentRole: string) => {
-    const newRole = currentRole === "admin" ? "writer" : currentRole === "writer" ? "reader" : "admin";
+  const handleChangeRole = async (userId: string, newRole: string) => {
     try {
       await updateGraphMemberRole(slug, userId, { role: newRole });
       fetchData();
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Graph operation failed:", err);
     }
   };
 
@@ -264,14 +263,16 @@ export default function GraphDetailPage() {
                 </td>
                 {isAdmin && (
                   <td className="px-4 py-3 text-right">
-                    <div className="flex gap-1 justify-end">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleChangeRole(m.user_id, m.role)}
+                    <div className="flex gap-1 justify-end items-center">
+                      <select
+                        value={m.role}
+                        onChange={(e) => handleChangeRole(m.user_id, e.target.value)}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                       >
-                        Cycle Role
-                      </Button>
+                        <option value="reader">Reader</option>
+                        <option value="writer">Writer</option>
+                        <option value="admin">Admin</option>
+                      </select>
                       <Button
                         size="sm"
                         variant="ghost"

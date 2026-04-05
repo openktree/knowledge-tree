@@ -94,7 +94,12 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     await QdrantNodeRepository(qdrant_client).ensure_collection()
     await QdrantSeedRepository(qdrant_client).ensure_collection()
 
-    graph_resolver = GraphSessionResolver(session_factory, settings)
+    graph_resolver = GraphSessionResolver(
+        session_factory,
+        settings,
+        default_graph_session_factory=session_factory,
+        default_write_session_factory=write_session_factory,
+    )
 
     yield WorkerState(
         session_factory=session_factory,
@@ -170,7 +175,12 @@ async def build_worker_state() -> WorkerState:
     await QdrantNodeRepository(qdrant_client).ensure_collection()
     await QdrantSeedRepository(qdrant_client).ensure_collection()
 
-    graph_resolver = GraphSessionResolver(session_factory, settings)
+    graph_resolver = GraphSessionResolver(
+        session_factory,
+        settings,
+        default_graph_session_factory=session_factory,
+        default_write_session_factory=write_session_factory,
+    )
 
     return WorkerState(
         session_factory=session_factory,
