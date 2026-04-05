@@ -835,12 +835,6 @@ class SyncEngine:
                     len(deferred_refs),
                 )
 
-            # Pass 3: repair orphaned parent/source_concept refs from previous cycles.
-            # When a child was synced before its parent existed in graph-db, the
-            # deferred ref was skipped and the watermark advanced past it.  This
-            # pass catches ALL such orphans, not just ones in the current batch.
-            await self._repair_orphaned_node_refs(ws, gs)
-
             # Refresh denormalized stats for synced nodes and their parents
             affected_ids = set(all_node_uuids)
             for _, _, ref_id in deferred_refs:
@@ -860,70 +854,87 @@ class SyncEngine:
             await gs.commit()
             await self._set_watermark(ws, "write_nodes", safe_ts)
             await ws.commit()
-            return count
 
-    async def _repair_orphaned_node_refs(
-        self,
-        ws: AsyncSession,
-        gs: AsyncSession,
-    ) -> None:
+        # Repair orphaned parent/source_concept refs from previous cycles.
+        # Uses its own sessions to avoid holding the write-db connection idle
+        # during long graph-db operations (which can exceed idle_in_transaction
+        # timeout and kill the connection).
+        await self._repair_orphaned_node_refs()
+
+        return count
+
+    async def _repair_orphaned_node_refs(self) -> None:
         """Resolve parent_id / source_concept_id that were skipped in earlier cycles.
 
         Scans write-db for nodes that have parent_key set, then checks graph-db
         for the corresponding node having parent_id IS NULL.  If the parent now
         exists in graph-db, sets the FK.  Capped to avoid unbounded work.
+
+        Uses its own short-lived sessions to avoid holding a write-db connection
+        idle during graph-db operations (which can exceed idle_in_transaction
+        timeout on large batches).
         """
-        # Find write-db nodes with a parent_key (limit to avoid huge scans)
-        candidates = (
-            await ws.execute(
-                select(WriteNode.key, WriteNode.parent_key, WriteNode.source_concept_key)
-                .where(WriteNode.parent_key.isnot(None))
-                .limit(500)
-            )
-        ).all()
+        # Read candidates from write-db in a short-lived read-only session
+        async with self._write_sf() as ws:
+            candidates = (
+                await ws.execute(
+                    select(WriteNode.key, WriteNode.parent_key, WriteNode.source_concept_key)
+                    .where(WriteNode.parent_key.isnot(None))
+                    .limit(500)
+                )
+            ).all()
+            await ws.rollback()  # read-only — release connection cleanly
 
-        repaired = 0
-        for row in candidates:
-            node_id = key_to_uuid(row.key)
+        if not candidates:
+            return
 
-            for col, ref_key in [
-                ("parent_id", row.parent_key),
-                ("source_concept_id", row.source_concept_key),
-            ]:
-                if not ref_key:
-                    continue
-                ref_id = key_to_uuid(ref_key)
+        # Repair in graph-db using its own session
+        async with self._graph_sf() as gs:
+            repaired = 0
+            for row in candidates:
+                node_id = key_to_uuid(row.key)
 
-                try:
-                    async with gs.begin_nested():
-                        # Check if graph-db node exists with this FK still NULL
-                        needs_repair = (
-                            await gs.execute(
-                                select(Node.id).where(Node.id == node_id).where(getattr(Node, col).is_(None))
-                            )
-                        ).scalar_one_or_none()
+                for col, ref_key in [
+                    ("parent_id", row.parent_key),
+                    ("source_concept_id", row.source_concept_key),
+                ]:
+                    if not ref_key:
+                        continue
+                    ref_id = key_to_uuid(ref_key)
 
-                        if needs_repair is None:
-                            # Either node doesn't exist yet, or FK is already set
-                            continue
+                    try:
+                        async with gs.begin_nested():
+                            # Check if graph-db node exists with this FK still NULL
+                            needs_repair = (
+                                await gs.execute(
+                                    select(Node.id).where(Node.id == node_id).where(getattr(Node, col).is_(None))
+                                )
+                            ).scalar_one_or_none()
 
-                        # Check if the referenced parent/source exists
-                        ref_exists = (await gs.execute(select(Node.id).where(Node.id == ref_id))).scalar_one_or_none()
-                        if ref_exists is None:
-                            continue
+                            if needs_repair is None:
+                                # Either node doesn't exist yet, or FK is already set
+                                continue
 
-                        await gs.execute(update(Node).where(Node.id == node_id).values(**{col: ref_id}))
-                        repaired += 1
-                except Exception:
-                    logger.error(
-                        "Repair: failed to set %s for node %s",
-                        col,
-                        node_id,
-                        exc_info=True,
-                    )
+                            # Check if the referenced parent/source exists
+                            ref_exists = (
+                                await gs.execute(select(Node.id).where(Node.id == ref_id))
+                            ).scalar_one_or_none()
+                            if ref_exists is None:
+                                continue
 
-        if repaired > 0:
-            logger.info("Repaired %d orphaned node refs (parent_id / source_concept_id)", repaired)
+                            await gs.execute(update(Node).where(Node.id == node_id).values(**{col: ref_id}))
+                            repaired += 1
+                    except Exception:
+                        logger.error(
+                            "Repair: failed to set %s for node %s",
+                            col,
+                            node_id,
+                            exc_info=True,
+                        )
+
+            if repaired > 0:
+                logger.info("Repaired %d orphaned node refs (parent_id / source_concept_id)", repaired)
+            await gs.commit()
 
     async def _upsert_graph_node(
         self,

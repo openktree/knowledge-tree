@@ -63,7 +63,7 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
 
         for seed_key, seed in active_seeds:
             try:
-                async with session.begin():
+                async with session.begin_nested():
                     surviving = await deduplicate_seed(
                         seed_key=seed_key,
                         name=seed.name,
@@ -80,6 +80,11 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
             except Exception:
                 logger.exception("Dedup failed for seed '%s'", seed_key)
                 errors += 1
+
+        # Commit all successful savepoints. If an unhandled exception
+        # escapes the loop this is skipped, but that matches the previous
+        # begin()-per-seed semantics (all-or-nothing on unexpected errors).
+        await session.commit()
 
     logger.info(
         "seed_dedup_batch: processed=%d merges=%d errors=%d scope=%s",
