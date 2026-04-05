@@ -81,6 +81,7 @@ class GraphSessionResolver:
         self._control_sf = control_session_factory
         self._settings = settings or get_settings()
         self._cache: dict[uuid.UUID, GraphSessions] = {}
+        self._slug_to_id: dict[str, uuid.UUID] = {}  # O(1) slug lookup
         self._locks: dict[uuid.UUID, asyncio.Lock] = {}
         self._meta_lock = asyncio.Lock()  # protects _locks dict creation only
         # Reuse existing system-level session factories for the default graph
@@ -115,10 +116,10 @@ class GraphSessionResolver:
                 return await self._build_and_cache(graph_row, session)
 
     async def resolve_by_slug(self, slug: str) -> GraphSessions:
-        """Resolve by slug, with caching."""
-        for gs in self._cache.values():
-            if gs.graph.slug == slug:
-                return gs
+        """Resolve by slug, with caching. O(1) via slug index."""
+        graph_id = self._slug_to_id.get(slug)
+        if graph_id is not None and graph_id in self._cache:
+            return self._cache[graph_id]
 
         # Need to look up the graph ID first to get the per-graph lock
         async with self._control_sf() as session:
@@ -143,6 +144,8 @@ class GraphSessionResolver:
     async def invalidate(self, graph_id: uuid.UUID) -> None:
         """Remove a graph from the cache and dispose its engine pools."""
         gs = self._cache.pop(graph_id, None)
+        if gs is not None:
+            self._slug_to_id.pop(gs.graph.slug, None)
         if gs is not None and not gs.graph.is_default:
             for engine in (gs._graph_engine, gs._write_engine):
                 if engine is not None:
@@ -236,6 +239,7 @@ class GraphSessionResolver:
             _write_engine=write_engine,
         )
         self._cache[graph.id] = gs
+        self._slug_to_id[graph.slug] = graph.id
         logger.info(
             "Cached session factories for graph '%s' (mode=%s, schema=%s)",
             graph.slug,

@@ -142,12 +142,13 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
     from fastmcp.server.dependencies import get_access_token
 
     token = get_access_token()
-    if token is not None:
-        graph_scopes = [s.removeprefix("graph:") for s in (token.scopes or []) if s.startswith("graph:")]
-        if not graph_scopes:
-            raise ValueError(f"Token does not have graph scope for '{graph}' — add graph:{graph} scope")
-        if graph not in graph_scopes:
-            raise ValueError(f"Token does not have access to graph '{graph}'")
+    if token is None:
+        raise ValueError(f"Authentication required to access graph '{graph}'")
+    graph_scopes = [s.removeprefix("graph:") for s in (token.scopes or []) if s.startswith("graph:")]
+    if not graph_scopes:
+        raise ValueError(f"Token does not have graph scope for '{graph}' — add graph:{graph} scope")
+    if graph not in graph_scopes:
+        raise ValueError(f"Token does not have access to graph '{graph}'")
 
     resolver = get_graph_resolver_cached()
     gs = await resolver.resolve_by_slug(graph)

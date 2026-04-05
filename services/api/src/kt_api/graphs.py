@@ -441,10 +441,18 @@ async def update_graph_member_role(
         raise HTTPException(status_code=400, detail="Invalid user_id")
 
     # Prevent demoting the last admin
+    # Lock members to prevent concurrent last-admin demotion (TOCTOU)
+    from kt_db.models import GraphMember as GraphMemberModel
+
     current_role = await repo.get_member_role(graph.id, target_id)
     if current_role == "admin" and body.role != "admin":
-        members = await repo.get_members(graph.id)
-        admin_count = sum(1 for m in members if m.role == "admin")
+        lock_stmt = (
+            select(GraphMemberModel)
+            .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == "admin")
+            .with_for_update()
+        )
+        result = await session.execute(lock_stmt)
+        admin_count = len(result.scalars().all())
         if admin_count <= 1:
             raise HTTPException(status_code=400, detail="Cannot demote the last admin of a graph")
 
@@ -483,11 +491,18 @@ async def remove_graph_member(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user_id")
 
-    # Prevent removing the last admin
+    # Prevent removing the last admin — lock to prevent TOCTOU race
+    from kt_db.models import GraphMember as GraphMemberModel
+
     current_role = await repo.get_member_role(graph.id, target_id)
     if current_role == "admin":
-        members = await repo.get_members(graph.id)
-        admin_count = sum(1 for m in members if m.role == "admin")
+        lock_stmt = (
+            select(GraphMemberModel)
+            .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == "admin")
+            .with_for_update()
+        )
+        result = await session.execute(lock_stmt)
+        admin_count = len(result.scalars().all())
         if admin_count <= 1:
             raise HTTPException(status_code=400, detail="Cannot remove the last admin of a graph")
 
