@@ -572,6 +572,8 @@ class ApiToken(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Graph scoping: NULL = all graphs the user can access (backward compat)
+    graph_slugs: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
 
 # ---- MCP OAuth 2.1 tables -------------------------------------------------

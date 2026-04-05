@@ -1006,10 +1006,14 @@ export const api = {
       return request<ApiTokenRead[]>("/auth/tokens");
     },
 
-    createToken(name: string, expiresAt?: string): Promise<ApiTokenCreated> {
+    createToken(name: string, expiresAt?: string, graphSlugs?: string[]): Promise<ApiTokenCreated> {
       return request<ApiTokenCreated>("/auth/tokens", {
         method: "POST",
-        body: JSON.stringify({ name, expires_at: expiresAt ?? null }),
+        body: JSON.stringify({
+          name,
+          expires_at: expiresAt ?? null,
+          graph_slugs: graphSlugs ?? null,
+        }),
       });
     },
 

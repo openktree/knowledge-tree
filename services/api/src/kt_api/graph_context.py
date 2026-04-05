@@ -53,6 +53,11 @@ async def get_graph_context(
     if graph.status != "active":
         raise HTTPException(status_code=503, detail="Graph is not yet active")
 
+    # Check token-level graph scope (set by require_auth for API tokens)
+    token_graph_slugs: list[str] | None = getattr(user, "_token_graph_slugs", None)
+    if token_graph_slugs is not None and graph_slug not in token_graph_slugs:
+        raise HTTPException(status_code=403, detail="Token does not have access to this graph")
+
     # Access check
     user_role: str | None = None
     if not graph.is_default and not user.is_superuser:

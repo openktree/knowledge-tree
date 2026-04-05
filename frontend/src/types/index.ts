@@ -1032,6 +1032,7 @@ export interface ApiTokenRead {
   id: string;
   name: string;
   created_at: string;
+  graph_slugs: string[] | null;
   expires_at: string | null;
   last_used_at: string | null;
 }
