@@ -15,7 +15,11 @@ spec:
     shared_preload_libraries:
       {{- toYaml .Values.graphDb.postgresql.shared_preload_libraries | nindent 6 }}
     parameters:
-      max_connections: {{ .Values.graphDb.postgresql.max_connections | quote }}
+      {{- range $key, $value := .Values.graphDb.postgresql }}
+      {{- if ne $key "shared_preload_libraries" }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- end }}
 
   bootstrap:
     initdb:

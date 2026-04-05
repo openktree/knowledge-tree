@@ -30,7 +30,7 @@ def get_session_factory_cached() -> async_sessionmaker[AsyncSession]:
     """Return a cached async session factory (singleton)."""
     global _session_factory  # noqa: PLW0603
     if _session_factory is None:
-        _session_factory = get_session_factory()
+        _session_factory = get_session_factory(application_name="kt-api")
     return _session_factory
 
 
@@ -38,7 +38,7 @@ def get_write_session_factory_cached() -> async_sessionmaker[AsyncSession]:
     """Return a cached write-db async session factory (singleton)."""
     global _write_session_factory  # noqa: PLW0603
     if _write_session_factory is None:
-        _write_session_factory = get_write_session_factory()
+        _write_session_factory = get_write_session_factory(application_name="kt-api")
     return _write_session_factory
 
 
