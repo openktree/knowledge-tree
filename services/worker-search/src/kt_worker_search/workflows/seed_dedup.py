@@ -81,6 +81,9 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
                 logger.exception("Dedup failed for seed '%s'", seed_key)
                 errors += 1
 
+        # Commit all successful savepoints. If an unhandled exception
+        # escapes the loop this is skipped, but that matches the previous
+        # begin()-per-seed semantics (all-or-nothing on unexpected errors).
         await session.commit()
 
     logger.info(

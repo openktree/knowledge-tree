@@ -874,7 +874,7 @@ class SyncEngine:
         idle during graph-db operations (which can exceed idle_in_transaction
         timeout on large batches).
         """
-        # Read candidates from write-db in a short-lived session
+        # Read candidates from write-db in a short-lived read-only session
         async with self._write_sf() as ws:
             candidates = (
                 await ws.execute(
@@ -883,6 +883,7 @@ class SyncEngine:
                     .limit(500)
                 )
             ).all()
+            await ws.rollback()  # read-only — release connection cleanly
 
         if not candidates:
             return
