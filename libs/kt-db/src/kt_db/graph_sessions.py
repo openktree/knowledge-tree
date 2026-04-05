@@ -136,7 +136,9 @@ class GraphSessionResolver:
                 return self._cache[graph_id]
             # Open a fresh session inside the lock for _build_and_cache
             async with self._control_sf() as session:
-                graph_row = (await session.execute(select(Graph).where(Graph.id == graph_id))).scalar_one()
+                graph_row = (await session.execute(select(Graph).where(Graph.id == graph_id))).scalar_one_or_none()
+                if graph_row is None:
+                    raise ValueError(f"Graph {graph_id} was deleted during resolution")
                 return await self._build_and_cache(graph_row, session)
 
     async def list_active_graphs(self) -> list[GraphInfo]:

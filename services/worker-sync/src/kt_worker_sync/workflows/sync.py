@@ -113,7 +113,7 @@ async def sync_graph_task(input: dict, ctx: Context) -> dict:
         else:
             resolver = worker_state.graph_resolver
             if resolver is None:
-                return {"error": "graph_resolver not available"}
+                raise RuntimeError(f"graph_resolver not available — cannot sync graph '{graph_slug}'")
             gs = await resolver.resolve_by_slug(graph_slug)
             engine = SyncEngine(
                 write_session_factory=gs.write_session_factory,

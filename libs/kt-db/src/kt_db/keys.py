@@ -17,17 +17,29 @@ KT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "knowledge-tree")
 
 
 _SCHEMA_NAME_RE = re.compile(r"^[a-z0-9_]+$")
+_RESERVED_SCHEMAS = frozenset(
+    {
+        "public",
+        "pg_catalog",
+        "pg_toast",
+        "pg_temp",
+        "information_schema",
+    }
+)
 
 
 def validate_schema_name(schema_name: str) -> None:
     """Validate a PostgreSQL schema name for use in DDL/search_path.
 
-    Raises ValueError if the name contains characters outside [a-z0-9_].
+    Raises ValueError if the name contains characters outside [a-z0-9_]
+    or matches a reserved PostgreSQL schema name.
     This is the single source of truth for schema name validation — all
     code paths that use schema names in SQL must call this.
     """
     if not _SCHEMA_NAME_RE.match(schema_name):
         raise ValueError(f"Invalid schema name '{schema_name}': must match ^[a-z0-9_]+$")
+    if schema_name in _RESERVED_SCHEMAS or schema_name.startswith("pg_"):
+        raise ValueError(f"Reserved schema name: '{schema_name}'")
 
 
 def key_to_uuid(write_key: str) -> uuid.UUID:
