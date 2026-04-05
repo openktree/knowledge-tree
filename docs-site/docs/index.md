@@ -11,7 +11,7 @@ Knowledge Tree is a **knowledge integration system** that builds understanding e
 ## What makes Knowledge Tree different
 
 - **Knowledge from data, not from models.** AI models are reasoning engines, not knowledge sources. All knowledge traces back to external raw data.
-- **Integration, not ignoring.** The system never discards coherent information. Contradictory facts produce perspectives with alternate viewpoints, not suppression.
+- **Integration, not ignoring.** The system never discards coherent information. Contradictory facts coexist within nodes, surfaced transparently rather than suppressed.
 - **Multi-model convergence.** Multiple AI models analyze the same evidence independently. Consensus reveals genuine truth; divergence reveals where biases determine conclusions.
 - **Transparent provenance.** Every claim traces through facts back to original sources. Nothing is hidden.
 - **Accumulation.** The graph improves with every query. Frequently explored topics become deeply supported over time.

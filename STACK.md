@@ -108,7 +108,7 @@ bottom_up_wf (top-level research)
   |           |-- dimensions (parallel multi-model)
   |           |-- definition
   |           |-- parent selection
-  |     |-- perspective building
+  |     |-- edge resolution
 
 synthesizer_wf (synthesis document creation)
   |-- SynthesizerAgent navigates graph (8 tools)
@@ -280,7 +280,7 @@ Deterministic UUIDs via `key_to_uuid()` (UUID5) bridge the two databases so both
 ### 4.4 Database Schema (Key Tables)
 
 **graph-db (read-optimized) — `kt_db/models.py`:**
-- `nodes` — Concepts, entities, perspectives, events, locations, syntheses, supersyntheses. Vector embeddings (3072d).
+- `nodes` — Concepts, entities, events, locations, syntheses, supersyntheses. Vector embeddings (3072d).
 - `node_counters` — Separate counter table (avoids row-lock contention).
 - `edges` — Typed relationships (`related`, `cross_type`, `draws_from`). Canonical UUID ordering for undirected types. Unique constraint per (source, target, type).
 - `facts` — Independent fact units with embeddings. Linked to nodes via `node_facts`.
@@ -376,7 +376,7 @@ knowledge-tree/
 │   ├── kt-providers/                # Serper, Brave, fetcher, registry (kt_providers)
 │   ├── kt-graph/                    # GraphEngine, convergence, splitting (kt_graph)
 │   ├── kt-facts/                    # Decomposition pipeline, extraction (kt_facts)
-│   ├── kt-ontology/                 # Wikidata, ancestry, crystallization, cache (kt_ontology)
+│   ├── kt-ontology/                 # *(deprecated — scheduled for removal)* (kt_ontology)
 │   ├── kt-hatchet/                  # Hatchet client, lifespan, models (kt_hatchet)
 │   └── kt-agents-core/              # BaseAgent, state, results (kt_agents_core)
 │
@@ -616,10 +616,6 @@ class Settings(BaseSettings):
     # Embeddings
     embedding_model: str = "openrouter/openai/text-embedding-3-large"
     embedding_dimensions: int = 3072
-
-    # Ontology
-    enable_ontology_ancestry: bool = True
-    ontology_model: str = "openrouter/x-ai/grok-4.1-fast"
 
     # Feature flags
     use_hatchet: bool = True

@@ -95,7 +95,7 @@ Discover how two topics are related through the graph:
    get_facts(node_id="<intermediate-node-uuid>")
    ```
 
-## Compare model perspectives
+## Compare model analyses
 
 See where AI models agree and disagree on a topic:
 
@@ -105,16 +105,6 @@ See where AI models agree and disagree on a topic:
    ```
 
 2. **Compare confidence scores** — high confidence across models suggests strong evidence. Low or divergent confidence suggests uncertainty.
-
-3. **Look for perspective nodes** with different stances:
-   ```
-   search_graph(query="<topic>", node_type="perspective")
-   ```
-
-4. **Check edges** for dialectic pairs (contradicting perspectives):
-   ```
-   get_edges(node_id="<perspective-uuid>")
-   ```
 
 ## Building references for users
 
@@ -129,7 +119,7 @@ Where `slug` = concept name lowercased, non-alphanumeric characters replaced wit
 Examples:
 - "Machine Learning" (concept) → `https://wiki.openktree.com/nodes/concept-machine-learning`
 - "NASA" (entity) → `https://wiki.openktree.com/nodes/entity-nasa`
-- "Climate Change Is Accelerating" (perspective) → `https://wiki.openktree.com/nodes/perspective-climate-change-is-accelerating`
+- "Apollo 11 Moon Landing" (event) → `https://wiki.openktree.com/nodes/event-apollo-11-moon-landing`
 
 **Fact pages:**
 ```

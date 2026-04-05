@@ -44,13 +44,12 @@ Synthesis document creation. Contains the two main agent implementations:
 The node creation pipeline. Runs as a DAG:
 
 ```
-create_node → dimensions → definition → parent_selection
+create_node → dimensions → definition
 ```
 
 1. **create_node** — Creates the node in write-db with linked facts
 2. **dimensions** — Runs multi-model analysis (parallel across configured models)
 3. **definition** — Synthesizes a definition from dimensions
-4. **parent_selection** — Assigns parent node for perspectives and specializations
 
 **Workflow:** `node_pipeline_wf`
 

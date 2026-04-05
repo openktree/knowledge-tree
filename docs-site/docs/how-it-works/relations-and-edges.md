@@ -37,7 +37,6 @@ An edge's **weight** equals the number of facts shared between its two nodes. Hi
 |------|-----------|---------|
 | **related** | Connects nodes of the **same type** (concept-concept, entity-entity) | "solar power" ↔ "wind power" |
 | **cross_type** | Connects nodes of **different types** (entity-event, concept-entity) | "NASA" (entity) ↔ "Apollo 11" (event) |
-| **contradicts** | Links thesis/antithesis perspective pairs | "AI is beneficial" ↔ "AI is dangerous" |
 
 The relationship type is determined automatically by comparing the node types of the two endpoints: same type produces `related`, different types produce `cross_type`.
 
@@ -49,7 +48,7 @@ Each edge stores:
 |-------|-------------|
 | **source_node_id** | One endpoint (canonical: always the smaller UUID) |
 | **target_node_id** | Other endpoint (canonical: always the larger UUID) |
-| **relationship_type** | `related`, `cross_type`, or `contradicts` |
+| **relationship_type** | `related` or `cross_type` |
 | **weight** | Shared fact count (positive float) |
 | **justification** | LLM-generated reasoning with `{fact:uuid}` citation tokens |
 

@@ -52,9 +52,6 @@ Different node types get different analysis prompts:
 | **Concept** | What the evidence reveals, patterns, connections |
 | **Entity** | Role, factual details, relationships, involvement |
 | **Event** | Timeline, causes, effects, participants, context |
-| **Perspective** | Build the strongest case, note challenges as obstacles |
-
-For perspective nodes specifically, facts are first **stance-classified** as supporting, challenging, or neutral. The dimension then presents the perspective's case using its supporting facts while acknowledging challenges.
 
 ## Convergence
 
