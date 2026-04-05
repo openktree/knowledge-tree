@@ -101,6 +101,22 @@ const BASE_URL =
 const API_PREFIX = "/api/v1";
 
 // ---------------------------------------------------------------------------
+// Active graph (module-level state set by GraphProvider)
+// ---------------------------------------------------------------------------
+
+let _activeGraphSlug = "default";
+
+/** Called by GraphProvider when the active graph changes. */
+export function setActiveGraphSlug(slug: string): void {
+  _activeGraphSlug = slug;
+}
+
+/** Returns the current active graph slug. */
+export function getActiveGraphSlug(): string {
+  return _activeGraphSlug;
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
@@ -141,6 +157,22 @@ async function request<T>(
   }
 
   return res.json() as Promise<T>;
+}
+
+/**
+ * Make a request scoped to the active graph.
+ * Routes through /graphs/{slug}/... for non-default graphs,
+ * falls back to the standard /... path for the default graph.
+ */
+export async function graphRequest<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const slug = _activeGraphSlug;
+  if (slug && slug !== "default") {
+    return request<T>(`/graphs/${encodeURIComponent(slug)}${path}`, options);
+  }
+  return request<T>(path, options);
 }
 
 function buildQuery(params: Record<string, string | undefined>): string {
