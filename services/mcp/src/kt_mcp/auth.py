@@ -16,16 +16,15 @@ from kt_config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
-async def verify_bearer_token(token: str, session: AsyncSession) -> bool:
+async def verify_bearer_token(token: str, session: AsyncSession) -> object | None:
     """Verify a bearer token against the api_tokens table (Redis-cached).
 
-    Returns True if the token matches a non-revoked, non-expired API token.
-    When SKIP_AUTH is enabled, returns True unconditionally.
+    Returns the ApiToken object if valid, or a truthy stub when SKIP_AUTH
+    is enabled. Returns None if the token is invalid.
     """
     settings = get_settings()
     if settings.skip_auth:
-        return True
+        return True  # truthy stub — no graph_slugs attribute
 
     verifier = ApiTokenVerifier(session)
-    api_token = await verifier.find_by_raw(token)
-    return api_token is not None
+    return await verifier.find_by_raw(token)

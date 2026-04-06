@@ -42,9 +42,10 @@ class TestVerifyBearerToken:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_valid_token_returns_true(self):
+    async def test_valid_token_returns_token_object(self):
         mock_token = MagicMock()
         mock_token.user_id = "test-user-id"
+        mock_token.graph_slugs = ["default"]
 
         mock_settings = MagicMock()
         mock_settings.skip_auth = False
@@ -56,10 +57,10 @@ class TestVerifyBearerToken:
             instance = MockVerifier.return_value
             instance.find_by_raw = AsyncMock(return_value=mock_token)
             result = await verify_bearer_token("tokn_valid", AsyncMock())
-        assert result is True
+        assert result is mock_token
 
     @pytest.mark.asyncio
-    async def test_invalid_token_returns_false(self):
+    async def test_invalid_token_returns_none(self):
         mock_settings = MagicMock()
         mock_settings.skip_auth = False
 
@@ -70,4 +71,4 @@ class TestVerifyBearerToken:
             instance = MockVerifier.return_value
             instance.find_by_raw = AsyncMock(return_value=None)
             result = await verify_bearer_token("tokn_wrong", AsyncMock())
-        assert result is False
+        assert result is None

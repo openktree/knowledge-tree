@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/contexts/auth";
+import { GraphProvider } from "@/contexts/graph";
 import { RouteGuard } from "@/components/auth/RouteGuard";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
@@ -44,8 +45,10 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <AuthProvider>
-            <RouteGuard>{children}</RouteGuard>
-            <Toaster />
+            <GraphProvider>
+              <RouteGuard>{children}</RouteGuard>
+              <Toaster />
+            </GraphProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

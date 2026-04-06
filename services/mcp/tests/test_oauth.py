@@ -305,7 +305,7 @@ class TestOAuthProviderVerifyToken:
         with (
             patch("kt_mcp.oauth_provider.get_session_factory_cached", return_value=mock_factory),
             patch("kt_mcp.oauth_provider.get_settings", return_value=mock_settings),
-            patch("kt_mcp.oauth_provider.verify_bearer_token", new_callable=AsyncMock, return_value=False),
+            patch("kt_mcp.oauth_provider.verify_bearer_token", new_callable=AsyncMock, return_value=None),
         ):
             provider = KnowledgeTreeOAuthProvider.__new__(KnowledgeTreeOAuthProvider)
             result = await provider.verify_token(plaintext_token)

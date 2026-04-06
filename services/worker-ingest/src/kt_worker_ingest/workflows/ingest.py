@@ -43,19 +43,16 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 
 
 @asynccontextmanager
-async def _open_sessions(state: WorkerState) -> AsyncGenerator[tuple[None, Any], None]:
+async def _open_sessions(state: WorkerState, graph_id: str | None = None) -> AsyncGenerator[tuple[None, Any], None]:
     """Open write-db session for worker pipelines.
 
     Yields ``(session, write_session)`` where ``session`` is **None**.
-    Workers operate in write-db-only mode — all reads route through
-    write-db or Qdrant, and the sync worker propagates to graph-db.
-
-    Previously this opened a graph-db session that was held for the
-    entire pipeline (hours during large ingests), leaking connections.
+    When ``graph_id`` is set, resolves per-graph session factories.
     """
-    if state.write_session_factory is None:
+    _, write_sf = await state.resolve_sessions(graph_id)
+    if write_sf is None:
         raise RuntimeError("Ingest worker requires write_session_factory")
-    write_session = state.write_session_factory()
+    write_session = write_sf()
     try:
         yield None, write_session
     finally:
@@ -68,6 +65,7 @@ async def _build_agent_context(
     emit_event: Any | None = None,
     write_session: Any,
     api_key: str | None = None,
+    graph_id: str | None = None,
 ) -> Any:
     """Build an AgentContext from WorkerState.
 
@@ -97,6 +95,8 @@ async def _build_agent_context(
         model_gateway = state.model_gateway
         embedding_service = state.embedding_service
 
+    resolved_sf, resolved_write_sf = await state.resolve_sessions(graph_id)
+
     graph_engine = WorkerGraphEngine(
         write_session,
         embedding_service,
@@ -110,8 +110,8 @@ async def _build_agent_context(
         session=None,
         emit_event=emit_event,
         content_fetcher=state.content_fetcher,
-        session_factory=state.session_factory,
-        write_session_factory=state.write_session_factory,
+        session_factory=resolved_sf,
+        write_session_factory=resolved_write_sf,
         qdrant_client=state.qdrant_client,
     )
 
@@ -380,7 +380,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             if input.api_key:
                 from kt_models.gateway import ModelGateway
 
-                _model_gateway = ModelGateway(api_key=input.api_key)
+                _model_gateway = ModelGateway(api_key=input.api_key, graph_id=input.graph_id)
             else:
                 _model_gateway = worker_state.model_gateway
             from kt_providers.fetcher import FileDataStore as _FDS

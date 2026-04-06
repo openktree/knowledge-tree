@@ -41,7 +41,7 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
     processed = 0
     errors = 0
 
-    async with state.write_session_factory() as session:
+    async with (await state.resolve_sessions(input.graph_id))[1]() as session:
         repo = WriteSeedRepository(session)
 
         # Batch-fetch all seeds, filter to active only

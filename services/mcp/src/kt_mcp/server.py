@@ -19,6 +19,7 @@ import uuid
 from fastapi import FastAPI
 from fastmcp import FastMCP
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from kt_config.settings import get_settings
@@ -26,6 +27,7 @@ from kt_db.models import Fact, FactSource, Node, NodeFact, RawSource
 from kt_graph.read_engine import ReadGraphEngine
 from kt_mcp.dependencies import (
     get_embedding_service_cached,
+    get_graph_resolver_cached,
     get_qdrant_client_cached,
     get_session_factory_cached,
 )
@@ -67,6 +69,13 @@ by **edges** weighted by shared evidence. The right way to use it is to
      authors, dates). Use for building citations.
 5. **Find connections** — use `get_node_paths` to discover how two concepts
    relate through intermediate nodes.
+
+### Multi-graph support
+
+All tools accept an optional ``graph`` parameter (default: ``"default"``).
+To work with a non-default graph, pass its slug — e.g.,
+``search_graph(query="test", graph="my-research")``.
+You must have membership access to the graph.
 
 ### Cross-referencing
 
@@ -118,6 +127,33 @@ def _parse_uuid(node_id: str) -> uuid.UUID | None:
         return None
 
 
+async def _get_graph_factory(graph: str) -> async_sessionmaker:
+    """Resolve a graph slug to the correct session factory.
+
+    For "default", returns the system session factory.
+    For other slugs, uses GraphSessionResolver and checks OAuth token scopes.
+    Raises ValueError if the graph doesn't exist or access is denied.
+    """
+    if graph == "default":
+        return get_session_factory_cached()
+
+    # Check token graph scopes if present:
+    # - No token (SKIP_AUTH) → allow (dev mode)
+    # - Token with no graph:* scopes → unrestricted (e.g. graph_slugs=null)
+    # - Token with graph:* scopes → must include the requested graph
+    from fastmcp.server.dependencies import get_access_token
+
+    token = get_access_token()
+    if token is not None:
+        graph_scopes = [s.removeprefix("graph:") for s in (token.scopes or []) if s.startswith("graph:")]
+        if graph_scopes and graph not in graph_scopes:
+            raise ValueError(f"Token does not have access to graph '{graph}'")
+
+    resolver = get_graph_resolver_cached()
+    gs = await resolver.resolve_by_slug(graph)
+    return gs.graph_session_factory
+
+
 # ── Tool: search_graph ───────────────────────────────────────────────
 
 
@@ -126,6 +162,7 @@ async def search_graph(
     query: str,
     limit: int = 20,
     node_type: str | None = None,
+    graph: str = "default",
 ) -> dict:
     """Search the knowledge graph for nodes matching a text query.
 
@@ -147,7 +184,7 @@ async def search_graph(
         node_type: Optional filter: concept, entity, perspective, event.
     """
     limit = max(1, min(100, limit))
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
         nodes = await engine.search_nodes(query, limit=limit, node_type=node_type)
@@ -176,7 +213,7 @@ async def search_graph(
 
 
 @mcp.tool()
-async def get_node(node_id: str) -> dict:
+async def get_node(node_id: str, graph: str = "default") -> dict:
     """Load a node's core details — the overview of a concept in the graph.
 
     Returns the node's definition, type, parent, creation date, and
@@ -199,7 +236,7 @@ async def get_node(node_id: str) -> dict:
     if uid is None:
         return {"error": "Invalid node ID format"}
 
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
@@ -259,7 +296,7 @@ async def get_node(node_id: str) -> dict:
 
 
 @mcp.tool()
-async def get_dimensions(node_id: str, limit: int = 10, offset: int = 0) -> dict:
+async def get_dimensions(node_id: str, limit: int = 10, offset: int = 0, graph: str = "default") -> dict:
     """Load dimensions (model perspectives) for a node — deeper analysis.
 
     Each dimension is an **independent AI model's analysis** of the same
@@ -284,7 +321,7 @@ async def get_dimensions(node_id: str, limit: int = 10, offset: int = 0) -> dict
     limit = max(1, min(50, limit))
     offset = max(0, offset)
 
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
@@ -323,6 +360,7 @@ async def get_edges(
     limit: int = 10,
     offset: int = 0,
     edge_type: str | None = None,
+    graph: str = "default",
 ) -> dict:
     """Load edges (relationships) for a node — the key tool for graph navigation.
 
@@ -354,7 +392,7 @@ async def get_edges(
     limit = max(1, min(100, limit))
     offset = max(0, offset)
 
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
@@ -404,6 +442,7 @@ async def get_facts(
     source_domain: str | None = None,
     search: str | None = None,
     fact_type: str | None = None,
+    graph: str = "default",
 ) -> dict:
     """Load provenance-tracked facts linked to a node, grouped by source.
 
@@ -466,7 +505,7 @@ async def get_facts(
 
     has_filters = source_uid or author_org or source_domain or search or fact_type
 
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
@@ -645,7 +684,7 @@ async def get_facts(
 
 
 @mcp.tool()
-async def get_fact_sources(node_id: str) -> dict:
+async def get_fact_sources(node_id: str, graph: str = "default") -> dict:
     """Load all original sources for a node's facts — full provenance.
 
     Returns a deduplicated list of the real external sources (URLs,
@@ -665,7 +704,7 @@ async def get_fact_sources(node_id: str) -> dict:
     if uid is None:
         return {"error": "Invalid node ID format"}
 
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
@@ -720,6 +759,7 @@ async def search_facts(
     fact_type: str | None = None,
     author_org: str | None = None,
     source_domain: str | None = None,
+    graph: str = "default",
 ) -> dict:
     """Search the global fact pool — an alternative entry point into the graph.
 
@@ -760,7 +800,7 @@ async def search_facts(
     limit = max(1, min(100, limit))
     offset = max(0, offset)
 
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
@@ -926,6 +966,7 @@ async def get_node_paths(
     target_node_id: str,
     max_depth: int = 6,
     limit: int = 5,
+    graph: str = "default",
 ) -> dict:
     """Find how two nodes connect through the graph — relationship discovery.
 
@@ -959,7 +1000,7 @@ async def get_node_paths(
     max_depth = max(1, min(10, max_depth))
     limit = max(1, min(20, limit))
 
-    factory = get_session_factory_cached()
+    factory = await _get_graph_factory(graph)
     async with factory() as session:
         engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 

@@ -75,7 +75,7 @@ async def decompose_chunk_task(input: DecomposeChunkInput, ctx: Context) -> dict
     fact_ids: list[str] = []
 
     # Read source from write-db to avoid graph-db pool pressure
-    write_session = state.write_session_factory()
+    write_session = (await state.resolve_sessions(input.graph_id))[1]()
     try:
         write_source_repo = WriteSourceRepository(write_session)
         source = await write_source_repo.get_by_id(uuid.UUID(input.raw_source_id))
@@ -129,7 +129,7 @@ async def decompose_page(input: DecomposePageInput, ctx: Context) -> dict:
     from kt_facts.processing.segmenter import chunk_if_needed
 
     # Read source from write-db to avoid graph-db pool pressure
-    write_session = state.write_session_factory()
+    write_session = (await state.resolve_sessions(input.graph_id))[1]()
     try:
         write_source_repo = WriteSourceRepository(write_session)
         source = await write_source_repo.get_by_id(uuid.UUID(input.raw_source_id))
@@ -223,7 +223,7 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
 
     # 2. Store results in write-db and optionally fetch full text
     #    (sync worker propagates to graph-db — no direct graph-db writes)
-    write_session = state.write_session_factory()
+    write_session = (await state.resolve_sessions(input.graph_id))[1]()
     write_source_repo = WriteSourceRepository(write_session)
     sources = []
     try:

@@ -476,11 +476,15 @@ class WriteLlmUsage(WriteBase):
 
 
 class SyncWatermark(WriteBase):
-    """Tracks the last synced timestamp per table for incremental sync."""
+    """Tracks the last synced timestamp per table for incremental sync.
+
+    The graph_slug column scopes watermarks per-graph. Defaults to "default".
+    """
 
     __tablename__ = "sync_watermarks"
 
     table_name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    graph_slug: Mapped[str] = mapped_column(String(100), primary_key=True, default="default")
     last_synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
 
@@ -504,6 +508,7 @@ class SyncFailure(WriteBase):
     error_message: Mapped[str] = mapped_column(Text, nullable=False)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, abandoned
+    graph_slug: Mapped[str] = mapped_column(String(100), default="default")
     next_retry_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

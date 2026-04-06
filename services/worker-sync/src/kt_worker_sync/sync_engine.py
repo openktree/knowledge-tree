@@ -93,11 +93,13 @@ class SyncEngine:
         embedding_service: object | None = None,
         batch_size: int = 100,
         qdrant_client: object | None = None,
+        graph_slug: str = "default",
     ) -> None:
         self._write_sf = write_session_factory
         self._graph_sf = graph_session_factory
         self._embedding_service = embedding_service
         self._batch_size = batch_size
+        self._graph_slug = graph_slug
         self._qdrant_node_repo = None
         if qdrant_client is not None:
             from kt_qdrant.repositories.nodes import QdrantNodeRepository
@@ -165,7 +167,10 @@ class SyncEngine:
 
     async def _get_watermark(self, write_session: AsyncSession, table_name: str) -> datetime:
         result = await write_session.execute(
-            select(SyncWatermark.last_synced_at).where(SyncWatermark.table_name == table_name)
+            select(SyncWatermark.last_synced_at).where(
+                SyncWatermark.table_name == table_name,
+                SyncWatermark.graph_slug == self._graph_slug,
+            )
         )
         row = result.scalar_one_or_none()
         return row if row is not None else _EPOCH
@@ -173,9 +178,9 @@ class SyncEngine:
     async def _set_watermark(self, write_session: AsyncSession, table_name: str, ts: datetime) -> None:
         stmt = (
             pg_insert(SyncWatermark)
-            .values(table_name=table_name, last_synced_at=ts)
+            .values(table_name=table_name, graph_slug=self._graph_slug, last_synced_at=ts)
             .on_conflict_do_update(
-                index_elements=[SyncWatermark.table_name],
+                index_elements=[SyncWatermark.table_name, SyncWatermark.graph_slug],
                 set_={"last_synced_at": ts},
             )
         )

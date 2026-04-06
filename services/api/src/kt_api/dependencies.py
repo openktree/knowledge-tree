@@ -21,9 +21,12 @@ from kt_providers.serper import SerperSearchProvider
 
 logger = logging.getLogger(__name__)
 
+from kt_db.graph_sessions import GraphSessionResolver
+
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 _write_session_factory: async_sessionmaker[AsyncSession] | None = None
 _qdrant_client: object | None = None
+_graph_session_resolver: GraphSessionResolver | None = None
 
 
 def get_session_factory_cached() -> async_sessionmaker[AsyncSession]:
@@ -44,9 +47,23 @@ def get_write_session_factory_cached() -> async_sessionmaker[AsyncSession]:
 
 def reset_session_factory() -> None:
     """Reset the cached session factory (used in tests)."""
-    global _session_factory, _write_session_factory  # noqa: PLW0603
+    global _session_factory, _write_session_factory, _graph_session_resolver  # noqa: PLW0603
     _session_factory = None
     _write_session_factory = None
+    _graph_session_resolver = None
+
+
+def get_graph_session_resolver() -> GraphSessionResolver:
+    """Return a cached GraphSessionResolver singleton."""
+    global _graph_session_resolver  # noqa: PLW0603
+    if _graph_session_resolver is None:
+        control_sf = get_session_factory_cached()
+        _graph_session_resolver = GraphSessionResolver(
+            control_sf,
+            default_graph_session_factory=control_sf,
+            default_write_session_factory=get_write_session_factory_cached(),
+        )
+    return _graph_session_resolver
 
 
 def get_qdrant_client_cached() -> object:

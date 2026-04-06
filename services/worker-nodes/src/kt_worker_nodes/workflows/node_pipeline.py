@@ -113,7 +113,7 @@ async def _prepare_create(
     """Create mode: promote seed to node via NodeCreationPipeline."""
     ctx.log(f"prepare_node[create]: concept={input.concept!r}, type={input.node_type}")
 
-    result = await HatchetPipeline(state, api_key=input.api_key).create(
+    result = await HatchetPipeline(state, api_key=input.api_key, graph_id=input.graph_id).create(
         concept=input.concept,
         node_type=input.node_type,
         seed_key=input.seed_key,
@@ -200,7 +200,7 @@ async def _prepare_rebuild(
                 }
 
     # Enrich: sync seed facts to node
-    pipeline = HatchetPipeline(state, api_key=input.api_key)
+    pipeline = HatchetPipeline(state, api_key=input.api_key, graph_id=input.graph_id)
     enrich_result = await pipeline.enrich(nid)
     new_facts = enrich_result.get("new_facts_linked", 0)
     ctx.log(f"prepare_node[rebuild]: pool enrichment done, {new_facts} new facts linked")
@@ -243,7 +243,7 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
 
     node_type: str = prepare_result.get("node_type", input.node_type)
     concept: str = prepare_result.get("concept", input.concept)
-    pipeline = HatchetPipeline(state, api_key=input.api_key)
+    pipeline = HatchetPipeline(state, api_key=input.api_key, graph_id=input.graph_id)
 
     dims_created = 0
     fact_count = 0
@@ -376,7 +376,7 @@ async def generate_definition(input: NodePipelineInput, ctx: Context) -> dict:
 
     ctx.log(f"generate_definition: node_id={node_id_str}")
 
-    result = await HatchetPipeline(state, api_key=input.api_key).definition(node_id_str)
+    result = await HatchetPipeline(state, api_key=input.api_key, graph_id=input.graph_id).definition(node_id_str)
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "definition")
 
@@ -475,7 +475,7 @@ async def edge_task(input: UpdateEdgesInput, ctx: Context) -> dict:
 
     ctx.log(f"edge_task: concept={input.concept}, node_id={input.node_id}")
 
-    result = await HatchetPipeline(state, api_key=input.api_key).edges(
+    result = await HatchetPipeline(state, api_key=input.api_key, graph_id=input.graph_id).edges(
         node_id=input.node_id,
         concept=input.concept,
         node_type=input.node_type,

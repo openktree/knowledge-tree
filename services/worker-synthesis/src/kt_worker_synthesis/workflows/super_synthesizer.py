@@ -48,8 +48,9 @@ async def reconnaissance(input: SuperSynthesizerInput, ctx: Context) -> dict[str
     from kt_agents_core.state import AgentContext
     from kt_graph.read_engine import ReadGraphEngine
 
+    graph_sf, _ = await worker_state.resolve_sessions(input.graph_id)
     read_engine = ReadGraphEngine(
-        session_factory=worker_state.session_factory,
+        session_factory=graph_sf,
         qdrant_client=worker_state.qdrant_client,
     )
     agent_ctx = AgentContext(
@@ -242,16 +243,15 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
     from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
     from kt_worker_synthesis.prompts.super_synthesizer import build_super_synthesizer_system_message
 
-    if worker_state.write_session_factory is None:
+    graph_sf, write_sf = await worker_state.resolve_sessions(input.graph_id)
+    if write_sf is None:
         raise RuntimeError("Super-synthesis worker requires write_session_factory")
-    write_session = worker_state.write_session_factory()
+    write_session = write_sf()
     try:
-        # ReadGraphEngine for graph reads during agent navigation (short-lived sessions)
         read_engine = ReadGraphEngine(
-            session_factory=worker_state.session_factory,
+            session_factory=graph_sf,
             qdrant_client=worker_state.qdrant_client,
         )
-        # WorkerGraphEngine for writes (create supersynthesis node, set definition)
         worker_engine = WorkerGraphEngine(
             write_session,
             worker_state.embedding_service,
@@ -264,8 +264,8 @@ async def combine(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
             model_gateway=worker_state.model_gateway,
             embedding_service=worker_state.embedding_service,
             session=None,
-            session_factory=worker_state.session_factory,
-            write_session_factory=worker_state.write_session_factory,
+            session_factory=graph_sf,
+            write_session_factory=write_sf,
             qdrant_client=worker_state.qdrant_client,
         )
 

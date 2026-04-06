@@ -43,23 +43,24 @@ class QdrantNodeRepository:
     payload for filtering. The node_id links back to the PG Node row.
     """
 
-    def __init__(self, client: AsyncQdrantClient) -> None:
+    def __init__(self, client: AsyncQdrantClient, collection_name: str = NODES_COLLECTION) -> None:
         self._client = client
+        self._collection_name = collection_name
 
     async def ensure_collection(self) -> None:
         """Create the nodes collection if it doesn't exist."""
         settings = get_settings()
         collections = await self._client.get_collections()
         existing = {c.name for c in collections.collections}
-        if NODES_COLLECTION not in existing:
+        if self._collection_name not in existing:
             await self._client.create_collection(
-                collection_name=NODES_COLLECTION,
+                collection_name=self._collection_name,
                 vectors_config=VectorParams(
                     size=settings.embedding_dimensions,
                     distance=Distance.COSINE,
                 ),
             )
-            logger.info("Created Qdrant collection '%s' (dim=%d)", NODES_COLLECTION, settings.embedding_dimensions)
+            logger.info("Created Qdrant collection '%s' (dim=%d)", self._collection_name, settings.embedding_dimensions)
 
     async def upsert(
         self,
@@ -81,7 +82,7 @@ class QdrantNodeRepository:
             payload=payload,
         )
         await self._client.upsert(
-            collection_name=NODES_COLLECTION,
+            collection_name=self._collection_name,
             points=[point],
         )
 
@@ -110,7 +111,7 @@ class QdrantNodeRepository:
                 for nid, emb, nt, concept in chunk
             ]
             await self._client.upsert(
-                collection_name=NODES_COLLECTION,
+                collection_name=self._collection_name,
                 points=points,
             )
 
@@ -137,7 +138,7 @@ class QdrantNodeRepository:
         query_filter = self._build_filter(node_type=node_type, exclude_ids=exclude_ids)
 
         results = await self._client.query_points(
-            collection_name=NODES_COLLECTION,
+            collection_name=self._collection_name,
             query=embedding,
             limit=limit,
             score_threshold=score_threshold,
@@ -164,7 +165,7 @@ class QdrantNodeRepository:
         if not node_ids:
             return {}
         points = await self._client.retrieve(
-            collection_name=NODES_COLLECTION,
+            collection_name=self._collection_name,
             ids=[str(nid) for nid in node_ids],
             with_vectors=True,
             with_payload=False,
@@ -178,7 +179,7 @@ class QdrantNodeRepository:
     async def delete(self, node_id: uuid.UUID) -> None:
         """Delete a node vector from Qdrant."""
         await self._client.delete(
-            collection_name=NODES_COLLECTION,
+            collection_name=self._collection_name,
             points_selector=[str(node_id)],
         )
 
@@ -187,13 +188,13 @@ class QdrantNodeRepository:
         if not node_ids:
             return
         await self._client.delete(
-            collection_name=NODES_COLLECTION,
+            collection_name=self._collection_name,
             points_selector=[str(nid) for nid in node_ids],
         )
 
     async def count(self) -> int:
         """Count total nodes in the collection."""
-        info = await self._client.get_collection(NODES_COLLECTION)
+        info = await self._client.get_collection(self._collection_name)
         return info.points_count or 0
 
     def _build_filter(

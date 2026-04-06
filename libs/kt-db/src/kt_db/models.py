@@ -572,6 +572,8 @@ class ApiToken(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Graph scoping: NULL = all graphs the user can access (backward compat)
+    graph_slugs: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
 
 # ---- MCP OAuth 2.1 tables -------------------------------------------------
@@ -791,3 +793,81 @@ class LlmUsage(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Multi-graph models
+# ---------------------------------------------------------------------------
+
+
+class DatabaseConnection(Base):
+    """Named reference to a pre-configured database connection pair.
+
+    Actual connection strings are stored in Settings.graph_databases[config_key],
+    never in the database itself.
+    """
+
+    __tablename__ = "database_connections"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    config_key: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class Graph(Base):
+    """A knowledge graph instance with its own schema/database and access control."""
+
+    __tablename__ = "graphs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    graph_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="v1", server_default="v1"
+    )  # Versioned graph type for backward compat ("v1", "v2", ...)
+    byok_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )  # When True, users pay for LLM via their own keys — honored for early adopters
+    storage_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="schema", server_default="schema"
+    )  # "schema" | "database"
+    schema_name: Mapped[str] = mapped_column(String(100), nullable=False, default="public")
+    database_connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("database_connections.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="provisioning", server_default="provisioning"
+    )  # "provisioning" | "active" | "error" | "deleted"
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    # Relationships
+    database_connection: Mapped["DatabaseConnection | None"] = relationship()
+    members: Mapped[list["GraphMember"]] = relationship(back_populates="graph", cascade="all, delete-orphan")
+
+
+class GraphMember(Base):
+    """User access to a specific graph with a role."""
+
+    __tablename__ = "graph_members"
+    __table_args__ = (UniqueConstraint("graph_id", "user_id", name="uq_graph_member"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    graph_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("graphs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="reader")  # "reader" | "writer" | "admin"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    # Relationships
+    graph: Mapped["Graph"] = relationship(back_populates="members")
+    user: Mapped["User"] = relationship()

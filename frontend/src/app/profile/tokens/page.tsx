@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Copy, Plus, Trash2 } from "lucide-react";
-import { api } from "@/lib/api";
-import type { ApiTokenCreated, ApiTokenRead } from "@/types";
+import { api, listGraphs } from "@/lib/api";
+import type { ApiTokenCreated, ApiTokenRead, GraphResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // New token banner
@@ -124,6 +124,19 @@ function CreateTokenForm({ onCreated }: { onCreated: (t: ApiTokenCreated) => voi
   const [customDate, setCustomDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [graphs, setGraphs] = useState<GraphResponse[]>([]);
+  const [selectedGraphs, setSelectedGraphs] = useState<string[]>([]);
+  const [restrictGraphs, setRestrictGraphs] = useState(false);
+
+  useEffect(() => {
+    listGraphs().then(setGraphs).catch((err) => console.error("Failed to load graphs:", err));
+  }, []);
+
+  function toggleGraph(slug: string) {
+    setSelectedGraphs((prev) =>
+      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -133,11 +146,14 @@ function CreateTokenForm({ onCreated }: { onCreated: (t: ApiTokenCreated) => voi
     setLoading(true);
     try {
       const expiresAt = expiryIsoFromMode(mode, customDate);
-      const created = await api.auth.createToken(name.trim(), expiresAt);
+      const graphSlugs = restrictGraphs && selectedGraphs.length > 0 ? selectedGraphs : undefined;
+      const created = await api.auth.createToken(name.trim(), expiresAt, graphSlugs);
       onCreated(created);
       setName("");
       setMode("none");
       setCustomDate("");
+      setRestrictGraphs(false);
+      setSelectedGraphs([]);
     } catch {
       setError("Failed to create token.");
     } finally {
@@ -169,6 +185,38 @@ function CreateTokenForm({ onCreated }: { onCreated: (t: ApiTokenCreated) => voi
             onCustomDateChange={setCustomDate}
           />
         </div>
+
+        {graphs.length > 1 && (
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={restrictGraphs}
+                onChange={(e) => setRestrictGraphs(e.target.checked)}
+                className="rounded"
+              />
+              Restrict to specific graphs
+            </label>
+            {restrictGraphs && (
+              <div className="flex gap-2 flex-wrap ml-5">
+                {graphs.map((g) => (
+                  <button
+                    key={g.slug}
+                    type="button"
+                    onClick={() => toggleGraph(g.slug)}
+                    className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                      selectedGraphs.includes(g.slug)
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-accent"
+                    }`}
+                  >
+                    {g.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="text-xs text-red-500">{error}</p>}
 
@@ -226,6 +274,8 @@ function TokenList({ tokens, onRevoke }: { tokens: ApiTokenRead[]; onRevoke: (id
                 Created {formatDate(token.created_at)}
                 {token.expires_at && ` · Expires ${formatDate(token.expires_at)}`}
                 {token.last_used_at && ` · Last used ${formatDate(token.last_used_at)}`}
+                {token.graph_slugs && ` · Graphs: ${token.graph_slugs.join(", ")}`}
+                {!token.graph_slugs && " · All graphs"}
               </p>
             </div>
             <button
@@ -254,7 +304,7 @@ export default function TokensPage() {
     let cancelled = false;
     api.auth.listTokens()
       .then((list) => { if (!cancelled) setTokens(list); })
-      .catch(() => {});
+      .catch((err: unknown) => console.error("Failed to load tokens:", err));
     return () => { cancelled = true; };
   }, []);
 
@@ -268,7 +318,7 @@ export default function TokensPage() {
   function handleCreated(token: ApiTokenCreated) {
     setNewToken(token);
     setTokens((prev) => [
-      { id: token.id, name: token.name, created_at: token.created_at, expires_at: token.expires_at, last_used_at: null },
+      { id: token.id, name: token.name, created_at: token.created_at, expires_at: token.expires_at, last_used_at: null, graph_slugs: token.graph_slugs },
       ...prev,
     ]);
   }
