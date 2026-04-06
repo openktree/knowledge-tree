@@ -272,7 +272,7 @@ async def create_graph(
         # Combine status update + admin member in a single commit
         # to avoid orphaned graphs with no admin on crash
         graph = await repo.update(graph, status="active")
-        await repo.add_member(graph.id, admin.id, role="admin")
+        await repo.add_member(graph.id, admin.id, role=GraphRole.admin)
         await session.commit()
         # Invalidate cached GraphInfo so next resolve() sees status="active"
         await resolver.invalidate(graph.id)
@@ -353,7 +353,7 @@ async def retry_provision(
         # Add admin member if none exist (handles the orphaned-graph case)
         members = await repo.get_members(graph.id)
         if not members:
-            await repo.add_member(graph.id, admin.id, role="admin")
+            await repo.add_member(graph.id, admin.id, role=GraphRole.admin)
         await session.commit()
         await resolver.invalidate(graph.id)
     except Exception:
@@ -483,10 +483,10 @@ async def update_graph_member_role(
     # where two concurrent requests both read admin_count=2 before either demotes.
     from kt_db.models import GraphMember as GraphMemberModel
 
-    if body.role != "admin":
+    if body.role != GraphRole.admin:
         lock_stmt = (
             select(GraphMemberModel)
-            .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == "admin")
+            .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == GraphRole.admin)
             .with_for_update()
         )
         result = await session.execute(lock_stmt)
@@ -536,7 +536,7 @@ async def remove_graph_member(
 
     lock_stmt = (
         select(GraphMemberModel)
-        .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == "admin")
+        .where(GraphMemberModel.graph_id == graph.id, GraphMemberModel.role == GraphRole.admin)
         .with_for_update()
     )
     result = await session.execute(lock_stmt)
