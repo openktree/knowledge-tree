@@ -92,6 +92,7 @@ import type {
   GraphMemberResponse,
   AddGraphMemberRequest,
   UpdateGraphMemberRoleRequest,
+  DatabaseConnectionResponse,
 } from "@/types";
 
 const BASE_URL =
@@ -1280,14 +1281,14 @@ export async function getSynthesisModels() {
 }
 
 export async function createSynthesis(data: CreateSynthesisRequest) {
-  return request<{ status: string; workflow_run_id: string; topic: string }>(
+  return graphRequest<{ status: string; workflow_run_id: string; topic: string }>(
     "/syntheses",
     { method: "POST", body: JSON.stringify(data) }
   );
 }
 
 export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
-  return request<{ status: string; workflow_run_id: string; topic: string }>(
+  return graphRequest<{ status: string; workflow_run_id: string; topic: string }>(
     "/super-syntheses",
     { method: "POST", body: JSON.stringify(data) }
   );
@@ -1346,6 +1347,10 @@ export async function createGraph(data: CreateGraphRequest) {
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+export async function listDatabaseConnections() {
+  return request<DatabaseConnectionResponse[]>("/graphs/database-connections");
 }
 
 export async function getGraph(slug: string) {

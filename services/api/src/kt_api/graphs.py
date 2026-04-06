@@ -41,12 +41,20 @@ class GraphResponse(BaseModel):
     storage_mode: str
     schema_name: str
     database_connection_id: str | None = None
+    database_connection_name: str | None = None
     status: str
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
     member_count: int = 0
     node_count: int = 0
+
+
+class DatabaseConnectionResponse(BaseModel):
+    id: str
+    name: str
+    config_key: str
+    created_at: datetime
 
 
 class CreateGraphRequest(BaseModel):
@@ -85,7 +93,12 @@ class UpdateMemberRoleRequest(BaseModel):
 # -- Helpers ----------------------------------------------------------------
 
 
-def _graph_response(graph: Graph, member_count: int = 0, node_count: int = 0) -> GraphResponse:
+def _graph_response(
+    graph: Graph,
+    member_count: int = 0,
+    node_count: int = 0,
+    database_connection_name: str | None = None,
+) -> GraphResponse:
     return GraphResponse(
         id=str(graph.id),
         slug=graph.slug,
@@ -97,6 +110,7 @@ def _graph_response(graph: Graph, member_count: int = 0, node_count: int = 0) ->
         storage_mode=graph.storage_mode,
         schema_name=graph.schema_name,
         database_connection_id=str(graph.database_connection_id) if graph.database_connection_id else None,
+        database_connection_name=database_connection_name,
         status=graph.status,
         created_by=str(graph.created_by) if graph.created_by else None,
         created_at=graph.created_at,
@@ -150,10 +164,18 @@ async def list_graphs(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[GraphResponse]:
     """List graphs accessible to the current user."""
-    from kt_db.models import GraphMember
+    from kt_db.models import DatabaseConnection, GraphMember
 
     repo = GraphRepository(session)
     graphs = await repo.list_accessible(user.id, user.is_superuser)
+
+    # Batch-fetch database connection names
+    db_conn_ids = {g.database_connection_id for g in graphs if g.database_connection_id}
+    db_conn_names: dict[str, str] = {}
+    if db_conn_ids:
+        conn_stmt = select(DatabaseConnection.id, DatabaseConnection.name).where(DatabaseConnection.id.in_(db_conn_ids))
+        conn_result = await session.execute(conn_stmt)
+        db_conn_names = {str(row[0]): row[1] for row in conn_result.all()}
 
     # Batch-fetch member counts in a single query
     graph_ids = [g.id for g in graphs]
@@ -196,6 +218,9 @@ async def list_graphs(
             g,
             member_count=member_counts.get(str(g.id), 0),
             node_count=node_counts.get(str(g.id), 0),
+            database_connection_name=db_conn_names.get(str(g.database_connection_id), None)
+            if g.database_connection_id
+            else None,
         )
         for g in graphs
     ]
@@ -278,6 +303,31 @@ async def create_graph(
     return _graph_response(graph, member_count=1)
 
 
+# -- Database connections ---------------------------------------------------
+
+
+@router.get("/database-connections", response_model=list[DatabaseConnectionResponse])
+async def list_database_connections(
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+) -> list[DatabaseConnectionResponse]:
+    """List available database connections (admin only)."""
+    repo = GraphRepository(session)
+    connections = await repo.list_database_connections()
+    return [
+        DatabaseConnectionResponse(
+            id=str(c.id),
+            name=c.name,
+            config_key=c.config_key,
+            created_at=c.created_at,
+        )
+        for c in connections
+    ]
+
+
+# -- Graph detail -----------------------------------------------------------
+
+
 @router.get("/{slug}", response_model=GraphResponse)
 async def get_graph(
     slug: str,
@@ -301,7 +351,22 @@ async def get_graph(
         except Exception:
             logger.warning("Could not fetch node count for graph '%s'", slug)
 
-    return _graph_response(graph, member_count=len(members), node_count=node_count)
+    # Resolve database connection name
+    db_conn_name: str | None = None
+    if graph.database_connection_id:
+        from kt_db.models import DatabaseConnection
+
+        conn_result = await session.execute(
+            select(DatabaseConnection.name).where(DatabaseConnection.id == graph.database_connection_id)
+        )
+        db_conn_name = conn_result.scalar_one_or_none()
+
+    return _graph_response(
+        graph,
+        member_count=len(members),
+        node_count=node_count,
+        database_connection_name=db_conn_name,
+    )
 
 
 @router.put("/{slug}", response_model=GraphResponse)

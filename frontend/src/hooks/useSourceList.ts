@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SourceResponse } from "@/types";
 import { api } from "@/lib/api";
+import { useGraph } from "@/contexts/graph";
 
 export interface UseSourceListResult {
   sources: SourceResponse[];
@@ -29,6 +30,7 @@ export interface UseSourceListResult {
 const PAGE_SIZE = 20;
 
 export function useSourceList(): UseSourceListResult {
+  const { switchGeneration } = useGraph();
   const [sources, setSources] = useState<SourceResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -107,6 +109,12 @@ export function useSourceList(): UseSourceListResult {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    setOffset(0);
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [switchGeneration]);
 
   return {
     sources,

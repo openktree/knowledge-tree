@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, Search, ExternalLink, Menu, AlertTriangle } from "lucide-react";
+import { CircleDot, ArrowLeftRight, FileText, PanelLeftClose, PanelLeft, TreePine, Upload, Globe, Sprout, GitPullRequestArrow, BarChart3, Users, Settings, Search, ExternalLink, Menu, AlertTriangle, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -39,6 +39,7 @@ const DATA_ITEMS = [
 ] as const;
 
 const ADMIN_NAV_ITEMS = [
+  { href: "/graphs", label: "Graphs", icon: Layers },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/sources/insights", label: "Source Insights", icon: AlertTriangle },
   { href: "/members", label: "Members", icon: Users },
