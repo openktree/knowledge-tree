@@ -48,12 +48,13 @@ export default function GraphsPage() {
 
   // Fetch DB connections when create form opens (superusers only)
   const [dbLoaded, setDbLoaded] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
   useEffect(() => {
     if (showCreate && user?.is_superuser && !dbLoaded) {
       setDbLoaded(true);
       listDatabaseConnections()
         .then(setDbConnections)
-        .catch(() => setDbLoaded(false));
+        .catch(() => setDbError("Failed to load database connections"));
     }
   }, [showCreate, user?.is_superuser, dbLoaded]);
 
@@ -237,6 +238,9 @@ export default function GraphsPage() {
                     </option>
                   ))}
                 </select>
+                {dbError && (
+                  <p className="text-xs text-destructive">{dbError}</p>
+                )}
               </div>
             )}
           </div>

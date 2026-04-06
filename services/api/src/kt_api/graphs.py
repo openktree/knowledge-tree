@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import uuid
@@ -189,18 +190,20 @@ async def list_graphs(
         count_result = await session.execute(count_stmt)
         member_counts = {str(row[0]): row[1] for row in count_result.all()}
 
-    # Batch-fetch node counts for active graphs concurrently
-    import asyncio
-
+    # Batch-fetch node counts for active graphs concurrently (capped to
+    # avoid opening too many DB connections when many graphs exist).
+    _NODE_COUNT_CONCURRENCY = 5
     node_counts: dict[str, int] = {}
     resolver = get_graph_session_resolver()
     active_graphs = [g for g in graphs if g.status == "active"]
+    sem = asyncio.Semaphore(_NODE_COUNT_CONCURRENCY)
 
     async def _count_nodes(g: Graph) -> tuple[str, int]:
-        gs = await resolver.resolve(g.id)
-        async with gs.graph_session_factory() as graph_session:
-            result = await graph_session.execute(select(func.count(Node.id)))
-            return str(g.id), result.scalar_one() or 0
+        async with sem:
+            gs = await resolver.resolve(g.id)
+            async with gs.graph_session_factory() as graph_session:
+                result = await graph_session.execute(select(func.count(Node.id)))
+                return str(g.id), result.scalar_one() or 0
 
     if active_graphs:
         results = await asyncio.gather(

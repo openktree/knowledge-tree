@@ -42,7 +42,6 @@ export function MemberSearch({ onSelect, excludeUserIds = [] }: MemberSearchProp
         .list()
         .then((data) => {
           setMembers(data);
-          setLoaded(true);
         })
         .catch((err) => {
           const msg = err instanceof Error ? err.message : "Failed to load users";
@@ -52,7 +51,10 @@ export function MemberSearch({ onSelect, excludeUserIds = [] }: MemberSearchProp
             setError(msg);
           }
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          setLoading(false);
+          setLoaded(true);
+        });
     }
   };
 
