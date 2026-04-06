@@ -48,17 +48,17 @@ def _edge_to_response(
     )
 
 
-@router.get("", response_model=PaginatedEdgesResponse)
-async def list_edges(
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    relationship_type: str | None = Query(None, description="Filter by relationship type"),
-    node_id: str | None = Query(None, description="Filter by source or target node ID"),
-    search: str | None = Query(None, description="Search by justification text"),
-    session: AsyncSession = Depends(get_db_session),
+async def _list_edges_impl(
+    session: AsyncSession,
+    qdrant_client: object,
+    offset: int,
+    limit: int,
+    relationship_type: str | None,
+    node_id: str | None,
+    search: str | None,
 ) -> PaginatedEdgesResponse:
-    """List edges with pagination and optional filters."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+    """Shared implementation for listing edges with pagination and filters."""
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
     parsed_node_id: uuid.UUID | None = None
     if node_id:
         try:
@@ -95,13 +95,28 @@ async def list_edges(
     )
 
 
-@router.get("/between", response_model=list[EdgeDetailResponse])
-async def get_edges_between(
-    source: str = Query(..., description="Source node UUID or key"),
-    target: str = Query(..., description="Target node UUID or key"),
+@router.get("", response_model=PaginatedEdgesResponse)
+async def list_edges(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    relationship_type: str | None = Query(None, description="Filter by relationship type"),
+    node_id: str | None = Query(None, description="Filter by source or target node ID"),
+    search: str | None = Query(None, description="Search by justification text"),
     session: AsyncSession = Depends(get_db_session),
+) -> PaginatedEdgesResponse:
+    """List edges with pagination and optional filters."""
+    return await _list_edges_impl(
+        session, get_qdrant_client_cached(), offset, limit, relationship_type, node_id, search
+    )
+
+
+async def _get_edges_between_impl(
+    session: AsyncSession,
+    qdrant_client: object,
+    source: str,
+    target: str,
 ) -> list[EdgeDetailResponse]:
-    """Get all edges between two specific nodes with full detail."""
+    """Shared implementation for getting all edges between two nodes."""
     from kt_db.keys import key_to_uuid, url_key_to_node_key
 
     def _parse(nid: str) -> uuid.UUID:
@@ -113,7 +128,7 @@ async def get_edges_between(
     source_id = _parse(source)
     target_id = _parse(target)
 
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
     source_node = await engine.get_node(source_id)
     target_node = await engine.get_node(target_id)
     if not source_node or not target_node:
@@ -170,13 +185,23 @@ async def get_edges_between(
     return results
 
 
-@router.get("/{edge_id}", response_model=EdgeDetailResponse)
-async def get_edge(
-    edge_id: str,
+@router.get("/between", response_model=list[EdgeDetailResponse])
+async def get_edges_between(
+    source: str = Query(..., description="Source node UUID or key"),
+    target: str = Query(..., description="Target node UUID or key"),
     session: AsyncSession = Depends(get_db_session),
+) -> list[EdgeDetailResponse]:
+    """Get all edges between two specific nodes with full detail."""
+    return await _get_edges_between_impl(session, get_qdrant_client_cached(), source, target)
+
+
+async def _get_edge_impl(
+    session: AsyncSession,
+    qdrant_client: object,
+    edge_id: str,
 ) -> EdgeDetailResponse:
-    """Get a single edge by ID with resolved node names and full facts."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+    """Shared implementation for getting a single edge by ID."""
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
     try:
         uid = uuid.UUID(edge_id)
     except ValueError:
@@ -232,6 +257,15 @@ async def get_edge(
         ],
         created_at=edge.created_at,
     )
+
+
+@router.get("/{edge_id}", response_model=EdgeDetailResponse)
+async def get_edge(
+    edge_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> EdgeDetailResponse:
+    """Get a single edge by ID with resolved node names and full facts."""
+    return await _get_edge_impl(session, get_qdrant_client_cached(), edge_id)
 
 
 @router.post("/{edge_id}/enrich")

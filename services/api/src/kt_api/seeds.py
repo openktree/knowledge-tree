@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func as sa_func
 from sqlalchemy import select as sa_select
@@ -27,6 +29,9 @@ from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.write_seeds import WriteSeedRepository
 from kt_db.write_models import WriteFact, WriteSeed
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 router = APIRouter(prefix="/api/v1/seeds", tags=["seeds"])
 
@@ -70,31 +75,23 @@ def _seed_to_perspective_pair(seed: WriteSeed) -> PerspectiveSeedPairResponse:
     )
 
 
-@router.get("", response_model=PaginatedSeedsResponse)
-async def list_seeds(
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    search: str | None = Query(None, description="Filter by name (case-insensitive substring)"),
-    status: str | None = Query(
-        None, description="Filter by status (active, promoted, merged, ambiguous, garbage, promotable)"
-    ),
-    node_type: str | None = Query(None, description="Filter by node type (entity, concept, event, perspective)"),
+async def _list_seeds_impl(
+    write_session_factory: async_sessionmaker[AsyncSession],
+    offset: int,
+    limit: int,
+    search: str | None,
+    status: str | None,
+    node_type: str | None,
 ) -> PaginatedSeedsResponse:
-    """List seeds with pagination and optional filters.
-
-    The special status ``promotable`` returns active/ambiguous seeds whose
-    ``fact_count >= seed_promotion_min_facts``.
-    """
+    """Shared implementation for listing seeds with pagination and filters."""
     settings = get_settings()
     min_fact_count: int | None = None
     effective_status = status
     if status == "promotable":
-        # "promotable" is a virtual status — translate to active seeds with enough facts
-        effective_status = None  # match active + ambiguous
+        effective_status = None
         min_fact_count = settings.seed_promotion_min_facts
 
-    write_sf = get_write_session_factory_cached()
-    async with write_sf() as session:
+    async with write_session_factory() as session:
         repo = WriteSeedRepository(session)
         items = await repo.list_seeds(
             status=effective_status,
@@ -119,6 +116,24 @@ async def list_seeds(
             offset=offset,
             limit=limit,
         )
+
+
+@router.get("", response_model=PaginatedSeedsResponse)
+async def list_seeds(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None, description="Filter by name (case-insensitive substring)"),
+    status: str | None = Query(
+        None, description="Filter by status (active, promoted, merged, ambiguous, garbage, promotable)"
+    ),
+    node_type: str | None = Query(None, description="Filter by node type (entity, concept, event, perspective)"),
+) -> PaginatedSeedsResponse:
+    """List seeds with pagination and optional filters.
+
+    The special status ``promotable`` returns active/ambiguous seeds whose
+    ``fact_count >= seed_promotion_min_facts``.
+    """
+    return await _list_seeds_impl(get_write_session_factory_cached(), offset, limit, search, status, node_type)
 
 
 # ── Perspective seed endpoints ─────────────────────────────────────
@@ -388,25 +403,21 @@ async def mark_seed_garbage(
 # These use {seed_key:path} which matches anything — must be LAST.
 
 
-@router.get("/divergence/{seed_key:path}", response_model=SeedDivergenceResponse)
-async def get_seed_divergence(seed_key: str) -> SeedDivergenceResponse:
-    """Compute fact embedding divergence for a seed.
-
-    Fetches all fact embeddings from Qdrant, computes pairwise cosine
-    distances, and returns divergence metrics. High divergence suggests
-    the seed may be ambiguous (facts cluster in distinct regions).
-    """
-    from kt_api.dependencies import get_qdrant_client_cached
+async def _get_seed_divergence_impl(
+    write_session_factory: async_sessionmaker[AsyncSession],
+    seed_key: str,
+    qdrant_client: object,
+    collection_name: str = "facts",
+) -> SeedDivergenceResponse:
+    """Shared implementation for computing fact embedding divergence."""
     from kt_qdrant.repositories.facts import QdrantFactRepository
 
-    write_sf = get_write_session_factory_cached()
-    async with write_sf() as session:
+    async with write_session_factory() as session:
         repo = WriteSeedRepository(session)
         seed = await repo.get_seed_by_key(seed_key)
         if not seed:
             raise HTTPException(status_code=404, detail="Seed not found")
 
-        # Get fact IDs for this seed
         seed_facts = await repo.get_seed_facts(seed_key)
         fact_ids = [sf.fact_id for sf in seed_facts]
 
@@ -417,9 +428,7 @@ async def get_seed_divergence(seed_key: str) -> SeedDivergenceResponse:
                 vectors_found=len(fact_ids),
             )
 
-        # Fetch embeddings from Qdrant
-        qdrant_client = get_qdrant_client_cached()
-        fact_repo = QdrantFactRepository(qdrant_client)
+        fact_repo = QdrantFactRepository(qdrant_client, collection_name)
         vectors = await fact_repo.get_vectors(fact_ids)
 
         if len(vectors) < 2:
@@ -429,20 +438,16 @@ async def get_seed_divergence(seed_key: str) -> SeedDivergenceResponse:
                 vectors_found=len(vectors),
             )
 
-        # Compute pairwise cosine distances
         import numpy as np
 
         vecs = np.array(list(vectors.values()))
-        # Normalize for cosine distance
         norms = np.linalg.norm(vecs, axis=1, keepdims=True)
         norms = np.where(norms == 0, 1, norms)
         normalized = vecs / norms
 
-        # Pairwise cosine similarity matrix -> distance = 1 - similarity
         sim_matrix = normalized @ normalized.T
         n = len(vecs)
 
-        # Extract upper triangle (exclude diagonal)
         distances = []
         for i in range(n):
             for j in range(i + 1, n):
@@ -450,13 +455,10 @@ async def get_seed_divergence(seed_key: str) -> SeedDivergenceResponse:
 
         distances_arr = np.array(distances)
 
-        # Estimate cluster count: count distance modes above a gap threshold
-        # Simple heuristic: if std is high relative to mean, likely multi-cluster
         mean_dist = float(distances_arr.mean())
         std_dist = float(distances_arr.std())
         cluster_estimate = 1
         if mean_dist > 0:
-            # Coefficient of variation > 0.5 suggests multi-modal distribution
             cv = std_dist / mean_dist
             if cv > 0.5 and mean_dist > 0.3:
                 cluster_estimate = 2
@@ -475,11 +477,29 @@ async def get_seed_divergence(seed_key: str) -> SeedDivergenceResponse:
         )
 
 
-@router.get("/tree/{seed_key:path}", response_model=SeedTreeResponse)
-async def get_seed_tree(seed_key: str) -> SeedTreeResponse:
-    """Get the full disambiguation tree for a seed (walks up to root, then down to leaves)."""
-    write_sf = get_write_session_factory_cached()
-    async with write_sf() as session:
+@router.get("/divergence/{seed_key:path}", response_model=SeedDivergenceResponse)
+async def get_seed_divergence(seed_key: str) -> SeedDivergenceResponse:
+    """Compute fact embedding divergence for a seed.
+
+    Fetches all fact embeddings from Qdrant, computes pairwise cosine
+    distances, and returns divergence metrics. High divergence suggests
+    the seed may be ambiguous (facts cluster in distinct regions).
+    """
+    from kt_api.dependencies import get_qdrant_client_cached
+
+    return await _get_seed_divergence_impl(
+        get_write_session_factory_cached(),
+        seed_key,
+        get_qdrant_client_cached(),
+    )
+
+
+async def _get_seed_tree_impl(
+    write_session_factory: async_sessionmaker[AsyncSession],
+    seed_key: str,
+) -> SeedTreeResponse:
+    """Shared implementation for getting a seed disambiguation tree."""
+    async with write_session_factory() as session:
         repo = WriteSeedRepository(session)
         tree = await repo.get_seed_tree(seed_key)
         if not tree:
@@ -487,17 +507,23 @@ async def get_seed_tree(seed_key: str) -> SeedTreeResponse:
         return SeedTreeResponse(root=SeedTreeNode(**tree), focus_key=seed_key)
 
 
-@router.get("/{seed_key:path}", response_model=SeedDetailResponse)
-async def get_seed(seed_key: str) -> SeedDetailResponse:
-    """Get full detail for a single seed, including routes and merge history."""
-    write_sf = get_write_session_factory_cached()
-    async with write_sf() as session:
+@router.get("/tree/{seed_key:path}", response_model=SeedTreeResponse)
+async def get_seed_tree(seed_key: str) -> SeedTreeResponse:
+    """Get the full disambiguation tree for a seed (walks up to root, then down to leaves)."""
+    return await _get_seed_tree_impl(get_write_session_factory_cached(), seed_key)
+
+
+async def _get_seed_impl(
+    write_session_factory: async_sessionmaker[AsyncSession],
+    seed_key: str,
+) -> SeedDetailResponse:
+    """Shared implementation for getting full seed detail."""
+    async with write_session_factory() as session:
         repo = WriteSeedRepository(session)
         seed = await repo.get_seed_by_key(seed_key)
         if not seed:
             raise HTTPException(status_code=404, detail="Seed not found")
 
-        # Fetch disambiguation routes (children if ambiguous)
         routes_raw = await repo.get_routes_for_parent(seed.key)
         routes: list[SeedRouteResponse] = []
         if routes_raw:
@@ -516,7 +542,6 @@ async def get_seed(seed_key: str) -> SeedDetailResponse:
                     )
                 )
 
-        # Fetch merge/split audit trail
         merges_raw = await repo.get_merges_for_seed(seed.key)
         merges = [
             SeedMergeResponse(
@@ -530,7 +555,6 @@ async def get_seed(seed_key: str) -> SeedDetailResponse:
             for m in merges_raw
         ]
 
-        # Fetch linked facts with content
         seed_facts_raw = await repo.get_seed_facts(seed.key)
         fact_content_map: dict[str, str] = {}
         if seed_facts_raw:
@@ -551,7 +575,6 @@ async def get_seed(seed_key: str) -> SeedDetailResponse:
             for sf in seed_facts_raw
         ]
 
-        # Check if this seed is a child of an ambiguous parent
         parent_seed_resp: SeedResponse | None = None
         parent_route = await repo.get_route_for_child(seed.key)
         if parent_route:
@@ -585,3 +608,9 @@ async def get_seed(seed_key: str) -> SeedDetailResponse:
             facts=facts,
             parent_seed=parent_seed_resp,
         )
+
+
+@router.get("/{seed_key:path}", response_model=SeedDetailResponse)
+async def get_seed(seed_key: str) -> SeedDetailResponse:
+    """Get full detail for a single seed, including routes and merge history."""
+    return await _get_seed_impl(get_write_session_factory_cached(), seed_key)

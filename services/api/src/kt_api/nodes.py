@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_qdrant_client_cached, require_api_key
@@ -85,10 +85,12 @@ def _compute_richness(n: Node) -> float:
 
 async def _batch_seed_fact_counts(
     nodes: list[Node],
+    write_session_factory: async_sessionmaker | None = None,
 ) -> dict[uuid.UUID, int]:
     """Look up seed fact counts from write-db for promoted nodes.
 
-    Returns a map of node_id -> seed_fact_count.
+    Returns a map of node_id -> seed_fact_count.  When *write_session_factory*
+    is ``None`` the default (global) write-db factory is used.
     """
     if not nodes:
         return {}
@@ -106,7 +108,7 @@ async def _batch_seed_fact_counts(
     keys = list(key_to_id.keys())
     result: dict[uuid.UUID, int] = {}
 
-    write_sf = get_write_session_factory_cached()
+    write_sf = write_session_factory or get_write_session_factory_cached()
     async with write_sf() as ws:
         stmt = select(WriteSeed.promoted_node_key, WriteSeed.fact_count).where(WriteSeed.promoted_node_key.in_(keys))
         rows = await ws.execute(stmt)
@@ -172,6 +174,204 @@ def _strip_synthesis_doc(meta: dict | None) -> dict | None:
         return meta
     filtered = {k: v for k, v in meta.items() if k != "synthesis_document"}
     return filtered or None
+
+
+# ── Shared _impl helpers (used by both /nodes and /graphs/{slug}/nodes) ───
+
+
+def _parse_node_id(node_id: str) -> uuid.UUID:
+    """Parse a node ID string, supporting UUID and URL-key formats."""
+    try:
+        return uuid.UUID(node_id)
+    except ValueError:
+        return key_to_uuid(url_key_to_node_key(node_id))
+
+
+async def _get_node_impl(
+    node_id: str,
+    session: AsyncSession,
+    qdrant_client: object,
+    write_session_factory: async_sessionmaker | None = None,
+) -> NodeResponse:
+    """Core logic for GET /nodes/{node_id}."""
+    uid = _parse_node_id(node_id)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
+    node = await engine.get_node(uid)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    await engine.increment_access_count(uid)
+    await session.commit()
+    parent_map = await _batch_parent_concepts(session, [node])
+    seed_fc = await _batch_seed_fact_counts([node], write_session_factory)
+    return _build_node_response(node, parent_map, seed_fc)
+
+
+async def _get_node_dimensions_impl(
+    node_id: str,
+    session: AsyncSession,
+    qdrant_client: object,
+) -> list[DimensionResponse]:
+    """Core logic for GET /nodes/{node_id}/dimensions."""
+    uid = _parse_node_id(node_id)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
+    node = await engine.get_node(uid)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    dims = await engine.get_dimensions(uid)
+    return [
+        DimensionResponse(
+            id=str(d.id),
+            node_id=str(d.node_id),
+            model_id=d.model_id,
+            content=d.content,
+            confidence=d.confidence,
+            suggested_concepts=d.suggested_concepts,
+            generated_at=d.generated_at,
+            batch_index=d.batch_index,
+            fact_count=d.fact_count,
+            is_definitive=d.is_definitive,
+        )
+        for d in dims
+    ]
+
+
+async def _get_node_facts_impl(
+    node_id: str,
+    session: AsyncSession,
+    qdrant_client: object,
+) -> list[FactResponse]:
+    """Core logic for GET /nodes/{node_id}/facts."""
+    uid = _parse_node_id(node_id)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
+    node = await engine.get_node(uid)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    facts = await engine.get_node_facts_with_sources(uid)
+    return [
+        FactResponse(
+            id=str(f.id),
+            content=f.content,
+            fact_type=f.fact_type,
+            metadata=f.metadata_,
+            created_at=f.created_at,
+            sources=_dedupe_sources(f.sources),
+        )
+        for f in facts
+    ]
+
+
+async def _get_node_edges_impl(
+    node_id: str,
+    session: AsyncSession,
+    qdrant_client: object,
+    direction: str = "both",
+) -> list[EdgeResponse]:
+    """Core logic for GET /nodes/{node_id}/edges."""
+    uid = _parse_node_id(node_id)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
+    node = await engine.get_node(uid)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    edges = await engine.get_edges(uid, direction=direction)
+    results: list[EdgeResponse] = []
+    for e in edges:
+        fact_ids: list[str] = []
+        if hasattr(e, "edge_facts") and e.edge_facts:
+            fact_ids = [str(ef.fact_id) for ef in e.edge_facts]
+        results.append(
+            EdgeResponse(
+                id=str(e.id),
+                source_node_id=str(e.source_node_id),
+                target_node_id=str(e.target_node_id),
+                relationship_type=e.relationship_type,
+                weight=e.weight,
+                justification=e.justification,
+                weight_source=e.weight_source,
+                supporting_fact_ids=fact_ids,
+                created_at=e.created_at,
+            )
+        )
+    return results
+
+
+async def _get_node_history_impl(
+    node_id: str,
+    session: AsyncSession,
+    qdrant_client: object,
+) -> list[NodeVersionResponse]:
+    """Core logic for GET /nodes/{node_id}/history."""
+    uid = _parse_node_id(node_id)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
+    node = await engine.get_node(uid)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    versions = await engine.get_node_history(uid)
+    return [
+        NodeVersionResponse(
+            id=str(v.id),
+            version_number=v.version_number,
+            snapshot=v.snapshot,
+            source_node_count=getattr(v, "source_node_count", 0) or 0,
+            is_default=getattr(v, "is_default", False) or False,
+            created_at=v.created_at,
+        )
+        for v in versions
+    ]
+
+
+async def _get_node_convergence_impl(
+    node_id: str,
+    session: AsyncSession,
+    qdrant_client: object,
+) -> ConvergenceResponse:
+    """Core logic for GET /nodes/{node_id}/convergence."""
+    uid = _parse_node_id(node_id)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
+    node = await engine.get_node(uid)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    dims = await engine.get_dimensions(uid)
+    result = compute_convergence(dims)
+    return ConvergenceResponse(
+        convergence_score=result["convergence_score"],
+        converged_claims=result["converged_claims"],
+        divergent_claims=result["divergent_claims"],
+        recommended_content=result["recommended_content"],
+    )
+
+
+async def _get_node_perspectives_impl(
+    node_id: str,
+    session: AsyncSession,
+    qdrant_client: object,
+    write_session_factory: async_sessionmaker | None = None,
+) -> list[NodeResponse]:
+    """Core logic for GET /nodes/{node_id}/perspectives."""
+    uid = _parse_node_id(node_id)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
+    node = await engine.get_node(uid)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    perspectives = await engine.get_perspectives(uid)
+    parent_map = await _batch_parent_concepts(session, perspectives)
+    seed_fc = await _batch_seed_fact_counts(perspectives, write_session_factory)
+    return [_build_node_response(p, parent_map, seed_fc) for p in perspectives]
+
+
+async def _get_node_children_impl(
+    node_id: str,
+    session: AsyncSession,
+    write_session_factory: async_sessionmaker | None = None,
+) -> list[NodeResponse]:
+    """Core logic for GET /nodes/{node_id}/children."""
+    uid = _parse_node_id(node_id)
+    result = await session.execute(select(Node).where(Node.parent_id == uid))
+    children = list(result.scalars().all())
+    if not children:
+        return []
+    parent_map = await _batch_parent_concepts(session, children)
+    seed_fc = await _batch_seed_fact_counts(children, write_session_factory)
+    return [_build_node_response(c, parent_map, seed_fc) for c in children]
 
 
 async def _list_nodes_by_pending_facts(
@@ -314,22 +514,7 @@ async def get_node(
     serve stale counts while silently skipping increments for cache hits.
     Denormalized counters on the nodes table already keep this query fast.
     """
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        # Support both canonical keys (concept:ai) and URL-friendly keys (concept-ai)
-        real_key = url_key_to_node_key(node_id)
-        uid = key_to_uuid(real_key)
-
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    await engine.increment_access_count(uid)
-    await session.commit()
-    parent_map = await _batch_parent_concepts(session, [node])
-    seed_fact_count_map = await _batch_seed_fact_counts([node])
-    return _build_node_response(node, parent_map, seed_fact_count_map)
+    return await _get_node_impl(node_id, session, get_qdrant_client_cached())
 
 
 @router.patch("/{node_id}", response_model=NodeResponse)
@@ -395,37 +580,15 @@ async def get_node_dimensions(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DimensionResponse]:
     """Get all dimensions (model perspectives) for a node."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        uid = key_to_uuid(url_key_to_node_key(node_id))
     from kt_config.cache import cache_get, cache_set
 
+    uid = _parse_node_id(node_id)
     cache_key = f"kt:node:{uid}:dimensions"
     cached = await cache_get(cache_key)
     if cached is not None:
         return [DimensionResponse(**d) for d in cached]
 
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    dims = await engine.get_dimensions(uid)
-    result = [
-        DimensionResponse(
-            id=str(d.id),
-            node_id=str(d.node_id),
-            model_id=d.model_id,
-            content=d.content,
-            confidence=d.confidence,
-            suggested_concepts=d.suggested_concepts,
-            generated_at=d.generated_at,
-            batch_index=d.batch_index,
-            fact_count=d.fact_count,
-            is_definitive=d.is_definitive,
-        )
-        for d in dims
-    ]
+    result = await _get_node_dimensions_impl(node_id, session, get_qdrant_client_cached())
     await cache_set(cache_key, [r.model_dump() for r in result], ttl=60)
     return result
 
@@ -436,33 +599,15 @@ async def get_node_facts(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[FactResponse]:
     """Get all facts linked to a node."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        uid = key_to_uuid(url_key_to_node_key(node_id))
     from kt_config.cache import cache_get, cache_set
 
+    uid = _parse_node_id(node_id)
     cache_key = f"kt:node:{uid}:facts"
     cached = await cache_get(cache_key)
     if cached is not None:
         return [FactResponse(**f) for f in cached]
 
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    facts = await engine.get_node_facts_with_sources(uid)
-    result = [
-        FactResponse(
-            id=str(f.id),
-            content=f.content,
-            fact_type=f.fact_type,
-            metadata=f.metadata_,
-            created_at=f.created_at,
-            sources=_dedupe_sources(f.sources),
-        )
-        for f in facts
-    ]
+    result = await _get_node_facts_impl(node_id, session, get_qdrant_client_cached())
     await cache_set(cache_key, [r.model_dump() for r in result], ttl=60)
     return result
 
@@ -530,34 +675,7 @@ async def get_node_edges(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[EdgeResponse]:
     """Get all edges connected to a node."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        uid = key_to_uuid(url_key_to_node_key(node_id))
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    edges = await engine.get_edges(uid, direction=direction)
-    results: list[EdgeResponse] = []
-    for e in edges:
-        fact_ids: list[str] = []
-        if hasattr(e, "edge_facts") and e.edge_facts:
-            fact_ids = [str(ef.fact_id) for ef in e.edge_facts]
-        results.append(
-            EdgeResponse(
-                id=str(e.id),
-                source_node_id=str(e.source_node_id),
-                target_node_id=str(e.target_node_id),
-                relationship_type=e.relationship_type,
-                weight=e.weight,
-                justification=e.justification,
-                weight_source=e.weight_source,
-                supporting_fact_ids=fact_ids,
-                created_at=e.created_at,
-            )
-        )
-    return results
+    return await _get_node_edges_impl(node_id, session, get_qdrant_client_cached(), direction=direction)
 
 
 @router.get("/{node_id}/history", response_model=list[NodeVersionResponse])
@@ -566,26 +684,7 @@ async def get_node_history(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeVersionResponse]:
     """Get the version history for a node."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        uid = key_to_uuid(url_key_to_node_key(node_id))
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    versions = await engine.get_node_history(uid)
-    return [
-        NodeVersionResponse(
-            id=str(v.id),
-            version_number=v.version_number,
-            snapshot=v.snapshot,
-            source_node_count=getattr(v, "source_node_count", 0) or 0,
-            is_default=getattr(v, "is_default", False) or False,
-            created_at=v.created_at,
-        )
-        for v in versions
-    ]
+    return await _get_node_history_impl(node_id, session, get_qdrant_client_cached())
 
 
 @router.get("/{node_id}/convergence", response_model=ConvergenceResponse)
@@ -594,22 +693,7 @@ async def get_node_convergence(
     session: AsyncSession = Depends(get_db_session),
 ) -> ConvergenceResponse:
     """Compute convergence analysis across model dimensions for a node."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        uid = key_to_uuid(url_key_to_node_key(node_id))
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    dims = await engine.get_dimensions(uid)
-    result = compute_convergence(dims)
-    return ConvergenceResponse(
-        convergence_score=result["convergence_score"],
-        converged_claims=result["converged_claims"],
-        divergent_claims=result["divergent_claims"],
-        recommended_content=result["recommended_content"],
-    )
+    return await _get_node_convergence_impl(node_id, session, get_qdrant_client_cached())
 
 
 @router.get("/{node_id}/perspectives", response_model=list[NodeResponse])
@@ -618,18 +702,7 @@ async def get_node_perspectives(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Get all perspective nodes for a concept node."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        uid = key_to_uuid(url_key_to_node_key(node_id))
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    perspectives = await engine.get_perspectives(uid)
-    parent_map = await _batch_parent_concepts(session, perspectives)
-    seed_fact_count_map = await _batch_seed_fact_counts(perspectives)
-    return [_build_node_response(p, parent_map, seed_fact_count_map) for p in perspectives]
+    return await _get_node_perspectives_impl(node_id, session, get_qdrant_client_cached())
 
 
 @router.get("/{node_id}/children", response_model=list[NodeResponse])
@@ -638,17 +711,7 @@ async def get_node_children(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Get all nodes whose parent_id equals this node."""
-    try:
-        uid = uuid.UUID(node_id)
-    except ValueError:
-        uid = key_to_uuid(url_key_to_node_key(node_id))
-    result = await session.execute(select(Node).where(Node.parent_id == uid))
-    children = list(result.scalars().all())
-    if not children:
-        return []
-    parent_map = await _batch_parent_concepts(session, children)
-    seed_fact_count_map = await _batch_seed_fact_counts(children)
-    return [_build_node_response(c, parent_map, seed_fact_count_map) for c in children]
+    return await _get_node_children_impl(node_id, session)
 
 
 # ── On-demand enrichment ────────────────────────────────────────────────

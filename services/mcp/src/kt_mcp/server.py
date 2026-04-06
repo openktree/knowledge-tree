@@ -131,7 +131,8 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
     """Resolve a graph slug to the correct session factory.
 
     For "default", returns the system session factory.
-    For other slugs, uses GraphSessionResolver and checks OAuth token scopes.
+    For other slugs, uses GraphSessionResolver, checks OAuth token scopes,
+    and verifies the user is a GraphMember of the target graph.
     Raises ValueError if the graph doesn't exist or access is denied.
     """
     if graph == "default":
@@ -139,7 +140,7 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
 
     # Check token graph scopes if present:
     # - No token (SKIP_AUTH) → allow (dev mode)
-    # - Token with no graph:* scopes → unrestricted (e.g. graph_slugs=null)
+    # - Token with no graph:* scopes → check membership instead
     # - Token with graph:* scopes → must include the requested graph
     from fastmcp.server.dependencies import get_access_token
 
@@ -151,6 +152,27 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
 
     resolver = get_graph_resolver_cached()
     gs = await resolver.resolve_by_slug(graph)
+
+    # Verify GraphMember membership for non-default graphs (fail closed)
+    if token is not None:
+        claims = token.claims or {}
+        user_id_str = claims.get("user_id")
+        is_superuser = claims.get("is_superuser") == "true"
+        if not user_id_str:
+            # No user identity — deny access to non-default graphs
+            raise ValueError(f"Token has no user identity; cannot access graph '{graph}'")
+        if not is_superuser:
+            import uuid as _uuid
+
+            from kt_db.repositories.graphs import GraphRepository
+
+            user_id = _uuid.UUID(user_id_str)
+            async with get_session_factory_cached()() as ctrl_session:
+                repo = GraphRepository(ctrl_session)
+                role = await repo.get_member_role(gs.graph.id, user_id)
+                if role is None:
+                    raise ValueError(f"Not a member of graph '{graph}'")
+
     return gs.graph_session_factory
 
 

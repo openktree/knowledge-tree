@@ -24,14 +24,13 @@ from kt_db.repositories.conversations import ConversationRepository
 router = APIRouter(prefix="/api/v1", tags=["conversations"])
 
 
-@router.get("/conversations", response_model=PaginatedConversationsResponse)
-async def list_conversations(
-    mode: str | None = Query(None, description="Filter by conversation mode"),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    session: AsyncSession = Depends(get_db_session),
+async def _list_conversations_impl(
+    session: AsyncSession,
+    mode: str | None,
+    limit: int,
+    offset: int,
 ) -> PaginatedConversationsResponse:
-    """List conversations, optionally filtered by mode."""
+    """Shared implementation for listing conversations."""
     repo = ConversationRepository(session)
     rows = await repo.list_with_stats(limit=limit, offset=offset, mode=mode)
     total = await repo.count(mode=mode)
@@ -59,12 +58,11 @@ async def list_conversations(
     )
 
 
-@router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-async def get_conversation(
+async def _get_conversation_impl(
+    session: AsyncSession,
     conversation_id: str,
-    session: AsyncSession = Depends(get_db_session),
 ) -> ConversationResponse:
-    """Get a single conversation with all messages."""
+    """Shared implementation for retrieving a single conversation."""
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
@@ -105,3 +103,23 @@ async def get_conversation(
         created_at=conv.created_at,
         updated_at=conv.updated_at,
     )
+
+
+@router.get("/conversations", response_model=PaginatedConversationsResponse)
+async def list_conversations(
+    mode: str | None = Query(None, description="Filter by conversation mode"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_db_session),
+) -> PaginatedConversationsResponse:
+    """List conversations, optionally filtered by mode."""
+    return await _list_conversations_impl(session, mode, limit, offset)
+
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
+async def get_conversation(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> ConversationResponse:
+    """Get a single conversation with all messages."""
+    return await _get_conversation_impl(session, conversation_id)

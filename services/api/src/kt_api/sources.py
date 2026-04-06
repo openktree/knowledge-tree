@@ -103,23 +103,18 @@ async def _build_source_detail(
     )
 
 
-@router.get("", response_model=PaginatedSourcesResponse)
-async def list_sources(
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    search: str | None = Query(None, description="Search by title or URI"),
-    provider_id: str | None = Query(None, description="Filter by provider"),
-    sort_by: str | None = Query(None, description="Sort by: retrieved_at (default), fact_count, prohibited_chunks"),
-    has_prohibited: bool | None = Query(None, description="Filter to sources with/without prohibited chunks"),
-    is_super_source: bool | None = Query(None, description="Filter to super sources (large, deferred)"),
-    fetch_status: str | None = Query(
-        None,
-        description="Filter by fetch status: full_text, fetch_failed, snippet",
-        pattern="^(full_text|fetch_failed|snippet)$",
-    ),
-    session: AsyncSession = Depends(get_db_session),
+async def _list_sources_impl(
+    session: AsyncSession,
+    offset: int,
+    limit: int,
+    search: str | None,
+    provider_id: str | None,
+    sort_by: str | None,
+    has_prohibited: bool | None,
+    is_super_source: bool | None,
+    fetch_status: str | None,
 ) -> PaginatedSourcesResponse:
-    """List raw sources with pagination and optional filters."""
+    """Shared implementation for listing sources with pagination and filters."""
     repo = SourceRepository(session)
     sources = await repo.list_sources(
         offset=offset,
@@ -158,6 +153,28 @@ async def list_sources(
         total=total,
         offset=offset,
         limit=limit,
+    )
+
+
+@router.get("", response_model=PaginatedSourcesResponse)
+async def list_sources(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None, description="Search by title or URI"),
+    provider_id: str | None = Query(None, description="Filter by provider"),
+    sort_by: str | None = Query(None, description="Sort by: retrieved_at (default), fact_count, prohibited_chunks"),
+    has_prohibited: bool | None = Query(None, description="Filter to sources with/without prohibited chunks"),
+    is_super_source: bool | None = Query(None, description="Filter to super sources (large, deferred)"),
+    fetch_status: str | None = Query(
+        None,
+        description="Filter by fetch status: full_text, fetch_failed, snippet",
+        pattern="^(full_text|fetch_failed|snippet)$",
+    ),
+    session: AsyncSession = Depends(get_db_session),
+) -> PaginatedSourcesResponse:
+    """List raw sources with pagination and optional filters."""
+    return await _list_sources_impl(
+        session, offset, limit, search, provider_id, sort_by, has_prohibited, is_super_source, fetch_status
     )
 
 

@@ -43,18 +43,18 @@ def _get_embedding_service():  # noqa: ANN202
     return _embedding_service_cache
 
 
-@router.get("", response_model=PaginatedFactsResponse)
-async def list_facts(
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    search: str | None = Query(None, description="Search by fact content"),
-    fact_type: str | None = Query(None, description="Filter by fact type"),
-    author_org: str | None = Query(None, description="Filter by author organization (e.g. CNN, Reuters)"),
-    source_domain: str | None = Query(None, description="Filter by source URL domain (e.g. cnn.com)"),
-    session: AsyncSession = Depends(get_db_session),
+async def _list_facts_impl(
+    session: AsyncSession,
+    qdrant_client: object,
+    offset: int,
+    limit: int,
+    search: str | None,
+    fact_type: str | None,
+    author_org: str | None,
+    source_domain: str | None,
 ) -> PaginatedFactsResponse:
-    """List facts with pagination and optional filters."""
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+    """Core implementation for listing facts with pagination and optional filters."""
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
 
     # Use hybrid search when a text query is provided, embeddings are available,
     # and no source-level filters are used (those require SQL joins).
@@ -113,12 +113,11 @@ async def list_facts(
     )
 
 
-@router.get("/search", response_model=list[FactResponse])
-async def search_facts(
-    fact_type: str | None = Query(None, description="Filter by fact type"),
-    session: AsyncSession = Depends(get_db_session),
+async def _search_facts_impl(
+    session: AsyncSession,
+    fact_type: str | None,
 ) -> list[FactResponse]:
-    """Search facts by type."""
+    """Core implementation for searching facts by type."""
     repo = FactRepository(session)
     if fact_type:
         facts = await repo.get_facts_by_type(fact_type)
@@ -136,12 +135,11 @@ async def search_facts(
     ]
 
 
-@router.get("/{fact_id}", response_model=FactResponse)
-async def get_fact(
+async def _get_fact_impl(
+    session: AsyncSession,
     fact_id: str,
-    session: AsyncSession = Depends(get_db_session),
 ) -> FactResponse:
-    """Get a single fact by ID."""
+    """Core implementation for getting a single fact by ID."""
     repo = FactRepository(session)
     try:
         uid = uuid.UUID(fact_id)
@@ -173,17 +171,17 @@ async def get_fact(
     )
 
 
-@router.get("/{fact_id}/nodes", response_model=list[FactNodeInfo])
-async def get_fact_nodes(
+async def _get_fact_nodes_impl(
+    session: AsyncSession,
+    qdrant_client: object,
     fact_id: str,
-    session: AsyncSession = Depends(get_db_session),
 ) -> list[FactNodeInfo]:
-    """Get all nodes linked to a fact."""
+    """Core implementation for getting all nodes linked to a fact."""
     try:
         uid = uuid.UUID(fact_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid fact ID format")
-    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
     # Verify fact exists
     repo = FactRepository(session)
     fact = await repo.get_by_id(uid)
@@ -201,6 +199,49 @@ async def get_fact_nodes(
         )
         for node, nf in pairs
     ]
+
+
+@router.get("", response_model=PaginatedFactsResponse)
+async def list_facts(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None, description="Search by fact content"),
+    fact_type: str | None = Query(None, description="Filter by fact type"),
+    author_org: str | None = Query(None, description="Filter by author organization (e.g. CNN, Reuters)"),
+    source_domain: str | None = Query(None, description="Filter by source URL domain (e.g. cnn.com)"),
+    session: AsyncSession = Depends(get_db_session),
+) -> PaginatedFactsResponse:
+    """List facts with pagination and optional filters."""
+    return await _list_facts_impl(
+        session, get_qdrant_client_cached(), offset, limit, search, fact_type, author_org, source_domain
+    )
+
+
+@router.get("/search", response_model=list[FactResponse])
+async def search_facts(
+    fact_type: str | None = Query(None, description="Filter by fact type"),
+    session: AsyncSession = Depends(get_db_session),
+) -> list[FactResponse]:
+    """Search facts by type."""
+    return await _search_facts_impl(session, fact_type)
+
+
+@router.get("/{fact_id}", response_model=FactResponse)
+async def get_fact(
+    fact_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> FactResponse:
+    """Get a single fact by ID."""
+    return await _get_fact_impl(session, fact_id)
+
+
+@router.get("/{fact_id}/nodes", response_model=list[FactNodeInfo])
+async def get_fact_nodes(
+    fact_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> list[FactNodeInfo]:
+    """Get all nodes linked to a fact."""
+    return await _get_fact_nodes_impl(session, get_qdrant_client_cached(), fact_id)
 
 
 @router.patch("/{fact_id}", response_model=FactResponse)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -250,9 +251,14 @@ class TestOAuthProviderVerifyToken:
         row.client_id = "client1"
         row.scopes = []
         row.expires_at = int(time.time()) + 3600
+        row.user_id = uuid.uuid4()
+
+        user_mock = MagicMock()
+        user_mock.is_superuser = False
 
         session = _make_mock_session()
-        session.get = AsyncMock(return_value=row)
+        # First call returns the OAuthAccessToken row, second returns the User
+        session.get = AsyncMock(side_effect=[row, user_mock])
 
         with patch("kt_mcp.oauth_provider.get_session_factory_cached", return_value=_make_mock_factory(session)):
             provider = KnowledgeTreeOAuthProvider.__new__(KnowledgeTreeOAuthProvider)
@@ -262,9 +268,10 @@ class TestOAuthProviderVerifyToken:
         # verify_token returns the plaintext token, not the hash
         assert result.token == plaintext_token
         assert result.client_id == "client1"
-        # Verify lookup was by hash
-        session.get.assert_called_once()
-        lookup_key = session.get.call_args[0][1]
+        assert result.claims.get("user_id") == str(row.user_id)
+        # Verify lookups: OAuthAccessToken by hash, then User by user_id
+        assert session.get.call_count == 2
+        lookup_key = session.get.call_args_list[0][0][1]
         assert lookup_key == _hash_token(plaintext_token)
 
     @pytest.mark.asyncio
