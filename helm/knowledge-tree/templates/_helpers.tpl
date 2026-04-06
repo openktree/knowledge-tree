@@ -202,6 +202,40 @@ Outputs a list of env var definitions.
       name: {{ include "knowledge-tree.secretName" . }}
       key: resend-api-key
 {{- end }}
+{{- /* External databases: mount credentials from infra-provisioned secrets */}}
+{{- range $name, $db := .Values.externalDatabases }}
+{{- $envPrefix := printf "EXTRA_DB_%s" ($name | upper | replace "-" "_") }}
+- name: {{ $envPrefix }}_GRAPH_USER
+  valueFrom:
+    secretKeyRef:
+      name: {{ $db.graphDb.credentialsSecret }}
+      key: username
+- name: {{ $envPrefix }}_GRAPH_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $db.graphDb.credentialsSecret }}
+      key: password
+- name: {{ $envPrefix }}_GRAPH_HOST
+  value: {{ $db.graphDb.host }}
+- name: {{ $envPrefix }}_GRAPH_DATABASE
+  value: {{ $db.graphDb.database }}
+- name: {{ $envPrefix }}_WRITE_USER
+  valueFrom:
+    secretKeyRef:
+      name: {{ $db.writeDb.credentialsSecret }}
+      key: username
+- name: {{ $envPrefix }}_WRITE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $db.writeDb.credentialsSecret }}
+      key: password
+- name: {{ $envPrefix }}_WRITE_HOST
+  value: {{ $db.writeDb.host }}
+- name: {{ $envPrefix }}_WRITE_DATABASE
+  value: {{ $db.writeDb.database }}
+- name: {{ $envPrefix }}_QDRANT_URL
+  value: {{ $db.qdrantUrl | quote }}
+{{- end }}
 - name: CONFIG_PATH
   value: /app/config.yaml
 {{- end }}

@@ -409,6 +409,25 @@ workers:
         memory: 1Gi
 
 # =============================================================================
+# External Databases — mount credentials for databases provisioned outside
+# this chart (e.g. in the infra layer).  Each key becomes the config_key
+# used by Settings.graph_databases.  The chart injects EXTRA_DB_<NAME>_*
+# env vars from the referenced secrets/services.
+# =============================================================================
+# externalDatabases:
+#   shared:                                 # ← config_key = "shared"
+#     graphDb:
+#       credentialsSecret: kt-shared-graph-db-credentials   # must have username + password keys
+#       host: kt-shared-graph-db-rw         # CNPG -rw service
+#       database: knowledge_tree_shared
+#     writeDb:
+#       credentialsSecret: kt-shared-write-db-credentials
+#       host: kt-shared-pgbouncer           # PgBouncer service for the write-db
+#       database: knowledge_tree_shared_write
+#     qdrantUrl: "http://kt-shared-qdrant:6333"
+externalDatabases: {}
+
+# =============================================================================
 # config.yaml — mounted into all Python services
 # =============================================================================
 configYaml:

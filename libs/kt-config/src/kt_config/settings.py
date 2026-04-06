@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote as url_quote
 
 import yaml
 from pydantic import BaseModel
@@ -17,6 +18,7 @@ class GraphDatabaseConfig(BaseModel):
 
     graph_database_url: str
     write_database_url: str
+    qdrant_url: str = ""  # per-graph Qdrant URL; empty = use global qdrant_url
     pool_size: int = 5
     max_overflow: int = 10
 
@@ -377,6 +379,53 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
         return d
 
 
+def _discover_extra_databases() -> dict[str, GraphDatabaseConfig]:
+    """Scan env for EXTRA_DB_<NAME>_GRAPH_HOST and build GraphDatabaseConfig entries.
+
+    The Helm chart injects these env vars per extraDatabases entry:
+        EXTRA_DB_<NAME>_GRAPH_USER, EXTRA_DB_<NAME>_GRAPH_PASSWORD,
+        EXTRA_DB_<NAME>_GRAPH_HOST, EXTRA_DB_<NAME>_GRAPH_DATABASE,
+        EXTRA_DB_<NAME>_WRITE_USER, EXTRA_DB_<NAME>_WRITE_PASSWORD,
+        EXTRA_DB_<NAME>_WRITE_HOST, EXTRA_DB_<NAME>_WRITE_DATABASE,
+        EXTRA_DB_<NAME>_QDRANT_URL
+    """
+    prefix = "EXTRA_DB_"
+    # Collect unique names by scanning for _GRAPH_HOST suffix
+    names: set[str] = set()
+    for key in os.environ:
+        if key.startswith(prefix) and key.endswith("_GRAPH_HOST"):
+            name = key[len(prefix) : -len("_GRAPH_HOST")].lower().replace("_", "-")
+            names.add(name)
+
+    result: dict[str, GraphDatabaseConfig] = {}
+    for name in sorted(names):
+        env_name = name.upper().replace("-", "_")
+        ep = f"{prefix}{env_name}_"
+        graph_user = os.environ.get(f"{ep}GRAPH_USER", "kt")
+        graph_pw = os.environ.get(f"{ep}GRAPH_PASSWORD", "")
+        graph_host = os.environ.get(f"{ep}GRAPH_HOST", "")
+        graph_db = os.environ.get(f"{ep}GRAPH_DATABASE", "")
+        write_user = os.environ.get(f"{ep}WRITE_USER", "kt")
+        write_pw = os.environ.get(f"{ep}WRITE_PASSWORD", "")
+        write_host = os.environ.get(f"{ep}WRITE_HOST", "")
+        write_db = os.environ.get(f"{ep}WRITE_DATABASE", "")
+        qdrant_url = os.environ.get(f"{ep}QDRANT_URL", "")
+
+        if not (graph_host and graph_db and write_host and write_db):
+            continue
+
+        result[name] = GraphDatabaseConfig(
+            graph_database_url=(
+                f"postgresql+asyncpg://{url_quote(graph_user)}:{url_quote(graph_pw)}@{graph_host}:5432/{graph_db}"
+            ),
+            write_database_url=(
+                f"postgresql+asyncpg://{url_quote(write_user)}:{url_quote(write_pw)}@{write_host}:5432/{write_db}"
+            ),
+            qdrant_url=qdrant_url,
+        )
+    return result
+
+
 class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://kt:localdev@localhost:5432/knowledge_tree"
@@ -612,10 +661,18 @@ class Settings(BaseSettings):
     graph_max_overflow: int = 10
 
     # Multi-graph: named database connections (config_key → connection config)
-    # Configured via YAML under a "graph_databases" section or env vars.
+    # Auto-discovered from EXTRA_DB_<NAME>_* env vars injected by the Helm chart,
+    # or set explicitly via GRAPH_DATABASES JSON env var / YAML.
     graph_databases: dict[str, GraphDatabaseConfig] = {}
 
     model_config = {"extra": "ignore"}
+
+    def model_post_init(self, __context: Any) -> None:
+        """Auto-discover EXTRA_DB_<name>_* env vars and merge into graph_databases."""
+        discovered = _discover_extra_databases()
+        for key, config in discovered.items():
+            if key not in self.graph_databases:
+                self.graph_databases[key] = config
 
     @classmethod
     def settings_customise_sources(
