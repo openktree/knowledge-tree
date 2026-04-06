@@ -235,7 +235,10 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
             claims: dict[str, str] = {}
             if row.user_id is not None:
                 claims["user_id"] = str(row.user_id)
-                # Cache is_superuser to avoid extra DB lookups in MCP tools
+                # Resolve is_superuser into claims so _get_graph_factory can skip
+                # the membership query for superusers. This is re-checked on every
+                # request (load_access_token runs per-call), so revoking superuser
+                # takes effect immediately — no stale-permission risk.
                 user = await session.get(User, row.user_id)
                 if user and user.is_superuser:
                     claims["is_superuser"] = "true"

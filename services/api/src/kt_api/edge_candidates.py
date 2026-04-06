@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_api.dependencies import get_write_session_factory_cached
 from kt_api.schemas import (
@@ -21,15 +20,11 @@ from kt_db.write_models import WriteFact
 
 router = APIRouter(prefix="/api/v1/edge-candidates", tags=["edge-candidates"])
 
-# Type alias for the async session context manager factory
-WriteSessionFactory = Callable[..., "AsyncSession"]
-
-
 # ── Shared implementations ───────────────────────────────────────
 
 
 async def _list_edge_candidate_pairs_impl(
-    write_session_factory: WriteSessionFactory,
+    write_session_factory: async_sessionmaker[AsyncSession],
     offset: int,
     limit: int,
     status: str | None,
@@ -60,7 +55,7 @@ async def _list_edge_candidate_pairs_impl(
 
 
 async def _list_candidates_for_seed_impl(
-    write_session_factory: WriteSessionFactory,
+    write_session_factory: async_sessionmaker[AsyncSession],
     seed_key: str,
     offset: int,
     limit: int,
@@ -82,7 +77,7 @@ async def _list_candidates_for_seed_impl(
 
 
 async def _get_edge_candidate_pair_impl(
-    write_session_factory: WriteSessionFactory,
+    write_session_factory: async_sessionmaker[AsyncSession],
     seed_key_a: str,
     seed_key_b: str,
 ) -> EdgeCandidatePairDetail:

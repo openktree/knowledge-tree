@@ -80,6 +80,7 @@ async def create_graph_super_synthesis(
             "exploration_budget": c.exploration_budget,
             "visibility": c.visibility,
             "model_id": body.model_id,
+            "graph_id": str(ctx.graph.id),
         }
         for c in body.sub_configs
     ]
