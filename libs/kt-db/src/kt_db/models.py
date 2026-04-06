@@ -283,6 +283,9 @@ class RawSource(Base):
     is_super_source: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_attempted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Source-level access control: list of graph-local group names.
+    # NULL or empty = public (open access). Non-empty = restricted to members of listed groups.
+    access_groups: Mapped[list[str] | None] = mapped_column(ARRAY(String(500)), nullable=True, default=None)
 
     # Relationships
     fact_sources: Mapped[list["FactSource"]] = relationship(back_populates="raw_source", cascade="all, delete-orphan")
@@ -873,3 +876,48 @@ class GraphMember(Base):
     # Relationships
     graph: Mapped["Graph"] = relationship(back_populates="members")
     user: Mapped["User"] = relationship()
+
+
+class GraphGroup(Base):
+    """A group within a graph, used for source-level access control.
+
+    Groups are scoped to each graph (like GitHub teams per-org).
+    Group names are opaque strings — could map to AD groups, OIDC claims, etc.
+    """
+
+    __tablename__ = "graph_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="manual"
+    )  # manual | oidc | scim | ad
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    # Relationships
+    members: Mapped[list["GraphGroupMember"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class GraphGroupMember(Base):
+    """Maps a user to a group within a graph."""
+
+    __tablename__ = "graph_group_members"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_graph_group_member"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("graph_groups.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # No FK to user table — users are in system DB (different schema).
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="manual"
+    )  # manual | oidc | scim | ad
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    # Relationships
+    group: Mapped["GraphGroup"] = relationship(back_populates="members")

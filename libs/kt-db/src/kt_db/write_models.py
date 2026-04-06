@@ -267,6 +267,8 @@ class WriteFactSource(WriteBase):
     attribution: Mapped[str | None] = mapped_column(Text, nullable=True)
     author_person: Mapped[str | None] = mapped_column(String(500), nullable=True)
     author_org: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Source-level access control (denormalized from graph-db RawSource).
+    access_groups: Mapped[list[str] | None] = mapped_column(ARRAY(String(500)), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
