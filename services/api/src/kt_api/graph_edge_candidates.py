@@ -46,10 +46,10 @@ async def list_graph_candidates_for_seed(
     return await _list_candidates_for_seed_impl(ctx.write_session_factory, seed_key, offset, limit)
 
 
-@router.get("/pair", response_model=EdgeCandidatePairDetail)
+@router.get("/{seed_key_a:path}/{seed_key_b:path}", response_model=EdgeCandidatePairDetail)
 async def get_graph_edge_candidate_pair(
-    seed_key_a: str = Query(..., description="First seed key"),
-    seed_key_b: str = Query(..., description="Second seed key"),
+    seed_key_a: str,
+    seed_key_b: str,
     ctx: GraphContext = Depends(get_graph_context),
 ) -> EdgeCandidatePairDetail:
     """Get full detail for a specific edge candidate pair in a graph."""
