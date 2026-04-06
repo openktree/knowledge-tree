@@ -36,21 +36,19 @@ class HatchetPipeline:
     state across phases.
     """
 
-    def __init__(self, state: WorkerState, api_key: str | None = None) -> None:
+    def __init__(self, state: WorkerState, api_key: str | None = None, graph_id: str | None = None) -> None:
         self._state = state
         self._api_key = api_key
+        self._graph_id = graph_id
 
     @asynccontextmanager
     async def _open_sessions(self) -> AsyncGenerator[tuple[None, Any], None]:
         """Open write-db session for worker pipelines.
 
-        Workers operate in write-db-only mode — all reads route through
-        write-db or Qdrant via WorkerGraphEngine.  No graph-db sessions
-        are opened.
+        Uses per-graph session factories when graph_id is set.
         """
-        write_session = None
-        if self._state.write_session_factory is not None:
-            write_session = self._state.write_session_factory()
+        _, write_sf = await self._state.resolve_sessions(self._graph_id)
+        write_session = write_sf() if write_sf is not None else None
         try:
             yield None, write_session
         finally:
@@ -88,16 +86,18 @@ class HatchetPipeline:
             embedding_service,
             qdrant_client=self._state.qdrant_client,
         )
+        resolved_sf, resolved_write_sf = await self._state.resolve_sessions(self._graph_id)
+
         return AgentContext(
             graph_engine=graph_engine,
             provider_registry=self._state.provider_registry,  # type: ignore[arg-type]
             model_gateway=model_gateway,
             embedding_service=embedding_service,
             session=None,
-            session_factory=self._state.session_factory,
+            session_factory=resolved_sf,
             content_fetcher=self._state.content_fetcher,  # type: ignore[arg-type]
             emit_event=emit_event,
-            write_session_factory=self._state.write_session_factory,
+            write_session_factory=resolved_write_sf,
             qdrant_client=self._state.qdrant_client,
         )
 

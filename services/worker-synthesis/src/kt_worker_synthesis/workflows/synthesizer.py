@@ -42,13 +42,14 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
     from kt_worker_synthesis.pipelines.document_processing import process_synthesis_document
     from kt_worker_synthesis.prompts.synthesizer import build_synthesizer_system_message
 
-    if worker_state.write_session_factory is None:
+    graph_sf, write_sf = await worker_state.resolve_sessions(input.graph_id)
+    if write_sf is None:
         raise RuntimeError("Synthesis worker requires write_session_factory")
-    write_session = worker_state.write_session_factory()
+    write_session = write_sf()
     try:
         # ReadGraphEngine for graph reads during agent navigation (short-lived sessions)
         read_engine = ReadGraphEngine(
-            session_factory=worker_state.session_factory,
+            session_factory=graph_sf,
             qdrant_client=worker_state.qdrant_client,
         )
         # WorkerGraphEngine for writes (create synthesis node, link facts)
@@ -71,9 +72,9 @@ async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, An
             model_gateway=worker_state.model_gateway,
             embedding_service=worker_state.embedding_service,
             session=None,
-            session_factory=worker_state.session_factory,
+            session_factory=graph_sf,
             emit_event=emit_event,
-            write_session_factory=worker_state.write_session_factory,
+            write_session_factory=write_sf,
             qdrant_client=worker_state.qdrant_client,
         )
 

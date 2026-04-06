@@ -40,7 +40,7 @@ class TokenUsageSummary(BaseModel):
 # -- Search & decomposition --------------------------------------------
 
 
-class WebSearchInput(BaseModel):
+class WebSearchInput(GraphAwareMixin):
     """Input for a web search task."""
 
     scope_id: str
@@ -57,7 +57,7 @@ class SearchOutput(BaseModel):
     page_count: int = 0
 
 
-class DecomposePageInput(BaseModel):
+class DecomposePageInput(GraphAwareMixin):
     """Input for page decomposition (chunking + fan-out)."""
 
     raw_source_id: str
@@ -73,7 +73,7 @@ class DecomposePageOutput(BaseModel):
     fact_count: int = 0
 
 
-class DecomposeChunkInput(BaseModel):
+class DecomposeChunkInput(GraphAwareMixin):
     """Input for decomposing a single text chunk into facts."""
 
     raw_source_id: str
@@ -138,7 +138,7 @@ class BuildNodeOutput(BaseModel):
     edge_count: int = 0
 
 
-class GenerateDimensionsInput(BaseModel):
+class GenerateDimensionsInput(GraphAwareMixin):
     """Input for dimension generation task (within node pipeline DAG)."""
 
     node_id: str
@@ -157,7 +157,7 @@ class DimensionsOutput(BaseModel):
     edge_ids: list[str] = Field(default_factory=list)
 
 
-class GenerateDefinitionInput(BaseModel):
+class GenerateDefinitionInput(GraphAwareMixin):
     """Input for definition generation task (within node pipeline DAG)."""
 
     node_id: str
@@ -166,7 +166,7 @@ class GenerateDefinitionInput(BaseModel):
     api_key: str | None = None
 
 
-class UpdateEdgesInput(BaseModel):
+class UpdateEdgesInput(GraphAwareMixin):
     """Input for a single edge resolution task (candidates-only)."""
 
     node_id: str
@@ -199,7 +199,7 @@ class BottomUpInput(GraphAwareMixin):
     api_key: str | None = None
 
 
-class BottomUpScopeInput(BaseModel):
+class BottomUpScopeInput(GraphAwareMixin):
     """Input for a bottom-up scope task (gather → extract → prioritize → build)."""
 
     scope_id: str
@@ -228,7 +228,7 @@ class BottomUpScopeOutput(BaseModel):
 # -- Bottom-up ingest (two-phase) -------------------------------------
 
 
-class BottomUpPrepareScopeInput(BaseModel):
+class BottomUpPrepareScopeInput(GraphAwareMixin):
     """Input for a prepare-phase scope (fact gathering only, no node building).
 
     NOTE: Does NOT receive the original user query — only the scope
@@ -324,7 +324,7 @@ class ConfirmedNode(BaseModel):
 # -- Agent-assisted node selection --------------------------------------
 
 
-class AgentSelectInput(BaseModel):
+class AgentSelectInput(GraphAwareMixin):
     """Input for agent-assisted node selection workflow."""
 
     proposed_nodes: list[ProposedNode]
@@ -368,7 +368,7 @@ class FollowUpInput(GraphAwareMixin):
     api_key: str | None = None
 
 
-class ResynthesizeInput(BaseModel):
+class ResynthesizeInput(GraphAwareMixin):
     """Input for re-synthesis without re-exploration."""
 
     query: str
@@ -377,7 +377,7 @@ class ResynthesizeInput(BaseModel):
     api_key: str | None = None
 
 
-class IngestConfirmInput(BaseModel):
+class IngestConfirmInput(GraphAwareMixin):
     """Input for the ingest confirmation workflow."""
 
     nav_budget: int
@@ -416,7 +416,7 @@ class IngestBuildInput(GraphAwareMixin):
     api_key: str | None = None
 
 
-class IngestPartitionInput(BaseModel):
+class IngestPartitionInput(GraphAwareMixin):
     """Input for a single ingest partition (parallel agent)."""
 
     conversation_id: str
@@ -444,7 +444,7 @@ class IngestPartitionOutput(BaseModel):
 # -- Composite nodes ---------------------------------------------------
 
 
-class BuildCompositeInput(BaseModel):
+class BuildCompositeInput(GraphAwareMixin):
     """Input for building a composite node (synthesis or perspective)."""
 
     node_type: str  # "synthesis" or "perspective"
@@ -469,7 +469,7 @@ class BuildCompositeOutput(BaseModel):
     draws_from_edge_ids: list[str] = Field(default_factory=list)
 
 
-class RegenerateCompositeInput(BaseModel):
+class RegenerateCompositeInput(GraphAwareMixin):
     """Input for on-demand regeneration of a composite node."""
 
     node_id: str
@@ -492,7 +492,7 @@ class RegenerateCompositeOutput(BaseModel):
 # -- Source decomposition (scope-based, Flow B) ---------------------------
 
 
-class DecomposeSourceInput(BaseModel):
+class DecomposeSourceInput(GraphAwareMixin):
     """Input for decomposing a single raw source into facts."""
 
     raw_source_id: str
@@ -513,7 +513,7 @@ class DecomposeSourceOutput(BaseModel):
     author_org: str | None = None
 
 
-class DecomposeSourcesInput(BaseModel):
+class DecomposeSourcesInput(GraphAwareMixin):
     """Input for the decompose_sources workflow (fan-out per source)."""
 
     raw_source_ids: list[str]
@@ -533,7 +533,7 @@ class DecomposeSourcesOutput(BaseModel):
     seed_keys: list[str] = Field(default_factory=list)
 
 
-class EntityExtractionInput(BaseModel):
+class EntityExtractionInput(GraphAwareMixin):
     """Input for entity extraction from facts + seed creation."""
 
     fact_ids: list[str]
@@ -558,7 +558,7 @@ class EntityExtractionOutput(BaseModel):
 # -- Seed deduplication ---------------------------------------------------
 
 
-class SeedDedupBatchInput(BaseModel):
+class SeedDedupBatchInput(GraphAwareMixin):
     """Input for a batch of seed deduplication tasks."""
 
     seed_keys: list[str]
@@ -617,7 +617,7 @@ class AutoBuildOutput(BaseModel):
     nodes_enrichment_dispatched: int = 0
 
 
-class ReingestSourceInput(BaseModel):
+class ReingestSourceInput(GraphAwareMixin):
     """Input for reingesting a raw source (re-fetch + re-decompose)."""
 
     raw_source_id: str

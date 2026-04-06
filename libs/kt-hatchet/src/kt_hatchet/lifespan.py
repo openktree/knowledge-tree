@@ -44,6 +44,21 @@ class WorkerState:
     # Multi-graph session resolver (resolves graph_id to per-graph session factories)
     graph_resolver: GraphSessionResolver | None = None
 
+    async def resolve_sessions(
+        self, graph_id: str | None = None
+    ) -> tuple["async_sessionmaker[AsyncSession]", "async_sessionmaker[AsyncSession]"]:
+        """Resolve session factories for a graph_id.
+
+        Returns (graph_session_factory, write_session_factory).
+        When graph_id is None or "default", returns the system-level factories.
+        """
+        if not graph_id or graph_id == "default" or self.graph_resolver is None:
+            return self.session_factory, self.write_session_factory
+        import uuid as _uuid
+
+        gs = await self.graph_resolver.resolve(_uuid.UUID(graph_id))
+        return gs.graph_session_factory, gs.write_session_factory
+
 
 async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     """Async context manager that Hatchet calls at worker start/stop."""
