@@ -37,7 +37,7 @@ async def _build_agent_context(
     session: Any | None = None,
     emit_event: Any | None = None,
     write_session: Any | None = None,
-    api_key: str | None = None,
+    user_id: str | None = None,
     graph_id: str | None = None,
 ) -> Any:
     """Build an AgentContext from WorkerState.
@@ -52,12 +52,22 @@ async def _build_agent_context(
     PerspectiveBuilder) to the Hatchet stream.  The callback must have
     signature ``async def(event_type: str, **kwargs) -> None``.
 
-    When ``api_key`` is provided (BYOK), per-request ModelGateway and
-    EmbeddingService are created instead of using the shared worker instances.
+    When ``user_id`` is provided, the user's API key is resolved from the
+    database and per-request ModelGateway / EmbeddingService instances are
+    created instead of using the shared worker instances.
     """
     from kt_agents_core.state import AgentContext
     from kt_graph.worker_engine import WorkerGraphEngine
+    from kt_hatchet.keys import resolve_user_api_key
 
+    # Cache resolved key on state to avoid repeated DB lookups within
+    # the same workflow run (multiple _build_agent_context calls).
+    cache_attr = "_resolved_api_key"
+    if not hasattr(state, cache_attr):
+        object.__setattr__(
+            state, cache_attr, await resolve_user_api_key(state.session_factory, user_id) if user_id else None
+        )
+    api_key: str | None = getattr(state, cache_attr)
     if api_key:
         from kt_models.embeddings import EmbeddingService
         from kt_models.gateway import ModelGateway

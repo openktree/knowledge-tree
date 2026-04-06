@@ -349,7 +349,7 @@ async def confirm_ingest(
 
     from kt_hatchet.client import dispatch_workflow
 
-    api_key = require_api_key(user)
+    require_api_key(user)  # fail-fast validation
     run_id = await dispatch_workflow(
         "ingest_confirm",
         {
@@ -357,7 +357,7 @@ async def confirm_ingest(
             "selected_chunks": body.selected_chunks,
             "conversation_id": conversation_id,
             "message_id": str(assistant_msg.id),
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": conversation_id,
@@ -492,14 +492,14 @@ async def decompose_ingest(
 
     from kt_hatchet.client import dispatch_workflow
 
-    api_key = require_api_key(user)
+    require_api_key(user)  # fail-fast validation
     run_id = await dispatch_workflow(
         "ingest_decompose",
         {
             "conversation_id": conversation_id,
             "message_id": str(assistant_msg.id),
             "selected_chunks": body.selected_chunks,
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": conversation_id,
@@ -658,14 +658,14 @@ async def build_ingest(
         for n in body.selected_nodes
     ]
 
-    api_key = require_api_key(user)
+    require_api_key(user)  # fail-fast validation
     run_id = await dispatch_workflow(
         "ingest_build",
         IngestBuildInput(
             selected_nodes=confirmed_nodes,
             conversation_id=str(conv_uuid),
             message_id=str(assistant_msg.id),
-            api_key=api_key,
+            user_id=str(user.id),
         ).model_dump(),
         additional_metadata={
             "conversation_id": str(conv_uuid),
@@ -725,7 +725,7 @@ async def bottom_up_prepare(
 
     from kt_hatchet.client import dispatch_workflow
 
-    api_key = require_api_key(user)
+    require_api_key(user)  # fail-fast validation
     run_id = await dispatch_workflow(
         "bottom_up_prepare",
         {
@@ -733,7 +733,7 @@ async def bottom_up_prepare(
             "explore_budget": body.explore_budget,
             "conversation_id": str(conv.id),
             "message_id": str(assistant_msg.id),
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": str(conv.id),
@@ -1024,7 +1024,7 @@ async def agent_select(
 
     from kt_hatchet.client import dispatch_workflow
 
-    api_key = require_api_key(user)
+    require_api_key(user)  # fail-fast validation
     await dispatch_workflow(
         "agent_select",
         {
@@ -1033,7 +1033,7 @@ async def agent_select(
             "instructions": instructions,
             "conversation_id": str(conv_uuid),
             "message_id": msg_id or "",
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": str(conv_uuid),

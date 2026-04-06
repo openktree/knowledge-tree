@@ -1629,7 +1629,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.31.0"
+version = "0.31.1"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1838,6 +1838,7 @@ name = "kt-hatchet"
 version = "0.1.0"
 source = { editable = "libs/kt-hatchet" }
 dependencies = [
+    { name = "cryptography" },
     { name = "hatchet-sdk" },
     { name = "kt-agents-core" },
     { name = "kt-config" },
@@ -1852,6 +1853,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=43.0.0" },
     { name = "hatchet-sdk", specifier = ">=1.26.0" },
     { name = "kt-agents-core", editable = "libs/kt-agents-core" },
     { name = "kt-config", editable = "libs/kt-config" },
