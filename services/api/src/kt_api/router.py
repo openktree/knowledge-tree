@@ -20,6 +20,7 @@ from kt_api.graph_edge_candidates import router as graph_edge_candidates_router
 from kt_api.graph_edges import router as graph_edges_router
 from kt_api.graph_facts import router as graph_facts_router
 from kt_api.graph_nodes import router as graph_nodes_router
+from kt_api.graph_research import router as graph_research_router
 from kt_api.graph_seeds import router as graph_seeds_router
 from kt_api.graph_sources import router as graph_sources_router
 from kt_api.graph_syntheses import router as graph_syntheses_router
@@ -61,6 +62,7 @@ api_router.include_router(graph_conversations_router, dependencies=_auth_dep)
 api_router.include_router(graph_seeds_router, dependencies=_auth_dep)
 api_router.include_router(graph_edge_candidates_router, dependencies=_auth_dep)
 api_router.include_router(graph_syntheses_router, dependencies=_auth_dep)
+api_router.include_router(graph_research_router, dependencies=_auth_dep)
 api_router.include_router(facts_router, dependencies=_auth_dep)
 api_router.include_router(sources_router, dependencies=_auth_dep)
 api_router.include_router(config_router, dependencies=_auth_dep)
