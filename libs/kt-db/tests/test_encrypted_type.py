@@ -12,9 +12,6 @@ def _make_type() -> EncryptedString:
 class TestEncryptedStringNoKey:
     """When no encryption_key is set, values pass through as plaintext."""
 
-    def setup_method(self) -> None:
-        reset_fernet_cache()
-
     def teardown_method(self) -> None:
         reset_fernet_cache()
 
@@ -40,9 +37,6 @@ class TestEncryptedStringNoKey:
 
 class TestEncryptedStringWithKey:
     """When encryption_key is set, values are Fernet-encrypted."""
-
-    def setup_method(self) -> None:
-        reset_fernet_cache()
 
     def teardown_method(self) -> None:
         reset_fernet_cache()
@@ -80,3 +74,22 @@ class TestEncryptedStringWithKey:
         t = _make_type()
         result = t.process_result_value("not-encrypted-value", None)
         assert result == "not-encrypted-value"
+
+    def test_late_key_configuration(self, monkeypatch):
+        """If key is not set initially, it should be picked up on next call."""
+        monkeypatch.setenv("ENCRYPTION_KEY", "")
+        reset_fernet_cache()
+
+        t = _make_type()
+        # First call — no key, plaintext passthrough
+        assert t.process_bind_param("hello", None) == "hello"
+
+        # Now set the key and reset cache
+        key = Fernet.generate_key().decode()
+        monkeypatch.setenv("ENCRYPTION_KEY", key)
+        reset_fernet_cache()
+
+        # Should now encrypt
+        encrypted = t.process_bind_param("hello", None)
+        assert encrypted is not None
+        assert encrypted != "hello"

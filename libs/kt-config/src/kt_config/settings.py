@@ -589,7 +589,9 @@ class Settings(BaseSettings):
     # BYOK (Bring Your Own Key) — Fernet encryption key for stored API keys
     byok_encryption_key: str = ""
 
-    # Column encryption — Fernet key for PII fields (OAuth tokens, etc.)
+    # Column encryption — Fernet key for PII/credential fields (e.g. OAuth client secrets).
+    # Separate from byok_encryption_key: BYOK protects user-supplied API keys (rotated per
+    # user), while this protects system-owned credential columns.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     encryption_key: str = ""
 

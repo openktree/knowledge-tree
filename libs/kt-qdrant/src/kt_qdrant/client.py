@@ -14,7 +14,7 @@ def get_qdrant_client() -> AsyncQdrantClient:
         settings = get_settings()
         url = settings.qdrant_url
         if settings.qdrant_tls and url.startswith("http://"):
-            url = "https://" + url[len("http://") :]
+            url = url.replace("http://", "https://", 1)
         _client = AsyncQdrantClient(url=url, timeout=settings.qdrant_timeout)
     return _client
 

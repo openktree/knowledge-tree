@@ -508,6 +508,30 @@ Copy `pyproject.toml` and `Dockerfile` from an existing worker (e.g., `services/
 | **New settings ONLY in kt-config** | Single Settings class, single `.env` file. |
 | **Every new package needs tests** | No package ships without a `tests/` directory and at least basic import/unit tests. |
 
+### Creating Alembic Migrations
+
+**NEVER write migration files by hand.** Always use the Alembic CLI to generate the migration scaffold, then edit the generated file to add the actual operations.
+
+```bash
+# Graph-db migration (from libs/kt-db/)
+cd libs/kt-db
+uv run alembic revision -m "description of change"
+# Edit the generated file in alembic/versions/ to add upgrade()/downgrade() logic
+
+# Write-db migration (from libs/kt-db/)
+cd libs/kt-db
+uv run alembic -c alembic_write.ini revision -m "description of change"
+# Edit the generated file in alembic_write/versions/ to add upgrade()/downgrade() logic
+```
+
+This ensures revision IDs are **randomly generated 12-character hex strings** (Alembic's default), and `down_revision` is automatically set to the current head. Hand-written IDs (e.g. `zzai`, `abc123`) cause collisions when branches diverge.
+
+After creating or editing migrations, always verify a single head:
+```bash
+uv run alembic heads          # Should show exactly ONE head
+uv run alembic -c alembic_write.ini heads  # Same for write-db
+```
+
 ---
 
 ### Starting infrastructure

@@ -18,26 +18,34 @@ from kt_config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 _fernet: Fernet | None = None
-_checked = False
+_initialized = False
 
 
 def _get_fernet() -> Fernet | None:
-    """Return a Fernet instance if ``encryption_key`` is configured, else None."""
-    global _fernet, _checked
-    if _checked:
+    """Return a Fernet instance if ``encryption_key`` is configured, else None.
+
+    Re-checks settings when no key was found previously, so that a worker
+    that starts before ENCRYPTION_KEY is set will pick it up on the next call.
+    """
+    global _fernet, _initialized
+    if _fernet is not None:
         return _fernet
-    _checked = True
+    if _initialized:
+        # Previously checked and no key was set — re-check settings in case
+        # the key has been configured since.
+        pass
     key = get_settings().encryption_key
     if key:
         _fernet = Fernet(key.encode() if isinstance(key, str) else key)
+    _initialized = True
     return _fernet
 
 
 def reset_fernet_cache() -> None:
     """Reset cached Fernet instance (for testing)."""
-    global _fernet, _checked
+    global _fernet, _initialized
     _fernet = None
-    _checked = False
+    _initialized = False
 
 
 class EncryptedString(TypeDecorator):
@@ -69,7 +77,7 @@ class EncryptedString(TypeDecorator):
             return value
         try:
             return f.decrypt(value.encode()).decode()
-        except (InvalidToken, Exception):
+        except InvalidToken:
             # Value was stored before encryption was enabled — return as-is
             logger.debug("Could not decrypt column value; returning raw")
             return value

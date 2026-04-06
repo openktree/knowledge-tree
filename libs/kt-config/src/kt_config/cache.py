@@ -43,7 +43,7 @@ async def get_redis() -> object:
         kwargs: dict = {"decode_responses": True}
         if settings.redis_tls:
             kwargs["ssl"] = True
-            kwargs["ssl_cert_reqs"] = None  # equivalent to verify_mode=CERT_NONE
+            kwargs["ssl_cert_reqs"] = "required"
         _redis_client = aioredis.from_url(settings.redis_url, **kwargs)
     return _redis_client
 
