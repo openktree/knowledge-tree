@@ -56,6 +56,7 @@ async def run_bottom_up_scope_pipeline(
     *,
     message_id: str = "",
     conversation_id: str = "",
+    graph_id: str | None = None,
 ) -> BottomUpScopePlan:
     """Run the bottom-up scope pipeline: scout → gather → filter → return node plans.
 
@@ -78,7 +79,7 @@ async def run_bottom_up_scope_pipeline(
         message_id=message_id,
         conversation_id=conversation_id,
     )
-    result = await GatherFactsPipeline(ctx).gather(
+    result = await GatherFactsPipeline(ctx, graph_id=graph_id).gather(
         queries,
         proxy,  # type: ignore[arg-type]
         enable_summary=True,

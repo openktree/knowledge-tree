@@ -103,8 +103,9 @@ def _vary_query(base: str, round_num: int) -> str:
 class GatherFactsPipeline:
     """Gathers facts from external sources via search + decomposition."""
 
-    def __init__(self, ctx: AgentContext) -> None:
+    def __init__(self, ctx: AgentContext, *, graph_id: str | None = None) -> None:
         self._ctx = ctx
+        self._graph_id = graph_id
 
     async def gather(
         self,
@@ -429,7 +430,7 @@ class GatherFactsPipeline:
                     *[
                         dispatch_workflow(
                             "seed_dedup_batch",
-                            {"seed_keys": b, "scope_id": scope_id},
+                            {"seed_keys": b, "scope_id": scope_id, "graph_id": self._graph_id},
                         )
                         for b in batches
                     ]

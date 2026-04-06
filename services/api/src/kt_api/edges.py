@@ -250,10 +250,10 @@ async def enrich_edge(
     if not edge:
         raise HTTPException(status_code=404, detail="Edge not found")
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     api_key = require_api_key(user)
-    await dispatch_workflow("enrich_edge", {"edge_id": edge_id, "api_key": api_key})
+    await dispatch_with_graph("enrich_edge", {"edge_id": edge_id, "api_key": api_key})
     return {"status": "started", "edge_id": edge_id}
 
 

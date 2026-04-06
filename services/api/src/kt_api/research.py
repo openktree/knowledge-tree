@@ -347,10 +347,10 @@ async def confirm_ingest(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "ingest_confirm",
         {
             "nav_budget": body.nav_budget,
@@ -490,10 +490,10 @@ async def decompose_ingest(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "ingest_decompose",
         {
             "conversation_id": conversation_id,
@@ -643,7 +643,7 @@ async def build_ingest(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
     from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
 
     confirmed_nodes = [
@@ -659,7 +659,7 @@ async def build_ingest(
     ]
 
     api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "ingest_build",
         IngestBuildInput(
             selected_nodes=confirmed_nodes,
@@ -723,10 +723,10 @@ async def bottom_up_prepare(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "bottom_up_prepare",
         {
             "query": body.query,
@@ -1022,10 +1022,10 @@ async def agent_select(
     await conv_repo.update_message(uuid.UUID(msg_id), metadata_json=metadata)
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     api_key = require_api_key(user)
-    await dispatch_workflow(
+    await dispatch_with_graph(
         "agent_select",
         {
             "proposed_nodes": proposed_nodes,

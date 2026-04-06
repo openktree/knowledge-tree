@@ -118,6 +118,7 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
             explore_slice=input.explore_slice,
             message_id=input.message_id,
             conversation_id=input.conversation_id,
+            graph_id=input.graph_id,
         )
         if write_session is not None:
             await write_session.commit()
@@ -799,6 +800,7 @@ async def bottom_up_prepare_scope(
             explore_slice=input.explore_slice,
             message_id=input.message_id,
             conversation_id=input.conversation_id,
+            graph_id=input.graph_id,
         )
         if write_session is not None:
             await write_session.commit()

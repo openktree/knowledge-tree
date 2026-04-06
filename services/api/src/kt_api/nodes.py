@@ -488,13 +488,13 @@ async def rebuild_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     raw_mode = (body or {}).get("mode", "full")
     pipeline_mode = f"rebuild_{raw_mode}" if raw_mode in ("full", "incremental") else "rebuild_full"
     scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
-    await dispatch_workflow(
+    await dispatch_with_graph(
         "node_pipeline",
         {
             "mode": pipeline_mode,
@@ -669,9 +669,9 @@ async def enrich_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
-    await dispatch_workflow("node_pipeline", {"mode": "rebuild_full", "node_id": node_id, "scope": "all"})
+    await dispatch_with_graph("node_pipeline", {"mode": "rebuild_full", "node_id": node_id, "scope": "all"})
     return {"status": "started", "node_id": node_id}
 
 
@@ -702,9 +702,9 @@ async def quick_add_node(
 
     if match:
         # Trigger full rebuild via Hatchet
-        from kt_hatchet.client import dispatch_workflow
+        from kt_api.dispatch import dispatch_with_graph
 
-        await dispatch_workflow(
+        await dispatch_with_graph(
             "node_pipeline",
             {
                 "mode": "rebuild_full",
@@ -726,9 +726,9 @@ async def quick_add_node(
     scope_id = f"quick-add-{uuid.uuid4().hex[:8]}"
 
     from kt_api.dependencies import get_write_session_factory_cached
+    from kt_api.dispatch import dispatch_with_graph
     from kt_db.keys import make_seed_key
     from kt_db.repositories.write_seeds import WriteSeedRepository
-    from kt_hatchet.client import dispatch_workflow
 
     seed_key = make_seed_key("concept", concept)
 
@@ -739,7 +739,7 @@ async def quick_add_node(
         await seed_repo.upsert_seed(seed_key, concept, "concept", None)
         await ws.commit()
 
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "node_pipeline",
         {
             "scope_id": scope_id,
@@ -895,9 +895,9 @@ async def quick_add_perspective(
 
     # Kick off full pipeline for both nodes via Hatchet
     from kt_api.dependencies import get_write_session_factory_cached as _gwsf
+    from kt_api.dispatch import dispatch_with_graph
     from kt_db.keys import make_seed_key as _msk
     from kt_db.repositories.write_seeds import WriteSeedRepository as _WSR
-    from kt_hatchet.client import dispatch_workflow
 
     scope_id = f"quick-perspective-{uuid.uuid4().hex[:8]}"
     thesis_key = _msk("perspective", body.thesis)
@@ -914,7 +914,7 @@ async def quick_add_perspective(
         import asyncio
 
         await asyncio.gather(
-            dispatch_workflow(
+            dispatch_with_graph(
                 "node_pipeline",
                 {
                     "scope_id": scope_id,
@@ -925,7 +925,7 @@ async def quick_add_perspective(
                     "conversation_id": scope_id,
                 },
             ),
-            dispatch_workflow(
+            dispatch_with_graph(
                 "node_pipeline",
                 {
                     "scope_id": scope_id,
@@ -980,9 +980,9 @@ async def regenerate_composite(
             detail=f"Node type '{node.node_type}' is not a composite node. Only {sorted(COMPOSITE_NODE_TYPES)} can be regenerated.",
         )
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
-    await dispatch_workflow("regenerate_composite", {"node_id": node_id})
+    await dispatch_with_graph("regenerate_composite", {"node_id": node_id})
     return {"status": "started", "node_id": node_id}
 
 
