@@ -23,6 +23,7 @@ members = [
     "kt-ontology",
     "kt-providers",
     "kt-qdrant",
+    "kt-rbac",
     "kt-worker-all",
     "kt-worker-bottomup",
     "kt-worker-ingest",
@@ -1629,7 +1630,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.33.0"
+version = "0.35.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1701,6 +1702,7 @@ dependencies = [
     { name = "kt-hatchet" },
     { name = "kt-models" },
     { name = "kt-providers" },
+    { name = "kt-rbac" },
     { name = "kt-worker-ingest" },
     { name = "kt-worker-nodes" },
     { name = "kt-worker-synthesis" },
@@ -1725,6 +1727,7 @@ requires-dist = [
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
+    { name = "kt-rbac", editable = "libs/kt-rbac" },
     { name = "kt-worker-ingest", editable = "services/worker-ingest" },
     { name = "kt-worker-nodes", editable = "services/worker-nodes" },
     { name = "kt-worker-synthesis", editable = "services/worker-synthesis" },
@@ -1990,6 +1993,11 @@ requires-dist = [
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "qdrant-client", specifier = ">=1.13.3" },
 ]
+
+[[package]]
+name = "kt-rbac"
+version = "0.1.0"
+source = { editable = "libs/kt-rbac" }
 
 [[package]]
 name = "kt-worker-all"
