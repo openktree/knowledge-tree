@@ -85,12 +85,7 @@ async def _recover_stuck_graphs() -> None:
     async with sf() as session:
         from sqlalchemy import update
 
-        stmt = (
-            update(Graph)
-            .where(Graph.status == "provisioning")
-            .values(status="error")
-            .returning(Graph.slug)
-        )
+        stmt = update(Graph).where(Graph.status == "provisioning").values(status="error").returning(Graph.slug)
         result = await session.execute(stmt)
         slugs = [row[0] for row in result.all()]
         if slugs:
