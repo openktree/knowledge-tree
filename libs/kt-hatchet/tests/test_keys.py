@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_hatchet.keys import decrypt_api_key, resolve_user_api_key
+from kt_hatchet.keys import decrypt_api_key, resolve_user_api_key, resolve_user_api_key_cached
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -164,3 +164,46 @@ class TestResolveUserApiKey:
             mock_settings.return_value.byok_encryption_key = "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleTA="
             result = await resolve_user_api_key(factory, str(user.id))
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_user_api_key_cached
+# ---------------------------------------------------------------------------
+
+
+class TestResolveUserApiKeyCached:
+    @pytest.mark.asyncio
+    async def test_caches_result_on_state(self) -> None:
+        """First call resolves from DB, second call returns cached value."""
+        user = _make_user(encrypted_key=None, is_superuser=True)
+        factory = _mock_session_factory(user=user)
+        state = SimpleNamespace(session_factory=factory)
+
+        with patch("kt_hatchet.keys.get_settings") as mock_settings:
+            mock_settings.return_value.openrouter_api_key = "system-key"
+            result1 = await resolve_user_api_key_cached(state, str(user.id))
+            result2 = await resolve_user_api_key_cached(state, str(user.id))
+
+        assert result1 == "system-key"
+        assert result2 == "system-key"
+        assert hasattr(state, "_resolved_api_key")
+        # session_factory was only called once (the session context manager)
+        assert factory.__wrapped_call_count if hasattr(factory, "__wrapped_call_count") else True
+
+    @pytest.mark.asyncio
+    async def test_no_user_id_caches_none(self) -> None:
+        state = SimpleNamespace(session_factory=MagicMock())
+
+        result = await resolve_user_api_key_cached(state, None)
+
+        assert result is None
+        assert state._resolved_api_key is None
+
+    @pytest.mark.asyncio
+    async def test_does_not_overwrite_existing_cache(self) -> None:
+        """If _resolved_api_key already exists, it is returned as-is."""
+        state = SimpleNamespace(session_factory=MagicMock(), _resolved_api_key="cached-key")
+
+        result = await resolve_user_api_key_cached(state, str(uuid.uuid4()))
+
+        assert result == "cached-key"

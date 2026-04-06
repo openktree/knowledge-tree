@@ -76,11 +76,9 @@ class HatchetPipeline:
 
         # Resolve once per pipeline instance, cache for subsequent phases
         if not self._key_resolved:
-            from kt_hatchet.keys import resolve_user_api_key
+            from kt_hatchet.keys import resolve_user_api_key_cached
 
-            self._resolved_api_key = (
-                await resolve_user_api_key(self._state.session_factory, self._user_id) if self._user_id else None
-            )
+            self._resolved_api_key = await resolve_user_api_key_cached(self._state, self._user_id)
             self._key_resolved = True
 
         if self._resolved_api_key:

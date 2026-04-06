@@ -18,8 +18,9 @@ from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Type alias for async session factories (sessionmaker-style callables).
-SessionFactory = Callable[..., Any]
+# Async session factory — ``async_sessionmaker[AsyncSession]`` in practice.
+# The returned object is an async context manager yielding an AsyncSession.
+SessionFactory = Callable[[], Any]
 
 
 def _get_fernet() -> Fernet:
@@ -75,11 +76,26 @@ async def resolve_user_api_key(
         try:
             return decrypt_api_key(user.encrypted_openrouter_key)
         except Exception:
-            logger.warning("Failed to decrypt BYOK key for user %s", user_id)
             # Fall through: superusers get system key, others get None
+            logger.warning("Failed to decrypt BYOK key for user %s", user_id, exc_info=True)
 
     # Superusers fall back to system key
     if user.is_superuser:
         return settings.openrouter_api_key or None
 
     return None
+
+
+async def resolve_user_api_key_cached(
+    state: Any,
+    user_id: str | None,
+) -> str | None:
+    """Resolve API key for a user, caching on ``state`` for the workflow run.
+
+    Avoids repeated DB lookups when multiple tasks/phases call this within
+    the same Hatchet workflow.  The result is stored as ``_resolved_api_key``
+    on the state object.
+    """
+    if not hasattr(state, "_resolved_api_key"):
+        state._resolved_api_key = await resolve_user_api_key(state.session_factory, user_id) if user_id else None
+    return state._resolved_api_key
