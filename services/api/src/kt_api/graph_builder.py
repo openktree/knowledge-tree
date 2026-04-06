@@ -21,7 +21,7 @@ async def auto_build_graph() -> dict[str, str]:
     Promotes eligible seeds to stub nodes, creates co-occurrence edges,
     and dispatches enrichment for nodes with enough facts.
     """
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
-    run_id = await dispatch_workflow("auto_build_graph", {})
+    run_id = await dispatch_with_graph("auto_build_graph", {})
     return {"status": "started", "workflow_run_id": run_id}

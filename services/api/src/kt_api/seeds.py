@@ -320,13 +320,13 @@ async def promote_seed_to_node(
             )
 
     # Dispatch node pipeline via Hatchet
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     scope_id = f"seed-promote-{_uuid.uuid4().hex[:8]}"
     require_api_key(user)  # fail-fast validation
 
     try:
-        run_id = await dispatch_workflow(
+        run_id = await dispatch_with_graph(
             "node_pipeline",
             {
                 "scope_id": scope_id,

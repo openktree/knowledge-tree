@@ -131,13 +131,13 @@ async def create_synthesis(
 ) -> dict[str, Any]:
     """Create a new synthesis by dispatching the synthesizer workflow."""
     from kt_api.config_api import SYNTHESIS_MODEL_IDS
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     if body.model_id and body.model_id not in SYNTHESIS_MODEL_IDS:
         raise HTTPException(status_code=400, detail=f"Unsupported model_id: {body.model_id}")
 
     try:
-        run_id = await dispatch_workflow(
+        run_id = await dispatch_with_graph(
             "synthesizer_wf",
             {
                 "topic": body.topic,
@@ -159,7 +159,7 @@ async def create_super_synthesis(
 ) -> dict[str, Any]:
     """Create a new super-synthesis by dispatching the super-synthesizer workflow."""
     from kt_api.config_api import SYNTHESIS_MODEL_IDS
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     if body.model_id and body.model_id not in SYNTHESIS_MODEL_IDS:
         raise HTTPException(status_code=400, detail=f"Unsupported model_id: {body.model_id}")
@@ -175,7 +175,7 @@ async def create_super_synthesis(
         for c in body.sub_configs
     ]
     try:
-        run_id = await dispatch_workflow(
+        run_id = await dispatch_with_graph(
             "super_synthesizer_wf",
             {
                 "topic": body.topic,
