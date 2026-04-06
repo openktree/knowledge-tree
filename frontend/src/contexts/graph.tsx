@@ -12,6 +12,10 @@ interface GraphState {
   graphs: GraphResponse[];
   /** Whether graphs are still loading */
   loading: boolean;
+  /** Error message from last graph operation */
+  error: string | null;
+  /** Whether a graph switch is in progress */
+  switching: boolean;
   /** Switch to a different graph */
   setActiveGraph: (slug: string) => void;
   /** Refresh the graph list */
@@ -27,6 +31,8 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
   const [activeGraph, setActiveGraphState] = useState<string>("default");
   const [graphs, setGraphs] = useState<GraphResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   // Read persisted graph from localStorage on mount and sync to api module
   useEffect(() => {
@@ -39,6 +45,7 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
 
   const refreshGraphs = useCallback(async () => {
     try {
+      setError(null);
       const data = await listGraphs();
       setGraphs(data);
 
@@ -50,6 +57,8 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("active_graph", "default");
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load graphs";
+      setError(message);
       console.error("Failed to load graphs:", err);
     } finally {
       setLoading(false);
@@ -69,9 +78,13 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
 
   const setActiveGraph = useCallback(
     (slug: string) => {
+      setSwitching(true);
+      setError(null);
       setActiveGraphState(slug);
       setActiveGraphSlug(slug);
       localStorage.setItem("active_graph", slug);
+      // Brief delay to let dependent queries fire, then clear switching state
+      setTimeout(() => setSwitching(false), 100);
     },
     [],
   );
@@ -84,6 +97,8 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
         activeGraph,
         graphs,
         loading,
+        error,
+        switching,
         setActiveGraph,
         refreshGraphs,
         activeGraphInfo,

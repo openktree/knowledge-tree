@@ -7,6 +7,7 @@ workers, amortising connection pool and provider setup across all tasks.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_config.settings import Settings
 from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.session import get_engine, get_write_engine
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
@@ -108,6 +111,27 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     await QdrantFactRepository(qdrant_client).ensure_collection()
     await QdrantNodeRepository(qdrant_client).ensure_collection()
     await QdrantSeedRepository(qdrant_client).ensure_collection()
+
+    # Ensure Qdrant collections for all active non-default graphs
+    try:
+        from sqlalchemy import select as sa_select
+
+        from kt_db.models import Graph
+
+        async with session_factory() as ctrl_session:
+            stmt = sa_select(Graph).where(Graph.status == "active", Graph.is_default.is_(False))
+            result = await ctrl_session.execute(stmt)
+            active_graphs = result.scalars().all()
+            for g in active_graphs:
+                prefix = f"{g.slug}__"
+                try:
+                    await QdrantFactRepository(qdrant_client, f"{prefix}facts").ensure_collection()
+                    await QdrantNodeRepository(qdrant_client, f"{prefix}nodes").ensure_collection()
+                    await QdrantSeedRepository(qdrant_client, f"{prefix}seeds").ensure_collection()
+                except Exception:
+                    logger.warning("Failed to ensure Qdrant collections for graph %s", g.slug, exc_info=True)
+    except Exception:
+        logger.warning("Failed to ensure per-graph Qdrant collections", exc_info=True)
 
     graph_resolver = GraphSessionResolver(
         session_factory,

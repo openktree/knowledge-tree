@@ -167,7 +167,28 @@ async def list_graphs(
         count_result = await session.execute(count_stmt)
         member_counts = {str(row[0]): row[1] for row in count_result.all()}
 
-    return [_graph_response(g, member_count=member_counts.get(str(g.id), 0)) for g in graphs]
+    # Batch-fetch node counts for active graphs via their session factories
+    node_counts: dict[str, int] = {}
+    resolver = get_graph_session_resolver()
+    for g in graphs:
+        if g.status != "active":
+            continue
+        try:
+            gs = await resolver.resolve(g.id)
+            async with gs.graph_session_factory() as graph_session:
+                result = await graph_session.execute(select(func.count(Node.id)))
+                node_counts[str(g.id)] = result.scalar_one() or 0
+        except Exception:
+            logger.debug("Failed to count nodes for graph %s", g.slug, exc_info=True)
+
+    return [
+        _graph_response(
+            g,
+            member_count=member_counts.get(str(g.id), 0),
+            node_count=node_counts.get(str(g.id), 0),
+        )
+        for g in graphs
+    ]
 
 
 @router.post("", response_model=GraphResponse, status_code=201)

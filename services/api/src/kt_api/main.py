@@ -58,11 +58,41 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("Failed to ensure Qdrant collections at startup", exc_info=True)
 
+    # Recover graphs stuck in "provisioning" status (crash recovery)
+    try:
+        await _recover_stuck_graphs()
+    except Exception:
+        logger.warning("Failed to run graph provisioning recovery", exc_info=True)
+
     yield
     # Shutdown
     from kt_api.dependencies import reset_session_factory
 
     reset_session_factory()
+
+
+async def _recover_stuck_graphs() -> None:
+    """Mark graphs stuck in 'provisioning' status as 'error' on startup.
+
+    If the API crashed during provisioning, graphs may be left in
+    'provisioning' state forever. Marking them as 'error' allows admins
+    to retry via the retry_provision endpoint (which is idempotent).
+    """
+    from kt_api.dependencies import get_session_factory_cached
+    from kt_db.models import Graph
+
+    sf = get_session_factory_cached()
+    async with sf() as session:
+        from sqlalchemy import select, update
+
+        stmt = select(Graph).where(Graph.status == "provisioning")
+        result = await session.execute(stmt)
+        stuck = result.scalars().all()
+        if stuck:
+            slugs = [g.slug for g in stuck]
+            logger.warning("Found %d graph(s) stuck in provisioning: %s — marking as error", len(stuck), slugs)
+            await session.execute(update(Graph).where(Graph.status == "provisioning").values(status="error"))
+            await session.commit()
 
 
 def create_app() -> FastAPI:

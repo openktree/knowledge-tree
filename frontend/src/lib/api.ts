@@ -170,7 +170,16 @@ export async function graphRequest<T>(
 ): Promise<T> {
   const slug = _activeGraphSlug;
   if (slug && slug !== "default") {
-    return request<T>(`/graphs/${encodeURIComponent(slug)}${path}`, options);
+    try {
+      return await request<T>(`/graphs/${encodeURIComponent(slug)}${path}`, options);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("API error 404")) {
+        throw new Error(
+          `This endpoint is not yet available for non-default graphs (${path})`,
+        );
+      }
+      throw err;
+    }
   }
   return request<T>(path, options);
 }
