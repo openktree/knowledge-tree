@@ -1,0 +1,382 @@
+{{/*
+Extra databases — provisions a full CNPG graph-db + write-db + PgBouncer + Qdrant
+for each entry in .Values.extraDatabases.
+
+Each key becomes the config_key used by the app's graph_databases setting.
+*/}}
+{{- $fullname := include "knowledge-tree.fullname" . }}
+{{- $labels := include "knowledge-tree.labels" . }}
+{{- range $name, $db := .Values.extraDatabases }}
+{{- if $db.enabled }}
+{{- $graphDbName := printf "%s-%s-graph-db" $fullname $name }}
+{{- $writeDbName := printf "%s-%s-write-db" $fullname $name }}
+{{- $pgbouncerName := printf "%s-%s-pgbouncer" $fullname $name }}
+{{- $qdrantName := printf "%s-%s-qdrant" $fullname $name }}
+{{- $graphDbHost := printf "%s-rw" $graphDbName }}
+{{- $writeDbHost := printf "%s-rw" $writeDbName }}
+
+# =============================================================================
+# {{ $name | upper }} — Graph DB (CNPG Cluster)
+# =============================================================================
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $graphDbName }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}-graph-db
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  instances: {{ $db.graphDb.instances | default 1 }}
+  imageName: {{ $db.graphDb.image | default "ghcr.io/cloudnative-pg/postgresql:16.8" }}
+  enableSuperuserAccess: true
+
+  postgresql:
+    shared_preload_libraries:
+      {{- ($db.graphDb.postgresql).shared_preload_libraries | default (list "vector.so") | toYaml | nindent 6 }}
+    parameters:
+      {{- range $key, $value := $db.graphDb.postgresql }}
+      {{- if ne $key "shared_preload_libraries" }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- end }}
+
+  bootstrap:
+    initdb:
+      database: knowledge_tree_{{ $name | replace "-" "_" }}
+      owner: kt
+      secret:
+        name: {{ $db.graphDb.credentialsSecret | default (printf "%s-credentials" $graphDbName) }}
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector
+        - CREATE EXTENSION IF NOT EXISTS pg_trgm
+
+  storage:
+    size: {{ $db.graphDb.storage.size | default "20Gi" }}
+    {{- if ($db.graphDb.storage).storageClass }}
+    storageClass: {{ $db.graphDb.storage.storageClass }}
+    {{- end }}
+
+  {{- if $db.graphDb.resources }}
+  resources:
+    {{- toYaml $db.graphDb.resources | nindent 4 }}
+  {{- end }}
+
+{{- if not $db.graphDb.credentialsSecret }}
+---
+{{- $credSecretName := printf "%s-credentials" $graphDbName }}
+{{- $existingCred := lookup "v1" "Secret" $.Release.Namespace $credSecretName }}
+{{- $password := "" }}
+{{- if $existingCred }}
+  {{- $password = index (default dict $existingCred.data) "password" | default "" }}
+  {{- if $password }}
+    {{- $password = $password | b64dec }}
+  {{- end }}
+{{- end }}
+{{- $password = $password | default (index (default dict $.Values.secrets) (printf "%sGraphDbPassword" $name)) | default "changeme" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $credSecretName }}
+  labels:
+    {{- $labels | nindent 4 }}
+type: kubernetes.io/basic-auth
+stringData:
+  username: kt
+  password: {{ $password | quote }}
+{{- end }}
+
+---
+# =============================================================================
+# {{ $name | upper }} — Write DB (CNPG Cluster)
+# =============================================================================
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $writeDbName }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}-write-db
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  instances: {{ $db.writeDb.instances | default 1 }}
+  imageName: {{ $db.writeDb.image | default "ghcr.io/cloudnative-pg/postgresql:16" }}
+
+  postgresql:
+    parameters:
+      {{- range $key, $value := $db.writeDb.postgresql }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
+
+  bootstrap:
+    initdb:
+      database: knowledge_tree_{{ $name | replace "-" "_" }}_write
+      owner: kt
+      secret:
+        name: {{ $db.writeDb.credentialsSecret | default (printf "%s-credentials" $writeDbName) }}
+
+  storage:
+    size: {{ $db.writeDb.storage.size | default "20Gi" }}
+    {{- if ($db.writeDb.storage).storageClass }}
+    storageClass: {{ $db.writeDb.storage.storageClass }}
+    {{- end }}
+
+  {{- if $db.writeDb.resources }}
+  resources:
+    {{- toYaml $db.writeDb.resources | nindent 4 }}
+  {{- end }}
+
+{{- if not $db.writeDb.credentialsSecret }}
+---
+{{- $credSecretName := printf "%s-credentials" $writeDbName }}
+{{- $existingCred := lookup "v1" "Secret" $.Release.Namespace $credSecretName }}
+{{- $password := "" }}
+{{- if $existingCred }}
+  {{- $password = index (default dict $existingCred.data) "password" | default "" }}
+  {{- if $password }}
+    {{- $password = $password | b64dec }}
+  {{- end }}
+{{- end }}
+{{- $password = $password | default (index (default dict $.Values.secrets) (printf "%sWriteDbPassword" $name)) | default "changeme" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $credSecretName }}
+  labels:
+    {{- $labels | nindent 4 }}
+type: kubernetes.io/basic-auth
+stringData:
+  username: kt
+  password: {{ $password | quote }}
+{{- end }}
+
+---
+# =============================================================================
+# {{ $name | upper }} — PgBouncer (connection pooler for write-db)
+# =============================================================================
+{{- $pbConf := $db.pgbouncer | default dict }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $pgbouncerName }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}-pgbouncer
+data:
+  pgbouncer.ini: |
+    [databases]
+    knowledge_tree_{{ $name | replace "-" "_" }}_write = host={{ $writeDbHost }} port=5432 dbname=knowledge_tree_{{ $name | replace "-" "_" }}_write
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 5432
+    auth_type = plain
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = {{ $pbConf.poolMode | default "transaction" }}
+    max_client_conn = {{ $pbConf.maxClientConn | default 1000 }}
+    default_pool_size = {{ $pbConf.defaultPoolSize | default 50 }}
+    min_pool_size = {{ $pbConf.minPoolSize | default 5 }}
+    reserve_pool_size = {{ $pbConf.reservePoolSize | default 5 }}
+    reserve_pool_timeout = {{ $pbConf.reservePoolTimeout | default 3 }}
+    server_reset_query = DISCARD ALL
+    ignore_startup_parameters = extra_float_digits
+  userlist.txt: |
+    {{- $wCredSecretName := $db.writeDb.credentialsSecret | default (printf "%s-credentials" $writeDbName) }}
+    {{- $wExistingCred := lookup "v1" "Secret" $.Release.Namespace $wCredSecretName }}
+    {{- $wPassword := "" }}
+    {{- if $wExistingCred }}
+      {{- $wPassword = index (default dict $wExistingCred.data) "password" | default "" }}
+      {{- if $wPassword }}
+        {{- $wPassword = $wPassword | b64dec }}
+      {{- end }}
+    {{- end }}
+    {{- $wPassword = $wPassword | default (index (default dict $.Values.secrets) (printf "%sWriteDbPassword" $name)) | default "changeme" }}
+    "kt" "{{ $wPassword }}"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $pgbouncerName }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}-pgbouncer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "knowledge-tree.name" $ }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $name }}-pgbouncer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "knowledge-tree.name" $ }}
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/component: {{ $name }}-pgbouncer
+      annotations:
+        checksum/config: {{ toJson $db | sha256sum }}
+    spec:
+      containers:
+        - name: pgbouncer
+          image: {{ $pbConf.image | default "edoburu/pgbouncer:latest" }}
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer/pgbouncer.ini
+              subPath: pgbouncer.ini
+            - name: config
+              mountPath: /etc/pgbouncer/userlist.txt
+              subPath: userlist.txt
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          {{- if $pbConf.resources }}
+          resources:
+            {{- toYaml $pbConf.resources | nindent 12 }}
+          {{- else }}
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $pgbouncerName }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $pgbouncerName }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}-pgbouncer
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "knowledge-tree.name" $ }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: {{ $name }}-pgbouncer
+
+---
+# =============================================================================
+# {{ $name | upper }} — Qdrant (vector database)
+# =============================================================================
+{{- $qConf := $db.qdrant | default dict }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $qdrantName }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}-qdrant
+spec:
+  serviceName: {{ $qdrantName }}
+  replicas: {{ $qConf.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "knowledge-tree.name" $ }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $name }}-qdrant
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "knowledge-tree.name" $ }}
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/component: {{ $name }}-qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: {{ $qConf.image | default "qdrant/qdrant:v1.14.0" }}
+          ports:
+            - containerPort: 6333
+              name: http
+              protocol: TCP
+            - containerPort: 6334
+              name: grpc
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /qdrant/storage
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6333
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          {{- if $qConf.resources }}
+          resources:
+            {{- toYaml $qConf.resources | nindent 12 }}
+          {{- else }}
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              memory: 2Gi
+          {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ ($qConf.persistence).size | default "10Gi" }}
+        {{- if ($qConf.persistence).storageClass }}
+        storageClassName: {{ $qConf.persistence.storageClass }}
+        {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $qdrantName }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}-qdrant
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6333
+      targetPort: 6333
+      name: http
+      protocol: TCP
+    - port: 6334
+      targetPort: 6334
+      name: grpc
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "knowledge-tree.name" $ }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: {{ $name }}-qdrant
+
+---
+{{- end }}
+{{- end }}

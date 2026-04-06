@@ -56,6 +56,7 @@ class GraphSessions:
     graph_session_factory: async_sessionmaker[AsyncSession]
     write_session_factory: async_sessionmaker[AsyncSession]
     qdrant_collection_prefix: str  # "" for default, "{slug}__" for non-default
+    qdrant_url: str = ""  # per-graph Qdrant URL; empty = use global settings.qdrant_url
     # Engines stored for proper disposal — None for default graph (reused system pools)
     _graph_engine: AsyncEngine | None = None
     _write_engine: AsyncEngine | None = None
@@ -171,6 +172,8 @@ class GraphSessionResolver:
         graph_engine: AsyncEngine | None = None
         write_engine: AsyncEngine | None = None
 
+        _qdrant_url = ""
+
         if graph.is_default:
             # Reuse existing system-level session factories to avoid duplicate pools
             if self._default_graph_sf and self._default_write_sf:
@@ -218,6 +221,8 @@ class GraphSessionResolver:
                 application_name=f"kt-write-{graph.slug}",
             )
             prefix = f"{graph.slug}__"
+            if graph_db_config.qdrant_url:
+                _qdrant_url = graph_db_config.qdrant_url
         else:
             # Same database, different schema — pool sizes from settings
             graph_engine, graph_sf = _make_session_factory(
@@ -241,6 +246,7 @@ class GraphSessionResolver:
             graph_session_factory=graph_sf,
             write_session_factory=write_sf,
             qdrant_collection_prefix=prefix,
+            qdrant_url=_qdrant_url,
             _graph_engine=graph_engine,
             _write_engine=write_engine,
         )
