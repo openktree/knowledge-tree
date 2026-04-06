@@ -13,11 +13,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.auth.tokens import require_admin, require_auth
+from kt_api.auth.permissions import require_graph_permission, require_system_permission
+from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_graph_session_resolver
+from kt_api.graph_context import GraphContext, get_graph_context
 from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.keys import validate_schema_name
 from kt_db.models import Graph, Node, User
+from kt_rbac import Permission
+from kt_rbac.types import GraphRole
 from kt_db.repositories.graphs import GraphRepository
 
 logger = logging.getLogger(__name__)
@@ -75,11 +79,11 @@ class GraphMemberResponse(BaseModel):
 
 class AddMemberRequest(BaseModel):
     user_id: str
-    role: str = Field(default="reader", pattern="^(reader|writer|admin)$")
+    role: GraphRole = GraphRole.reader
 
 
 class UpdateMemberRoleRequest(BaseModel):
-    role: str = Field(..., pattern="^(reader|writer|admin)$")
+    role: GraphRole
 
 
 # -- Helpers ----------------------------------------------------------------
@@ -110,33 +114,37 @@ async def _require_graph_access(
     slug: str,
     user: User,
     session: AsyncSession,
-    min_role: str | None = None,
+    permission: Permission = Permission.GRAPH_READ,
 ) -> Graph:
-    """Load graph and verify access. Raises 404/403 as needed."""
+    """Load graph and verify access using kt-rbac. Raises 404/403 as needed."""
+    from kt_rbac import PermissionDeniedError, default_checker
+    from kt_rbac.context import PermissionContext
+
     repo = GraphRepository(session)
     graph = await repo.get_by_slug(slug)
     if graph is None or graph.status == "deleted":
         raise HTTPException(status_code=404, detail="Graph not found")
 
-    if graph.is_default:
-        # Default graph policy: open for reads, superuser-only for writes (update/delete).
-        # The default graph has no membership — all authenticated users can read it,
-        # but only superusers can modify its metadata.
-        if min_role and not user.is_superuser:
-            raise HTTPException(status_code=403, detail="Admin access required for default graph management")
-        return graph
+    graph_role: GraphRole | None = None
+    if not graph.is_default and not user.is_superuser:
+        raw_role = await repo.get_member_role(graph.id, user.id)
+        if raw_role is None:
+            raise HTTPException(status_code=403, detail="Not a member of this graph")
+        graph_role = GraphRole(raw_role)
+    elif not graph.is_default:
+        raw_role = await repo.get_member_role(graph.id, user.id)
+        graph_role = GraphRole(raw_role) if raw_role else None
 
-    if user.is_superuser:
-        return graph
-
-    role = await repo.get_member_role(graph.id, user.id)
-    if role is None:
-        raise HTTPException(status_code=403, detail="Not a member of this graph")
-
-    if min_role:
-        role_hierarchy = {"reader": 0, "writer": 1, "admin": 2}
-        if role_hierarchy.get(role, 0) < role_hierarchy.get(min_role, 0):
-            raise HTTPException(status_code=403, detail=f"Requires at least {min_role} role")
+    ctx = PermissionContext(
+        user_id=user.id,
+        is_superuser=user.is_superuser,
+        graph_role=graph_role,
+        is_default_graph=graph.is_default,
+    )
+    try:
+        default_checker.check_or_raise(ctx, permission)
+    except PermissionDeniedError:
+        raise HTTPException(status_code=403, detail=f"Requires permission: {permission.value}")
 
     return graph
 
@@ -204,7 +212,7 @@ async def list_graphs(
 @router.post("", response_model=GraphResponse, status_code=201)
 async def create_graph(
     body: CreateGraphRequest,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_GRAPHS)),
     session: AsyncSession = Depends(get_db_session),
     resolver: GraphSessionResolver = Depends(get_graph_session_resolver),
 ) -> GraphResponse:
@@ -312,7 +320,7 @@ async def update_graph(
     session: AsyncSession = Depends(get_db_session),
 ) -> GraphResponse:
     """Update graph name/description. Requires admin role on the graph."""
-    graph = await _require_graph_access(slug, user, session, min_role="admin")
+    graph = await _require_graph_access(slug, user, session, permission=Permission.GRAPH_MANAGE_METADATA)
     repo = GraphRepository(session)
     graph = await repo.update(graph, name=body.name, description=body.description)
     await session.commit()
@@ -323,7 +331,7 @@ async def update_graph(
 @router.post("/{slug}/retry-provision", response_model=GraphResponse)
 async def retry_provision(
     slug: str,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_GRAPHS)),
     session: AsyncSession = Depends(get_db_session),
     resolver: GraphSessionResolver = Depends(get_graph_session_resolver),
 ) -> GraphResponse:
@@ -362,7 +370,7 @@ async def retry_provision(
 @router.delete("/{slug}", status_code=204)
 async def delete_graph(
     slug: str,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_GRAPHS)),
     session: AsyncSession = Depends(get_db_session),
     resolver: GraphSessionResolver = Depends(get_graph_session_resolver),
 ) -> None:
@@ -422,7 +430,7 @@ async def add_graph_member(
     session: AsyncSession = Depends(get_db_session),
 ) -> GraphMemberResponse:
     """Add a member to a graph. Requires admin role on the graph."""
-    graph = await _require_graph_access(slug, user, session, min_role="admin")
+    graph = await _require_graph_access(slug, user, session, permission=Permission.GRAPH_MANAGE_MEMBERS)
     repo = GraphRepository(session)
 
     try:
@@ -463,7 +471,7 @@ async def update_graph_member_role(
     session: AsyncSession = Depends(get_db_session),
 ) -> GraphMemberResponse:
     """Change a member's role. Requires admin role on the graph."""
-    graph = await _require_graph_access(slug, user, session, min_role="admin")
+    graph = await _require_graph_access(slug, user, session, permission=Permission.GRAPH_MANAGE_MEMBERS)
     repo = GraphRepository(session)
 
     try:
@@ -515,7 +523,7 @@ async def remove_graph_member(
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Remove a member from a graph. Requires admin role on the graph."""
-    graph = await _require_graph_access(slug, user, session, min_role="admin")
+    graph = await _require_graph_access(slug, user, session, permission=Permission.GRAPH_MANAGE_MEMBERS)
     repo = GraphRepository(session)
 
     try:

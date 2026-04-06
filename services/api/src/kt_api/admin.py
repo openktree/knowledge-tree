@@ -9,10 +9,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from kt_api.auth.permissions import require_system_permission
 from kt_api.dependencies import get_db_session
 from kt_config.settings import get_settings
-from kt_db.models import Node
+from kt_db.models import Node, User
 from kt_models.embeddings import EmbeddingService
+from kt_rbac import Permission
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 @router.post("/reindex")
 async def reindex(
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_ADMIN_OPS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Backfill node embeddings to Qdrant for all nodes."""
@@ -68,6 +71,8 @@ async def reindex(
 
 
 @router.post("/refresh-stale")
-async def refresh_stale() -> dict[str, Any]:
+async def refresh_stale(
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_ADMIN_OPS)),
+) -> dict[str, Any]:
     """Placeholder: Refresh stale nodes by re-fetching from providers."""
     return {"status": "ok", "message": "Refresh stale operation is not yet implemented."}

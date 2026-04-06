@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.auth.tokens import require_admin
+from kt_api.auth.permissions import require_system_permission
+from kt_rbac import Permission
 from kt_api.dependencies import get_db_session
 from kt_config.settings import get_settings
 from kt_db.models import User
@@ -113,7 +114,7 @@ async def submit_waitlist(
 @router.get("", response_model=list[WaitlistEntryResponse])
 async def list_waitlist(
     status: str | None = Query(None),
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_INVITES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[WaitlistEntryResponse]:
     """Admin: list waitlist entries with optional status filter."""
@@ -126,7 +127,7 @@ async def list_waitlist(
 async def review_waitlist_entry(
     entry_id: str,
     body: WaitlistReviewRequest,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_INVITES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> WaitlistReviewResponse:
     """Admin: approve or reject a waitlist entry. Approve auto-creates an invite."""

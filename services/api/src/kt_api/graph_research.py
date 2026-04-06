@@ -10,8 +10,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
+from kt_api.auth.permissions import require_graph_permission
 from kt_api.auth.tokens import require_auth
-from kt_api.graph_context import GraphContext, get_graph_context, require_writer
+from kt_api.graph_context import GraphContext, get_graph_context
+from kt_rbac import Permission
 from kt_api.research import (
     _agent_select_impl,
     _agent_select_status_impl,
@@ -54,10 +56,9 @@ async def prepare_graph_ingest(
     links: str = Form(default=""),
     title: str = Form(default=""),
     user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> IngestPrepareResponse:
     """Prepare an ingest in a specific graph."""
-    require_writer(ctx)
     async with ctx.graph_session_factory() as session:
         return await _prepare_ingest_impl(session, files, links, title, user, graph_id=str(ctx.graph.id))
 
@@ -67,10 +68,9 @@ async def confirm_graph_ingest(
     conversation_id: str,
     body: IngestConfirmRequest,
     user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> ConversationResponse:
     """Confirm an ingest in a specific graph."""
-    require_writer(ctx)
     async with ctx.graph_session_factory() as session:
         return await _confirm_ingest_impl(session, conversation_id, body, user, graph_id=str(ctx.graph.id))
 
@@ -101,10 +101,9 @@ async def decompose_graph_ingest(
     conversation_id: str,
     body: IngestDecomposeRequest,
     user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> IngestDecomposeResponse:
     """Phase 1: Decompose selected chunks in a specific graph."""
-    require_writer(ctx)
     async with ctx.graph_session_factory() as session:
         return await _decompose_ingest_impl(session, conversation_id, body, user, graph_id=str(ctx.graph.id))
 
@@ -124,10 +123,9 @@ async def build_graph_ingest(
     conversation_id: str,
     body: IngestBuildRequest,
     user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> IngestBuildResponse:
     """Phase 2: Build user-confirmed nodes in a specific graph."""
-    require_writer(ctx)
     async with ctx.graph_session_factory() as session:
         return await _build_ingest_impl(session, conversation_id, body, user, graph_id=str(ctx.graph.id))
 
@@ -136,10 +134,9 @@ async def build_graph_ingest(
 async def bottom_up_graph_prepare(
     body: BottomUpPrepareRequest,
     user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> ConversationResponse:
     """Phase 1: Bottom-up discovery in a specific graph."""
-    require_writer(ctx)
     async with ctx.graph_session_factory() as session:
         return await _bottom_up_prepare_impl(session, body, user, graph_id=str(ctx.graph.id))
 
@@ -159,10 +156,9 @@ async def graph_agent_select(
     conversation_id: str,
     body: AgentSelectRequest,
     user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> AgentSelectResponse:
     """Dispatch agent-assisted node selection in a specific graph."""
-    require_writer(ctx)
     async with ctx.graph_session_factory() as session:
         return await _agent_select_impl(session, conversation_id, body, user, graph_id=str(ctx.graph.id))
 

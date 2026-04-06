@@ -9,7 +9,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.auth.tokens import require_admin
+from kt_api.auth.permissions import require_system_permission
+from kt_rbac import Permission
 from kt_api.dependencies import get_db_session
 from kt_api.schemas import (
     DailyFailureCount,
@@ -181,7 +182,7 @@ async def list_sources(
 @router.get("/insights", response_model=SourceInsightsResponse)
 async def get_source_insights(
     since: datetime | None = Query(None, description="Only include sources retrieved after this ISO datetime"),
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_ADMIN_OPS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> SourceInsightsResponse:
     """Get aggregate insights about source fetch health (admin only)."""

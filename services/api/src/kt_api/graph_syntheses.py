@@ -11,7 +11,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from kt_api.graph_context import GraphContext, get_graph_context, require_writer
+from kt_api.auth.permissions import require_graph_permission
+from kt_api.graph_context import GraphContext, get_graph_context
+from kt_rbac import Permission
 from kt_api.syntheses import (
     CreateSuperSynthesisRequest,
     CreateSynthesisRequest,
@@ -33,10 +35,9 @@ router = APIRouter(prefix="/api/v1/graphs/{graph_slug}", tags=["graph-syntheses"
 @router.post("/syntheses")
 async def create_graph_synthesis(
     body: CreateSynthesisRequest,
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> dict[str, Any]:
     """Create a new synthesis in a specific graph."""
-    require_writer(ctx)
     from kt_api.config_api import SYNTHESIS_MODEL_IDS
     from kt_hatchet.client import dispatch_workflow
 
@@ -63,10 +64,9 @@ async def create_graph_synthesis(
 @router.post("/super-syntheses")
 async def create_graph_super_synthesis(
     body: CreateSuperSynthesisRequest,
-    ctx: GraphContext = Depends(get_graph_context),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> dict[str, Any]:
     """Create a new super-synthesis in a specific graph."""
-    require_writer(ctx)
     from kt_api.config_api import SYNTHESIS_MODEL_IDS
     from kt_hatchet.client import dispatch_workflow
 
