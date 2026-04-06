@@ -23,4 +23,14 @@ data:
     server_reset_query = DISCARD ALL
     ignore_startup_parameters = extra_float_digits
   userlist.txt: |
-    "kt" "{{ .Values.secrets.writeDbPassword }}"
+    {{- $credSecretName := .Values.writeDb.credentialsSecret | default (printf "%s-credentials" (include "knowledge-tree.writeDbName" .)) }}
+    {{- $existingCred := lookup "v1" "Secret" .Release.Namespace $credSecretName }}
+    {{- $password := "" }}
+    {{- if $existingCred }}
+      {{- $password = index (default dict $existingCred.data) "password" | default "" }}
+      {{- if $password }}
+        {{- $password = $password | b64dec }}
+      {{- end }}
+    {{- end }}
+    {{- $password = $password | default .Values.secrets.writeDbPassword }}
+    "kt" "{{ $password }}"

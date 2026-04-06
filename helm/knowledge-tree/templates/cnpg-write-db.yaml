@@ -12,14 +12,16 @@ spec:
 
   postgresql:
     parameters:
-      max_connections: {{ .Values.writeDb.postgresql.max_connections | quote }}
+      {{- range $key, $value := .Values.writeDb.postgresql }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
 
   bootstrap:
     initdb:
       database: knowledge_tree_write
       owner: kt
       secret:
-        name: {{ include "knowledge-tree.writeDbName" . }}-credentials
+        name: {{ .Values.writeDb.credentialsSecret | default (printf "%s-credentials" (include "knowledge-tree.writeDbName" .)) }}
 
   storage:
     size: {{ .Values.writeDb.storage.size }}
@@ -29,14 +31,26 @@ spec:
 
   resources:
     {{- toYaml .Values.writeDb.resources | nindent 4 }}
+{{- if not .Values.writeDb.credentialsSecret }}
 ---
+{{- $credSecretName := printf "%s-credentials" (include "knowledge-tree.writeDbName" .) }}
+{{- $existingCred := lookup "v1" "Secret" .Release.Namespace $credSecretName }}
+{{- $password := "" }}
+{{- if $existingCred }}
+  {{- $password = index (default dict $existingCred.data) "password" | default "" }}
+  {{- if $password }}
+    {{- $password = $password | b64dec }}
+  {{- end }}
+{{- end }}
+{{- $password = $password | default .Values.secrets.writeDbPassword }}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "knowledge-tree.writeDbName" . }}-credentials
+  name: {{ $credSecretName }}
   labels:
     {{- include "knowledge-tree.labels" . | nindent 4 }}
 type: kubernetes.io/basic-auth
 stringData:
   username: kt
-  password: {{ .Values.secrets.writeDbPassword | quote }}
+  password: {{ $password | quote }}
+{{- end }}

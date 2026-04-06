@@ -119,7 +119,6 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         )
         if write_session is not None:
             await write_session.commit()
-        await session.commit()
 
     await emit(
         "pipeline_phase",
@@ -337,7 +336,7 @@ bottom_up_wf = hatchet.workflow(
     input_validator=BottomUpInput,
     concurrency=ConcurrencyExpression(
         expression="input.conversation_id",
-        max_runs=1,
+        max_runs=get_settings().bottom_up_max_runs,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),
 )
@@ -473,8 +472,10 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
                 usage_by_model=None,
                 usage_by_task=None,
                 super_sources=accumulator.super_sources if accumulator.super_sources else None,
+                workflow_run_id=ctx.workflow_run_id,
+                report_type="graph_builder",
             )
-            await session.commit()
+
     except Exception:
         logger.warning(
             "Failed to persist research report for message %s",
@@ -490,7 +491,7 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
         await auto_build_task.aio_run_no_wait(AutoBuildInput())
         ctx.log("Dispatched auto_build_graph to promote accumulated seeds")
     except Exception:
-        logger.debug("Failed to dispatch auto_build_graph", exc_info=True)
+        logger.warning("Failed to dispatch auto_build_graph", exc_info=True)
 
     await emit(
         "done",
@@ -793,7 +794,6 @@ async def bottom_up_prepare_scope(
         )
         if write_session is not None:
             await write_session.commit()
-        await session.commit()
 
     await emit(
         "pipeline_phase",
@@ -839,7 +839,7 @@ bottom_up_prepare_wf = hatchet.workflow(
     input_validator=BottomUpPrepareInput,
     concurrency=ConcurrencyExpression(
         expression="input.conversation_id",
-        max_runs=1,
+        max_runs=get_settings().bottom_up_prepare_max_runs,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),
 )
@@ -1044,10 +1044,12 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         async with _open_sessions(state) as (session, write_session):
             if write_session is not None:
                 seed_repo = WriteSeedRepository(write_session)
-                # Get all active seeds — these were created during gathering
+                # Get all active seeds created during gathering.  The high limit
+                # ensures the summary reflects the full scope; each SeedSummary
+                # is lightweight (~200 bytes) so 10k is ~2 MB in memory.
                 all_seeds = await seed_repo.list_seeds(
                     status="active",
-                    limit=500,
+                    limit=10_000,
                 )
                 for seed in all_seeds:
                     aliases = list((seed.metadata_ or {}).get("aliases", []))
@@ -1077,7 +1079,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         source_count=len(all_source_urls),
         source_urls=all_source_urls,
         seeds=seed_summaries,
-        content_summary=combined_summary[:2000],
+        content_summary=combined_summary,
         explore_used=total_explore_used,
     )
 
@@ -1100,8 +1102,10 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 total_cost_usd=0.0,
                 usage_by_model=None,
                 usage_by_task=None,
+                workflow_run_id=ctx.workflow_run_id,
+                summary_data=output.model_dump(),
             )
-            await session.commit()
+
     except Exception:
         logger.warning("Failed to persist research report for prepare", exc_info=True)
 
@@ -1117,7 +1121,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                 status="completed",
                 content=f"Research complete: {total_fact_count} facts gathered, {len(seed_summaries)} seeds created.",
             )
-            await session.commit()
+
     except Exception:
         logger.exception("Failed to store prepare output on message")
 
@@ -1139,7 +1143,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         await auto_build_task.aio_run_no_wait(AutoBuildInput())
         ctx.log("Dispatched auto_build_graph to promote accumulated seeds")
     except Exception:
-        logger.debug("Failed to dispatch auto_build_graph", exc_info=True)
+        logger.warning("Failed to dispatch auto_build_graph", exc_info=True)
 
     await emit(
         "done",
@@ -1164,7 +1168,7 @@ agent_select_wf = hatchet.workflow(
     input_validator=AgentSelectInput,
     concurrency=ConcurrencyExpression(
         expression="input.conversation_id",
-        max_runs=1,
+        max_runs=get_settings().agent_select_max_runs,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),
 )

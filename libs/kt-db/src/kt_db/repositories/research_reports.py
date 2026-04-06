@@ -18,8 +18,8 @@ class ResearchReportRepository:
 
     async def create(
         self,
-        message_id: uuid.UUID,
-        conversation_id: uuid.UUID,
+        message_id: uuid.UUID | None = None,
+        conversation_id: uuid.UUID | None = None,
         nodes_created: int = 0,
         edges_created: int = 0,
         waves_completed: int = 0,
@@ -35,6 +35,8 @@ class ResearchReportRepository:
         usage_by_task: dict[str, dict[str, Any]] | None = None,
         report_type: str = "research",
         super_sources: list[dict[str, Any]] | None = None,
+        workflow_run_id: str | None = None,
+        summary_data: dict[str, Any] | None = None,
     ) -> ResearchReport:
         report = ResearchReport(
             id=uuid.uuid4(),
@@ -54,6 +56,8 @@ class ResearchReportRepository:
             usage_by_task=usage_by_task,
             report_type=report_type,
             super_sources=super_sources,
+            workflow_run_id=workflow_run_id,
+            summary_data=summary_data,
         )
         self._session.add(report)
         await self._session.flush()
@@ -76,6 +80,25 @@ class ResearchReportRepository:
 
     async def get_by_message_id(self, message_id: uuid.UUID) -> ResearchReport | None:
         result = await self._session.execute(select(ResearchReport).where(ResearchReport.message_id == message_id))
+        return result.scalar_one_or_none()
+
+    async def get_by_id(self, report_id: uuid.UUID) -> ResearchReport | None:
+        result = await self._session.execute(select(ResearchReport).where(ResearchReport.id == report_id))
+        return result.scalar_one_or_none()
+
+    async def get_by_workflow_run_id(self, workflow_run_id: str) -> ResearchReport | None:
+        result = await self._session.execute(
+            select(ResearchReport).where(ResearchReport.workflow_run_id == workflow_run_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_latest_by_conversation_id(self, conversation_id: uuid.UUID) -> ResearchReport | None:
+        result = await self._session.execute(
+            select(ResearchReport)
+            .where(ResearchReport.conversation_id == conversation_id)
+            .order_by(ResearchReport.created_at.desc())
+            .limit(1)
+        )
         return result.scalar_one_or_none()
 
     async def get_usage_records_by_report(

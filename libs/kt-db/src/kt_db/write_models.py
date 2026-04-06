@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _utcnow() -> datetime:
@@ -36,6 +36,7 @@ class WriteRawSource(WriteBase):
     __table_args__ = (
         Index("ix_write_raw_sources_updated_at", "updated_at"),
         Index("ix_write_raw_sources_content_hash", "content_hash", unique=True),
+        Index("ix_write_raw_sources_uri", "uri"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -51,6 +52,7 @@ class WriteRawSource(WriteBase):
     prohibited_chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_super_source: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_attempted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    fetch_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -208,6 +210,7 @@ class WriteNodeCounter(WriteBase):
     node_key: Mapped[str] = mapped_column(String(500), primary_key=True)
     access_count: Mapped[int] = mapped_column(Integer, default=0)
     update_count: Mapped[int] = mapped_column(Integer, default=0)
+    seed_fact_count: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
@@ -231,6 +234,13 @@ class WriteFact(WriteBase):
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    sources: Mapped[list["WriteFactSource"]] = relationship(
+        back_populates="fact",
+        lazy="raise",
+        foreign_keys="[WriteFactSource.fact_id]",
+        primaryjoin="WriteFact.id == foreign(WriteFactSource.fact_id)",
+    )
 
 
 class WriteFactSource(WriteBase):
@@ -259,6 +269,13 @@ class WriteFactSource(WriteBase):
     author_org: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    fact: Mapped["WriteFact"] = relationship(
+        back_populates="sources",
+        lazy="raise",
+        foreign_keys="[WriteFactSource.fact_id]",
+        primaryjoin="WriteFact.id == foreign(WriteFactSource.fact_id)",
+    )
 
 
 class WriteNodeFactRejection(WriteBase):

@@ -41,6 +41,15 @@ secrets:
   hatchetAdminEmail: ""
   hatchetAdminPassword: ""
 
+  resendApiKey: ""
+
+# -- Email configuration (provider-scoped)
+email:
+  provider: ""  # set to "resend" to enable
+  verification: false
+  resend:
+    fromAddress: ""
+
 # =============================================================================
 # CloudNativePG Databases
 # =============================================================================
@@ -51,6 +60,8 @@ graphDb:
   storage:
     size: 20Gi
     storageClass: ""
+  # All values under postgresql (except shared_preload_libraries) are passed
+  # as CNPG postgresql.parameters and must be scalars (string/number).
   postgresql:
     shared_preload_libraries:
       - "vector.so"
@@ -69,6 +80,8 @@ writeDb:
   storage:
     size: 20Gi
     storageClass: ""
+  # All values under postgresql are passed as CNPG postgresql.parameters
+  # and must be scalars (string/number).
   postgresql:
     max_connections: "400"
   resources:
@@ -178,6 +191,8 @@ api:
     repository: ""
     tag: ""
   port: 8000
+  # Override frontend URL for email links (default: https://research.<global.siteDomain>)
+  frontendUrl: ""
   resources:
     requests:
       memory: 256Mi
@@ -201,6 +216,8 @@ mcp:
     repository: ""
     tag: ""
   port: 8001
+  # Override wiki URL for MCP instructions (default: https://wiki.<global.siteDomain>)
+  wikiBaseUrl: ""
   resources:
     requests:
       memory: 128Mi
@@ -318,6 +335,12 @@ workers:
     image:
       repository: ""
       tag: ""
+    # Hatchet concurrency limits (pydantic-settings auto-reads uppercased env vars)
+    bottomUpMaxRuns: ""          # BOTTOM_UP_MAX_RUNS (default: 3)
+    bottomUpPrepareMaxRuns: ""   # BOTTOM_UP_PREPARE_MAX_RUNS (default: 3)
+    agentSelectMaxRuns: ""       # AGENT_SELECT_MAX_RUNS (default: 3)
+    workerBottomupSlots: ""      # WORKER_BOTTOMUP_SLOTS (default: 20)
+    workerBottomupDurableSlots: ""  # WORKER_BOTTOMUP_DURABLE_SLOTS (default: 40)
     resources:
       requests:
         memory: 512Mi

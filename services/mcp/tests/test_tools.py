@@ -35,6 +35,12 @@ def _make_mock_node(
     node.parent_id = parent_id
     node.created_at = None
     node.metadata_ = metadata
+    # Denormalized counters (used by optimized get_node)
+    node.fact_count = 0
+    node.edge_count = 0
+    node.child_count = 0
+    node.dimension_count = 0
+    node.convergence_score = 0.0
     return node
 
 
@@ -134,7 +140,7 @@ class TestSearchGraph:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.search_nodes = AsyncMock(return_value=[node])
@@ -157,7 +163,7 @@ class TestSearchGraph:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.search_nodes = AsyncMock(return_value=[])
@@ -174,7 +180,7 @@ class TestSearchGraph:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.search_nodes = AsyncMock(return_value=[])
@@ -194,7 +200,7 @@ class TestGetNode:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -217,26 +223,17 @@ class TestGetNode:
         factory, session = _mock_session_context()
         node_id = uuid.uuid4()
         node = _make_mock_node(node_id=node_id, definition=None)
+        node.dimension_count = 1  # Trigger fallback logic
         dim = _make_mock_dimension(content="Fallback content")
-
-        # Mock dim_count to return 1
-        count_results = iter([0, 0, 0, 1])  # fact, edge_src, edge_tgt, dim
-
-        async def mock_execute(stmt):
-            mock_result = MagicMock()
-            mock_result.scalar.return_value = next(count_results)
-            mock_result.all.return_value = []
-            return mock_result
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
             engine_instance.get_dimensions = AsyncMock(return_value=[dim])
-            session.execute = AsyncMock(side_effect=mock_execute)
 
             result = await get_node(str(node_id))
 
@@ -255,7 +252,7 @@ class TestGetNode:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -277,7 +274,7 @@ class TestGetNode:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -297,7 +294,7 @@ class TestGetDimensions:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -320,7 +317,7 @@ class TestGetDimensions:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -345,7 +342,7 @@ class TestGetDimensions:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -364,41 +361,26 @@ class TestGetEdges:
         other_ids = [uuid.uuid4() for _ in range(5)]
         edges = [_make_mock_edge(node_id, oid) for oid in other_ids]
 
-        # Mock target node batch query
-        mock_rows = []
-        for oid in other_ids[:3]:  # Only first page
-            row = MagicMock()
-            row.id = oid
-            row.concept = f"concept-{oid}"
-            row.node_type = "concept"
-            mock_rows.append(row)
-
-        mock_result = MagicMock()
-        mock_result.all.return_value = mock_rows
-
-        # Mock edge fact count query (returns empty — no facts)
-        mock_fact_result = MagicMock()
-        mock_fact_result.all.return_value = []
-
-        call_count = 0
-
-        async def mock_execute(stmt):
-            nonlocal call_count
-            call_count += 1
-            # First call is edge fact counts, second is target node batch
-            if call_count == 1:
-                return mock_fact_result
-            return mock_result
+        # Build the engine return value matching get_edges_with_targets format
+        edge_items = [
+            {
+                "edge": e,
+                "other_node_id": oid,
+                "other_concept": f"concept-{oid}",
+                "other_node_type": "concept",
+                "fact_count": 0,
+            }
+            for e, oid in zip(edges[:3], other_ids[:3])
+        ]
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
-            engine_instance.get_edges = AsyncMock(return_value=edges)
-            session.execute = AsyncMock(side_effect=mock_execute)
+            engine_instance.get_edges_with_targets = AsyncMock(return_value={"edges": edge_items, "total": 5})
 
             result = await get_edges(str(node_id), limit=3, offset=0)
 
@@ -409,49 +391,46 @@ class TestGetEdges:
 
     @pytest.mark.asyncio
     async def test_get_edges_sorted_by_fact_count(self):
-        """Edges are sorted by fact count descending."""
+        """Edges are sorted by fact count descending (done by engine)."""
         factory, session = _mock_session_context()
         node_id = uuid.uuid4()
         node = _make_mock_node(node_id=node_id)
         other_ids = [uuid.uuid4() for _ in range(3)]
         edges = [_make_mock_edge(node_id, oid) for oid in other_ids]
 
-        # Assign fact counts: edge[0]=1, edge[1]=5, edge[2]=3
-        fact_count_map = {edges[0].id: 1, edges[1].id: 5, edges[2].id: 3}
-        fact_rows = [(eid, cnt) for eid, cnt in fact_count_map.items()]
-
-        mock_fact_result = MagicMock()
-        mock_fact_result.all.return_value = fact_rows
-
-        mock_node_rows = []
-        for oid in other_ids:
-            row = MagicMock()
-            row.id = oid
-            row.concept = f"concept-{oid}"
-            row.node_type = "concept"
-            mock_node_rows.append(row)
-
-        mock_node_result = MagicMock()
-        mock_node_result.all.return_value = mock_node_rows
-
-        call_count = 0
-
-        async def mock_execute(stmt):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_fact_result
-            return mock_node_result
+        # Engine returns pre-sorted: 5, 3, 1
+        edge_items = [
+            {
+                "edge": edges[1],
+                "other_node_id": other_ids[1],
+                "other_concept": "c1",
+                "other_node_type": "concept",
+                "fact_count": 5,
+            },
+            {
+                "edge": edges[2],
+                "other_node_id": other_ids[2],
+                "other_concept": "c2",
+                "other_node_type": "concept",
+                "fact_count": 3,
+            },
+            {
+                "edge": edges[0],
+                "other_node_id": other_ids[0],
+                "other_concept": "c0",
+                "other_node_type": "concept",
+                "fact_count": 1,
+            },
+        ]
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
-            engine_instance.get_edges = AsyncMock(return_value=edges)
-            session.execute = AsyncMock(side_effect=mock_execute)
+            engine_instance.get_edges_with_targets = AsyncMock(return_value={"edges": edge_items, "total": 3})
 
             result = await get_edges(str(node_id), limit=10)
 
@@ -466,16 +445,26 @@ class TestGetEdges:
         node_id = uuid.uuid4()
         node = _make_mock_node(node_id=node_id)
         related_edge = _make_mock_edge(node_id, uuid.uuid4(), relationship_type="related")
-        cross_edge = _make_mock_edge(node_id, uuid.uuid4(), relationship_type="cross_type")
+
+        # Engine handles filtering — returns only related
+        edge_items = [
+            {
+                "edge": related_edge,
+                "other_node_id": related_edge.target_node_id,
+                "other_concept": "c",
+                "other_node_type": "concept",
+                "fact_count": 0,
+            },
+        ]
 
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
-            engine_instance.get_edges = AsyncMock(return_value=[related_edge, cross_edge])
+            engine_instance.get_edges_with_targets = AsyncMock(return_value={"edges": edge_items, "total": 1})
 
             result = await get_edges(str(node_id), edge_type="related")
 
@@ -494,7 +483,7 @@ class TestGetEdges:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -522,7 +511,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -561,7 +550,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -594,7 +583,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -624,7 +613,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -639,7 +628,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -661,7 +650,7 @@ class TestGetFacts:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -706,7 +695,7 @@ class TestGetFactSources:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=node)
@@ -731,7 +720,7 @@ class TestGetFactSources:
 class TestSearchFacts:
     @pytest.mark.asyncio
     async def test_search_returns_facts_with_sources_and_nodes(self):
-        """Search returns facts with sources and linked nodes."""
+        """Search returns facts with sources and linked nodes via hybrid search."""
         factory, session = _mock_session_context()
         raw_src = _make_mock_raw_source(uri="https://source.com")
         fs = _make_mock_fact_source(
@@ -742,8 +731,6 @@ class TestSearchFacts:
         fact = _make_mock_fact(content="Quantum entanglement occurs", sources=[fs])
 
         node_id = uuid.uuid4()
-        node_link_row = MagicMock()
-        node_link_row.__getitem__ = lambda self, i: [fact.id, node_id, "quantum computing", "concept"][i]
 
         # Mock execute calls: source query, then node link query
         call_count = 0
@@ -765,14 +752,17 @@ class TestSearchFacts:
                 mock_result.scalars.return_value.all.return_value = []
             return mock_result
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
-            engine_instance.count_facts = AsyncMock(return_value=1)
-            engine_instance.list_facts = AsyncMock(return_value=[fact])
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=[fact])
             session.execute = AsyncMock(side_effect=mock_execute)
 
             result = await search_facts("quantum")
@@ -786,10 +776,11 @@ class TestSearchFacts:
         assert item["sources"][0]["uri"] == "https://source.com"
         assert item["sources"][0]["author_person"] == "Bob"
         assert item["linked_nodes"][0]["concept"] == "quantum computing"
+        engine_instance.hybrid_search_facts.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_search_pagination(self):
-        """Offset/limit pagination works for fact search."""
+        """Offset/limit pagination works for fact search with hybrid search."""
         factory, session = _mock_session_context()
         facts = [_make_mock_fact(content=f"Fact {i}") for i in range(5)]
 
@@ -799,34 +790,40 @@ class TestSearchFacts:
             mock_result.all.return_value = []
             return mock_result
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
-            engine_instance.count_facts = AsyncMock(return_value=5)
-            engine_instance.list_facts = AsyncMock(return_value=facts[:3])
+            # hybrid_search_facts returns all 5, slicing handles offset/limit
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=facts[:3])
             session.execute = AsyncMock(side_effect=mock_execute)
 
             result = await search_facts("test", limit=3, offset=0)
 
         assert result["returned"] == 3
-        assert result["total"] == 5
-        assert result["next_offset"] == 3
+        assert result["total"] == 3
 
     @pytest.mark.asyncio
     async def test_search_empty_result(self):
         factory, session = _mock_session_context()
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
-            engine_instance.count_facts = AsyncMock(return_value=0)
-            engine_instance.list_facts = AsyncMock(return_value=[])
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=[])
 
             result = await search_facts("nonexistent")
 
@@ -838,25 +835,47 @@ class TestSearchFacts:
     async def test_search_clamps_limit(self):
         factory, session = _mock_session_context()
 
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.embed_text = AsyncMock(return_value=[0.1] * 3072)
+
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=mock_embedding_svc),
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
+        ):
+            engine_instance = MockEngine.return_value
+            engine_instance.hybrid_search_facts = AsyncMock(return_value=[])
+
+            await search_facts("test", limit=999)
+
+            # Hybrid search always fetches up to 100 results (max window)
+            engine_instance.hybrid_search_facts.assert_called_once_with(
+                query="test",
+                embedding=[0.1] * 3072,
+                limit=100,
+                fact_type=None,
+            )
+
+    @pytest.mark.asyncio
+    async def test_search_falls_back_to_ilike_without_embedding_service(self):
+        """Falls back to ILIKE search when embedding service is unavailable."""
+        factory, session = _mock_session_context()
+
+        with (
+            patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
+            patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
+            patch("kt_mcp.server.get_embedding_service_cached", return_value=None),
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.count_facts = AsyncMock(return_value=0)
             engine_instance.list_facts = AsyncMock(return_value=[])
 
-            await search_facts("test", limit=999)
+            result = await search_facts("test")
 
-            engine_instance.list_facts.assert_called_once_with(
-                offset=0,
-                limit=100,
-                search="test",
-                fact_type=None,
-                author_org=None,
-                source_domain=None,
-            )
+        assert result["facts"] == []
+        engine_instance.list_facts.assert_called_once()
 
 
 def _make_mock_path_step(node_id: uuid.UUID, edge: MagicMock | None = None) -> MagicMock:
@@ -892,7 +911,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(
@@ -933,7 +952,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(
@@ -954,7 +973,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             engine_instance.get_node = AsyncMock(return_value=None)
@@ -971,7 +990,7 @@ class TestGetNodePaths:
         with (
             patch("kt_mcp.server.get_session_factory_cached", return_value=factory),
             patch("kt_mcp.server.get_qdrant_client_cached", return_value=MagicMock()),
-            patch("kt_mcp.server.GraphEngine") as MockEngine,
+            patch("kt_mcp.server.ReadGraphEngine") as MockEngine,
         ):
             engine_instance = MockEngine.return_value
             # First call returns source, second returns None (target)

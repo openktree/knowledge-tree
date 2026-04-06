@@ -12,6 +12,7 @@ members = [
     "knowledge-tree-workspace",
     "kt-agents-core",
     "kt-api",
+    "kt-auth",
     "kt-config",
     "kt-db",
     "kt-facts",
@@ -1628,7 +1629,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.3.0"
+version = "0.29.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1692,13 +1693,13 @@ dependencies = [
     { name = "fastapi-users", extra = ["sqlalchemy"] },
     { name = "httpx-oauth" },
     { name = "kt-agents-core" },
+    { name = "kt-auth" },
     { name = "kt-config" },
     { name = "kt-db" },
     { name = "kt-facts" },
     { name = "kt-graph" },
     { name = "kt-hatchet" },
     { name = "kt-models" },
-    { name = "kt-ontology" },
     { name = "kt-providers" },
     { name = "kt-worker-ingest" },
     { name = "kt-worker-nodes" },
@@ -1716,13 +1717,13 @@ requires-dist = [
     { name = "fastapi-users", extras = ["sqlalchemy"], specifier = ">=15.0.4" },
     { name = "httpx-oauth", specifier = ">=0.16.1" },
     { name = "kt-agents-core", editable = "libs/kt-agents-core" },
+    { name = "kt-auth", editable = "libs/kt-auth" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-facts", editable = "libs/kt-facts" },
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
-    { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-worker-ingest", editable = "services/worker-ingest" },
     { name = "kt-worker-nodes", editable = "services/worker-nodes" },
@@ -1731,6 +1732,27 @@ requires-dist = [
     { name = "sse-starlette", specifier = ">=3.3.2" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "uvicorn", specifier = ">=0.40.0" },
+]
+
+[[package]]
+name = "kt-auth"
+version = "0.1.0"
+source = { editable = "libs/kt-auth" }
+dependencies = [
+    { name = "bcrypt" },
+    { name = "kt-config" },
+    { name = "kt-db" },
+    { name = "redis" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bcrypt", specifier = ">=4.3.0" },
+    { name = "kt-config", editable = "libs/kt-config" },
+    { name = "kt-db", editable = "libs/kt-db" },
+    { name = "redis", specifier = ">=7.3.0" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
 ]
 
 [[package]]
@@ -1821,7 +1843,6 @@ dependencies = [
     { name = "kt-config" },
     { name = "kt-db" },
     { name = "kt-models" },
-    { name = "kt-ontology" },
     { name = "kt-providers" },
     { name = "kt-qdrant" },
     { name = "langchain-core" },
@@ -1836,7 +1857,6 @@ requires-dist = [
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-models", editable = "libs/kt-models" },
-    { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
     { name = "langchain-core", specifier = ">=0.3.0" },
@@ -1849,25 +1869,29 @@ name = "kt-mcp"
 version = "0.1.0"
 source = { editable = "services/mcp" }
 dependencies = [
-    { name = "bcrypt" },
     { name = "fastapi" },
     { name = "fastmcp" },
+    { name = "kt-auth" },
     { name = "kt-config" },
     { name = "kt-db" },
     { name = "kt-graph" },
+    { name = "kt-models" },
     { name = "kt-qdrant" },
+    { name = "pwdlib", extra = ["argon2", "bcrypt"] },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "bcrypt", specifier = ">=4.3.0" },
     { name = "fastapi", specifier = ">=0.129.0" },
     { name = "fastmcp", specifier = ">=3.0" },
+    { name = "kt-auth", editable = "libs/kt-auth" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-graph", editable = "libs/kt-graph" },
+    { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
+    { name = "pwdlib", extras = ["argon2", "bcrypt"], specifier = ">=0.3.0" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]
 
@@ -1930,6 +1954,11 @@ dependencies = [
     { name = "trafilatura" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "respx" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
@@ -1939,6 +1968,9 @@ requires-dist = [
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "trafilatura", specifier = ">=2.0.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "respx", specifier = ">=0.22.0" }]
 
 [[package]]
 name = "kt-qdrant"
@@ -1992,7 +2024,6 @@ dependencies = [
     { name = "kt-graph" },
     { name = "kt-hatchet" },
     { name = "kt-models" },
-    { name = "kt-ontology" },
     { name = "kt-providers" },
     { name = "kt-worker-nodes" },
     { name = "langchain-core" },
@@ -2008,7 +2039,6 @@ requires-dist = [
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
-    { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-worker-nodes", editable = "services/worker-nodes" },
     { name = "langchain-core", specifier = ">=0.3.0" },
@@ -2062,7 +2092,6 @@ dependencies = [
     { name = "kt-graph" },
     { name = "kt-hatchet" },
     { name = "kt-models" },
-    { name = "kt-ontology" },
     { name = "kt-providers" },
     { name = "kt-worker-bottomup" },
     { name = "langchain-core" },
@@ -2078,7 +2107,6 @@ requires-dist = [
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
-    { name = "kt-ontology", editable = "libs/kt-ontology" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-worker-bottomup", editable = "services/worker-bottomup" },
     { name = "langchain-core", specifier = ">=0.3.0" },
@@ -2118,6 +2146,7 @@ dependencies = [
     { name = "kt-hatchet" },
     { name = "kt-models" },
     { name = "kt-qdrant" },
+    { name = "redis" },
 ]
 
 [package.metadata]
@@ -2127,6 +2156,7 @@ requires-dist = [
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
+    { name = "redis", specifier = ">=7.3.0" },
 ]
 
 [[package]]

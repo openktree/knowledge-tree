@@ -33,9 +33,9 @@ from kt_api.schemas import (
     QuickPerspectiveValidateResponse,
 )
 from kt_config.settings import get_settings
-from kt_db.models import ConvergenceReport, Dimension, Edge, FactSource, Node, NodeFact, User
+from kt_db.models import FactSource, Node, NodeFact, User
 from kt_graph.convergence import compute_convergence
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
@@ -77,54 +77,10 @@ async def _batch_parent_concepts(session: AsyncSession, nodes: list[Node]) -> di
     return {row.id: (row.concept, row.node_type) for row in result.all()}
 
 
-async def _batch_convergence_scores(session: AsyncSession, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
-    """Fetch convergence scores for a batch of node IDs in a single query."""
-    if not node_ids:
-        return {}
-    stmt = select(ConvergenceReport.node_id, ConvergenceReport.convergence_score).where(
-        ConvergenceReport.node_id.in_(node_ids)
-    )
-    result = await session.execute(stmt)
-    return {row.node_id: row.convergence_score for row in result.all()}
-
-
-async def _batch_richness_and_fact_counts(
-    session: AsyncSession, nodes: list[Node]
-) -> tuple[dict[uuid.UUID, float], dict[uuid.UUID, int]]:
-    """Compute richness scores and fact counts for a batch of nodes.
-
-    Returns (richness_map, fact_count_map).
-    """
-    if not nodes:
-        return {}, {}
-    node_ids = [n.id for n in nodes]
-
-    # Fact counts per node
-    fact_stmt = (
-        select(NodeFact.node_id, func.count(NodeFact.fact_id))
-        .where(NodeFact.node_id.in_(node_ids))
-        .group_by(NodeFact.node_id)
-    )
-    fact_result = await session.execute(fact_stmt)
-    fact_counts = {row[0]: row[1] for row in fact_result.all()}
-
-    # Dimension counts per node
-    dim_stmt = (
-        select(Dimension.node_id, func.count(Dimension.id))
-        .where(Dimension.node_id.in_(node_ids))
-        .group_by(Dimension.node_id)
-    )
-    dim_result = await session.execute(dim_stmt)
-    dim_counts = {row[0]: row[1] for row in dim_result.all()}
-
-    # Same formula as GraphEngine.compute_richness
-    scores: dict[uuid.UUID, float] = {}
-    for n in nodes:
-        fc = fact_counts.get(n.id, 0)
-        dc = dim_counts.get(n.id, 0)
-        raw = fc * 0.1 + dc * 0.2 + n.access_count * 0.01
-        scores[n.id] = min(1.0, raw)
-    return scores, fact_counts
+def _compute_richness(n: Node) -> float:
+    """Compute richness from denormalized columns (no DB query needed)."""
+    raw = n.fact_count * 0.1 + n.dimension_count * 0.2 + n.access_count * 0.01
+    return min(1.0, raw)
 
 
 async def _batch_seed_fact_counts(
@@ -164,57 +120,15 @@ async def _batch_seed_fact_counts(
     return result
 
 
-async def _batch_edge_counts(session: AsyncSession, nodes: list[Node]) -> dict[uuid.UUID, int]:
-    """Count edges (source or target) per node in a single query."""
-    if not nodes:
-        return {}
-    node_ids = [n.id for n in nodes]
-    stmt = (
-        select(Edge.source_node_id, func.count(Edge.id))
-        .where(Edge.source_node_id.in_(node_ids))
-        .group_by(Edge.source_node_id)
-    )
-    result = await session.execute(stmt)
-    counts: dict[uuid.UUID, int] = {row[0]: row[1] for row in result.all()}
-    # Also count edges where node is the target
-    stmt2 = (
-        select(Edge.target_node_id, func.count(Edge.id))
-        .where(Edge.target_node_id.in_(node_ids))
-        .group_by(Edge.target_node_id)
-    )
-    result2 = await session.execute(stmt2)
-    for row in result2.all():
-        counts[row[0]] = counts.get(row[0], 0) + row[1]
-    return counts
-
-
-async def _batch_child_counts(session: AsyncSession, nodes: list[Node]) -> dict[uuid.UUID, int]:
-    """Count children (nodes where parent_id = this node) per node in a single query."""
-    if not nodes:
-        return {}
-    node_ids = [n.id for n in nodes]
-    stmt = select(Node.parent_id, func.count(Node.id)).where(Node.parent_id.in_(node_ids)).group_by(Node.parent_id)
-    result = await session.execute(stmt)
-    return {row[0]: row[1] for row in result.all()}
-
-
 def _build_node_response(
     n: Node,
     parent_map: dict[uuid.UUID, tuple[str, str]],
-    richness_map: dict[uuid.UUID, float],
-    cr_map: dict[uuid.UUID, float],
-    edge_count_map: dict[uuid.UUID, int] | None = None,
-    child_count_map: dict[uuid.UUID, int] | None = None,
-    fact_count_map: dict[uuid.UUID, int] | None = None,
     seed_fact_count_map: dict[uuid.UUID, int] | None = None,
-    access_count_override: int | None = None,
-    update_count_override: int | None = None,
 ) -> NodeResponse:
-    """Build a NodeResponse from a Node model with all new fields."""
+    """Build a NodeResponse from a Node model using denormalized columns."""
     parent_info = parent_map.get(n.parent_id) if n.parent_id else None
     parent_concept = parent_info[0] if parent_info else None
     parent_key = make_url_key(parent_info[1], parent_info[0]) if parent_info else None
-    fc = fact_count_map.get(n.id, 0) if fact_count_map else 0
     sfc = seed_fact_count_map.get(n.id, 0) if seed_fact_count_map else 0
     return NodeResponse(
         id=str(n.id),
@@ -230,15 +144,15 @@ def _build_node_response(
         max_content_tokens=n.max_content_tokens,
         created_at=n.created_at,
         updated_at=n.updated_at,
-        update_count=update_count_override if update_count_override is not None else n.update_count,
-        access_count=access_count_override if access_count_override is not None else n.access_count,
-        edge_count=edge_count_map.get(n.id, 0) if edge_count_map else 0,
-        child_count=child_count_map.get(n.id, 0) if child_count_map else 0,
-        fact_count=fc,
+        update_count=n.update_count,
+        access_count=n.access_count,
+        edge_count=n.edge_count,
+        child_count=n.child_count,
+        fact_count=n.fact_count,
         seed_fact_count=sfc,
-        pending_facts=max(0, sfc - fc),
-        richness=richness_map.get(n.id, 0.0),
-        convergence_score=cr_map.get(n.id, 0.0),
+        pending_facts=max(0, sfc - n.fact_count),
+        richness=_compute_richness(n),
+        convergence_score=n.convergence_score,
         definition=n.definition,
         definition_source=n.definition_source,
         definition_generated_at=n.definition_generated_at.isoformat() if n.definition_generated_at else None,
@@ -336,28 +250,11 @@ async def _list_nodes_by_pending_facts(
     # Preserve sort order
     nodes = [nodes_by_id[nid] for nid in page_ids if nid in nodes_by_id]
 
-    # Build responses with all enrichments
-    cr_map = await _batch_convergence_scores(session, [n.id for n in nodes])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, nodes)
+    # Build responses using denormalized columns
     parent_map = await _batch_parent_concepts(session, nodes)
-    edge_count_map = await _batch_edge_counts(session, nodes)
-    child_count_map = await _batch_child_counts(session, nodes)
-    # Reuse already-computed seed fact counts
     seed_fact_count_map = seed_fc
 
-    items = [
-        _build_node_response(
-            n,
-            parent_map,
-            richness_map,
-            cr_map,
-            edge_count_map,
-            child_count_map,
-            fact_count_map,
-            seed_fact_count_map,
-        )
-        for n in nodes
-    ]
+    items = [_build_node_response(n, parent_map, seed_fact_count_map) for n in nodes]
     return PaginatedNodesResponse(items=items, total=total, offset=offset, limit=limit)
 
 
@@ -374,34 +271,22 @@ async def list_nodes(
     if sort == "pending_facts":
         return await _list_nodes_by_pending_facts(session, offset, limit, search, node_type)
 
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    from kt_config.cache import cache_get, cache_set, make_cache_key
+
+    cache_key = make_cache_key("nodes:list", offset=offset, limit=limit, search=search, node_type=node_type, sort=sort)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return PaginatedNodesResponse(**cached)
+
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     nodes = await engine.list_nodes(offset=offset, limit=limit, search=search, node_type=node_type, sort=sort)
     total = await engine.count_nodes(search=search, node_type=node_type)
-    cr_map = await _batch_convergence_scores(session, [n.id for n in nodes])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, nodes)
     parent_map = await _batch_parent_concepts(session, nodes)
-    edge_count_map = await _batch_edge_counts(session, nodes)
-    child_count_map = await _batch_child_counts(session, nodes)
     seed_fact_count_map = await _batch_seed_fact_counts(nodes)
-    items = [
-        _build_node_response(
-            n,
-            parent_map,
-            richness_map,
-            cr_map,
-            edge_count_map,
-            child_count_map,
-            fact_count_map,
-            seed_fact_count_map,
-        )
-        for n in nodes
-    ]
-    return PaginatedNodesResponse(
-        items=items,
-        total=total,
-        offset=offset,
-        limit=limit,
-    )
+    items = [_build_node_response(n, parent_map, seed_fact_count_map) for n in nodes]
+    result = PaginatedNodesResponse(items=items, total=total, offset=offset, limit=limit)
+    await cache_set(cache_key, result.model_dump(), ttl=30)
+    return result
 
 
 @router.get("/search", response_model=list[NodeResponse])
@@ -411,27 +296,11 @@ async def search_nodes(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Search nodes by concept name (text search)."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     nodes = await engine.search_nodes(query, limit=limit)
-    cr_map = await _batch_convergence_scores(session, [n.id for n in nodes])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, nodes)
     parent_map = await _batch_parent_concepts(session, nodes)
-    edge_count_map = await _batch_edge_counts(session, nodes)
-    child_count_map = await _batch_child_counts(session, nodes)
     seed_fact_count_map = await _batch_seed_fact_counts(nodes)
-    return [
-        _build_node_response(
-            n,
-            parent_map,
-            richness_map,
-            cr_map,
-            edge_count_map,
-            child_count_map,
-            fact_count_map,
-            seed_fact_count_map,
-        )
-        for n in nodes
-    ]
+    return [_build_node_response(n, parent_map, seed_fact_count_map) for n in nodes]
 
 
 @router.get("/{node_id}", response_model=NodeResponse)
@@ -439,36 +308,28 @@ async def get_node(
     node_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> NodeResponse:
-    """Get a single node by ID."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    """Get a single node by ID.
+
+    Not cached: access_count is incremented on every read, and caching would
+    serve stale counts while silently skipping increments for cache hits.
+    Denormalized counters on the nodes table already keep this query fast.
+    """
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
         # Support both canonical keys (concept:ai) and URL-friendly keys (concept-ai)
         real_key = url_key_to_node_key(node_id)
         uid = key_to_uuid(real_key)
+
     node = await engine.get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     await engine.increment_access_count(uid)
     await session.commit()
-    cr_map = await _batch_convergence_scores(session, [node.id])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, [node])
     parent_map = await _batch_parent_concepts(session, [node])
-    edge_count_map = await _batch_edge_counts(session, [node])
-    child_count_map = await _batch_child_counts(session, [node])
     seed_fact_count_map = await _batch_seed_fact_counts([node])
-    return _build_node_response(
-        node,
-        parent_map,
-        richness_map,
-        cr_map,
-        edge_count_map,
-        child_count_map,
-        fact_count_map,
-        seed_fact_count_map,
-        access_count_override=node.access_count + 1,
-    )
+    return _build_node_response(node, parent_map, seed_fact_count_map)
 
 
 @router.patch("/{node_id}", response_model=NodeResponse)
@@ -478,7 +339,7 @@ async def update_node(
     session: AsyncSession = Depends(get_db_session),
 ) -> NodeResponse:
     """Update a node's editable fields."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -492,23 +353,15 @@ async def update_node(
         raise HTTPException(status_code=404, detail="Node not found")
     await engine.increment_update_count(uid)
     await session.commit()
-    cr_map = await _batch_convergence_scores(session, [node.id])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, [node])
+
+    from kt_config.cache import cache_invalidate
+
+    await cache_invalidate(f"kt:node:{uid}*")
+    await cache_invalidate("kt:nodes:list:*")
+
     parent_map = await _batch_parent_concepts(session, [node])
-    edge_count_map = await _batch_edge_counts(session, [node])
-    child_count_map = await _batch_child_counts(session, [node])
     seed_fact_count_map = await _batch_seed_fact_counts([node])
-    return _build_node_response(
-        node,
-        parent_map,
-        richness_map,
-        cr_map,
-        edge_count_map,
-        child_count_map,
-        fact_count_map,
-        seed_fact_count_map,
-        update_count_override=node.update_count + 1,
-    )
+    return _build_node_response(node, parent_map, seed_fact_count_map)
 
 
 @router.delete("/{node_id}", response_model=DeleteResponse)
@@ -517,7 +370,7 @@ async def delete_node(
     session: AsyncSession = Depends(get_db_session),
 ) -> DeleteResponse:
     """Delete a node and its edges, dimensions, versions (but not linked facts)."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -526,6 +379,13 @@ async def delete_node(
     if not deleted:
         raise HTTPException(status_code=404, detail="Node not found")
     await session.commit()
+
+    from kt_config.cache import cache_invalidate
+
+    await cache_invalidate(f"kt:node:{uid}*")
+    await cache_invalidate("kt:nodes:list:*")
+    await cache_invalidate("kt:graph:subgraph:*")
+
     return DeleteResponse(deleted=True, id=node_id)
 
 
@@ -535,16 +395,23 @@ async def get_node_dimensions(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DimensionResponse]:
     """Get all dimensions (model perspectives) for a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
         uid = key_to_uuid(url_key_to_node_key(node_id))
+    from kt_config.cache import cache_get, cache_set
+
+    cache_key = f"kt:node:{uid}:dimensions"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return [DimensionResponse(**d) for d in cached]
+
     node = await engine.get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     dims = await engine.get_dimensions(uid)
-    return [
+    result = [
         DimensionResponse(
             id=str(d.id),
             node_id=str(d.node_id),
@@ -559,6 +426,8 @@ async def get_node_dimensions(
         )
         for d in dims
     ]
+    await cache_set(cache_key, [r.model_dump() for r in result], ttl=60)
+    return result
 
 
 @router.get("/{node_id}/facts", response_model=list[FactResponse])
@@ -567,16 +436,23 @@ async def get_node_facts(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[FactResponse]:
     """Get all facts linked to a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
         uid = key_to_uuid(url_key_to_node_key(node_id))
+    from kt_config.cache import cache_get, cache_set
+
+    cache_key = f"kt:node:{uid}:facts"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return [FactResponse(**f) for f in cached]
+
     node = await engine.get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     facts = await engine.get_node_facts_with_sources(uid)
-    return [
+    result = [
         FactResponse(
             id=str(f.id),
             content=f.content,
@@ -587,6 +463,8 @@ async def get_node_facts(
         )
         for f in facts
     ]
+    await cache_set(cache_key, [r.model_dump() for r in result], ttl=60)
+    return result
 
 
 @router.post("/{node_id}/rebuild")
@@ -601,7 +479,7 @@ async def rebuild_node(
     Accepts optional JSON body ``{"mode": "full"|"incremental", "scope": "all"|"dimensions"|"edges"}``.
     Defaults to ``mode="full", scope="all"`` (full rebuild).
     """
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -612,19 +490,26 @@ async def rebuild_node(
 
     from kt_hatchet.client import dispatch_workflow
 
-    mode = (body or {}).get("mode", "full")
+    raw_mode = (body or {}).get("mode", "full")
+    pipeline_mode = f"rebuild_{raw_mode}" if raw_mode in ("full", "incremental") else "rebuild_full"
     scope = (body or {}).get("scope", "all")
     api_key = require_api_key(user)
     await dispatch_workflow(
-        "rebuild_node",
+        "node_pipeline",
         {
+            "mode": pipeline_mode,
             "node_id": node_id,
-            "mode": mode,
             "scope": scope,
             "recalculate_pair": True,
             "api_key": api_key,
         },
     )
+
+    from kt_config.cache import cache_invalidate
+
+    await cache_invalidate(f"kt:node:{uid}*")
+    await cache_invalidate("kt:nodes:list:*")
+
     return {"status": "started", "node_id": node_id}
 
 
@@ -645,7 +530,7 @@ async def get_node_edges(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[EdgeResponse]:
     """Get all edges connected to a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -681,7 +566,7 @@ async def get_node_history(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeVersionResponse]:
     """Get the version history for a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -709,7 +594,7 @@ async def get_node_convergence(
     session: AsyncSession = Depends(get_db_session),
 ) -> ConvergenceResponse:
     """Compute convergence analysis across model dimensions for a node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -733,7 +618,7 @@ async def get_node_perspectives(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Get all perspective nodes for a concept node."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -742,25 +627,9 @@ async def get_node_perspectives(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     perspectives = await engine.get_perspectives(uid)
-    cr_map = await _batch_convergence_scores(session, [p.id for p in perspectives])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, perspectives)
     parent_map = await _batch_parent_concepts(session, perspectives)
-    edge_count_map = await _batch_edge_counts(session, perspectives)
-    child_count_map = await _batch_child_counts(session, perspectives)
     seed_fact_count_map = await _batch_seed_fact_counts(perspectives)
-    return [
-        _build_node_response(
-            p,
-            parent_map,
-            richness_map,
-            cr_map,
-            edge_count_map,
-            child_count_map,
-            fact_count_map,
-            seed_fact_count_map,
-        )
-        for p in perspectives
-    ]
+    return [_build_node_response(p, parent_map, seed_fact_count_map) for p in perspectives]
 
 
 @router.get("/{node_id}/children", response_model=list[NodeResponse])
@@ -777,25 +646,9 @@ async def get_node_children(
     children = list(result.scalars().all())
     if not children:
         return []
-    cr_map = await _batch_convergence_scores(session, [c.id for c in children])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, children)
     parent_map = await _batch_parent_concepts(session, children)
-    edge_count_map = await _batch_edge_counts(session, children)
-    child_count_map = await _batch_child_counts(session, children)
     seed_fact_count_map = await _batch_seed_fact_counts(children)
-    return [
-        _build_node_response(
-            c,
-            parent_map,
-            richness_map,
-            cr_map,
-            edge_count_map,
-            child_count_map,
-            fact_count_map,
-            seed_fact_count_map,
-        )
-        for c in children
-    ]
+    return [_build_node_response(c, parent_map, seed_fact_count_map) for c in children]
 
 
 # ── On-demand enrichment ────────────────────────────────────────────────
@@ -807,7 +660,7 @@ async def enrich_node(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     """Legacy endpoint — redirects to rebuild_node with mode=full, scope=all."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -818,7 +671,7 @@ async def enrich_node(
 
     from kt_hatchet.client import dispatch_workflow
 
-    await dispatch_workflow("rebuild_node", {"node_id": node_id, "mode": "full", "scope": "all"})
+    await dispatch_workflow("node_pipeline", {"mode": "rebuild_full", "node_id": node_id, "scope": "all"})
     return {"status": "started", "node_id": node_id}
 
 
@@ -837,7 +690,7 @@ async def quick_add_node(
     Hatchet node pipeline (create -> dimensions + edges + definition +
     ancestry + crystallization).  Costs 1 nav credit.
     """
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     existing = await engine.search_nodes(body.concept.strip(), limit=1)
 
     # Exact-ish match: first result whose concept matches case-insensitively
@@ -852,10 +705,10 @@ async def quick_add_node(
         from kt_hatchet.client import dispatch_workflow
 
         await dispatch_workflow(
-            "rebuild_node",
+            "node_pipeline",
             {
+                "mode": "rebuild_full",
                 "node_id": str(match.id),
-                "mode": "full",
                 "scope": "all",
                 "recalculate_pair": True,
             },
@@ -977,7 +830,7 @@ async def quick_add_perspective(
             validation=validation,
         )
 
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
     from kt_config.types import ALL_PERSPECTIVES_ID
     from kt_models.embeddings import EmbeddingService
@@ -1110,7 +963,7 @@ async def regenerate_composite(
     Dispatches a Hatchet ``regenerate_composite`` task that re-runs the
     composite agent and saves a new version.
     """
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -1139,7 +992,7 @@ async def get_source_nodes(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[NodeResponse]:
     """Get the source nodes for a composite node (via draws_from edges)."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(node_id)
     except ValueError:
@@ -1164,22 +1017,6 @@ async def get_source_nodes(
     if not source_nodes:
         return []
 
-    cr_map = await _batch_convergence_scores(session, [n.id for n in source_nodes])
-    richness_map, fact_count_map = await _batch_richness_and_fact_counts(session, source_nodes)
     parent_map = await _batch_parent_concepts(session, source_nodes)
-    edge_count_map = await _batch_edge_counts(session, source_nodes)
-    child_count_map = await _batch_child_counts(session, source_nodes)
     seed_fact_count_map = await _batch_seed_fact_counts(source_nodes)
-    return [
-        _build_node_response(
-            n,
-            parent_map,
-            richness_map,
-            cr_map,
-            edge_count_map,
-            child_count_map,
-            fact_count_map,
-            seed_fact_count_map,
-        )
-        for n in source_nodes
-    ]
+    return [_build_node_response(n, parent_map, seed_fact_count_map) for n in source_nodes]

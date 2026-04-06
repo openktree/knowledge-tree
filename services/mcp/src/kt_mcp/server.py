@@ -16,24 +16,75 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastmcp import FastMCP
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from kt_config.settings import get_settings
-from kt_db.models import Dimension, Edge, EdgeFact, Fact, FactSource, Node, NodeFact, RawSource
-from kt_graph.engine import GraphEngine
-from kt_mcp.auth import verify_bearer_token
+from kt_db.models import Fact, FactSource, Node, NodeFact, RawSource
+from kt_graph.read_engine import ReadGraphEngine
 from kt_mcp.dependencies import (
+    get_embedding_service_cached,
     get_qdrant_client_cached,
     get_session_factory_cached,
 )
+from kt_mcp.oauth_provider import create_oauth_provider
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Knowledge Tree")
+_settings = get_settings()
+
+_INSTRUCTIONS = f"""
+Knowledge Tree is a **provenance-tracked knowledge graph** built exclusively
+from real external sources (web search, uploaded documents, links). Every piece
+of information traces back to a citable source — nothing comes from AI model
+internal knowledge.
+
+## How to navigate the graph
+
+The graph stores **nodes** (concepts, entities, perspectives, events) connected
+by **edges** weighted by shared evidence. The right way to use it is to
+*navigate*, not just retrieve a single concept.
+
+### Recommended workflow
+
+1. **Search** — use `search_graph` to find relevant nodes, or `search_facts`
+   to find evidence across the entire fact pool. Both are valid entry points.
+2. **Get the overview** — call `get_node` on a result to read its definition
+   and see counts (fact_count, edge_count, dimension_count tell you how rich
+   the node is).
+3. **Explore neighbors** — call `get_edges` to see what the node is connected
+   to. Edges are sorted by evidence strength (shared fact count). Follow
+   high-weight edges to neighboring nodes to build full context — don't stop
+   at the first node you find.
+4. **Drill deeper when needed:**
+   - `get_dimensions` — multiple AI models' independent analyses of the node.
+     Useful when the definition alone isn't enough.
+   - `get_facts` — the actual provenance-tracked evidence. Each fact traces
+     to real sources. Use this when you need to cite or verify claims.
+   - `get_fact_sources` — deduplicated list of original sources (URLs, titles,
+     authors, dates). Use for building citations.
+5. **Find connections** — use `get_node_paths` to discover how two concepts
+   relate through intermediate nodes.
+
+### Cross-referencing
+
+Use `get_facts(node_id=X, source_node_id=Y)` to find facts shared between
+two nodes — this answers questions like "what does [source] say about [topic]?"
+
+### Building references for users
+
+When citing information from the graph, construct wiki URLs so users can verify:
+- **Node pages:** `{_settings.wiki_base_url}/nodes/{{node_type}}-{{slug}}`
+  where slug = concept lowercased, non-alphanumeric replaced with `-`,
+  leading/trailing `-` stripped.
+  Example: "Machine Learning" (concept) →
+  `{_settings.wiki_base_url}/nodes/concept-machine-learning`
+- **Fact pages:** `{_settings.wiki_base_url}/facts/{{fact_id}}`
+"""
+
+mcp = FastMCP("Knowledge Tree", instructions=_INSTRUCTIONS, auth=create_oauth_provider())
 
 
 def _extract_published_date(raw_source: RawSource) -> str | None:
@@ -78,8 +129,17 @@ async def search_graph(
 ) -> dict:
     """Search the knowledge graph for nodes matching a text query.
 
-    Returns lightweight results with node ID, concept name, type, and
-    fact count. Use get_node to load full details for nodes you care about.
+    This is the primary **entry point** for exploring the graph. Results
+    are starting points for navigation — after finding relevant nodes,
+    call ``get_node`` to read the definition, then ``get_edges`` to
+    discover neighboring nodes and build full context around the topic.
+
+    An alternative entry point is ``search_facts``, which searches the
+    global fact pool directly and can surface evidence spanning multiple
+    nodes or topics not yet well-represented as nodes.
+
+    Each result includes ``fact_count`` — higher counts indicate richer,
+    better-evidenced nodes worth exploring first.
 
     Args:
         query: Search term for concept names.
@@ -89,21 +149,10 @@ async def search_graph(
     limit = max(1, min(100, limit))
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
         nodes = await engine.search_nodes(query, limit=limit, node_type=node_type)
         if not nodes:
             return {"nodes": [], "total": 0}
-
-        node_ids = [n.id for n in nodes]
-
-        # Batch fact counts
-        fact_stmt = (
-            select(NodeFact.node_id, func.count(NodeFact.fact_id))
-            .where(NodeFact.node_id.in_(node_ids))
-            .group_by(NodeFact.node_id)
-        )
-        fact_result = await session.execute(fact_stmt)
-        fact_counts = {row[0]: row[1] for row in fact_result.all()}
 
         items = []
         for n in nodes:
@@ -115,7 +164,7 @@ async def search_graph(
                 "node_id": str(n.id),
                 "concept": n.concept,
                 "node_type": n.node_type,
-                "fact_count": fact_counts.get(n.id, 0),
+                "fact_count": n.fact_count,
             }
             if also_known_as:
                 item["also_known_as"] = also_known_as
@@ -128,11 +177,20 @@ async def search_graph(
 
 @mcp.tool()
 async def get_node(node_id: str) -> dict:
-    """Load a node's core details.
+    """Load a node's core details — the overview of a concept in the graph.
 
-    Returns concept, type, definition, parent, creation date, and counts.
-    If the node has no definition, a single dimension is included as a
-    fallback so there is always some descriptive content.
+    Returns the node's definition, type, parent, creation date, and
+    counts (fact_count, edge_count, dimension_count). Use these counts
+    to decide what to explore next:
+    - High ``edge_count`` → call ``get_edges`` to see connections to
+      related nodes and navigate the graph neighborhood.
+    - High ``dimension_count`` → call ``get_dimensions`` for deeper
+      multi-model analyses when the definition isn't sufficient.
+    - High ``fact_count`` → call ``get_facts`` when you need the actual
+      provenance-tracked evidence behind this node.
+
+    If the node has no definition yet, a fallback dimension is included
+    so there is always some descriptive content.
 
     Args:
         node_id: UUID of the node to load.
@@ -143,25 +201,13 @@ async def get_node(node_id: str) -> dict:
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
             return {"error": "Node not found"}
 
-        # Counts
-        fact_stmt = select(func.count(NodeFact.fact_id)).where(NodeFact.node_id == uid)
-        fact_count = (await session.execute(fact_stmt)).scalar() or 0
-
-        edge_count = 0
-        for col in (Edge.source_node_id, Edge.target_node_id):
-            stmt = select(func.count(Edge.id)).where(col == uid)
-            edge_count += (await session.execute(stmt)).scalar() or 0
-
-        dim_count_stmt = select(func.count(Dimension.id)).where(Dimension.node_id == uid)
-        dim_count = (await session.execute(dim_count_stmt)).scalar() or 0
-
-        # Extract metadata fields shown in the wiki frontend
+        # Use denormalized counts from Node model — no extra queries
         meta = node.metadata_ or {}
         aliases = meta.get("aliases", [])
         merged_from = meta.get("merged_from", [])
@@ -184,9 +230,9 @@ async def get_node(node_id: str) -> dict:
             "parent_id": str(node.parent_id) if node.parent_id else None,
             "parent_concept": parent_concept,
             "created_at": node.created_at.isoformat() if node.created_at else None,
-            "fact_count": fact_count,
-            "edge_count": edge_count,
-            "dimension_count": dim_count,
+            "fact_count": node.fact_count,
+            "edge_count": node.edge_count,
+            "dimension_count": node.dimension_count,
             "aliases": aliases,
             "merged_from": merged_from,
             "seed_ambiguity": seed_ambiguity,
@@ -195,7 +241,7 @@ async def get_node(node_id: str) -> dict:
         }
 
         # Fallback: include one dimension if no definition
-        if not node.definition and dim_count > 0:
+        if not node.definition and node.dimension_count > 0:
             dims = await engine.get_dimensions(uid)
             if dims:
                 d = dims[0]
@@ -214,10 +260,17 @@ async def get_node(node_id: str) -> dict:
 
 @mcp.tool()
 async def get_dimensions(node_id: str, limit: int = 10, offset: int = 0) -> dict:
-    """Load dimensions (model perspectives) for a node.
+    """Load dimensions (model perspectives) for a node — deeper analysis.
 
-    Each dimension is a different AI model's analysis of the node,
-    with content and confidence score. Paginated.
+    Each dimension is an **independent AI model's analysis** of the same
+    node, grounded in the same fact base. Use this when the node's
+    definition (from ``get_node``) isn't detailed enough.
+
+    Convergence across models (similar content, high confidence) reveals
+    genuine consensus. Divergence reveals where model biases determine
+    conclusions — both are valuable signals.
+
+    Paginated. Use offset/limit to page through results.
 
     Args:
         node_id: UUID of the node.
@@ -233,7 +286,7 @@ async def get_dimensions(node_id: str, limit: int = 10, offset: int = 0) -> dict
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -271,11 +324,22 @@ async def get_edges(
     offset: int = 0,
     edge_type: str | None = None,
 ) -> dict:
-    """Load edges (relationships) for a node, sorted by fact count (most evidence first).
+    """Load edges (relationships) for a node — the key tool for graph navigation.
 
-    Returns connected nodes with relationship type, weight, justification,
-    and fact count. Paginated and optionally filtered by edge type.
-    Use offset/limit to page through results.
+    Edges represent evidence-backed connections between nodes. They are
+    sorted by **shared fact count** (weight), so the strongest
+    relationships appear first. Follow high-weight edges to neighboring
+    nodes to build full context around a topic — don't stop at a single
+    node.
+
+    Each edge includes the connected node's ID, concept, type, a
+    justification explaining the relationship, and the fact count that
+    backs it. Use ``get_node`` on interesting neighbors to continue
+    exploring, or ``get_facts(node_id=A, source_node_id=B)`` to see
+    the shared evidence between two connected nodes.
+
+    Edge types: ``related`` connects same-type nodes, ``cross_type``
+    connects different types (e.g., entity↔event). Paginated.
 
     Args:
         node_id: UUID of the node.
@@ -292,62 +356,28 @@ async def get_edges(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
             return {"error": "Node not found"}
 
-        edges = await engine.get_edges(uid, direction="both")
-
-        # Filter by type if requested
-        if edge_type:
-            edges = [e for e in edges if e.relationship_type == edge_type]
-
-        # Batch fact counts for all edges
-        edge_ids = [e.id for e in edges]
-        edge_fact_counts: dict[uuid.UUID, int] = {}
-        if edge_ids:
-            fact_stmt = (
-                select(EdgeFact.edge_id, func.count(EdgeFact.fact_id))
-                .where(EdgeFact.edge_id.in_(edge_ids))
-                .group_by(EdgeFact.edge_id)
-            )
-            fact_result = await session.execute(fact_stmt)
-            edge_fact_counts = {row[0]: row[1] for row in fact_result.all()}
-
-        # Sort by fact count descending
-        edges.sort(key=lambda e: edge_fact_counts.get(e.id, 0), reverse=True)
-
-        total = len(edges)
-        page = edges[offset : offset + limit]
-
-        # Batch-fetch target nodes for this page
-        target_ids = set()
-        for e in page:
-            target_ids.add(e.source_node_id if e.source_node_id != uid else e.target_node_id)
-
-        target_nodes = {}
-        if target_ids:
-            stmt = select(Node.id, Node.concept, Node.node_type).where(Node.id.in_(list(target_ids)))
-            result = await session.execute(stmt)
-            for row in result.all():
-                target_nodes[row.id] = {"concept": row.concept, "node_type": row.node_type}
+        # Use engine batch method — fetches target nodes + fact counts in 3 queries
+        result = await engine.get_edges_with_targets(uid, limit=limit, offset=offset, edge_type=edge_type)
 
         edge_items = []
-        for e in page:
-            other_id = e.target_node_id if e.source_node_id == uid else e.source_node_id
-            target_info = target_nodes.get(other_id, {})
+        for item in result["edges"]:
+            e = item["edge"]
             edge_items.append(
                 {
                     "edge_id": str(e.id),
-                    "other_node_id": str(other_id),
-                    "other_concept": target_info.get("concept"),
-                    "other_node_type": target_info.get("node_type"),
+                    "other_node_id": str(item["other_node_id"]),
+                    "other_concept": item["other_concept"],
+                    "other_node_type": item["other_node_type"],
                     "relationship_type": e.relationship_type,
                     "weight": e.weight,
                     "justification": e.justification,
-                    "fact_count": edge_fact_counts.get(e.id, 0),
+                    "fact_count": item["fact_count"],
                 }
             )
 
@@ -356,7 +386,7 @@ async def get_edges(
             "concept": node.concept,
             "edges": edge_items,
             "returned": len(edge_items),
-            "total": total,
+            "total": result["total"],
             "offset": offset,
         }
 
@@ -375,15 +405,19 @@ async def get_facts(
     search: str | None = None,
     fact_type: str | None = None,
 ) -> dict:
-    """Load facts linked to a node, grouped by source.
+    """Load provenance-tracked facts linked to a node, grouped by source.
 
-    Returns facts organized by their primary source, with author
-    information and provenance. Each source group contains facts
-    extracted from that source. Sources are sorted by fact count
-    (most facts first). Paginated via offset/limit over the flat
-    fact list — use the returned offset to fetch the next page.
+    This is the **evidence layer** of the knowledge graph. Every fact
+    traces back to a real external source (article, document, search
+    result) — nothing comes from AI internal knowledge. Use this when
+    you need the actual evidence behind a node, need to cite specific
+    claims, or want to verify information.
 
-    Supports two powerful filtering strategies:
+    Facts are organized by their primary source, with author info and
+    provenance. Sources are sorted by fact count (most facts first).
+    Paginated — use ``next_offset`` to fetch subsequent pages.
+
+    **Filtering strategies:**
 
     1. **Node intersection** (``source_node_id``): Return only facts
        linked to BOTH ``node_id`` AND ``source_node_id``.  This is
@@ -397,6 +431,9 @@ async def get_facts(
        source entity doesn't have its own node.
 
     Both strategies can be combined.
+
+    To trace facts all the way to original URLs and citations, use
+    ``get_fact_sources``.
 
     Args:
         node_id: UUID of the subject node.
@@ -431,7 +468,7 @@ async def get_facts(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -609,11 +646,17 @@ async def get_facts(
 
 @mcp.tool()
 async def get_fact_sources(node_id: str) -> dict:
-    """Load all sources for a node's facts.
+    """Load all original sources for a node's facts — full provenance.
 
-    Returns a deduplicated list of raw sources (URI, title, provider,
-    retrieval date) that back the facts linked to this node.
-    Full provenance chain: Node -> Facts -> Sources.
+    Returns a deduplicated list of the real external sources (URLs,
+    titles, authors, publication dates) that back the facts linked to
+    this node. This completes the provenance chain: Node → Facts →
+    Sources.
+
+    Use this to build citations, verify claims against original
+    articles, or understand which sources contributed to a node's
+    knowledge base. Each source includes URI, title, author info,
+    and retrieval date.
 
     Args:
         node_id: UUID of the node.
@@ -624,7 +667,7 @@ async def get_fact_sources(node_id: str) -> dict:
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         node = await engine.get_node(uid)
         if not node:
@@ -678,12 +721,17 @@ async def search_facts(
     author_org: str | None = None,
     source_domain: str | None = None,
 ) -> dict:
-    """Search the global fact pool by text query or node context.
+    """Search the global fact pool — an alternative entry point into the graph.
 
-    Searches across ALL facts in the knowledge graph, not just those
-    linked to a specific node. Useful for exploring topics that may
-    not yet be fully reflected in nodes, or for finding evidence
-    across multiple concepts.
+    Searches across **ALL** facts in the knowledge graph, not just those
+    linked to a specific node. This is valuable when:
+    - A topic may not yet have a well-developed node
+    - You want evidence that spans multiple concepts
+    - You want to discover which nodes are relevant to a query (each
+      result includes ``linked_nodes`` showing what nodes the fact
+      is attached to — use these to find nodes worth exploring)
+
+    Uses hybrid search (semantic + keyword) for best results.
 
     Accepts either a text ``query`` or a ``node_id``.  When
     ``node_id`` is provided, the node's concept name and aliases
@@ -714,7 +762,7 @@ async def search_facts(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         # Resolve node_id to a search query if no explicit query given
         resolved_from_node: str | None = None
@@ -742,23 +790,44 @@ async def search_facts(
         if not query:
             return {"error": "Either query or node_id must be provided"}
 
-        # Get total count for pagination
-        total = await engine.count_facts(
-            search=query,
-            fact_type=fact_type,
-            author_org=author_org,
-            source_domain=source_domain,
-        )
+        # Hybrid search: vector + keyword via Qdrant RRF fusion.
+        # Fall back to ILIKE when source-level filters are used (author_org,
+        # source_domain) since those require SQL joins not available in Qdrant.
+        embedding_service = get_embedding_service_cached()
+        has_source_filters = bool(author_org or source_domain)
+        use_hybrid = False
 
-        # Get paginated results
-        facts = await engine.list_facts(
-            offset=offset,
-            limit=limit,
-            search=query,
-            fact_type=fact_type,
-            author_org=author_org,
-            source_domain=source_domain,
-        )
+        if embedding_service is not None and not has_source_filters:
+            try:
+                query_embedding = await embedding_service.embed_text(query)
+                facts = await engine.hybrid_search_facts(
+                    query=query,
+                    embedding=query_embedding,
+                    limit=100,
+                    fact_type=fact_type,
+                )
+                use_hybrid = True
+            except Exception:
+                logger.warning("Hybrid search failed, falling back to ILIKE", exc_info=True)
+
+        if use_hybrid:
+            total = len(facts)
+            facts = facts[offset : offset + limit]
+        else:
+            total = await engine.count_facts(
+                search=query,
+                fact_type=fact_type,
+                author_org=author_org,
+                source_domain=source_domain,
+            )
+            facts = await engine.list_facts(
+                offset=offset,
+                limit=limit,
+                search=query,
+                fact_type=fact_type,
+                author_org=author_org,
+                source_domain=source_domain,
+            )
 
         if not facts:
             return {
@@ -858,12 +927,17 @@ async def get_node_paths(
     max_depth: int = 6,
     limit: int = 5,
 ) -> dict:
-    """Find shortest paths between two nodes in the knowledge graph.
+    """Find how two nodes connect through the graph — relationship discovery.
 
     Uses breadth-first search to discover how two concepts are
-    connected through the graph's edge relationships. Returns all
-    shortest paths (same hop count) up to the limit. Each path is
-    a sequence of steps: node → edge → node → edge → ... → node.
+    connected through intermediate nodes and edges. This reveals
+    indirect relationships and shared context that may not be obvious.
+
+    Returns all shortest paths (same hop count) up to the limit. Each
+    path is a sequence of steps: node → edge → node → edge → ... →
+    node. Explore interesting intermediate nodes with ``get_node`` and
+    ``get_facts`` to understand the chain of evidence connecting the
+    two concepts.
 
     Edges are bidirectional — the algorithm traverses in both
     directions regardless of canonical source/target ordering.
@@ -887,7 +961,7 @@ async def get_node_paths(
 
     factory = get_session_factory_cached()
     async with factory() as session:
-        engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+        engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
 
         source_node = await engine.get_node(source_uid)
         if not source_node:
@@ -966,36 +1040,48 @@ async def get_node_paths(
         }
 
 
-# ── FastAPI app with auth middleware ─────────────────────────────────
+# ── FastAPI app with OAuth 2.1 ─────────────────────────────────────
+
+import asyncio  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+
+from kt_mcp.oauth_login import oauth_login_router  # noqa: E402
+
+mcp_http = mcp.http_app(path="/mcp", stateless_http=True)
+
+_CLEANUP_INTERVAL_SECONDS = 60 * 60  # Run cleanup every hour
 
 
-mcp_http = mcp.http_app(path="/", stateless_http=True)
+@asynccontextmanager
+async def _lifespan(app_instance: FastAPI):  # type: ignore[no-untyped-def]
+    """Wrap the MCP lifespan to add periodic OAuth token cleanup."""
+    cleanup_task: asyncio.Task[None] | None = None
 
-app = FastAPI(title="Knowledge Tree MCP", lifespan=mcp_http.lifespan)
+    async def _periodic_cleanup() -> None:
+        provider = create_oauth_provider()
+        while True:
+            await asyncio.sleep(_CLEANUP_INTERVAL_SECONDS)
+            try:
+                await provider.cleanup_expired()
+            except Exception:
+                logger.exception("OAuth cleanup failed")
+
+    async with mcp_http.lifespan(app_instance):
+        cleanup_task = asyncio.create_task(_periodic_cleanup())
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
 
 
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next) -> Response:
-    """Verify bearer token on all MCP requests."""
-    if request.url.path in ("/health", "/healthz"):
-        return await call_next(request)
+app = FastAPI(title="Knowledge Tree MCP", lifespan=_lifespan)
 
-    settings = get_settings()
-    if settings.skip_auth:
-        return await call_next(request)
-
-    auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
-        return JSONResponse(status_code=401, content={"detail": "Missing bearer token"})
-
-    raw_token = auth_header[7:]
-    factory = get_session_factory_cached()
-    async with factory() as session:
-        valid = await verify_bearer_token(raw_token, session)
-        if not valid:
-            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
-
-    return await call_next(request)
+# Login page for OAuth authorize flow
+app.include_router(oauth_login_router)
 
 
 @app.get("/health")
@@ -1003,5 +1089,5 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-# Mount MCP at /mcp — endpoint becomes POST /mcp
-app.mount("/mcp", mcp_http)
+# Mount MCP + OAuth routes (/.well-known/*, /authorize, /token, /register, /mcp)
+app.mount("/", mcp_http)

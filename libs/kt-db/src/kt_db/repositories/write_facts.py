@@ -73,6 +73,17 @@ class WriteFactRepository:
         result = await self._session.execute(select(WriteFact).where(WriteFact.id.in_(fact_ids)))
         return list(result.scalars().all())
 
+    async def get_facts_with_sources_by_ids(self, fact_ids: list[uuid.UUID]) -> list[WriteFact]:
+        """Load facts with their WriteFactSource records eagerly."""
+        if not fact_ids:
+            return []
+        from sqlalchemy.orm import selectinload
+
+        result = await self._session.execute(
+            select(WriteFact).where(WriteFact.id.in_(fact_ids)).options(selectinload(WriteFact.sources))
+        )
+        return list(result.scalars().all())
+
     # ── Fact sources ───────────────────────────────────────────────────
 
     async def create_fact_source(

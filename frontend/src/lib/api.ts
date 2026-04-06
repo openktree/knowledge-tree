@@ -13,6 +13,7 @@ import type {
   SourceDetailResponse,
   PaginatedSourcesResponse,
   SourceReingestResponse,
+  SourceInsightsResponse,
   SubgraphResponse,
   GraphStatsResponse,
   NodeVersionResponse,
@@ -80,6 +81,7 @@ import type {
   CreateSynthesisRequest,
   CreateSuperSynthesisRequest,
   SynthesisDocumentResponse,
+  SynthesisModelOption,
   PaginatedSynthesesResponse,
   SentenceFactLink,
   SynthesisNodeResponse,
@@ -532,6 +534,7 @@ export const api = {
       sort_by?: string;
       has_prohibited?: boolean;
       is_super_source?: boolean;
+      fetch_status?: string;
     }): Promise<PaginatedSourcesResponse> {
       const qs = buildQuery({
         offset:
@@ -548,6 +551,7 @@ export const api = {
           params?.is_super_source !== undefined
             ? String(params.is_super_source)
             : undefined,
+        fetch_status: params?.fetch_status,
       });
       return request<PaginatedSourcesResponse>(`/sources${qs}`);
     },
@@ -557,6 +561,11 @@ export const api = {
         `/sources/${encodeURIComponent(id)}/reingest`,
         { method: "POST" },
       );
+    },
+
+    getInsights(since?: string): Promise<SourceInsightsResponse> {
+      const qs = buildQuery({ since });
+      return request<SourceInsightsResponse>(`/sources/insights${qs}`);
     },
   },
 
@@ -1005,6 +1014,24 @@ export const api = {
     registrationStatus(): Promise<RegistrationStatusResponse> {
       return request<RegistrationStatusResponse>("/auth/registration-status");
     },
+
+    authFeatures(): Promise<{ google_oauth_enabled: boolean; email_verification_enabled: boolean }> {
+      return request<{ google_oauth_enabled: boolean; email_verification_enabled: boolean }>("/auth/features");
+    },
+
+    requestVerifyToken(email: string): Promise<void> {
+      return request<void>("/auth/request-verify-token", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+    },
+
+    verify(token: string): Promise<UserRead> {
+      return request<UserRead>("/auth/verify", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      });
+    },
   },
 
   // -------------------------------------------------------------------------
@@ -1205,6 +1232,10 @@ async function streamImport(
 // ---------------------------------------------------------------------------
 // Syntheses
 // ---------------------------------------------------------------------------
+
+export async function getSynthesisModels() {
+  return request<SynthesisModelOption[]>("/config/synthesis-models");
+}
 
 export async function createSynthesis(data: CreateSynthesisRequest) {
   return request<{ status: string; workflow_run_id: string; topic: string }>(

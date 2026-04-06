@@ -76,7 +76,7 @@ export function EdgeDetailPanel({ edgeId, onClose }: EdgeDetailPanelProps) {
   return (
     <div
       className={cn(
-        "fixed top-0 right-0 bottom-0 w-[32rem] max-w-full bg-background border-l shadow-xl z-50 overflow-hidden",
+        "fixed inset-0 md:left-auto w-full md:w-[32rem] bg-background border-l shadow-xl z-50 overflow-hidden",
         "flex flex-col",
         "animate-in slide-in-from-right duration-200",
       )}

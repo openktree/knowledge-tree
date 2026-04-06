@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_mcp.auth import _verify_token, verify_bearer_token
+from kt_auth import verify_token as _verify_token
+from kt_mcp.auth import verify_bearer_token
 
 
 class TestVerifyToken:
@@ -42,44 +43,31 @@ class TestVerifyBearerToken:
 
     @pytest.mark.asyncio
     async def test_valid_token_returns_true(self):
-        import hashlib
-
-        import bcrypt
-
-        raw = "tokn_valid"
-        digest = hashlib.sha256(raw.encode()).hexdigest()
-        hashed = bcrypt.hashpw(digest.encode(), bcrypt.gensalt()).decode()
-
         mock_token = MagicMock()
-        mock_token.token_hash = hashed
-        mock_token.expires_at = None
-
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_token]
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_token.user_id = "test-user-id"
 
         mock_settings = MagicMock()
         mock_settings.skip_auth = False
-        with patch("kt_mcp.auth.get_settings", return_value=mock_settings):
-            result = await verify_bearer_token(raw, mock_session)
+
+        with (
+            patch("kt_mcp.auth.get_settings", return_value=mock_settings),
+            patch("kt_mcp.auth.ApiTokenVerifier") as MockVerifier,
+        ):
+            instance = MockVerifier.return_value
+            instance.find_by_raw = AsyncMock(return_value=mock_token)
+            result = await verify_bearer_token("tokn_valid", AsyncMock())
         assert result is True
 
     @pytest.mark.asyncio
     async def test_invalid_token_returns_false(self):
-        mock_token = MagicMock()
-        mock_token.token_hash = "$2b$12$invalidhashvalue"
-        mock_token.expires_at = None
-
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_token]
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
         mock_settings = MagicMock()
         mock_settings.skip_auth = False
-        with patch("kt_mcp.auth.get_settings", return_value=mock_settings):
-            result = await verify_bearer_token("tokn_wrong", mock_session)
+
+        with (
+            patch("kt_mcp.auth.get_settings", return_value=mock_settings),
+            patch("kt_mcp.auth.ApiTokenVerifier") as MockVerifier,
+        ):
+            instance = MockVerifier.return_value
+            instance.find_by_raw = AsyncMock(return_value=None)
+            result = await verify_bearer_token("tokn_wrong", AsyncMock())
         assert result is False

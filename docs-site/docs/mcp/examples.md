@@ -115,3 +115,24 @@ See where AI models agree and disagree on a topic:
    ```
    get_edges(node_id="<perspective-uuid>")
    ```
+
+## Building references for users
+
+When citing information from the knowledge graph, construct wiki URLs so users can verify claims in the browser. The MCP server instructions include the URL patterns, but here they are for reference:
+
+**Node pages:**
+```
+https://wiki.openktree.com/nodes/{node_type}-{slug}
+```
+Where `slug` = concept name lowercased, non-alphanumeric characters replaced with `-`, leading/trailing `-` stripped.
+
+Examples:
+- "Machine Learning" (concept) → `https://wiki.openktree.com/nodes/concept-machine-learning`
+- "NASA" (entity) → `https://wiki.openktree.com/nodes/entity-nasa`
+- "Climate Change Is Accelerating" (perspective) → `https://wiki.openktree.com/nodes/perspective-climate-change-is-accelerating`
+
+**Fact pages:**
+```
+https://wiki.openktree.com/facts/{fact_id}
+```
+Where `fact_id` is the UUID returned by `get_facts` or `search_facts`.

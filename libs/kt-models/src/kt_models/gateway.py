@@ -25,6 +25,12 @@ _JSON_RETRY_MAX_DELAY = 120.0  # seconds — cap for backoff (2 minutes)
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?", re.MULTILINE)
 _CODE_FENCE_END_RE = re.compile(r"\n?```\s*$", re.MULTILINE)
 
+# OpenRouter app identification headers
+_OPENROUTER_HEADERS = {
+    "X-Title": "openktree",
+    "HTTP-Referer": "https://github.com/openktree/knowledge-tree",
+}
+
 
 def _extract_json(raw: str) -> str:
     """Best-effort cleanup of LLM output to extract a JSON object or array.
@@ -243,6 +249,9 @@ class ModelGateway:
         max_retries = _MAX_RETRIES
         base_delay = _BASE_DELAY
 
+        # Inject OpenRouter app identification headers
+        kwargs.setdefault("extra_headers", {}).update(_OPENROUTER_HEADERS)
+
         for attempt in range(_RATE_LIMIT_MAX_RETRIES):
             # After initial retries exhausted, only continue for rate limits
             if attempt >= max_retries and not isinstance(last_exc, RateLimitError):
@@ -308,6 +317,7 @@ class ModelGateway:
             temperature=float(kwargs.get("temperature", 0.3)),
             max_tokens=int(kwargs.get("max_tokens", 1000)),
             model_kwargs=extra_kwargs,
+            default_headers=_OPENROUTER_HEADERS,
         )
 
     @traceable(name="ModelGateway.generate_with_tools")

@@ -50,6 +50,7 @@ _register(
         "sync_batch_size": "sync_batch_size",
         "sync_max_retries": "sync_max_retries",
         "sync_retry_base_seconds": "sync_retry_base_seconds",
+        "sync_task_timeout_minutes": "sync_task_timeout_minutes",
         "log_level": "log_level",
         "pipeline_concurrency": "pipeline_concurrency",
     },
@@ -66,6 +67,7 @@ _register(
         "google_oauth_client_id": "google_oauth_client_id",
         "google_oauth_client_secret": "google_oauth_client_secret",
         "byok_encryption_key": "byok_encryption_key",
+        "mcp_oauth_base_url": "mcp_oauth_base_url",
     },
 )
 
@@ -221,6 +223,26 @@ _register(
     },
 )
 
+# ---- Email -----------------------------------------------------------------
+_register(
+    "email",
+    {
+        "email_enabled": "enabled",
+        "email_provider": "provider",
+        "email_verification": "verification",
+        "email_from_address": "from_address",
+        "resend_api_key": "resend_api_key",
+    },
+)
+
+# ---- Frontend --------------------------------------------------------------
+_register(
+    "frontend",
+    {
+        "frontend_url": "base_url",
+    },
+)
+
 # ---- Ingest ----------------------------------------------------------------
 _register(
     "ingest",
@@ -239,7 +261,6 @@ _register(
         "graph_build_auto_promote_min_facts": "auto_promote_min_facts",
         "graph_build_edge_min_shared_facts": "edge_min_shared_facts",
         "graph_build_batch_size": "batch_size",
-        "graph_build_auto_recalculate_min_new_facts": "auto_recalculate_min_new_facts",
         "graph_build_auto_recalculate_batch_size": "auto_recalculate_batch_size",
     },
 )
@@ -252,6 +273,18 @@ _register(
         "enrichment_access_count_trigger": "access_count_trigger",
         "enrichment_dimension_sample_size": "dimension_sample_size",
         "enrichment_edge_justification_sample_size": "edge_justification_sample_size",
+    },
+)
+
+# ---- Hatchet concurrency ---------------------------------------------------
+_register(
+    "hatchet_concurrency",
+    {
+        "bottom_up_max_runs": "bottom_up_max_runs",
+        "bottom_up_prepare_max_runs": "bottom_up_prepare_max_runs",
+        "agent_select_max_runs": "agent_select_max_runs",
+        "worker_bottomup_slots": "worker_bottomup_slots",
+        "worker_bottomup_durable_slots": "worker_bottomup_durable_slots",
     },
 )
 
@@ -397,6 +430,7 @@ class Settings(BaseSettings):
 
     # Ontology ancestry
     qdrant_url: str = "http://localhost:6333"
+    qdrant_timeout: int = 30  # seconds — default REST timeout for Qdrant client
     redis_url: str = "redis://localhost:6379/0"
     ontology_cache_ttl: int = 604800  # 7 days in seconds
     ontology_model: str = "openrouter/x-ai/grok-4.1-fast"
@@ -416,6 +450,10 @@ class Settings(BaseSettings):
     enable_full_text_fetch: bool = True
     full_text_fetch_max_urls: int = 10
     full_text_fetch_timeout: float = 15.0
+    fetch_user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
 
     # Page fetch dedup — skip URLs already processed within this window
     page_stale_days: int = 30
@@ -452,8 +490,7 @@ class Settings(BaseSettings):
     graph_build_auto_promote_min_facts: int = 10
     graph_build_edge_min_shared_facts: int = 3
     graph_build_batch_size: int = 100
-    graph_build_auto_recalculate_min_new_facts: int = 10
-    graph_build_auto_recalculate_batch_size: int = 20
+    graph_build_auto_recalculate_batch_size: int = 40
 
     # On-demand enrichment
     enrichment_min_facts_for_dimensions: int = 100
@@ -478,6 +515,13 @@ class Settings(BaseSettings):
     # Wave pipeline
     default_wave_count: int = 2
 
+    # Hatchet concurrency limits
+    bottom_up_max_runs: int = 3
+    bottom_up_prepare_max_runs: int = 3
+    agent_select_max_runs: int = 3
+    worker_bottomup_slots: int = 20
+    worker_bottomup_durable_slots: int = 40
+
     # Timeouts
     agent_inactivity_timeout_seconds: int = 300  # stall detection: no tool/emit activity for 5 min
     llm_call_timeout_seconds: int = 180  # per-call timeout for LLM acompletion()
@@ -486,21 +530,24 @@ class Settings(BaseSettings):
     hatchet_schedule_timeout_minutes: int = 60  # max queue wait before Hatchet cancels a task
 
     # Database pool (graph-db — read-optimized, mostly API reads)
-    db_pool_size: int = 10
-    db_max_overflow: int = 20
+    db_pool_size: int = 20
+    db_max_overflow: int = 40
     db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800  # recycle connections every 30 min
 
     # Write database (normalized, write-optimized — all worker pipeline writes)
     write_database_url: str = "postgresql+asyncpg://kt:localdev@localhost:5434/knowledge_tree_write"
     write_db_pool_size: int = 100
     write_db_max_overflow: int = 700
     write_db_pool_timeout: int = 120
+    write_db_pool_recycle: int = 600  # recycle connections every 10 min
 
     # Sync worker (write-db → graph-db)
     sync_interval_seconds: int = 5
     sync_batch_size: int = 1000
     sync_max_retries: int = 5
     sync_retry_base_seconds: int = 60
+    sync_task_timeout_minutes: int = 15
 
     log_level: str = "INFO"
 
@@ -515,8 +562,24 @@ class Settings(BaseSettings):
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
 
+    # MCP OAuth 2.1
+    mcp_oauth_base_url: str = "http://localhost:8001"  # Public URL of MCP server
+
+    # Wiki frontend — used in MCP instructions so agents can build verifiable links
+    wiki_base_url: str = "https://wiki.openktree.com"
+
     # BYOK (Bring Your Own Key) — Fernet encryption key for stored API keys
     byok_encryption_key: str = ""
+
+    # Email
+    email_enabled: bool = False
+    email_provider: str = "resend"
+    email_verification: bool = False
+    email_from_address: str = ""
+    resend_api_key: str = ""
+
+    # Frontend
+    frontend_url: str = "http://localhost:3000"
 
     model_config = {"extra": "ignore"}
 
@@ -526,7 +589,7 @@ class Settings(BaseSettings):
         settings_cls: type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,  # noqa: ARG003 — replaced by custom DotEnvSettingsSource below
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         # Resolve paths at instantiation time so env vars can override in tests

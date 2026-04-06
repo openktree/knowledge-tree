@@ -224,6 +224,8 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                         block.level === 1 ? <h2 class="perspective-h1"><RichSegments segments={block.segments} /></h2> :
                         block.level === 2 ? <h3 class="perspective-h2"><RichSegments segments={block.segments} /></h3> :
                         <h4 class="perspective-h3"><RichSegments segments={block.segments} /></h4>
+                      ) : block.kind === "table" ? (
+                        <Fragment set:html={block.rawHtml} />
                       ) : block.kind === "list-item" ? (
                         <li class="perspective-paragraph"><RichSegments segments={block.segments} /></li>
                       ) : (
@@ -238,6 +240,8 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                         block.level === 1 ? <h2><RichSegments segments={block.segments} /></h2> :
                         block.level === 2 ? <h3><RichSegments segments={block.segments} /></h3> :
                         <h4><RichSegments segments={block.segments} /></h4>
+                      ) : block.kind === "table" ? (
+                        <Fragment set:html={block.rawHtml} />
                       ) : block.kind === "list-item" ? (
                         <li><RichSegments segments={block.segments} /></li>
                       ) : (
@@ -450,10 +454,10 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
 
           {/* ── Related concepts (full width) ── */}
           {related.length > 0 && (
-            <div class="related-section">
-              <h2 class="section-heading">
+            <details class="related-section related-details" open>
+              <summary class="related-summary">
                 Related (<span id="related-visible-count">{related.length}</span>)
-              </h2>
+              </summary>
               {related.length > 5 && (
                 <input type="search" class="section-search" data-grid-search="related-grid" placeholder="Filter related..." autocomplete="off" />
               )}
@@ -528,15 +532,15 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                   );
                 })}
               </div>
-            </div>
+            </details>
           )}
 
           {/* ── Children (full width) ── */}
           {children.length > 0 && (
-            <div class="related-section">
-              <h2 class="section-heading">
+            <details class="related-section related-details" open>
+              <summary class="related-summary">
                 Children ({children.length})
-              </h2>
+              </summary>
               <div class="related-grid">
                 {children.map((child) => (
                   <div class="related-card">
@@ -550,7 +554,7 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                   </div>
                 ))}
               </div>
-            </div>
+            </details>
           )}
 
           {/* ── Facts (full width, grouped by source) ── */}

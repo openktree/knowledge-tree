@@ -18,7 +18,7 @@ from kt_api.schemas import (
     PaginatedEdgesResponse,
 )
 from kt_db.models import User
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/edges", tags=["edges"])
 
@@ -58,7 +58,7 @@ async def list_edges(
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedEdgesResponse:
     """List edges with pagination and optional filters."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     parsed_node_id: uuid.UUID | None = None
     if node_id:
         try:
@@ -95,13 +95,88 @@ async def list_edges(
     )
 
 
+@router.get("/between", response_model=list[EdgeDetailResponse])
+async def get_edges_between(
+    source: str = Query(..., description="Source node UUID or key"),
+    target: str = Query(..., description="Target node UUID or key"),
+    session: AsyncSession = Depends(get_db_session),
+) -> list[EdgeDetailResponse]:
+    """Get all edges between two specific nodes with full detail."""
+    from kt_db.keys import key_to_uuid, url_key_to_node_key
+
+    def _parse(nid: str) -> uuid.UUID:
+        try:
+            return uuid.UUID(nid)
+        except ValueError:
+            return key_to_uuid(url_key_to_node_key(nid))
+
+    source_id = _parse(source)
+    target_id = _parse(target)
+
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+    source_node = await engine.get_node(source_id)
+    target_node = await engine.get_node(target_id)
+    if not source_node or not target_node:
+        raise HTTPException(status_code=404, detail="Source or target node not found")
+
+    # Get all edges touching the source, filter to those connecting to target
+    all_edges = await engine.get_edges(source_id, direction="both")
+    matching = [e for e in all_edges if {e.source_node_id, e.target_node_id} == {source_id, target_id}]
+
+    results: list[EdgeDetailResponse] = []
+    for edge in matching:
+        facts = await engine.get_edge_facts(edge.id)
+        results.append(
+            EdgeDetailResponse(
+                id=str(edge.id),
+                source_node_id=str(edge.source_node_id),
+                source_node_concept=source_node.concept,
+                target_node_id=str(edge.target_node_id),
+                target_node_concept=target_node.concept,
+                relationship_type=edge.relationship_type,
+                weight=edge.weight,
+                justification=edge.justification,
+                weight_source=edge.weight_source,
+                supporting_fact_ids=[str(ef.fact_id) for ef in edge.edge_facts],
+                supporting_facts=[
+                    FactResponse(
+                        id=str(f.id),
+                        content=f.content,
+                        fact_type=f.fact_type,
+                        metadata=f.metadata_,
+                        created_at=f.created_at,
+                        sources=[
+                            FactSourceInfo(
+                                source_id=str(fs.raw_source.id),
+                                uri=fs.raw_source.uri,
+                                title=fs.raw_source.title,
+                                provider_id=fs.raw_source.provider_id,
+                                retrieved_at=fs.raw_source.retrieved_at,
+                                context_snippet=fs.context_snippet,
+                                attribution=fs.attribution,
+                                author_person=fs.author_person,
+                                author_org=fs.author_org,
+                            )
+                            for fs in f.sources
+                        ]
+                        if hasattr(f, "sources") and f.sources
+                        else [],
+                    )
+                    for f in facts
+                ],
+                created_at=edge.created_at,
+            )
+        )
+    return results
+
+
 @router.get("/{edge_id}", response_model=EdgeDetailResponse)
 async def get_edge(
     edge_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> EdgeDetailResponse:
     """Get a single edge by ID with resolved node names and full facts."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(edge_id)
     except ValueError:
@@ -166,7 +241,7 @@ async def enrich_edge(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     """Trigger on-demand justification generation for a co-occurrence edge."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(edge_id)
     except ValueError:
@@ -188,7 +263,7 @@ async def delete_edge(
     session: AsyncSession = Depends(get_db_session),
 ) -> DeleteResponse:
     """Delete an edge by ID."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(edge_id)
     except ValueError:

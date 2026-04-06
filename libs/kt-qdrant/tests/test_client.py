@@ -17,12 +17,14 @@ class TestGetQdrantClient:
     def test_creates_client(self) -> None:
         with patch("kt_qdrant.client.get_settings") as mock_settings:
             mock_settings.return_value.qdrant_url = "http://localhost:6333"
+            mock_settings.return_value.qdrant_timeout = 30
             client = get_qdrant_client()
             assert client is not None
 
     def test_returns_singleton(self) -> None:
         with patch("kt_qdrant.client.get_settings") as mock_settings:
             mock_settings.return_value.qdrant_url = "http://localhost:6333"
+            mock_settings.return_value.qdrant_timeout = 30
             client1 = get_qdrant_client()
             client2 = get_qdrant_client()
             assert client1 is client2
@@ -30,6 +32,7 @@ class TestGetQdrantClient:
     async def test_close_client(self) -> None:
         with patch("kt_qdrant.client.get_settings") as mock_settings:
             mock_settings.return_value.qdrant_url = "http://localhost:6333"
+            mock_settings.return_value.qdrant_timeout = 30
             get_qdrant_client()
             assert client_module._client is not None
             await close_qdrant_client()

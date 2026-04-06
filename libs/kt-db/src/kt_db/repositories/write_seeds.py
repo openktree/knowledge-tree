@@ -932,6 +932,9 @@ class WriteSeedRepository:
         """
         if not seeds:
             return
+        # Deduplicate by key — PostgreSQL ON CONFLICT DO UPDATE cannot
+        # affect the same row twice in a single statement.
+        seeds_deduped = list({s["key"]: s for s in seeds}.values())
         rows = [
             {
                 "key": s["key"],
@@ -941,7 +944,7 @@ class WriteSeedRepository:
                 "entity_subtype": s.get("entity_subtype"),
                 "fact_count": 0,
             }
-            for s in seeds
+            for s in seeds_deduped
         ]
         chunk_size = 4000
         for i in range(0, len(rows), chunk_size):
@@ -1275,11 +1278,13 @@ class WriteSeedRepository:
     async def get_fact_stale_nodes(
         self,
         threshold: int,
-        batch_size: int = 20,
     ) -> list[dict]:
-        """Return promoted seeds whose nodes have accumulated enough new facts.
+        """Return ALL promoted seeds whose nodes have accumulated enough new facts.
 
         Compares seed.fact_count against write_node.facts_at_last_build.
+        Returns the full list in one shot so callers can batch dispatch
+        without re-querying (which could pick up new nodes mid-loop).
+
         Returns dicts with seed_key, promoted_node_key, fact_count,
         facts_at_last_build, delta, enrichment_status.
         """
@@ -1297,9 +1302,8 @@ class WriteSeedRepository:
             WHERE ws.status = 'promoted'
               AND (ws.fact_count - COALESCE(wn.facts_at_last_build, 0)) >= :threshold
             ORDER BY (ws.fact_count - COALESCE(wn.facts_at_last_build, 0)) DESC
-            LIMIT :batch_size
         """)
-        result = await self._session.execute(stmt, {"threshold": threshold, "batch_size": batch_size})
+        result = await self._session.execute(stmt, {"threshold": threshold})
         return [
             {
                 "seed_key": row.seed_key,

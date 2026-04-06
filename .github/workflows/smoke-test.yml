@@ -1,0 +1,63 @@
+name: Smoke Tests
+
+on:
+  workflow_call:
+    inputs:
+      api_url:
+        description: "Base API URL to test against (e.g. https://api.openktree-dev.com)"
+        required: true
+        type: string
+    secrets:
+      api_token:
+        description: "API token for authenticated requests"
+        required: true
+
+jobs:
+  smoke:
+    name: Run smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Health check
+        run: |
+          echo "Checking health at ${{ inputs.api_url }}/health"
+          response=$(curl -sf "${{ inputs.api_url }}/health" || true)
+          echo "$response" | jq .
+
+          status=$(echo "$response" | jq -r '.status')
+          if [ "$status" != "healthy" ]; then
+            echo "::error::Health check failed: status=$status"
+            exit 1
+          fi
+          echo "Health check passed"
+
+      - name: Authenticated API check
+        run: |
+          echo "Checking authenticated API access"
+          response=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.api_token }}" \
+            "${{ inputs.api_url }}/api/v1/nodes?limit=1")
+          echo "$response" | jq '.nodes | length'
+          echo "Authenticated API check passed"
+
+      - name: Workflow dispatch check
+        run: |
+          echo "Triggering a minimal bottom-up research (budget=1)"
+          response=$(curl -sf \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.api_token }}" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"smoke test verification","explore_budget":1}' \
+            "${{ inputs.api_url }}/api/v1/research/bottom-up/prepare")
+
+          conv_id=$(echo "$response" | jq -r '.id')
+          msg_id=$(echo "$response" | jq -r '.messages[1].id')
+          workflow_run_id=$(echo "$response" | jq -r '.messages[1].workflow_run_id')
+
+          if [ "$workflow_run_id" = "null" ] || [ -z "$workflow_run_id" ]; then
+            echo "::error::No workflow_run_id returned — Hatchet dispatch may have failed"
+            exit 1
+          fi
+
+          echo "Bottom-up research created: conversation=$conv_id workflow_run=$workflow_run_id"
+          echo "Workflow dispatch check passed"

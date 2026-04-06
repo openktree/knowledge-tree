@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_agents_core.state import AgentContext, EventCallback
 from kt_config.settings import get_settings
 from kt_db.session import get_session_factory, get_write_session_factory
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_providers.brave import BraveSearchProvider
@@ -30,7 +30,7 @@ def get_session_factory_cached() -> async_sessionmaker[AsyncSession]:
     """Return a cached async session factory (singleton)."""
     global _session_factory  # noqa: PLW0603
     if _session_factory is None:
-        _session_factory = get_session_factory()
+        _session_factory = get_session_factory(application_name="kt-api")
     return _session_factory
 
 
@@ -38,7 +38,7 @@ def get_write_session_factory_cached() -> async_sessionmaker[AsyncSession]:
     """Return a cached write-db async session factory (singleton)."""
     global _write_session_factory  # noqa: PLW0603
     if _write_session_factory is None:
-        _write_session_factory = get_write_session_factory()
+        _write_session_factory = get_write_session_factory(application_name="kt-api")
     return _write_session_factory
 
 
@@ -66,6 +66,13 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def get_write_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency that yields a write-db session."""
+    factory = get_write_session_factory_cached()
+    async with factory() as session:
+        yield session
+
+
 async def get_agent_context(
     emit_event: EventCallback | None = None,
 ) -> AgentContext:
@@ -75,7 +82,7 @@ async def get_agent_context(
     session = factory()
     qdrant_client = get_qdrant_client_cached()
 
-    graph_engine = GraphEngine(session, qdrant_client=qdrant_client)
+    graph_engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
     embedding_service = EmbeddingService() if settings.openrouter_api_key else None
     model_gateway = ModelGateway()
 

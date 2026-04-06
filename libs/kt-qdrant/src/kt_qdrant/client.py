@@ -12,7 +12,7 @@ def get_qdrant_client() -> AsyncQdrantClient:
     global _client
     if _client is None:
         settings = get_settings()
-        _client = AsyncQdrantClient(url=settings.qdrant_url)
+        _client = AsyncQdrantClient(url=settings.qdrant_url, timeout=settings.qdrant_timeout)
     return _client
 
 

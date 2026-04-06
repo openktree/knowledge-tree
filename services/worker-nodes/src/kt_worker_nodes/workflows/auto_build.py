@@ -1,12 +1,11 @@
-"""Auto-build graph from accumulated seeds — zero LLM calls.
+"""Auto-build graph from accumulated seeds.
 
-Promotes seeds to stub nodes and creates edges from co-occurrence data.
-Edge weight = log10(shared_fact_count), no justification (generated on demand).
+Promotes seeds to stub nodes.  Edges are created exclusively via the
+candidate-based resolver in the node pipeline (no co-occurrence shortcut).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import timedelta
 from typing import cast
@@ -35,41 +34,33 @@ auto_build_task = hatchet.workflow(
     schedule_timeout=_schedule_timeout,
 )
 async def auto_build_graph(input: AutoBuildInput, ctx: Context) -> dict:
-    """Promote seeds to stub nodes and create co-occurrence edges.
+    """Promote seeds to stub nodes and dispatch enrichment for stale nodes.
 
     Step 1: Promote eligible seeds to stub nodes (concept name embedding only).
-    Step 2: Create edges from co-occurrence (log weight, no LLM).
-    Step 3: Recalculate weights for existing co-occurrence edges.
+    Step 2: Absorb merged seed nodes into winner nodes.
+    Step 3: Dispatch node_pipeline for fact-stale nodes.
     """
     state = cast(WorkerState, ctx.lifespan)
     settings = get_settings()
 
     nodes_promoted = 0
     nodes_absorbed = 0
-    edges_created = 0
-    edges_updated = 0
     nodes_recalculated = 0
     nodes_enrichment_dispatched = 0
 
-    # ── Step 1: Promote seeds to stub nodes ──────────────────────────
+    # -- Step 1: Promote seeds to stub nodes -------------------------------
     try:
         nodes_promoted, nodes_enrichment_dispatched = await _promote_seeds(state, settings, ctx)
     except Exception:
         logger.exception("Error in seed promotion step")
 
-    # ── Step 2: Absorb merged nodes ──────────────────────────────────
+    # -- Step 2: Absorb merged nodes ---------------------------------------
     try:
         nodes_absorbed = await _absorb_merged_nodes(state, settings, ctx)
     except Exception:
         logger.exception("Error in merge absorption step")
 
-    # ── Step 3: Create edges from co-occurrence ──────────────────────
-    try:
-        edges_created = await _create_cooccurrence_edges(state, settings, ctx)
-    except Exception:
-        logger.exception("Error in edge creation step")
-
-    # ── Step 4: Dispatch recalculation for fact-stale nodes ──────────
+    # -- Step 3: Dispatch enrichment for fact-stale nodes ------------------
     try:
         nodes_recalculated = await _check_fact_stale_nodes(state, settings, ctx)
     except Exception:
@@ -78,27 +69,9 @@ async def auto_build_graph(input: AutoBuildInput, ctx: Context) -> dict:
     result = AutoBuildOutput(
         nodes_promoted=nodes_promoted,
         nodes_absorbed=nodes_absorbed,
-        edges_created=edges_created,
-        edges_updated=edges_updated,
         nodes_recalculated=nodes_recalculated,
         nodes_enrichment_dispatched=nodes_enrichment_dispatched,
     )
-
-    try:
-        await ctx.aio_put_stream(
-            json.dumps(
-                {
-                    "type": "auto_build_complete",
-                    "nodes_promoted": nodes_promoted,
-                    "nodes_absorbed": nodes_absorbed,
-                    "edges_created": edges_created,
-                    "nodes_recalculated": nodes_recalculated,
-                    "nodes_enrichment_dispatched": nodes_enrichment_dispatched,
-                }
-            )
-        )
-    except Exception:
-        pass
 
     return result.model_dump()
 
@@ -106,9 +79,14 @@ async def auto_build_graph(input: AutoBuildInput, ctx: Context) -> dict:
 async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> tuple[int, int]:
     """Promote active seeds to stub nodes.
 
-    Returns (nodes_promoted, 0).  Enrichment is NOT dispatched here —
+    Snapshots all eligible seed keys up front, then processes them in
+    batches.  This avoids re-querying during promotion, which could
+    pick up seeds still being created by a concurrent ingestion and
+    run indefinitely.
+
+    Returns (nodes_promoted, 0).  Enrichment is NOT dispatched here --
     ``_check_fact_stale_nodes`` detects newly promoted stubs (facts_at_last_build=0)
-    and dispatches ``rebuild_node`` for them.
+    and dispatches ``node_pipeline`` for them.
     """
     from kt_db.keys import key_to_uuid, make_node_key
     from kt_db.repositories.write_nodes import WriteNodeRepository
@@ -126,80 +104,98 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
         logger.error("No write session factory available")
         return 0, 0
 
+    # Snapshot eligible seed keys once to avoid chasing a moving target
+    seed_keys: list[str] = []
     async with write_sf() as ws:
         seed_repo = WriteSeedRepository(ws)
-        node_repo = WriteNodeRepository(ws)
+        all_seeds = await seed_repo.get_promotable_seeds(min_facts, limit=10_000)
+        seed_keys = [s.key for s in all_seeds]
 
-        seeds = await seed_repo.get_promotable_seeds(min_facts, limit=batch_size)
-        if not seeds:
-            return 0, 0
+    if not seed_keys:
+        return 0, 0
 
-        logger.info("Found %d promotable seeds", len(seeds))
+    logger.info("Found %d promotable seeds to process", len(seed_keys))
 
-        # Batch embed concept names
-        names = [s.name for s in seeds]
-        try:
-            embeddings = await embedding_service.embed_batch(names)
-        except Exception:
-            logger.exception("Failed to batch-embed seed names, skipping embedding")
-            embeddings = [None] * len(seeds)
+    # Process in batches
+    for i in range(0, len(seed_keys), batch_size):
+        batch_keys = seed_keys[i : i + batch_size]
+        batch_promoted = 0
 
-        for seed, embedding in zip(seeds, embeddings):
+        async with write_sf() as ws:
+            seed_repo = WriteSeedRepository(ws)
+            node_repo = WriteNodeRepository(ws)
+
+            # Re-fetch seeds by key (they may have been merged/promoted
+            # by a concurrent process since the snapshot)
+            seeds = [await seed_repo.get_seed_by_key(k) for k in batch_keys]
+            seeds = [s for s in seeds if s is not None and s.status == "active"]
+
+            if not seeds:
+                continue
+
+            total_batches = -(-len(seed_keys) // batch_size)
+            logger.info(
+                "Promoting batch %d/%d (%d seeds)",
+                i // batch_size + 1,
+                total_batches,
+                len(seeds),
+            )
+
+            # Batch embed concept names
+            names = [s.name for s in seeds]
             try:
-                node_key = make_node_key(seed.node_type, seed.name)
-                node_uuid = key_to_uuid(node_key)
-
-                # Create WriteNode with enrichment_status='stub'
-                # facts_at_last_build=0 so _check_fact_stale_nodes picks it up
-                await node_repo.upsert(
-                    node_type=seed.node_type,
-                    concept=seed.name,
-                    entity_subtype=seed.entity_subtype,
-                    metadata_=seed.metadata_,
-                    enrichment_status="stub",
-                )
-                await node_repo.update_facts_at_last_build(node_key, 0)
-
-                # Copy seed fact IDs to node
-                seed_facts = await seed_repo.get_seed_fact_ids(seed.key)
-                for fid in seed_facts:
-                    await node_repo.append_fact_id(node_key, str(fid))
-
-                # Upsert to Qdrant if embedding available
-                if embedding is not None and state.qdrant_client is not None:
-                    from kt_qdrant.repositories.nodes import QdrantNodeRepository
-
-                    qdrant_repo = QdrantNodeRepository(state.qdrant_client)
-                    await qdrant_repo.upsert(
-                        node_id=node_uuid,
-                        concept=seed.name,
-                        node_type=seed.node_type,
-                        embedding=embedding,
-                    )
-
-                # Mark seed as promoted
-                await seed_repo.mark_seed_promoted(seed.key, node_key)
-                promoted += 1
-
+                embeddings = await embedding_service.embed_batch(names)
             except Exception:
-                logger.debug("Error promoting seed %s", seed.key, exc_info=True)
+                logger.exception("Failed to batch-embed seed names, skipping embedding")
+                embeddings = [None] * len(seeds)
 
-        await ws.commit()
+            for seed, embedding in zip(seeds, embeddings):
+                try:
+                    node_key = make_node_key(seed.node_type, seed.name)
+                    node_uuid = key_to_uuid(node_key)
+
+                    async with ws.begin_nested():
+                        # Create WriteNode with enrichment_status='stub'
+                        # facts_at_last_build=0 so _check_fact_stale_nodes picks it up
+                        await node_repo.upsert(
+                            node_type=seed.node_type,
+                            concept=seed.name,
+                            entity_subtype=seed.entity_subtype,
+                            metadata_=seed.metadata_,
+                            enrichment_status="stub",
+                        )
+                        await node_repo.update_facts_at_last_build(node_key, 0)
+
+                        # Copy seed fact IDs to node
+                        seed_facts = await seed_repo.get_seed_fact_ids(seed.key)
+                        for fid in seed_facts:
+                            await node_repo.append_fact_id(node_key, str(fid))
+
+                        # Mark seed as promoted
+                        await seed_repo.mark_seed_promoted(seed.key, node_key)
+
+                    # Qdrant upsert outside savepoint (not transactional)
+                    if embedding is not None and state.qdrant_client is not None:
+                        from kt_qdrant.repositories.nodes import QdrantNodeRepository
+
+                        qdrant_repo = QdrantNodeRepository(state.qdrant_client)
+                        await qdrant_repo.upsert(
+                            node_id=node_uuid,
+                            concept=seed.name,
+                            node_type=seed.node_type,
+                            embedding=embedding,
+                        )
+
+                    batch_promoted += 1
+
+                except Exception:
+                    logger.warning("Error promoting seed %s", seed.key, exc_info=True)
+
+            await ws.commit()
+
+        promoted += batch_promoted
 
     logger.info("Promoted %d seeds to stub nodes", promoted)
-    try:
-        await ctx.aio_put_stream(
-            json.dumps(
-                {
-                    "type": "auto_build_progress",
-                    "step": "promote",
-                    "nodes_promoted": promoted,
-                }
-            )
-        )
-    except Exception:
-        pass
-
     return promoted, 0
 
 
@@ -237,12 +233,12 @@ async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Contex
         logger.info("Found %d merged seeds with nodes to absorb", len(merged_seeds))
 
         for loser_seed in merged_seeds:
+            loser_node_key_for_qdrant: str | None = None
             try:
                 loser_node_key = loser_seed.promoted_node_key
                 if not loser_node_key:
                     continue
 
-                # Find the winner seed (follow merge chain)
                 winner_key = loser_seed.merged_into_key
                 if not winner_key:
                     continue
@@ -253,233 +249,102 @@ async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Contex
 
                 winner_node_key = winner_seed.promoted_node_key
                 if not winner_node_key:
-                    # Winner not promoted yet — skip, will retry next run
                     continue
 
-                # Verify both nodes exist
-                winner_node = await node_repo.get_by_key(winner_node_key)
-                loser_node = await node_repo.get_by_key(loser_node_key)
-                if winner_node is None or loser_node is None:
-                    # Already absorbed or missing — clear and skip
-                    await seed_repo.clear_promoted_node_key(loser_seed.key)
-                    continue
-
-                # ── Absorb dimensions ──
-                loser_dims = await dim_repo.get_by_node_key(loser_node_key, limit=100)
-                for dim in loser_dims:
-                    # Upsert under the winner node key (handles duplicates via ON CONFLICT)
-                    await dim_repo.upsert(
-                        node_key=winner_node_key,
-                        model_id=dim.model_id,
-                        content=dim.content,
-                        confidence=dim.confidence,
-                        suggested_concepts=dim.suggested_concepts,
-                        batch_index=dim.batch_index,
-                        fact_count=dim.fact_count,
-                        is_definitive=dim.is_definitive,
-                        fact_ids=dim.fact_ids,
-                        metadata_=dim.metadata_,
-                    )
-                    await dim_repo.delete_by_key(dim.key)
-
-                # ── Absorb edges ──
-                loser_edges = await edge_repo.get_edges_for_node(loser_node_key)
-                for edge in loser_edges:
-                    # Determine the other node in the edge
-                    if edge.source_node_key == loser_node_key:
-                        other_key = edge.target_node_key
-                    else:
-                        other_key = edge.source_node_key
-
-                    # Self-edge after rewrite — delete
-                    if other_key == winner_node_key:
-                        await edge_repo.delete_by_key(edge.key)
+                async with ws.begin_nested():
+                    # Verify both nodes exist
+                    winner_node = await node_repo.get_by_key(winner_node_key)
+                    loser_node = await node_repo.get_by_key(loser_node_key)
+                    if winner_node is None or loser_node is None:
+                        # Already absorbed or missing — clear and skip
+                        await seed_repo.clear_promoted_node_key(loser_seed.key)
                         continue
 
-                    new_edge_key = make_edge_key(
-                        edge.relationship_type,
-                        winner_node_key,
-                        other_key,
-                    )
-                    old_edge_key = edge.key
+                    # ── Absorb dimensions ──
+                    loser_dims = await dim_repo.get_by_node_key(loser_node_key, limit=100)
+                    for dim in loser_dims:
+                        await dim_repo.upsert(
+                            node_key=winner_node_key,
+                            model_id=dim.model_id,
+                            content=dim.content,
+                            confidence=dim.confidence,
+                            suggested_concepts=dim.suggested_concepts,
+                            batch_index=dim.batch_index,
+                            fact_count=dim.fact_count,
+                            is_definitive=dim.is_definitive,
+                            fact_ids=dim.fact_ids,
+                            metadata_=dim.metadata_,
+                        )
+                        await dim_repo.delete_by_key(dim.key)
 
-                    # Merge fact_ids if winner already has an edge to the same node
-                    existing_new_facts = edge.fact_ids or []
-                    merged_facts = list(set(existing_new_facts))
+                    # ── Absorb edges ──
+                    loser_edges = await edge_repo.get_edges_for_node(loser_node_key)
+                    for edge in loser_edges:
+                        other_key = (
+                            edge.target_node_key if edge.source_node_key == loser_node_key else edge.source_node_key
+                        )
+                        if other_key == winner_node_key:
+                            await edge_repo.delete_by_key(edge.key)
+                            continue
 
-                    # Upsert the new edge (winner_node_key replaces loser)
-                    await edge_repo.upsert(
-                        rel_type=edge.relationship_type,
-                        source_node_key=winner_node_key,
-                        target_node_key=other_key,
-                        weight=edge.weight,
-                        justification=edge.justification,
-                        fact_ids=merged_facts,
-                        metadata_=edge.metadata_,
-                        weight_source=edge.weight_source,
-                    )
+                        new_edge_key = make_edge_key(edge.relationship_type, winner_node_key, other_key)
+                        old_edge_key = edge.key
+                        merged_facts = list(set(edge.fact_ids or []))
 
-                    # Delete the old edge key if it changed
-                    if old_edge_key != new_edge_key:
-                        await edge_repo.delete_by_key(old_edge_key)
+                        await edge_repo.upsert(
+                            rel_type=edge.relationship_type,
+                            source_node_key=winner_node_key,
+                            target_node_key=other_key,
+                            weight=edge.weight,
+                            justification=edge.justification,
+                            fact_ids=merged_facts,
+                            metadata_=edge.metadata_,
+                            weight_source=edge.weight_source,
+                        )
+                        if old_edge_key != new_edge_key:
+                            await edge_repo.delete_by_key(old_edge_key)
 
-                # ── Absorb facts ──
-                loser_fact_ids = loser_node.fact_ids or []
-                if loser_fact_ids:
-                    await node_repo.merge_fact_ids(winner_node_key, loser_fact_ids)
+                    # ── Absorb facts ──
+                    loser_fact_ids = loser_node.fact_ids or []
+                    if loser_fact_ids:
+                        await node_repo.merge_fact_ids(winner_node_key, loser_fact_ids)
 
-                # ── Clean up derived data ──
-                await dim_repo.delete_convergence_report(loser_node_key)
-                await dim_repo.delete_divergent_claims(loser_node_key)
+                    # ── Clean up derived data ──
+                    await dim_repo.delete_convergence_report(loser_node_key)
+                    await dim_repo.delete_divergent_claims(loser_node_key)
 
-                # ── Delete loser node ──
-                await node_repo.delete_by_key(loser_node_key)
+                    # ── Delete loser node ──
+                    await node_repo.delete_by_key(loser_node_key)
 
-                # Delete from Qdrant
-                if state.qdrant_client is not None:
+                    await seed_repo.clear_promoted_node_key(loser_seed.key)
+                    loser_node_key_for_qdrant = loser_node_key
+
+                # Qdrant delete outside savepoint (not transactional)
+                if loser_node_key_for_qdrant and state.qdrant_client is not None:
                     try:
                         from kt_qdrant.repositories.nodes import QdrantNodeRepository
 
-                        qdrant_repo = QdrantNodeRepository(state.qdrant_client)
-                        await qdrant_repo.delete(key_to_uuid(loser_node_key))
+                        await QdrantNodeRepository(state.qdrant_client).delete(key_to_uuid(loser_node_key_for_qdrant))
                     except Exception:
-                        logger.debug(
-                            "Failed to delete Qdrant vector for %s",
-                            loser_node_key,
-                            exc_info=True,
-                        )
-
-                # Mark as absorbed (clear promoted_node_key so not reprocessed)
-                await seed_repo.clear_promoted_node_key(loser_seed.key)
+                        logger.debug("Failed to delete Qdrant vector for %s", loser_node_key_for_qdrant, exc_info=True)
                 absorbed += 1
-
-                logger.info(
-                    "Absorbed node '%s' into '%s'",
-                    loser_node_key,
-                    winner_node_key,
-                )
+                logger.info("Absorbed node '%s' into '%s'", loser_node_key, winner_node_key)
 
             except Exception:
-                logger.debug(
-                    "Error absorbing seed %s",
-                    loser_seed.key,
-                    exc_info=True,
-                )
+                logger.debug("Error absorbing seed %s", loser_seed.key, exc_info=True)
 
         await ws.commit()
 
     logger.info("Absorbed %d merged nodes", absorbed)
-    try:
-        await ctx.aio_put_stream(
-            json.dumps(
-                {
-                    "type": "auto_build_progress",
-                    "step": "absorb",
-                    "nodes_absorbed": absorbed,
-                }
-            )
-        )
-    except Exception:
-        pass
-
     return absorbed
 
 
-async def _create_cooccurrence_edges(state: WorkerState, settings: object, ctx: Context) -> int:
-    """Create edges from seed co-occurrence data."""
-    from kt_db.repositories.write_edges import WriteEdgeRepository
-    from kt_db.repositories.write_seeds import WriteSeedRepository
-
-    min_shared = settings.graph_build_edge_min_shared_facts  # type: ignore[attr-defined]
-    created = 0
-
-    write_sf = state.write_session_factory
-    if write_sf is None:
-        return 0
-
-    async with write_sf() as ws:
-        seed_repo = WriteSeedRepository(ws)
-        edge_repo = WriteEdgeRepository(ws)
-
-        pairs = await seed_repo.get_buildable_edge_pairs(min_shared)
-        if not pairs:
-            return 0
-
-        logger.info("Found %d edge candidate pairs", len(pairs))
-
-        # Pre-fetch seeds to determine node types
-        all_seed_keys = set()
-        for a, b, _, _ in pairs:
-            all_seed_keys.add(a)
-            all_seed_keys.add(b)
-        seeds_map = await seed_repo.get_seeds_by_keys_batch(list(all_seed_keys))
-
-        for seed_key_a, seed_key_b, shared_count, fact_ids in pairs:
-            try:
-                seed_a = seeds_map.get(seed_key_a)
-                seed_b = seeds_map.get(seed_key_b)
-                if not seed_a or not seed_b:
-                    continue
-
-                # Get node keys from promoted seeds
-                node_key_a = seed_a.promoted_node_key
-                node_key_b = seed_b.promoted_node_key
-                if not node_key_a or not node_key_b:
-                    continue
-
-                # Determine relationship type
-                same_type = seed_a.node_type == seed_b.node_type
-                rel_type = "related" if same_type else "cross_type"
-
-                weight = float(shared_count)
-
-                await edge_repo.upsert(
-                    rel_type=rel_type,
-                    source_node_key=node_key_a,
-                    target_node_key=node_key_b,
-                    weight=weight,
-                    fact_ids=fact_ids,
-                    weight_source="cooccurrence",
-                )
-                created += 1
-
-            except Exception:
-                logger.debug(
-                    "Error creating edge %s <-> %s",
-                    seed_key_a,
-                    seed_key_b,
-                    exc_info=True,
-                )
-
-        await ws.commit()
-
-    logger.info("Created %d co-occurrence edges", created)
-    try:
-        await ctx.aio_put_stream(
-            json.dumps(
-                {
-                    "type": "auto_build_progress",
-                    "step": "edges",
-                    "edges_created": created,
-                }
-            )
-        )
-    except Exception:
-        pass
-
-    return created
-
-
 async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Context) -> int:
-    """Dispatch enrichment or recalculation for nodes with accumulated new facts.
-
-    Dispatches ``rebuild_node`` in incremental mode for all stale nodes.
-    """
+    """Dispatch node_pipeline in rebuild mode for nodes with accumulated new facts."""
     from kt_db.keys import key_to_uuid
     from kt_db.repositories.write_seeds import WriteSeedRepository
 
-    threshold = settings.graph_build_auto_recalculate_min_new_facts  # type: ignore[attr-defined]
-    batch_size = settings.graph_build_auto_recalculate_batch_size  # type: ignore[attr-defined]
+    threshold = settings.dimension_fact_limit  # type: ignore[attr-defined]
 
     write_sf = state.write_session_factory
     if write_sf is None:
@@ -489,18 +354,15 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
 
     async with write_sf() as ws:
         seed_repo = WriteSeedRepository(ws)
-        stale_nodes = await seed_repo.get_fact_stale_nodes(threshold, batch_size)
+        stale_nodes = await seed_repo.get_fact_stale_nodes(threshold)
         if not stale_nodes:
             return 0
 
         logger.info("Found %d fact-stale nodes to process", len(stale_nodes))
 
-        from kt_hatchet.models import RebuildNodeInput
-        from kt_worker_nodes.workflows.rebuild_node import rebuild_node_task as _rebuild
+        from kt_hatchet.models import NodePipelineInput
+        from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
 
-        # Do NOT update facts_at_last_build here — rebuild_node updates it
-        # after successful dimension generation, preventing the watermark
-        # from advancing if the task fails.
         dispatch_entries: list[tuple[str, str, dict]] = []
         for entry in stale_nodes:
             try:
@@ -508,22 +370,19 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
                 node_uuid = key_to_uuid(node_key)
                 dispatch_entries.append((node_key, str(node_uuid), entry))
             except Exception:
-                logger.debug(
-                    "Error preparing dispatch for %s",
-                    entry.get("promoted_node_key"),
-                    exc_info=True,
-                )
+                logger.debug("Error preparing dispatch for %s", entry.get("promoted_node_key"), exc_info=True)
 
-    # Fire-and-forget all dispatches concurrently
     import asyncio
+
+    batch_size = settings.graph_build_auto_recalculate_batch_size  # type: ignore[attr-defined]
 
     async def _dispatch_one(node_key: str, node_uuid: str, entry: dict) -> bool:
         try:
-            await _rebuild.aio_run_no_wait(
-                RebuildNodeInput(node_id=node_uuid, mode="incremental", scope="all"),
+            await node_pipeline_wf.aio_run_no_wait(
+                NodePipelineInput(mode="rebuild_incremental", scope="all", node_id=node_uuid),
             )
             logger.info(
-                "Dispatched rebuild for node '%s' (status=%s, delta=%d, total_facts=%d)",
+                "Dispatched node_pipeline (rebuild) for '%s' (status=%s, delta=%d, total_facts=%d)",
                 node_key,
                 entry.get("enrichment_status", "?"),
                 entry["delta"],
@@ -531,28 +390,13 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
             )
             return True
         except Exception:
-            logger.debug(
-                "Error dispatching rebuild for %s",
-                node_key,
-                exc_info=True,
-            )
+            logger.debug("Error dispatching node_pipeline for %s", node_key, exc_info=True)
             return False
 
-    results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in dispatch_entries))
-    dispatched = sum(1 for r in results if r)
+    for i in range(0, len(dispatch_entries), batch_size):
+        batch = dispatch_entries[i : i + batch_size]
+        results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in batch))
+        dispatched += sum(1 for r in results if r)
 
-    logger.info("Dispatched %d fact-stale node tasks", dispatched)
-    try:
-        await ctx.aio_put_stream(
-            json.dumps(
-                {
-                    "type": "auto_build_progress",
-                    "step": "recalculate",
-                    "nodes_recalculated": dispatched,
-                }
-            )
-        )
-    except Exception:
-        pass
-
+    logger.info("Dispatched %d fact-stale node pipeline tasks", dispatched)
     return dispatched

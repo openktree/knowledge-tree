@@ -79,6 +79,7 @@ class ConversationListItem(BaseModel):
     title: str | None = None
     mode: str = "research"
     message_count: int = 0
+    latest_status: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -250,6 +251,7 @@ class SourceResponse(BaseModel):
     is_super_source: bool = False
     is_full_text: bool = False
     fetch_attempted: bool = False
+    fetch_error: str | None = None
 
 
 class SourceLinkedNode(BaseModel):
@@ -272,6 +274,7 @@ class SourceDetailResponse(BaseModel):
     fact_count: int = 0
     prohibited_chunk_count: int = 0
     is_full_text: bool = False
+    fetch_error: str | None = None
     content_type: str | None = None
     content_preview: str | None = None
     facts: list[FactResponse] = Field(default_factory=list)
@@ -295,6 +298,38 @@ class PaginatedSourcesResponse(BaseModel):
     total: int
     offset: int
     limit: int
+
+
+class DomainFailureCount(BaseModel):
+    """A domain and its fetch failure count."""
+
+    domain: str
+    failure_count: int
+
+
+class ErrorGroupCount(BaseModel):
+    """A fetch error message group and its occurrence count."""
+
+    error_group: str
+    count: int
+
+
+class DailyFailureCount(BaseModel):
+    """Fetch failures on a single day."""
+
+    day: str
+    failure_count: int
+
+
+class SourceInsightsResponse(BaseModel):
+    """Aggregate insights about source fetch health."""
+
+    total_count: int
+    failed_count: int
+    pending_super_count: int
+    top_failed_domains: list[DomainFailureCount]
+    common_errors: list[ErrorGroupCount]
+    failures_per_day: list[DailyFailureCount]
 
 
 class SubgraphResponse(BaseModel):
@@ -585,6 +620,30 @@ class ResearchReportResponse(BaseModel):
     nav_used: int
     scope_summaries: list[str] = Field(default_factory=list)
     super_sources: list[dict[str, Any]] | None = None
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_cost_usd: float = 0.0
+    created_at: datetime
+
+
+class ReportResponse(BaseModel):
+    """Full report response including summary data and workflow tracking."""
+
+    id: str
+    message_id: str | None = None
+    conversation_id: str | None = None
+    workflow_run_id: str | None = None
+    report_type: str = "research"
+    nodes_created: int = 0
+    edges_created: int = 0
+    waves_completed: int = 0
+    explore_budget: int | None = None
+    explore_used: int = 0
+    nav_budget: int | None = None
+    nav_used: int = 0
+    scope_summaries: list[str] = Field(default_factory=list)
+    super_sources: list[dict[str, Any]] | None = None
+    summary_data: dict[str, Any] | None = None
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     total_cost_usd: float = 0.0
@@ -905,6 +964,7 @@ class IngestBuildResponse(BaseModel):
     message_id: str
     node_count: int = 0
     status: str = "running"
+    workflow_run_id: str | None = None
 
 
 # ── Seed schemas ─────────────────────────────────────────────────────

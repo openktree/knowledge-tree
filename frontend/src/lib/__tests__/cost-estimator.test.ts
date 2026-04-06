@@ -12,7 +12,7 @@ function makeModel(model_id: string): ModelConfig {
 
 const DEFAULT_MODELS: ModelConfig[] = [
   makeModel("openrouter/x-ai/grok-4.1-fast"),
-  makeModel("openrouter/anthropic/claude-3.5-sonnet"),
+  makeModel("openrouter/anthropic/claude-sonnet-4.6"),
 ];
 
 const SAMPLE_ROLES: ModelRoles = {
@@ -43,7 +43,7 @@ describe("estimateCost", () => {
     expect(result.breakdown.model_calls).toBeGreaterThan(0);
     expect(result.models).toEqual([
       "openrouter/x-ai/grok-4.1-fast",
-      "openrouter/anthropic/claude-3.5-sonnet",
+      "openrouter/anthropic/claude-sonnet-4.6",
     ]);
     // Should have categories
     expect(result.categories.length).toBeGreaterThan(0);

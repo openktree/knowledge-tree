@@ -19,7 +19,7 @@ spec:
       database: hatchet
       owner: hatchet
       secret:
-        name: {{ include "knowledge-tree.hatchetDbName" . }}-credentials
+        name: {{ .Values.hatchetDb.credentialsSecret | default (printf "%s-credentials" (include "knowledge-tree.hatchetDbName" .)) }}
 
   storage:
     size: {{ .Values.hatchetDb.storage.size }}
@@ -29,14 +29,26 @@ spec:
 
   resources:
     {{- toYaml .Values.hatchetDb.resources | nindent 4 }}
+{{- if not .Values.hatchetDb.credentialsSecret }}
 ---
+{{- $credSecretName := printf "%s-credentials" (include "knowledge-tree.hatchetDbName" .) }}
+{{- $existingCred := lookup "v1" "Secret" .Release.Namespace $credSecretName }}
+{{- $password := "" }}
+{{- if $existingCred }}
+  {{- $password = index (default dict $existingCred.data) "password" | default "" }}
+  {{- if $password }}
+    {{- $password = $password | b64dec }}
+  {{- end }}
+{{- end }}
+{{- $password = $password | default .Values.secrets.hatchetDbPassword }}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "knowledge-tree.hatchetDbName" . }}-credentials
+  name: {{ $credSecretName }}
   labels:
     {{- include "knowledge-tree.labels" . | nindent 4 }}
 type: kubernetes.io/basic-auth
 stringData:
   username: hatchet
-  password: {{ .Values.secrets.hatchetDbPassword | quote }}
+  password: {{ $password | quote }}
+{{- end }}

@@ -187,6 +187,21 @@ Outputs a list of env var definitions.
     secretKeyRef:
       name: {{ include "knowledge-tree.secretName" . }}
       key: google-oauth-client-secret
+{{- if eq (.Values.email.provider | default "") "resend" }}
+- name: EMAIL_ENABLED
+  value: "true"
+- name: EMAIL_PROVIDER
+  value: "resend"
+- name: EMAIL_VERIFICATION
+  value: {{ .Values.email.verification | default false | quote }}
+- name: EMAIL_FROM_ADDRESS
+  value: {{ ((.Values.email).resend).fromAddress | default "" | quote }}
+- name: RESEND_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "knowledge-tree.secretName" . }}
+      key: resend-api-key
+{{- end }}
 - name: CONFIG_PATH
   value: /app/config.yaml
 {{- end }}

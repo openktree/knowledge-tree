@@ -9,10 +9,20 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_config.settings import Settings
+from kt_db.session import get_engine, get_write_engine
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
+
+    from kt_models.embeddings import EmbeddingService
+    from kt_models.gateway import ModelGateway
+    from kt_providers.fetcher import ContentFetcher
+    from kt_providers.registry import ProviderRegistry
 
 
 @dataclass
@@ -24,35 +34,21 @@ class WorkerState:
     settings: Settings
 
     # Lazy-imported services -- set during lifespan setup
-    model_gateway: object  # ModelGateway
-    embedding_service: object  # EmbeddingService
-    provider_registry: object  # ProviderRegistry
-    content_fetcher: object | None  # ContentFetcher | None
-    ontology_registry: object | None = None  # OntologyProviderRegistry | None
-    qdrant_client: object | None = None  # AsyncQdrantClient | None
+    model_gateway: ModelGateway
+    embedding_service: EmbeddingService
+    provider_registry: ProviderRegistry
+    content_fetcher: ContentFetcher | None
+    qdrant_client: AsyncQdrantClient | None = None
 
 
 async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     """Async context manager that Hatchet calls at worker start/stop."""
     settings = Settings()
 
-    engine = create_async_engine(
-        settings.database_url,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
-        pool_timeout=settings.db_pool_timeout,
-        pool_pre_ping=True,
-    )
+    engine = get_engine(application_name="kt-worker")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    write_engine = create_async_engine(
-        settings.write_database_url,
-        pool_size=settings.write_db_pool_size,
-        max_overflow=settings.write_db_max_overflow,
-        pool_timeout=settings.write_db_pool_timeout,
-        pool_pre_ping=True,
-        connect_args={"statement_cache_size": 0},
-    )
+    write_engine = get_write_engine(application_name="kt-worker")
     write_session_factory = async_sessionmaker(write_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Lazy imports to avoid circular dependencies
@@ -83,22 +79,6 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
             max_concurrent=settings.full_text_fetch_max_urls,
         )
 
-    # Ontology provider setup
-    ontology_registry = None
-    if settings.enable_ontology_ancestry:
-        from kt_ontology.cache import CachedOntologyProvider
-        from kt_ontology.registry import OntologyProviderRegistry
-        from kt_ontology.wikidata import WikidataOntologyProvider
-
-        ontology_registry = OntologyProviderRegistry()
-        wikidata = WikidataOntologyProvider(user_agent=settings.wikidata_user_agent)
-        cached_wikidata = CachedOntologyProvider(
-            inner=wikidata,
-            redis_url=settings.redis_url,
-            ttl=settings.ontology_cache_ttl,
-        )
-        ontology_registry.register(cached_wikidata, default=True)
-
     # Qdrant vector search client (required for all vector search)
     from kt_qdrant.client import get_qdrant_client
     from kt_qdrant.repositories.facts import QdrantFactRepository
@@ -118,7 +98,6 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         embedding_service=embedding_service,
         provider_registry=provider_registry,
         content_fetcher=content_fetcher,
-        ontology_registry=ontology_registry,
         qdrant_client=qdrant_client,
     )
 
@@ -140,23 +119,10 @@ async def build_worker_state() -> WorkerState:
     """
     settings = Settings()
 
-    engine = create_async_engine(
-        settings.database_url,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
-        pool_timeout=settings.db_pool_timeout,
-        pool_pre_ping=True,
-    )
+    engine = get_engine(application_name="kt-worker")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    write_engine = create_async_engine(
-        settings.write_database_url,
-        pool_size=settings.write_db_pool_size,
-        max_overflow=settings.write_db_max_overflow,
-        pool_timeout=settings.write_db_pool_timeout,
-        pool_pre_ping=True,
-        connect_args={"statement_cache_size": 0},
-    )
+    write_engine = get_write_engine(application_name="kt-worker")
     write_session_factory = async_sessionmaker(write_engine, class_=AsyncSession, expire_on_commit=False)
 
     from kt_models.embeddings import EmbeddingService
@@ -186,21 +152,6 @@ async def build_worker_state() -> WorkerState:
             max_concurrent=settings.full_text_fetch_max_urls,
         )
 
-    ontology_registry = None
-    if settings.enable_ontology_ancestry:
-        from kt_ontology.cache import CachedOntologyProvider
-        from kt_ontology.registry import OntologyProviderRegistry
-        from kt_ontology.wikidata import WikidataOntologyProvider
-
-        ontology_registry = OntologyProviderRegistry()
-        wikidata = WikidataOntologyProvider(user_agent=settings.wikidata_user_agent)
-        cached_wikidata = CachedOntologyProvider(
-            inner=wikidata,
-            redis_url=settings.redis_url,
-            ttl=settings.ontology_cache_ttl,
-        )
-        ontology_registry.register(cached_wikidata, default=True)
-
     # Qdrant vector search client (required for all vector search)
     from kt_qdrant.client import get_qdrant_client
     from kt_qdrant.repositories.facts import QdrantFactRepository
@@ -220,6 +171,5 @@ async def build_worker_state() -> WorkerState:
         embedding_service=embedding_service,
         provider_registry=provider_registry,
         content_fetcher=content_fetcher,
-        ontology_registry=ontology_registry,
         qdrant_client=qdrant_client,
     )

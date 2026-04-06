@@ -29,6 +29,15 @@ const paragraphMap: Map<string, SynthesisSentenceResponse[]> = synthesis
 
 const typeLabel = synthesis?.node_type === "supersynthesis" ? "Super-Synthesis" : "Synthesis";
 
+// Duplicated from frontend/src/components/synthesis/utils.ts — keep in sync
+function formatModelName(modelId: string | null | undefined): string | null {
+  if (!modelId) return null;
+  const parts = modelId.replace(/^openrouter\//, "").split("/");
+  const slug = parts[parts.length - 1];
+  return slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+const modelName = synthesis ? formatModelName(synthesis.model_id) : null;
+
 // Helper: strip markdown for plain-text key matching
 function stripMarkdown(text: string): string {
   return text
@@ -80,6 +89,7 @@ const blockMetas: BlockMeta[] = blocks.map((block) => {
         <p class="synthesis-stats">
           {synthesis.sentences.length} sentence{synthesis.sentences.length !== 1 ? "s" : ""}
           &middot; {synthesis.referenced_nodes.length} node{synthesis.referenced_nodes.length !== 1 ? "s" : ""} referenced
+          {modelName && <>&middot; {modelName}</>}
         </p>
       </div>
 
@@ -103,6 +113,9 @@ const blockMetas: BlockMeta[] = blocks.map((block) => {
                   {badge}
                 </Tag>
               );
+            }
+            if (block.kind === "table") {
+              return <Fragment set:html={block.rawHtml} />;
             }
             if (block.kind === "list-item") {
               return (

@@ -2,7 +2,7 @@ import pytest
 
 from kt_db.repositories.edges import EdgeRepository
 from kt_db.repositories.nodes import NodeRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 pytestmark = pytest.mark.asyncio
 
@@ -15,7 +15,7 @@ async def test_direct_connection(db_session):
     b = await node_repo.create(concept="path_direct_b")
     await edge_repo.create(a.id, b.id, "related", 0.8)
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     paths = await engine.find_shortest_paths(a.id, b.id)
 
     assert len(paths) == 1
@@ -32,7 +32,7 @@ async def test_no_connection(db_session):
     a = await node_repo.create(concept="path_isolated_a")
     b = await node_repo.create(concept="path_isolated_b")
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     paths = await engine.find_shortest_paths(a.id, b.id)
 
     assert len(paths) == 0
@@ -51,7 +51,7 @@ async def test_diamond_graph(db_session):
     await edge_repo.create(a.id, c.id, "related", 0.5)
     await edge_repo.create(c.id, d.id, "related", 0.5)
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     paths = await engine.find_shortest_paths(a.id, d.id)
 
     assert len(paths) == 2
@@ -72,7 +72,7 @@ async def test_chain_exceeds_max_depth(db_session):
     for i in range(3):
         await edge_repo.create(nodes[i].id, nodes[i + 1].id, "related", 0.5)
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     # max_depth=2 means at most 2 edges; chain needs 3
     paths = await engine.find_shortest_paths(nodes[0].id, nodes[3].id, max_depth=2)
     assert len(paths) == 0
@@ -96,7 +96,7 @@ async def test_limit_cap(db_session):
     await edge_repo.create(a.id, c.id, "related", 0.5)
     await edge_repo.create(c.id, d.id, "related", 0.5)
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     paths = await engine.find_shortest_paths(a.id, d.id, limit=1)
 
     assert len(paths) == 1
@@ -115,7 +115,7 @@ async def test_shortest_first(db_session):
     await edge_repo.create(a.id, c.id, "related", 0.5)
     await edge_repo.create(c.id, b.id, "related", 0.5)
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     paths = await engine.find_shortest_paths(a.id, b.id)
 
     assert len(paths) >= 1
@@ -132,7 +132,7 @@ async def test_reverse_edge_traversal(db_session):
     # Only edge is B→A, but we search A→B
     await edge_repo.create(b.id, a.id, "related", 0.7)
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     paths = await engine.find_shortest_paths(a.id, b.id)
 
     assert len(paths) == 1
@@ -145,7 +145,7 @@ async def test_source_equals_target(db_session):
     node_repo = NodeRepository(db_session)
     a = await node_repo.create(concept="path_self")
 
-    engine = GraphEngine(db_session)
+    engine = ReadGraphEngine(session=db_session)
     paths = await engine.find_shortest_paths(a.id, a.id)
 
     assert len(paths) == 1

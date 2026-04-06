@@ -25,20 +25,23 @@
 |  Real-time         Server-Sent Events (SSE)                           |
 +-----------------------------------------------------------------------+
 |  API Layer         FastAPI + uvicorn + SSE streaming                   |
+|  MCP Server        FastMCP + OAuth 2.1 (services/mcp)                 |
 |  Auth              fastapi-users (JWT + Google OAuth) + API tokens     |
 |  Orchestration     Hatchet v1 SDK (durable workflows)                 |
 |  Agents            LangGraph (stateful agent orchestration)            |
 |  AI Gateway        LiteLLM -> OpenRouter (multi-model)                |
 |  Embeddings        OpenAI text-embedding-3-large (3072d) via LiteLLM  |
 +-----------------------------------------------------------------------+
-|  Database          PostgreSQL 16 + pgvector                           |
-|  Cache             Redis 7 (ontology cache)                           |
+|  Database          Dual PostgreSQL 16 (graph-db + write-db)           |
+|  Vector Search     Qdrant + pgvector (graph-db)                       |
+|  Connection Pool   PgBouncer (read + write)                           |
+|  Cache             Redis 7                                            |
 |  Workflow Engine   Hatchet (separate Postgres)                        |
-|  Migrations        Alembic                                            |
+|  Migrations        Alembic (graph-db + write-db)                      |
 +-----------------------------------------------------------------------+
 |  Package Mgmt      uv (Python) / pnpm (Node)                         |
 |  Dev Commands      justfile (just runner)                             |
-|  Containerization  Docker + docker-compose                            |
+|  Containerization  Docker + docker-compose + Helm/K3D                 |
 |  Monitoring        Hatchet UI (http://localhost:8080)                  |
 +-----------------------------------------------------------------------+
 ```
@@ -90,24 +93,38 @@
 | **hatchet-sdk** | Durable workflow engine | Replaces arq/Redis Streams. Provides durable task execution, DAG workflows, fan-out/fan-in, progress streaming, workflow monitoring UI. |
 
 **Why Hatchet over alternatives:**
-- **vs arq/Celery:** Hatchet provides durable execution with automatic retries, DAG-based task dependencies, and a built-in monitoring UI. Simple job queues can't express the exploration_wf -> sub_explore_wf -> node_pipeline_wf hierarchy.
+- **vs arq/Celery:** Hatchet provides durable execution with automatic retries, DAG-based task dependencies, and a built-in monitoring UI. Simple job queues can't express the bottom_up_wf -> bottom_up_scope_wf -> node_pipeline_wf hierarchy.
 - **vs Temporal:** Hatchet is simpler to self-host (single Docker container), has a cleaner Python SDK, and the lite image is perfect for local dev.
 - **vs in-process:** Exploration workflows run for minutes and involve many LLM calls. They must survive process restarts and be observable.
 
 **Workflow architecture:**
 ```
-exploration_wf (top-level)
-  |-- scout phase (in-process)
-  |-- wave 1..N
-  |     |-- scope planning (LLM)
-  |     |-- sub_explore_wf (fan-out, one per scope)
-  |           |-- node planning (LLM)
-  |           |-- node_pipeline_wf (fan-out, one per node)
-  |                 |-- create_node
-  |                 |-- dimensions (parallel multi-model)
-  |                 |-- definition
-  |                 |-- parent selection
-  |-- synthesis (final answer generation)
+bottom_up_wf (top-level research)
+  |-- scope planning (LLM)
+  |-- bottom_up_scope_wf (fan-out, one per scope)
+  |     |-- fact gathering + decomposition
+  |     |-- node_pipeline_wf (fan-out, one per node)
+  |           |-- create_node
+  |           |-- dimensions (parallel multi-model)
+  |           |-- definition
+  |           |-- parent selection
+  |     |-- perspective building
+
+synthesizer_wf (synthesis document creation)
+  |-- SynthesizerAgent navigates graph (8 tools)
+  |-- finish_synthesis → document
+
+super_synthesizer_wf (multi-scope meta-synthesis)
+  |-- plan N scopes
+  |-- dispatch N synthesizer_wf in parallel
+  |-- SuperSynthesizerAgent combines results
+
+ingest_build_wf (source ingestion)
+  |-- decompose sources → facts + seeds
+  |-- IngestAgent builds nodes from fact pool
+
+sync_wf (write-db → graph-db propagation)
+  |-- watermark-based incremental sync
 ```
 
 ### 2.5 Authentication
@@ -145,7 +162,7 @@ class BaseAgent:
         return graph.compile()
 ```
 
-The **Orchestrator** plans 3-5 focused scopes and delegates to **sub-explorers**. Each sub-explorer runs in isolation with its own budget slice and DB session, gathers facts, builds nodes via the `BatchPipeline`, and returns a briefing summary.
+The **bottom_up_wf** plans scopes and delegates to **bottom_up_scope_wf** instances. Each scope runs in isolation, gathers facts, builds nodes via `node_pipeline_wf`, and returns results. The **SynthesizerAgent** navigates the resulting graph to produce synthesis documents.
 
 ---
 
@@ -222,20 +239,34 @@ This approach was chosen because:
 
 ## 4. Database & Storage
 
-### 4.1 PostgreSQL + pgvector
+### 4.1 Dual PostgreSQL Architecture
+
+The system uses two PostgreSQL databases optimized for different workloads:
+
+| Component | Port | Details |
+|-----------|------|---------|
+| **graph-db** | 5432 | Read-optimized. pgvector extension, FK constraints, junction tables (NodeFact, EdgeFact, DimensionFact). API and synthesis agent read from here. |
+| **write-db** | 5435 | Write-optimized. No FKs, TEXT primary keys (deterministic), no deadlocks. Workers write here during pipelines. |
+| **pgbouncer-read** | 5436 | Connection pool for graph-db reads |
+| **pgbouncer-write** | 5434 | Connection pool for write-db writes |
+| **Vector dimensions** | — | 3072 (text-embedding-3-large) |
+| **Vector indexes** | — | HNSW for approximate nearest neighbor search (pgvector on graph-db) |
+
+Deterministic UUIDs via `key_to_uuid()` (UUID5) bridge the two databases so both share identical IDs. The sync worker (`worker-sync`) polls write-db changes and propagates to graph-db.
+
+### 4.1.1 Qdrant Vector Search
 
 | Component | Details |
 |-----------|---------|
-| **PostgreSQL** | 16+ with pgvector extension |
-| **Vector dimensions** | 3072 (text-embedding-3-large) |
-| **Vector indexes** | HNSW for approximate nearest neighbor search |
-| **Connection pooling** | Configurable: `db_pool_size=30`, `db_max_overflow=60`, `db_pool_timeout=60` |
+| **Qdrant** | Dedicated vector database for semantic search (ports 6333-6334) |
+| **Collections** | Separate collections for nodes and facts |
+| **Usage** | Primary semantic search for both read and write paths; pgvector serves as fallback on graph-db |
 
 ### 4.2 Redis
 
 | Use | Details |
 |-----|---------|
-| **Ontology cache** | Redis-backed caching for Wikidata/ancestry lookups (7-day TTL) |
+| **General cache** | Redis-backed caching with configurable TTL |
 
 ### 4.3 Hatchet
 
@@ -248,32 +279,31 @@ This approach was chosen because:
 
 ### 4.4 Database Schema (Key Tables)
 
-**Core Knowledge Graph:**
-- `nodes` — Concepts, entities, perspectives, events. Vector embeddings (3072d).
+**graph-db (read-optimized) — `kt_db/models.py`:**
+- `nodes` — Concepts, entities, perspectives, events, locations, syntheses, supersyntheses. Vector embeddings (3072d).
 - `node_counters` — Separate counter table (avoids row-lock contention).
-- `edges` — Typed relationships (weight = shared fact count). Canonical UUID ordering. Unique constraint per (source, target, type).
+- `edges` — Typed relationships (`related`, `cross_type`, `draws_from`). Canonical UUID ordering for undirected types. Unique constraint per (source, target, type).
 - `facts` — Independent fact units with embeddings. Linked to nodes via `node_facts`.
 - `raw_sources` — Original source data (URIs, content). Content-hash deduped.
 - `fact_sources` — Links facts to their raw sources (provenance).
 - `node_facts`, `edge_facts`, `dimension_facts` — Junction tables.
-
-**Dimensions & Convergence:**
-- `dimensions` — Multi-model analyses per node. Batch-indexed.
+- `dimensions` — Multi-model analyses per node.
 - `convergence_reports` — Cross-model agreement scores.
 - `divergent_claims` — Where models disagree.
-
-**Conversations:**
-- `conversations` — Chat sessions (research mode).
-- `conversation_messages` — Per-turn state (budgets, visited/created nodes, workflow_run_id).
-- `research_reports` — Outcome summary per orchestrator run.
-
-**Ingestion:**
+- `conversations`, `conversation_messages`, `research_reports` — Research sessions.
 - `ingest_sources` — Uploaded files/links with processing status.
+- `user`, `oauthaccount`, `api_tokens` — Authentication.
+- `oauth_clients`, `oauth_authorization_codes`, `oauth_access_tokens`, `oauth_refresh_tokens` — OAuth 2.1 server.
+- `system_settings`, `waitlist_entries`, `invites` — Admin/config.
+- `llm_usage`, `llm_usage_records` — LLM usage tracking.
 
-**Auth:**
-- `user` — FastAPI Users base (email, hashed password).
-- `oauthaccount` — OAuth provider tokens (Google).
-- `api_tokens` — Long-lived API tokens (hashed).
+**write-db (write-optimized) — `kt_db/write_models.py`:**
+- `write_nodes`, `write_edges`, `write_dimensions`, `write_facts`, `write_fact_sources` — Parallel to graph-db but with TEXT keys and no FKs.
+- `write_seeds`, `write_seed_facts` — Seed entities (pre-node clustering).
+- `write_edge_candidates` — Potential edges awaiting classification.
+- `write_convergence_reports`, `write_divergent_claims`, `write_node_counters` — Worker-produced analysis.
+- `sync_watermarks` — Tracks last synced timestamp per table for incremental sync.
+- `sync_failures` — Dead-letter queue for failed sync entries.
 
 **Metadata:**
 - `ai_models`, `query_origins`, `provider_fetches`, `node_versions`
@@ -507,12 +537,12 @@ just clean          # Full reset (delete volumes, re-setup, re-migrate)
 # Dev mode (no Docker for app services)
 just api-dev        # Start API locally
 just worker         # Start all Hatchet workers in one process
-just worker-orch    # Orchestrator worker only
-just worker-search  # Search worker only
-just worker-nodes   # Node pipeline worker only
-just worker-query   # Query worker only
-just worker-ingest  # Ingest worker only
-just worker-conv    # Conversations worker only
+just worker-bottomup   # Bottom-up research worker only
+just worker-search     # Search worker only
+just worker-nodes      # Node pipeline worker only
+just worker-synthesis  # Synthesis worker only
+just worker-ingest     # Ingest worker only
+just worker-sync       # Write-db → graph-db sync worker only
 
 # Database
 just migrate        # Run alembic migrations (from libs/kt-db)

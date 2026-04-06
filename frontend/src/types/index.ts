@@ -121,6 +121,7 @@ export interface ConversationMessageResponse {
   subgraph: SubgraphResponse | null;
   status: string | null;
   error: string | null;
+  workflow_run_id: string | null;
   created_at: string; // ISO 8601 datetime
 }
 
@@ -138,6 +139,7 @@ export interface ConversationListItem {
   title: string | null;
   mode: string; // "query" | "ingest"
   message_count: number;
+  latest_status: string | null;
   created_at: string; // ISO 8601 datetime
   updated_at: string; // ISO 8601 datetime
 }
@@ -265,6 +267,7 @@ export interface SourceResponse {
   is_super_source: boolean;
   is_full_text: boolean;
   fetch_attempted: boolean;
+  fetch_error: string | null;
 }
 
 export interface SourceLinkedNode {
@@ -283,6 +286,7 @@ export interface SourceDetailResponse {
   fact_count: number;
   prohibited_chunk_count: number;
   is_full_text: boolean;
+  fetch_error: string | null;
   content_type: string | null;
   content_preview: string | null;
   facts: FactResponse[];
@@ -302,6 +306,30 @@ export interface PaginatedSourcesResponse {
   total: number;
   offset: number;
   limit: number;
+}
+
+export interface DomainFailureCount {
+  domain: string;
+  failure_count: number;
+}
+
+export interface ErrorGroupCount {
+  error_group: string;
+  count: number;
+}
+
+export interface DailyFailureCount {
+  day: string;
+  failure_count: number;
+}
+
+export interface SourceInsightsResponse {
+  total_count: number;
+  failed_count: number;
+  pending_super_count: number;
+  top_failed_domains: DomainFailureCount[];
+  common_errors: ErrorGroupCount[];
+  failures_per_day: DailyFailureCount[];
 }
 
 export interface SubgraphResponse {
@@ -1293,6 +1321,7 @@ export interface SynthesisDocumentResponse {
   node_type: string;
   visibility: string;
   definition: string | null;
+  model_id: string | null;
   sentences: SynthesisSentenceResponse[];
   referenced_nodes: SynthesisNodeResponse[];
   sub_syntheses: SynthesisNodeResponse[];
@@ -1304,6 +1333,7 @@ export interface SynthesisListItem {
   concept: string;
   node_type: string;
   visibility: string;
+  model_id: string | null;
   sentence_count: number;
   sub_synthesis_ids: string[];
   created_at: string | null;
@@ -1335,6 +1365,7 @@ export interface CreateSynthesisRequest {
   starting_node_ids?: string[];
   exploration_budget?: number;
   visibility?: string;
+  model_id?: string;
 }
 
 export interface CreateSuperSynthesisRequest {
@@ -1344,4 +1375,11 @@ export interface CreateSuperSynthesisRequest {
   scope_count?: number;
   visibility?: string;
   distance_threshold?: number;
+  model_id?: string;
+}
+
+export interface SynthesisModelOption {
+  model_id: string;
+  display_name: string;
+  provider: string;
 }

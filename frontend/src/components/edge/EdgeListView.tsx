@@ -82,8 +82,8 @@ export function EdgeListView() {
   return (
     <div className="flex flex-col h-full relative">
       {/* Search + filter + count */}
-      <div className="flex items-center gap-3 p-4 border-b">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap items-center gap-3 p-4 border-b">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search by justification..."

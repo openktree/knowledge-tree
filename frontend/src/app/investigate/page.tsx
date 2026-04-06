@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { listSyntheses, deleteSynthesis } from "@/lib/api";
 import { CreateSynthesisDialog } from "@/components/synthesis/CreateSynthesisDialog";
 import type { SynthesisListItem } from "@/types";
-import { formatSynthesisConcept } from "@/components/synthesis/utils";
+import { formatSynthesisConcept, formatModelName } from "@/components/synthesis/utils";
 
 export default function SynthesesPage() {
   const [items, setItems] = useState<SynthesisListItem[]>([]);
@@ -215,6 +215,14 @@ function SynthesisCard({
             <span className="text-[0.78rem] text-muted-foreground">
               {item.sentence_count} sentences
             </span>
+            {formatModelName(item.model_id) && (
+              <>
+                <span className="text-border">·</span>
+                <span className="text-[0.78rem] text-muted-foreground">
+                  {formatModelName(item.model_id)}
+                </span>
+              </>
+            )}
             {(date || item.created_at) && (
               <>
                 <span className="text-border">·</span>

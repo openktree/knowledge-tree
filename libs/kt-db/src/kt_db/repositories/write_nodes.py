@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_db.keys import key_to_uuid, make_node_key
+from kt_db.repositories.nodes import _exact_match_order
 from kt_db.write_models import WriteNode, WriteNodeCounter
 
 
@@ -160,6 +161,11 @@ class WriteNodeRepository:
         stmt = text(r"UPDATE write_nodes SET metadata = :meta\:\:jsonb, updated_at = NOW() WHERE key = :key")
         await self._session.execute(stmt, {"key": key, "meta": json.dumps(metadata_)})
 
+    async def remove_metadata_key(self, node_key: str, meta_key: str) -> None:
+        """Remove a single key from a node's metadata JSON without overwriting other keys."""
+        stmt = text("UPDATE write_nodes SET metadata = metadata - :meta_key, updated_at = NOW() WHERE key = :node_key")
+        await self._session.execute(stmt, {"node_key": node_key, "meta_key": meta_key})
+
     async def increment_update_count(self, node_key: str) -> None:
         stmt = (
             pg_insert(WriteNodeCounter)
@@ -194,6 +200,11 @@ class WriteNodeRepository:
         )
         await self._session.execute(stmt, {"key": target_key, "new_ids": source_fact_ids})
 
+    async def set_enrichment_status(self, node_key: str, status: str) -> None:
+        """Update the enrichment_status for a node."""
+        stmt = text("UPDATE write_nodes SET enrichment_status = :status, updated_at = NOW() WHERE key = :key")
+        await self._session.execute(stmt, {"key": node_key, "status": status})
+
     async def update_facts_at_last_build(self, node_key: str, count: int) -> None:
         """Update the facts_at_last_build counter for a node."""
         stmt = text("UPDATE write_nodes SET facts_at_last_build = :count, updated_at = NOW() WHERE key = :key")
@@ -214,10 +225,52 @@ class WriteNodeRepository:
         stmt = (
             select(WriteNode)
             .where(func.similarity(WriteNode.concept, query) >= threshold)
-            .order_by(func.similarity(WriteNode.concept, query).desc())
+            .order_by(
+                _exact_match_order(WriteNode.concept, query),
+                func.similarity(WriteNode.concept, query).desc(),
+                func.length(WriteNode.concept).asc(),
+            )
         )
         if node_type is not None:
             stmt = stmt.where(WriteNode.node_type == node_type)
         stmt = stmt.limit(limit)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def search_by_concept(
+        self,
+        query: str,
+        limit: int = 10,
+        node_type: str | None = None,
+    ) -> list[WriteNode]:
+        """Text search by concept using word_similarity with ILIKE fallback.
+
+        Mirrors NodeRepository.search_by_concept for the write-db.
+        """
+        threshold = 0.25
+        stmt = (
+            select(WriteNode)
+            .where(func.word_similarity(query, WriteNode.concept) >= threshold)
+            .order_by(
+                _exact_match_order(WriteNode.concept, query),
+                func.word_similarity(query, WriteNode.concept).desc(),
+                func.length(WriteNode.concept).asc(),
+            )
+        )
+        if node_type is not None:
+            stmt = stmt.where(WriteNode.node_type == node_type)
+        stmt = stmt.limit(limit)
+        result = await self._session.execute(stmt)
+        nodes = list(result.scalars().all())
+
+        if nodes:
+            return nodes
+
+        # Fallback: ILIKE for exact substring matches.
+        escaped = query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        stmt2 = select(WriteNode).where(WriteNode.concept.ilike(f"%{escaped}%"))
+        if node_type is not None:
+            stmt2 = stmt2.where(WriteNode.node_type == node_type)
+        stmt2 = stmt2.limit(limit)
+        result2 = await self._session.execute(stmt2)
+        return list(result2.scalars().all())

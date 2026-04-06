@@ -121,10 +121,13 @@ class EdgeClassifier:
                     if decision is not None and j < len(fact_index_maps):
                         raw_justification = decision.get("justification", "")
                         if raw_justification and fact_index_maps[j]:
-                            decision["justification"] = resolve_fact_tokens(
+                            from kt_models.link_normalizer import normalize_ai_links
+
+                            resolved = resolve_fact_tokens(
                                 str(raw_justification),
                                 fact_index_maps[j],
                             )
+                            decision["justification"] = normalize_ai_links(resolved, preserve_fact_tokens=True)
 
                 slots[idx] = batch_decisions
 

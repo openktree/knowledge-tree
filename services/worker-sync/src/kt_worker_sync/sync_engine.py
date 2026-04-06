@@ -23,7 +23,8 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, update  # noqa: I001
+from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -180,6 +181,117 @@ class SyncEngine:
         )
         await write_session.execute(stmt)
 
+    # ── Denormalized stat refresh ────────────────────────────────────────
+
+    async def _refresh_node_stats(
+        self,
+        gs: AsyncSession,
+        node_ids: set[uuid.UUID],
+    ) -> None:
+        """Recompute denormalized counters for the given nodes.
+
+        Runs efficient aggregate subqueries and batch-updates the nodes table.
+        Called after syncing entities that affect node stats (facts, edges,
+        dimensions, convergence, child relationships).
+        """
+        if not node_ids:
+            return
+
+        id_list = list(node_ids)
+
+        # fact_count — use LEFT JOIN so nodes with zero facts get 0
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET fact_count = COALESCE(sub.cnt, 0)
+                FROM (
+                    SELECT u.id AS node_id, COUNT(nf.fact_id) AS cnt
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
+                    LEFT JOIN node_facts nf ON nf.node_id = u.id
+                    GROUP BY u.id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
+        )
+
+        # edge_count (source + target) — LEFT JOIN so deleted edges → 0
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET edge_count = COALESCE(sub.cnt, 0)
+                FROM (
+                    SELECT u.id AS node_id, COALESCE(SUM(e.cnt), 0)::int AS cnt
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
+                    LEFT JOIN (
+                        SELECT source_node_id AS node_id, COUNT(*) AS cnt
+                        FROM edges WHERE source_node_id = ANY(:ids)
+                        GROUP BY source_node_id
+                        UNION ALL
+                        SELECT target_node_id AS node_id, COUNT(*) AS cnt
+                        FROM edges WHERE target_node_id = ANY(:ids)
+                        GROUP BY target_node_id
+                    ) e ON e.node_id = u.id
+                    GROUP BY u.id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
+        )
+
+        # child_count — LEFT JOIN so nodes with no children → 0
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET child_count = COALESCE(sub.cnt, 0)
+                FROM (
+                    SELECT u.id AS node_id, COUNT(c.id) AS cnt
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
+                    LEFT JOIN nodes c ON c.parent_id = u.id
+                    GROUP BY u.id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
+        )
+
+        # dimension_count — LEFT JOIN so nodes with no dimensions → 0
+        await gs.execute(
+            sa_text(
+                """
+                UPDATE nodes SET dimension_count = COALESCE(sub.cnt, 0)
+                FROM (
+                    SELECT u.id AS node_id, COUNT(d.id) AS cnt
+                    FROM UNNEST(CAST(:ids AS uuid[])) AS u(id)
+                    LEFT JOIN dimensions d ON d.node_id = u.id
+                    GROUP BY u.id
+                ) sub
+                WHERE nodes.id = sub.node_id
+                """
+            ),
+            {"ids": id_list},
+        )
+
+        # convergence_score
+        conv_sub = (
+            select(ConvergenceReport.node_id, ConvergenceReport.convergence_score.label("score"))
+            .where(ConvergenceReport.node_id.in_(id_list))
+            .subquery()
+        )
+        await gs.execute(update(Node).where(Node.id == conv_sub.c.node_id).values(convergence_score=conv_sub.c.score))
+
+        # Invalidate cached API responses for affected nodes
+        from kt_config.cache import cache_invalidate
+
+        for nid in node_ids:
+            await cache_invalidate(f"kt:node:{nid}*")
+        await cache_invalidate("kt:nodes:list:*")
+        await cache_invalidate("kt:graph:subgraph:*")
+        await cache_invalidate("kt:graph:stats")
+
     # ── Raw Sources ──────────────────────────────────────────────────────
 
     async def _sync_raw_sources(self) -> int:
@@ -227,12 +339,14 @@ class SyncEngine:
                                 raw_content=wrs.raw_content,
                                 content_hash=wrs.content_hash,
                                 is_full_text=wrs.is_full_text,
+                                is_super_source=wrs.is_super_source,
                                 content_type=wrs.content_type,
                                 provider_id=wrs.provider_id,
                                 provider_metadata=wrs.provider_metadata,
                                 fact_count=wrs.fact_count,
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
+                                fetch_error=wrs.fetch_error,
                             )
                             .on_conflict_do_update(
                                 index_elements=["id"],
@@ -242,11 +356,16 @@ class SyncEngine:
                                     "raw_content": wrs.raw_content,
                                     "content_hash": wrs.content_hash,
                                     "is_full_text": wrs.is_full_text,
+                                    "is_super_source": wrs.is_super_source,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
-                                    "fact_count": wrs.fact_count,
+                                    # fact_count intentionally excluded — managed
+                                    # by _sync_one_fact_source increments only.
+                                    # write-db never updates fact_count, so
+                                    # re-syncing would reset it to 0.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
+                                    "fetch_error": wrs.fetch_error,
                                 },
                             )
                         )
@@ -432,7 +551,7 @@ class SyncEngine:
                         )
 
                         for wfs in fact_sources:
-                            await self._sync_one_fact_source(gs, wf.id, wfs)
+                            await self._sync_one_fact_source(ws, gs, wf.id, wfs)
                 except Exception as exc:
                     logger.error("Failed to sync fact %s, skipping", wf.id, exc_info=True)
                     if first_failure_ts is None:
@@ -462,6 +581,7 @@ class SyncEngine:
 
     async def _sync_one_fact_source(
         self,
+        ws: AsyncSession,
         gs: AsyncSession,
         fact_id: uuid.UUID,
         wfs: WriteFactSource,
@@ -469,7 +589,8 @@ class SyncEngine:
         """Sync a single WriteFactSource to graph-db.
 
         Finds or creates the RawSource by content_hash, then creates the
-        FactSource junction row.
+        FactSource junction row.  When creating a new RawSource, looks up the
+        real source in write-db first to avoid creating content-less phantoms.
         """
         # Find existing RawSource by content_hash
         raw_source_id: uuid.UUID | None = None
@@ -481,37 +602,100 @@ class SyncEngine:
             if row is not None:
                 raw_source_id = row
 
-        # If not found, create a minimal RawSource via upsert
+        # If not found, look up the real source in write-db before creating
         if raw_source_id is None:
-            raw_source_id = uuid.uuid4()
-            stmt = (
-                pg_insert(RawSource.__table__)
-                .values(
-                    id=raw_source_id,
-                    uri=wfs.raw_source_uri,
-                    title=wfs.raw_source_title,
-                    provider_id=wfs.raw_source_provider_id,
-                    content_hash=wfs.raw_source_content_hash or "",
+            from kt_db.repositories.write_sources import WriteSourceRepository
+
+            write_repo = WriteSourceRepository(ws)
+            real_source = await write_repo.get_by_content_hash(wfs.raw_source_content_hash or "")
+
+            if real_source is not None:
+                # Upsert with full content from write-db (no phantom)
+                stmt = (
+                    pg_insert(RawSource.__table__)
+                    .values(
+                        id=real_source.id,
+                        uri=real_source.uri,
+                        title=real_source.title,
+                        raw_content=real_source.raw_content,
+                        content_hash=real_source.content_hash,
+                        is_full_text=real_source.is_full_text,
+                        is_super_source=real_source.is_super_source,
+                        content_type=real_source.content_type,
+                        provider_id=real_source.provider_id,
+                        provider_metadata=real_source.provider_metadata,
+                        fetch_attempted=real_source.fetch_attempted,
+                        fetch_error=real_source.fetch_error,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["id"],
+                        set_={
+                            "uri": real_source.uri,
+                            "title": real_source.title,
+                            "raw_content": real_source.raw_content,
+                            "content_hash": real_source.content_hash,
+                            "is_full_text": real_source.is_full_text,
+                            "is_super_source": real_source.is_super_source,
+                            "content_type": real_source.content_type,
+                            "provider_metadata": real_source.provider_metadata,
+                            "fetch_attempted": real_source.fetch_attempted,
+                            "fetch_error": real_source.fetch_error,
+                        },
+                    )
+                    .returning(RawSource.__table__.c.id)
                 )
-                .on_conflict_do_nothing()
-                .returning(RawSource.__table__.c.id)
-            )
-            result = await gs.execute(stmt)
-            returned = result.scalar_one_or_none()
-            if returned is None:
-                # Row already existed — re-query for its ID
-                result2 = await gs.execute(
-                    select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
-                )
-                raw_source_id = result2.scalar_one_or_none()
+                result = await gs.execute(stmt)
+                raw_source_id = result.scalar_one_or_none()
                 if raw_source_id is None:
-                    logger.debug(
-                        "Failed to find or create RawSource for hash %s",
-                        wfs.raw_source_content_hash,
+                    # content_hash conflict with different ID — re-query
+                    result2 = await gs.execute(
+                        select(RawSource.id).where(RawSource.content_hash == real_source.content_hash).limit(1)
+                    )
+                    raw_source_id = result2.scalar_one_or_none()
+            else:
+                # Fallback: create minimal record without content (source not in write-db).
+                # This can still produce phantom sources — monitor for occurrences.
+                logger.warning(
+                    "Creating minimal RawSource for hash %s (not found in write-db) — potential phantom",
+                    wfs.raw_source_content_hash,
+                )
+                from kt_db.keys import uri_to_source_id as _uri_to_source_id
+
+                if not wfs.raw_source_uri:
+                    logger.error(
+                        "WriteFactSource %s has no URI — cannot derive deterministic source ID, skipping",
+                        wfs.id,
                     )
                     return
-            else:
-                raw_source_id = returned
+                raw_source_id = _uri_to_source_id(wfs.raw_source_uri)
+                stmt = (
+                    pg_insert(RawSource.__table__)
+                    .values(
+                        id=raw_source_id,
+                        uri=wfs.raw_source_uri,
+                        title=wfs.raw_source_title,
+                        provider_id=wfs.raw_source_provider_id,
+                        content_hash=wfs.raw_source_content_hash or "",
+                    )
+                    .on_conflict_do_nothing()
+                    .returning(RawSource.__table__.c.id)
+                )
+                result = await gs.execute(stmt)
+                returned = result.scalar_one_or_none()
+                if returned is None:
+                    result2 = await gs.execute(
+                        select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
+                    )
+                    raw_source_id = result2.scalar_one_or_none()
+                else:
+                    raw_source_id = returned
+
+            if raw_source_id is None:
+                logger.debug(
+                    "Failed to find or create RawSource for hash %s",
+                    wfs.raw_source_content_hash,
+                )
+                return
 
         # Create FactSource junction (inner savepoint protects enclosing txn)
         try:
@@ -550,7 +734,10 @@ class SyncEngine:
     # ── Nodes ──────────────────────────────────────────────────────────
 
     async def _sync_nodes(self) -> int:
-        async with self._write_sf() as ws, self._graph_sf() as gs:
+        # Phase 1: Read from write-db, then release the connection.
+        # This avoids holding a write-db session idle through pgbouncer
+        # during the long graph-db upsert phase.
+        async with self._write_sf() as ws:
             watermark = await self._get_watermark(ws, "write_nodes")
             rows = (
                 (
@@ -568,16 +755,6 @@ class SyncEngine:
             if not rows:
                 return 0
 
-            logger.info(
-                "Syncing %d nodes (watermark=%s)",
-                len(rows),
-                watermark.isoformat(),
-            )
-
-            max_ts = watermark
-            count = 0
-            first_failure_ts: datetime | None = None
-
             # Pre-load rejected fact IDs for all nodes in this batch so the
             # upsert can skip creating NodeFact rows for rejected facts.
             all_node_uuids = [wn.node_uuid for wn in rows]
@@ -592,7 +769,22 @@ class SyncEngine:
             rejected_by_node: dict[uuid.UUID, set[str]] = {}
             for nid, fid in rejection_rows:
                 rejected_by_node.setdefault(nid, set()).add(str(fid))
+            # Detach ORM objects before closing the session
+            ws.expunge_all()
 
+        logger.info(
+            "Syncing %d nodes (watermark=%s)",
+            len(rows),
+            watermark.isoformat(),
+        )
+
+        max_ts = watermark
+        count = 0
+        first_failure_ts: datetime | None = None
+        pending_failures: list[tuple[str, Exception]] = []
+
+        # Phase 2: Upsert into graph-db (no write-db session held).
+        async with self._graph_sf() as gs:
             # Pass 1: upsert all nodes WITHOUT self-referencing FKs (parent_id,
             # source_concept_id) to avoid FK violations when referenced nodes
             # haven't been synced yet.
@@ -612,7 +804,7 @@ class SyncEngine:
                     logger.error("Failed to sync node %s, skipping", wn.key, exc_info=True)
                     if first_failure_ts is None:
                         first_failure_ts = wn.updated_at
-                    await self._record_failure(ws, "write_nodes", wn.key, exc)
+                    pending_failures.append((wn.key, exc))
                     continue
 
                 if wn.parent_key:
@@ -651,89 +843,109 @@ class SyncEngine:
                     len(deferred_refs),
                 )
 
-            # Pass 3: repair orphaned parent/source_concept refs from previous cycles.
-            # When a child was synced before its parent existed in graph-db, the
-            # deferred ref was skipped and the watermark advanced past it.  This
-            # pass catches ALL such orphans, not just ones in the current batch.
-            await self._repair_orphaned_node_refs(ws, gs)
+            # Refresh denormalized stats for synced nodes and their parents
+            affected_ids = set(all_node_uuids)
+            for _, _, ref_id in deferred_refs:
+                affected_ids.add(ref_id)
+            await self._refresh_node_stats(gs, affected_ids)
 
-            safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
-            if first_failure_ts is not None:
-                failed = len(rows) - count
-                logger.warning(
-                    "Nodes: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
-                    count,
-                    len(rows),
-                    failed,
-                    safe_ts.isoformat(),
-                )
             await gs.commit()
+
+        # Phase 3: Update watermark and record failures in write-db.
+        safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
+        if first_failure_ts is not None:
+            failed = len(rows) - count
+            logger.warning(
+                "Nodes: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
+                count,
+                len(rows),
+                failed,
+                safe_ts.isoformat(),
+            )
+
+        async with self._write_sf() as ws:
+            for key, exc in pending_failures:
+                await self._record_failure(ws, "write_nodes", key, exc)
             await self._set_watermark(ws, "write_nodes", safe_ts)
             await ws.commit()
-            return count
 
-    async def _repair_orphaned_node_refs(
-        self,
-        ws: AsyncSession,
-        gs: AsyncSession,
-    ) -> None:
+        # Repair orphaned parent/source_concept refs from previous cycles.
+        await self._repair_orphaned_node_refs()
+
+        return count
+
+    async def _repair_orphaned_node_refs(self) -> None:
         """Resolve parent_id / source_concept_id that were skipped in earlier cycles.
 
         Scans write-db for nodes that have parent_key set, then checks graph-db
         for the corresponding node having parent_id IS NULL.  If the parent now
         exists in graph-db, sets the FK.  Capped to avoid unbounded work.
+
+        Uses its own short-lived sessions to avoid holding a write-db connection
+        idle during graph-db operations (which can exceed idle_in_transaction
+        timeout on large batches).
         """
-        # Find write-db nodes with a parent_key (limit to avoid huge scans)
-        candidates = (
-            await ws.execute(
-                select(WriteNode.key, WriteNode.parent_key, WriteNode.source_concept_key)
-                .where(WriteNode.parent_key.isnot(None))
-                .limit(500)
-            )
-        ).all()
+        # Read candidates from write-db in a short-lived read-only session
+        async with self._write_sf() as ws:
+            candidates = (
+                await ws.execute(
+                    select(WriteNode.key, WriteNode.parent_key, WriteNode.source_concept_key)
+                    .where(WriteNode.parent_key.isnot(None))
+                    .limit(500)
+                )
+            ).all()
+            await ws.rollback()  # read-only — release connection cleanly
 
-        repaired = 0
-        for row in candidates:
-            node_id = key_to_uuid(row.key)
+        if not candidates:
+            return
 
-            for col, ref_key in [
-                ("parent_id", row.parent_key),
-                ("source_concept_id", row.source_concept_key),
-            ]:
-                if not ref_key:
-                    continue
-                ref_id = key_to_uuid(ref_key)
+        # Repair in graph-db using its own session
+        async with self._graph_sf() as gs:
+            repaired = 0
+            for row in candidates:
+                node_id = key_to_uuid(row.key)
 
-                try:
-                    async with gs.begin_nested():
-                        # Check if graph-db node exists with this FK still NULL
-                        needs_repair = (
-                            await gs.execute(
-                                select(Node.id).where(Node.id == node_id).where(getattr(Node, col).is_(None))
-                            )
-                        ).scalar_one_or_none()
+                for col, ref_key in [
+                    ("parent_id", row.parent_key),
+                    ("source_concept_id", row.source_concept_key),
+                ]:
+                    if not ref_key:
+                        continue
+                    ref_id = key_to_uuid(ref_key)
 
-                        if needs_repair is None:
-                            # Either node doesn't exist yet, or FK is already set
-                            continue
+                    try:
+                        async with gs.begin_nested():
+                            # Check if graph-db node exists with this FK still NULL
+                            needs_repair = (
+                                await gs.execute(
+                                    select(Node.id).where(Node.id == node_id).where(getattr(Node, col).is_(None))
+                                )
+                            ).scalar_one_or_none()
 
-                        # Check if the referenced parent/source exists
-                        ref_exists = (await gs.execute(select(Node.id).where(Node.id == ref_id))).scalar_one_or_none()
-                        if ref_exists is None:
-                            continue
+                            if needs_repair is None:
+                                # Either node doesn't exist yet, or FK is already set
+                                continue
 
-                        await gs.execute(update(Node).where(Node.id == node_id).values(**{col: ref_id}))
-                        repaired += 1
-                except Exception:
-                    logger.error(
-                        "Repair: failed to set %s for node %s",
-                        col,
-                        node_id,
-                        exc_info=True,
-                    )
+                            # Check if the referenced parent/source exists
+                            ref_exists = (
+                                await gs.execute(select(Node.id).where(Node.id == ref_id))
+                            ).scalar_one_or_none()
+                            if ref_exists is None:
+                                continue
 
-        if repaired > 0:
-            logger.info("Repaired %d orphaned node refs (parent_id / source_concept_id)", repaired)
+                            await gs.execute(update(Node).where(Node.id == node_id).values(**{col: ref_id}))
+                            repaired += 1
+                    except Exception:
+                        logger.error(
+                            "Repair: failed to set %s for node %s",
+                            col,
+                            node_id,
+                            exc_info=True,
+                        )
+
+            if repaired > 0:
+                logger.info("Repaired %d orphaned node refs (parent_id / source_concept_id)", repaired)
+            await gs.commit()
 
     async def _upsert_graph_node(
         self,
@@ -853,6 +1065,13 @@ class SyncEngine:
                 if we.updated_at > max_ts:
                     max_ts = we.updated_at
                 count += 1
+
+            # Refresh edge_count on all affected nodes
+            edge_node_ids: set[uuid.UUID] = set()
+            for we in rows:
+                edge_node_ids.add(key_to_uuid(we.source_node_key))
+                edge_node_ids.add(key_to_uuid(we.target_node_key))
+            await self._refresh_node_stats(gs, edge_node_ids)
 
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
             if first_failure_ts is not None:
@@ -1038,6 +1257,10 @@ class SyncEngine:
                     max_ts = wd.updated_at
                 count += 1
 
+            # Refresh dimension_count on affected nodes
+            dim_node_ids = {key_to_uuid(wd.node_key) for wd in rows}
+            await self._refresh_node_stats(gs, dim_node_ids)
+
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
             if first_failure_ts is not None:
                 failed = len(rows) - count
@@ -1131,6 +1354,10 @@ class SyncEngine:
                     max_ts = wcr.updated_at
                 count += 1
 
+            # Refresh convergence_score on affected nodes
+            conv_node_ids = {key_to_uuid(wcr.node_key) for wcr in rows}
+            await self._refresh_node_stats(gs, conv_node_ids)
+
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
             if first_failure_ts is not None:
                 failed = len(rows) - count
@@ -1195,12 +1422,14 @@ class SyncEngine:
                                 node_id=node_id,
                                 access_count=wnc.access_count,
                                 update_count=wnc.update_count,
+                                seed_fact_count=wnc.seed_fact_count,
                             )
                             .on_conflict_do_update(
                                 index_elements=[NodeCounter.node_id],
                                 set_={
                                     "access_count": wnc.access_count,
                                     "update_count": wnc.update_count,
+                                    "seed_fact_count": wnc.seed_fact_count,
                                 },
                             )
                         )
@@ -1545,7 +1774,7 @@ class SyncEngine:
                             .all()
                         )
                         for wfs in fact_sources:
-                            await self._sync_one_fact_source(gs, wf.id, wfs)
+                            await self._sync_one_fact_source(ws, gs, wf.id, wfs)
                     await gs.commit()
                     return True
 
@@ -1779,12 +2008,14 @@ class SyncEngine:
                                 raw_content=wrs.raw_content,
                                 content_hash=wrs.content_hash,
                                 is_full_text=wrs.is_full_text,
+                                is_super_source=wrs.is_super_source,
                                 content_type=wrs.content_type,
                                 provider_id=wrs.provider_id,
                                 provider_metadata=wrs.provider_metadata,
                                 fact_count=wrs.fact_count,
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
+                                fetch_error=wrs.fetch_error,
                             )
                             .on_conflict_do_update(
                                 index_elements=["id"],
@@ -1794,11 +2025,14 @@ class SyncEngine:
                                     "raw_content": wrs.raw_content,
                                     "content_hash": wrs.content_hash,
                                     "is_full_text": wrs.is_full_text,
+                                    "is_super_source": wrs.is_super_source,
                                     "content_type": wrs.content_type,
                                     "provider_metadata": wrs.provider_metadata,
-                                    "fact_count": wrs.fact_count,
+                                    # fact_count intentionally excluded — managed
+                                    # by _sync_one_fact_source increments only.
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
+                                    "fetch_error": wrs.fetch_error,
                                 },
                             )
                         )

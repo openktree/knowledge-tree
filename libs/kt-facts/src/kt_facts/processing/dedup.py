@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from kt_config.types import COMPOUND_FACT_TYPES
@@ -9,9 +10,34 @@ from kt_db.repositories.facts import FactRepository
 from kt_models.embeddings import EmbeddingService
 
 if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
+
     from kt_db.repositories.write_facts import WriteFactRepository
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DeduplicationOutput:
+    """Result of deduplicate_facts(). Backward-compatible with list[tuple[UUID, bool]].
+
+    Carries ``new_qdrant_ids`` so callers can perform compensating deletes
+    if the surrounding DB transaction rolls back after Qdrant was already written.
+    """
+
+    results: list[tuple[uuid.UUID, bool]]
+    new_qdrant_ids: list[uuid.UUID] = field(default_factory=list)
+
+    # Forward list operations to results for backward compatibility
+    def __iter__(self):  # noqa: ANN204
+        return iter(self.results)
+
+    def __len__(self) -> int:
+        return len(self.results)
+
+    def __getitem__(self, idx):  # noqa: ANN001, ANN204
+        return self.results[idx]
+
 
 _ATOMIC_THRESHOLD = 0.92
 _COMPOUND_THRESHOLD = 0.85
@@ -31,10 +57,10 @@ async def deduplicate_facts(
     items: list[tuple[str, str]],
     repo: FactRepository,
     embedding_service: EmbeddingService | None = None,
-    qdrant_client: object | None = None,
+    qdrant_client: AsyncQdrantClient | None = None,
     write_fact_repo: WriteFactRepository | None = None,
     pre_embeddings: list[list[float] | None] | None = None,
-) -> list[tuple[uuid.UUID, bool]]:
+) -> DeduplicationOutput:
     """Batch-deduplicate facts. Returns list of (fact_id, is_new) in input order.
 
     Phase 1: Call ``embed_batch()`` once with all contents (or fill with
@@ -67,7 +93,7 @@ async def deduplicate_facts(
             be created. All worker pipelines must provide a write-db session.
     """
     if not items:
-        return []
+        return DeduplicationOutput(results=[], new_qdrant_ids=[])
 
     # Resolve Qdrant repo (required for embedding-based deduplication)
     qdrant_fact_repo = None
@@ -101,7 +127,7 @@ async def deduplicate_facts(
 
     # Phase 2 — sequential dedup + create
     results: list[tuple[uuid.UUID, bool]] = []
-    qdrant_batch: list[tuple[uuid.UUID, list[float], str | None]] = []
+    qdrant_batch: list[tuple[uuid.UUID, list[float], str | None, str | None]] = []
 
     for (content, fact_type), embedding in zip(items, embeddings):
         if embedding is not None:
@@ -133,13 +159,15 @@ async def deduplicate_facts(
 
         # Queue Qdrant upsert for new facts with embeddings
         if embedding is not None:
-            qdrant_batch.append((new_id, embedding, fact_type))
+            qdrant_batch.append((new_id, embedding, fact_type, content))
 
     # Batch upsert new fact embeddings to Qdrant
+    new_qdrant_ids: list[uuid.UUID] = []
     if qdrant_fact_repo is not None and qdrant_batch:
         try:
             await qdrant_fact_repo.upsert_batch(qdrant_batch)
+            new_qdrant_ids = [fid for fid, _, _, _ in qdrant_batch]
         except Exception:
             logger.warning("Failed to batch upsert %d facts to Qdrant", len(qdrant_batch), exc_info=True)
 
-    return results
+    return DeduplicationOutput(results=results, new_qdrant_ids=new_qdrant_ids)

@@ -170,7 +170,7 @@ class DimensionPipeline:
 
                 # If regenerating unsaturated dim, delete old one first
                 if existing_dim is not None:
-                    await ctx.graph_engine.delete_dimension(existing_dim.id)
+                    await ctx.graph_engine.delete_dimension(existing_dim.id, write_key=existing_dim.write_key)
 
                 for d in dim_results:
                     suggested = d.get("suggested_concepts")
@@ -326,11 +326,11 @@ class DimensionPipeline:
                 )
 
         try:
-            await ctx.graph_engine._write_session.commit()
+            await ctx.graph_engine.commit()
         except Exception:
             logger.exception("Error committing dimension batch")
             try:
-                await ctx.graph_engine._write_session.rollback()
+                await ctx.graph_engine.rollback()
             except Exception:
                 logger.debug("Rollback failed after dimension batch commit error", exc_info=True)
 

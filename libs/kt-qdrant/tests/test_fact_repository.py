@@ -159,6 +159,40 @@ class TestSearchSimilar:
         assert results == []
 
 
+class TestSearchSimilarRetry:
+    async def test_retries_on_timeout_then_succeeds(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        from qdrant_client.http.exceptions import ResponseHandlingException
+
+        fact_id = uuid.uuid4()
+        mock_point = MagicMock()
+        mock_point.id = str(fact_id)
+        mock_point.score = 0.9
+        mock_point.payload = {}
+
+        mock_result = MagicMock()
+        mock_result.points = [mock_point]
+
+        mock_client.query_points.side_effect = [
+            ResponseHandlingException("ReadTimeout"),
+            mock_result,
+        ]
+
+        results = await repo.search_similar(embedding=_make_embedding())
+        assert len(results) == 1
+        assert results[0].fact_id == fact_id
+        assert mock_client.query_points.call_count == 2
+
+    async def test_raises_after_max_retries(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        from qdrant_client.http.exceptions import ResponseHandlingException
+
+        mock_client.query_points.side_effect = ResponseHandlingException("ReadTimeout")
+
+        with pytest.raises(ResponseHandlingException):
+            await repo.search_similar(embedding=_make_embedding())
+
+        assert mock_client.query_points.call_count == 3
+
+
 class TestFindMostSimilar:
     async def test_returns_best_match(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
         fact_id = uuid.uuid4()
@@ -241,6 +275,236 @@ class TestSearchByNode:
 
         call_kwargs = mock_client.query_points.call_args.kwargs
         assert call_kwargs["query_filter"] is not None
+
+
+class TestUpsertWithContent:
+    async def test_upsert_includes_content(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        embedding = _make_embedding()
+
+        await repo.upsert(fact_id=fact_id, embedding=embedding, fact_type="claim", content="test fact content")
+
+        points = mock_client.upsert.call_args.kwargs["points"]
+        assert points[0].payload["content"] == "test fact content"
+
+    async def test_upsert_without_content(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        embedding = _make_embedding()
+
+        await repo.upsert(fact_id=fact_id, embedding=embedding, fact_type="claim")
+
+        points = mock_client.upsert.call_args.kwargs["points"]
+        assert "content" not in points[0].payload
+
+
+class TestEnsureTextIndex:
+    async def test_creates_index_when_missing(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_info = MagicMock()
+        mock_info.payload_schema = {}
+        mock_client.get_collection.return_value = mock_info
+
+        await repo.ensure_text_index()
+
+        mock_client.create_payload_index.assert_called_once()
+        call_kwargs = mock_client.create_payload_index.call_args.kwargs
+        assert call_kwargs["field_name"] == "content"
+
+    async def test_skips_when_exists(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_info = MagicMock()
+        mock_info.payload_schema = {"content": MagicMock()}
+        mock_client.get_collection.return_value = mock_info
+
+        await repo.ensure_text_index()
+
+        mock_client.create_payload_index.assert_not_called()
+
+
+class TestHybridSearch:
+    async def test_basic_hybrid_search(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        mock_point = MagicMock()
+        mock_point.id = str(fact_id)
+        mock_point.score = 0.85
+        mock_point.payload = {"fact_type": "claim", "content": "quantum entanglement"}
+
+        mock_result = MagicMock()
+        mock_result.points = [mock_point]
+        mock_client.query_points.return_value = mock_result
+
+        results = await repo.hybrid_search(
+            query_embedding=_make_embedding(),
+            query_text="quantum",
+            limit=10,
+        )
+
+        assert len(results) == 1
+        assert results[0].fact_id == fact_id
+        assert results[0].score == 0.85
+        mock_client.query_points.assert_called_once()
+        call_kwargs = mock_client.query_points.call_args.kwargs
+        assert call_kwargs["prefetch"] is not None
+        assert len(call_kwargs["prefetch"]) == 2
+
+    async def test_hybrid_search_with_fact_type(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_result = MagicMock()
+        mock_result.points = []
+        mock_client.query_points.return_value = mock_result
+
+        await repo.hybrid_search(
+            query_embedding=_make_embedding(),
+            query_text="test",
+            fact_type="measurement",
+        )
+
+        mock_client.query_points.assert_called_once()
+
+    async def test_hybrid_search_empty_results(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        mock_result = MagicMock()
+        mock_result.points = []
+        mock_client.query_points.return_value = mock_result
+
+        results = await repo.hybrid_search(
+            query_embedding=_make_embedding(),
+            query_text="nonexistent",
+        )
+
+        assert results == []
+
+
+class TestUpsertBatchWithNodeIds:
+    async def test_batch_with_5_tuples(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        node_id_1 = uuid.uuid4()
+        node_id_2 = uuid.uuid4()
+        facts = [
+            (uuid.uuid4(), _make_embedding(), "claim", "content text", [node_id_1, node_id_2]),
+            (uuid.uuid4(), _make_embedding(), "evidence", "other content", None),
+        ]
+
+        await repo.upsert_batch(facts)
+
+        mock_client.upsert.assert_called_once()
+        points = mock_client.upsert.call_args.kwargs["points"]
+        assert len(points) == 2
+        assert points[0].payload["node_ids"] == [str(node_id_1), str(node_id_2)]
+        assert "node_ids" not in points[1].payload
+
+    async def test_batch_with_4_tuples_no_node_ids(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        facts = [
+            (uuid.uuid4(), _make_embedding(), "claim", "content text"),
+        ]
+
+        await repo.upsert_batch(facts)
+
+        points = mock_client.upsert.call_args.kwargs["points"]
+        assert "node_ids" not in points[0].payload
+
+
+class TestAppendNodeId:
+    async def test_appends_to_empty(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+
+        mock_point = MagicMock()
+        mock_point.payload = {}
+        mock_client.retrieve.return_value = [mock_point]
+
+        await repo.append_node_id(fact_id, node_id)
+
+        mock_client.set_payload.assert_called_once()
+        call_kwargs = mock_client.set_payload.call_args.kwargs
+        assert call_kwargs["payload"]["node_ids"] == [str(node_id)]
+        assert call_kwargs["points"] == [str(fact_id)]
+
+    async def test_appends_to_existing(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        existing_node = uuid.uuid4()
+        new_node = uuid.uuid4()
+
+        mock_point = MagicMock()
+        mock_point.payload = {"node_ids": [str(existing_node)]}
+        mock_client.retrieve.return_value = [mock_point]
+
+        await repo.append_node_id(fact_id, new_node)
+
+        call_kwargs = mock_client.set_payload.call_args.kwargs
+        assert str(existing_node) in call_kwargs["payload"]["node_ids"]
+        assert str(new_node) in call_kwargs["payload"]["node_ids"]
+        assert len(call_kwargs["payload"]["node_ids"]) == 2
+
+    async def test_idempotent_no_duplicate(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+
+        mock_point = MagicMock()
+        mock_point.payload = {"node_ids": [str(node_id)]}
+        mock_client.retrieve.return_value = [mock_point]
+
+        await repo.append_node_id(fact_id, node_id)
+
+        mock_client.set_payload.assert_not_called()
+
+    async def test_appends_when_point_has_no_payload(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+
+        mock_point = MagicMock()
+        mock_point.payload = None
+        mock_client.retrieve.return_value = [mock_point]
+
+        await repo.append_node_id(fact_id, node_id)
+
+        call_kwargs = mock_client.set_payload.call_args.kwargs
+        assert call_kwargs["payload"]["node_ids"] == [str(node_id)]
+
+    async def test_noop_when_point_not_in_qdrant(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        """When the fact point doesn't exist in Qdrant yet, append is a no-op."""
+        mock_client.retrieve.return_value = []
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+
+        await repo.append_node_id(fact_id, node_id)
+
+        mock_client.set_payload.assert_not_called()
+
+
+class TestRemoveNodeId:
+    async def test_removes_existing(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+        other_node = uuid.uuid4()
+
+        mock_point = MagicMock()
+        mock_point.payload = {"node_ids": [str(node_id), str(other_node)]}
+        mock_client.retrieve.return_value = [mock_point]
+
+        await repo.remove_node_id(fact_id, node_id)
+
+        call_kwargs = mock_client.set_payload.call_args.kwargs
+        assert call_kwargs["payload"]["node_ids"] == [str(other_node)]
+
+    async def test_noop_when_not_present(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+
+        mock_point = MagicMock()
+        mock_point.payload = {"node_ids": [str(uuid.uuid4())]}
+        mock_client.retrieve.return_value = [mock_point]
+
+        await repo.remove_node_id(fact_id, node_id)
+
+        mock_client.set_payload.assert_not_called()
+
+    async def test_noop_when_empty(self, repo: QdrantFactRepository, mock_client: AsyncMock) -> None:
+        fact_id = uuid.uuid4()
+        node_id = uuid.uuid4()
+
+        mock_point = MagicMock()
+        mock_point.payload = {}
+        mock_client.retrieve.return_value = [mock_point]
+
+        await repo.remove_node_id(fact_id, node_id)
+
+        mock_client.set_payload.assert_not_called()
 
 
 class TestBuildFilter:

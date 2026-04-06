@@ -25,10 +25,11 @@ import {
   createSynthesis,
   createSuperSynthesis,
   listSyntheses,
+  getSynthesisModels,
 } from "@/lib/api";
 import { formatSynthesisConcept } from "./utils";
 import { SynthesisProgress } from "./SynthesisProgress";
-import type { SynthesisListItem } from "@/types";
+import type { SynthesisListItem, SynthesisModelOption } from "@/types";
 
 type SynthesisMode = "synthesis" | "super";
 
@@ -51,6 +52,11 @@ export function CreateSynthesisDialog({
   const [creating, setCreating] = useState(false);
   const [workflowRunId, setWorkflowRunId] = useState<string | null>(null);
 
+  const [modelId, setModelId] = useState<string>("default");
+
+  // Available synthesis models
+  const [availableModels, setAvailableModels] = useState<SynthesisModelOption[]>([]);
+
   // Existing syntheses for super-synthesis inclusion
   const [existingSyntheses, setExistingSyntheses] = useState<
     SynthesisListItem[]
@@ -59,6 +65,15 @@ export function CreateSynthesisDialog({
     new Set()
   );
   const [loadingExisting, setLoadingExisting] = useState(false);
+
+  // Load available models when dialog opens
+  useEffect(() => {
+    if (open) {
+      getSynthesisModels()
+        .then(setAvailableModels)
+        .catch(() => setAvailableModels([]));
+    }
+  }, [open]);
 
   // Load existing syntheses when super mode is selected
   useEffect(() => {
@@ -85,18 +100,21 @@ export function CreateSynthesisDialog({
     setCreating(true);
     try {
       let result;
+      const selectedModel = modelId !== "default" ? modelId : undefined;
       if (mode === "super") {
         result = await createSuperSynthesis({
           topic: topic.trim(),
           existing_synthesis_ids: Array.from(selectedExisting),
           scope_count: scopeCount,
           visibility,
+          model_id: selectedModel,
         });
       } else {
         result = await createSynthesis({
           topic: topic.trim(),
           exploration_budget: budget,
           visibility,
+          model_id: selectedModel,
         });
       }
       setWorkflowRunId(result.workflow_run_id);
@@ -111,6 +129,7 @@ export function CreateSynthesisDialog({
     onOpenChange(false);
     setWorkflowRunId(null);
     setTopic("");
+    setModelId("default");
     setSelectedExisting(new Set());
     onCreated();
   }, [onOpenChange, onCreated]);
@@ -189,6 +208,26 @@ export function CreateSynthesisDialog({
               onChange={(e) => setTopic(e.target.value)}
             />
           </div>
+
+          {/* Model selector */}
+          {availableModels.length > 0 && (
+            <div className="space-y-2">
+              <Label>Model</Label>
+              <Select value={modelId} onValueChange={setModelId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Server Default" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Server Default</SelectItem>
+                  {availableModels.map((m) => (
+                    <SelectItem key={m.model_id} value={m.model_id}>
+                      {m.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Budget only shown for regular synthesis */}
           {mode === "synthesis" && (

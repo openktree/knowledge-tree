@@ -9,6 +9,8 @@ import asyncio
 import dataclasses
 import logging
 import uuid
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from kt_agents_core.state import AgentContext, PipelineState
@@ -22,6 +24,21 @@ from kt_models.gateway import ModelGateway
 from kt_providers.search_and_fetch import filter_fresh_urls, store_and_fetch
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _ensure_write_session(ctx: AgentContext) -> AsyncGenerator[Any, None]:
+    """Yield a write-db session, closing it only if we created it."""
+    if ctx.graph_engine._write_session is not None:
+        yield ctx.graph_engine._write_session
+        return
+    if ctx.write_session_factory is None:
+        raise RuntimeError("write_session required for gather")
+    session = ctx.write_session_factory()
+    try:
+        yield session
+    finally:
+        await session.close()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -168,140 +185,144 @@ class GatherFactsPipeline:
         max_rounds = settings.fetch_guarantee_max_rounds
 
         # Use write-db for all source storage and page fetch tracking
-        write_session = ctx.graph_engine._write_session
-        if write_session is None and ctx.write_session_factory is not None:
-            write_session = ctx.write_session_factory()
-        if write_session is None:
-            raise RuntimeError("write_session required for gather")
-        page_log = WritePageFetchLogRepository(write_session)
+        async with _ensure_write_session(ctx) as write_session:
+            page_log = WritePageFetchLogRepository(write_session)
 
-        for query in affordable_queries:
-            # Tentatively charge budget — refunded if decomposition yields 0 facts
-            state.explore_used += 1
-            queries_executed += 1
+            for query in affordable_queries:
+                # Tentatively charge budget — refunded if decomposition yields 0 facts
+                state.explore_used += 1
+                queries_executed += 1
 
-            await ctx.emit("activity_log", action=f"Gathering facts: '{query}'", tool="gather_facts")
+                await ctx.emit("activity_log", action=f"Gathering facts: '{query}'", tool="gather_facts")
 
-            plan = _QueryPlan(query=query)
-            seen_uris: set[str] = set()
-            fetched_count = 0
-            all_text_sources: list[WriteRawSource] = []
+                plan = _QueryPlan(query=query)
+                seen_uris: set[str] = set()
+                fetched_count = 0
+                all_text_sources: list[WriteRawSource] = []
 
-            try:
-                for search_round in range(1, max_rounds + 1):
-                    # Round 1: use pre-fetched batch results; rounds 2+: new varied search
-                    if search_round == 1:
-                        round_results = results_by_query.get(query, [])
-                    else:
-                        varied = _vary_query(query, search_round)
-                        try:
-                            round_results = await ctx.provider_registry.search_all(
-                                varied,
-                                max_results=10,
-                            )
-                        except Exception:
-                            logger.debug(
-                                "Extra search round %d failed for '%s'",
+                try:
+                    for search_round in range(1, max_rounds + 1):
+                        # Round 1: use pre-fetched batch results; rounds 2+: new varied search
+                        if search_round == 1:
+                            round_results = results_by_query.get(query, [])
+                        else:
+                            varied = _vary_query(query, search_round)
+                            try:
+                                round_results = await ctx.provider_registry.search_all(
+                                    varied,
+                                    max_results=10,
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "Extra search round %d failed for '%s'",
+                                    search_round,
+                                    query,
+                                    exc_info=True,
+                                )
+                                break
+
+                        # Deduplicate against already-seen URIs
+                        fresh_results = [r for r in round_results if r.uri and r.uri not in seen_uris]
+                        seen_uris.update(r.uri for r in round_results if r.uri)
+
+                        if not fresh_results:
+                            break  # search exhausted
+
+                        # Filter via PageFetchLog (skip recently processed)
+                        fresh_results, _skipped = await filter_fresh_urls(
+                            fresh_results,
+                            page_log,
+                            settings.page_stale_days,
+                        )
+                        if not fresh_results:
+                            continue  # all stale, try next round
+
+                        # Track source URLs and titles
+                        for r in fresh_results:
+                            if r.uri and not any(s["url"] == r.uri for s in all_source_urls):
+                                all_source_urls.append({"url": r.uri, "title": r.title})
+                        source_titles_by_query.setdefault(query, []).extend(r.title for r in fresh_results)
+
+                        # Fetch full text — request enough to meet remaining target
+                        remaining = target - fetched_count
+                        fetch_limit = min(len(fresh_results), remaining + 3)  # overshoot for failures
+                        raw_sources = await store_and_fetch(
+                            fresh_results[:fetch_limit],
+                            ctx,
+                            max_fetch_urls=fetch_limit,
+                            write_session=write_session,
+                        )
+
+                        # Filter out super sources (deferred to user-initiated ingestion)
+                        for s in raw_sources:
+                            if getattr(s, "is_super_source", False):
+                                all_super_sources.append(
+                                    {
+                                        "raw_source_id": str(s.id),
+                                        "uri": s.uri,
+                                        "title": s.title,
+                                        "estimated_tokens": len(s.raw_content or "") // 4,
+                                        "content_type": s.content_type,
+                                    }
+                                )
+                                continue
+
+                            # Count successful full-text fetches toward target
+                            if s.is_full_text:
+                                fetched_count += 1
+
+                            snap = _SourceSnapshot.from_orm(s)
+                            if snap:
+                                all_source_snapshots.append(snap)
+
+                            # Classify as text/image for decomposition (skip snippet-only)
+                            if ctx.file_data_store and ctx.file_data_store.has(s.uri):
+                                plan.image_sources.append(s)
+                            elif s.is_full_text:
+                                all_text_sources.append(s)
+
+                        if fetched_count >= target:
+                            break  # target met
+
+                        if search_round > 1:
+                            logger.info(
+                                "gather_facts: round %d for '%s' — %d/%d fetched",
                                 search_round,
                                 query,
-                                exc_info=True,
+                                fetched_count,
+                                target,
                             )
-                            break
 
-                    # Deduplicate against already-seen URIs
-                    fresh_results = [r for r in round_results if r.uri and r.uri not in seen_uris]
-                    seen_uris.update(r.uri for r in round_results if r.uri)
-
-                    if not fresh_results:
-                        break  # search exhausted
-
-                    # Filter via PageFetchLog (skip recently processed)
-                    fresh_results, _skipped = await filter_fresh_urls(
-                        fresh_results,
-                        page_log,
-                        settings.page_stale_days,
-                    )
-                    if not fresh_results:
-                        continue  # all stale, try next round
-
-                    # Track source URLs and titles
-                    for r in fresh_results:
-                        if r.uri and not any(s["url"] == r.uri for s in all_source_urls):
-                            all_source_urls.append({"url": r.uri, "title": r.title})
-                    source_titles_by_query.setdefault(query, []).extend(r.title for r in fresh_results)
-
-                    # Fetch full text — request enough to meet remaining target
-                    remaining = target - fetched_count
-                    fetch_limit = min(len(fresh_results), remaining + 3)  # overshoot for failures
-                    raw_sources = await store_and_fetch(
-                        fresh_results[:fetch_limit],
-                        ctx,
-                        max_fetch_urls=fetch_limit,
-                        write_session=write_session,
-                    )
-
-                    # Filter out super sources (deferred to user-initiated ingestion)
-                    for s in raw_sources:
-                        if getattr(s, "is_super_source", False):
-                            all_super_sources.append(
-                                {
-                                    "raw_source_id": str(s.id),
-                                    "uri": s.uri,
-                                    "title": s.title,
-                                    "estimated_tokens": len(s.raw_content or "") // 4,
-                                    "content_type": s.content_type,
-                                }
+                    # Build decomposition input from all accumulated text sources
+                    if all_text_sources or plan.image_sources:
+                        plan.decomposition_attempted = True
+                        if all_text_sources:
+                            plan.text_input = DecomposeSourcesInput(
+                                raw_source_ids=[str(s.id) for s in all_text_sources],
+                                concept=query,
+                                query_context=state.query,
+                                message_id=getattr(state, "message_id", ""),
+                                conversation_id=getattr(state, "conversation_id", ""),
                             )
-                            continue
+                except Exception:
+                    logger.exception("Error storing sources for query '%s'", query)
+                    await write_session.rollback()
 
-                        # Count successful full-text fetches toward target
-                        if s.is_full_text:
-                            fetched_count += 1
+                query_plans.append(plan)
 
-                        snap = _SourceSnapshot.from_orm(s)
-                        if snap:
-                            all_source_snapshots.append(snap)
-
-                        # Classify as text/image for decomposition
-                        if ctx.file_data_store and ctx.file_data_store.has(s.uri):
-                            plan.image_sources.append(s)
-                        else:
-                            all_text_sources.append(s)
-
-                    if fetched_count >= target:
-                        break  # target met
-
-                    if search_round > 1:
-                        logger.info(
-                            "gather_facts: round %d for '%s' — %d/%d fetched",
-                            search_round,
-                            query,
-                            fetched_count,
-                            target,
-                        )
-
-                # Build decomposition input from all accumulated text sources
-                if all_text_sources or plan.image_sources:
-                    plan.decomposition_attempted = True
-                    if all_text_sources:
-                        plan.text_input = DecomposeSourcesInput(
-                            raw_source_ids=[str(s.id) for s in all_text_sources],
-                            concept=query,
-                            query_context=state.query,
-                            message_id=getattr(state, "message_id", ""),
-                            conversation_id=getattr(state, "conversation_id", ""),
-                        )
-            except Exception:
-                logger.exception("Error storing sources for query '%s'", query)
-                await write_session.rollback()
-
-            query_plans.append(plan)
-
-        # Commit all sources so durable tasks can load them
-        await write_session.commit()
-        await _emit_budget(ctx, state)
+            # Commit all sources so durable tasks can load them
+            await write_session.commit()
+            await _emit_budget(ctx, state)
+        # Session closed here by _ensure_write_session — connection returned
+        # to pool BEFORE dispatching long-running workflows.  Holding it open
+        # during decompose_sources (up to 60 min) caused the underlying
+        # connection to be recycled by pool_recycle, leading to InterfaceError
+        # on rollback/close.
 
         # ── Phase 2: Dispatch all decompose workflows concurrently ────
+        # No write session is held open during this phase — text
+        # decomposition runs as a separate Hatchet workflow (own session),
+        # and image decomposition gets a short-lived session below.
         text_coros: list[tuple[int, Any]] = []  # (plan_index, coroutine)
         image_coros: list[tuple[int, Any]] = []
 
@@ -309,19 +330,14 @@ class GatherFactsPipeline:
             if plan.text_input:
                 text_coros.append((i, run_workflow("decompose_sources", plan.text_input.model_dump())))
             if plan.image_sources:
-                img_pipeline = DecompositionPipeline(ctx.model_gateway)
                 image_coros.append(
                     (
                         i,
-                        img_pipeline.decompose(
+                        _decompose_images_with_session(
                             plan.image_sources,
                             plan.query,
-                            ctx.session,
-                            ctx.embedding_service,
-                            query_context=state.query,
-                            file_data_store=ctx.file_data_store,
-                            qdrant_client=ctx.qdrant_client,
-                            write_session=ctx.graph_engine._write_session,
+                            ctx,
+                            state,
                         ),
                     )
                 )
@@ -333,16 +349,17 @@ class GatherFactsPipeline:
                 *[coro for _, coro in text_coros],
                 return_exceptions=True,
             )
-            for (plan_idx, _), result in zip(text_coros, raw_results_list):
-                if isinstance(result, BaseException):
+            for (plan_idx, _), raw_result in zip(text_coros, raw_results_list):
+                if isinstance(raw_result, BaseException):
                     logger.exception(
                         "Decompose workflow failed for query '%s': %s",
                         query_plans[plan_idx].query,
-                        result,
+                        raw_result,
                     )
                 else:
                     # Workflow results are wrapped as {"task_name": output_dict};
                     # unwrap by task name before validation.
+                    result = raw_result
                     task_data = result.get("decompose_sources", result) if isinstance(result, dict) else result
                     text_results[plan_idx] = DecomposeSourcesOutput.model_validate(task_data)
 
@@ -353,15 +370,15 @@ class GatherFactsPipeline:
                 *[coro for _, coro in image_coros],
                 return_exceptions=True,
             )
-            for (plan_idx, _), result in zip(image_coros, raw_img_results):
-                if isinstance(result, BaseException):
+            for (plan_idx, _), img_result in zip(image_coros, raw_img_results):
+                if isinstance(img_result, BaseException):
                     logger.exception(
                         "Image decomposition failed for query '%s': %s",
                         query_plans[plan_idx].query,
-                        result,
+                        img_result,
                     )
                 else:
-                    image_results[plan_idx] = result
+                    image_results[plan_idx] = img_result
 
         # ── Phase 3: Reconcile results & refund budgets ───────────────
         for i, plan in enumerate(query_plans):
@@ -486,6 +503,39 @@ class GatherFactsPipeline:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
+
+async def _decompose_images_with_session(
+    image_sources: list[WriteRawSource],
+    query: str,
+    ctx: AgentContext,
+    state: PipelineState,
+) -> Any:
+    """Run image decomposition with its own short-lived write session.
+
+    Always creates a fresh session from the factory so that the caller's
+    session (if any) is not held open for the duration of decomposition.
+    """
+    if ctx.write_session_factory is None:
+        raise RuntimeError("write_session_factory required for image decomposition")
+    ws = ctx.write_session_factory()
+    try:
+        kwargs: dict[str, Any] = dict(
+            query_context=state.query,
+            file_data_store=ctx.file_data_store,
+            qdrant_client=ctx.qdrant_client,
+            write_session=ws,
+        )
+        pipeline = DecompositionPipeline(ctx.model_gateway)
+        return await pipeline.decompose(
+            image_sources,
+            query,
+            ctx.session,
+            ctx.embedding_service,
+            **kwargs,
+        )
+    finally:
+        await ws.close()
 
 
 async def _summarize_gathered_facts(

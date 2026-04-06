@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,9 +18,29 @@ from kt_api.schemas import (
     PaginatedFactsResponse,
 )
 from kt_db.repositories.facts import FactRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/facts", tags=["facts"])
+
+
+_embedding_service_cache: object | None = None
+_embedding_service_initialized: bool = False
+
+
+def _get_embedding_service():  # noqa: ANN202
+    """Lazy-init cached embedding service singleton."""
+    global _embedding_service_cache, _embedding_service_initialized  # noqa: PLW0603
+    if not _embedding_service_initialized:
+        from kt_config.settings import get_settings
+        from kt_models.embeddings import EmbeddingService
+
+        settings = get_settings()
+        if settings.openrouter_api_key:
+            _embedding_service_cache = EmbeddingService()
+        _embedding_service_initialized = True
+    return _embedding_service_cache
 
 
 @router.get("", response_model=PaginatedFactsResponse)
@@ -33,21 +54,48 @@ async def list_facts(
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedFactsResponse:
     """List facts with pagination and optional filters."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
-    facts = await engine.list_facts(
-        offset=offset,
-        limit=limit,
-        search=search,
-        fact_type=fact_type,
-        author_org=author_org,
-        source_domain=source_domain,
-    )
-    total = await engine.count_facts(
-        search=search,
-        fact_type=fact_type,
-        author_org=author_org,
-        source_domain=source_domain,
-    )
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+
+    # Use hybrid search when a text query is provided, embeddings are available,
+    # and no source-level filters are used (those require SQL joins).
+    facts: list = []
+    total: int = 0
+    has_source_filters = bool(author_org or source_domain)
+    use_hybrid = False
+
+    if search and not has_source_filters:
+        embedding_service = _get_embedding_service()
+        if embedding_service is not None:
+            try:
+                query_embedding = await embedding_service.embed_text(search)
+                facts = await engine.hybrid_search_facts(
+                    query=search,
+                    embedding=query_embedding,
+                    limit=100,
+                    fact_type=fact_type,
+                )
+                total = len(facts)
+                facts = facts[offset : offset + limit]
+                use_hybrid = True
+            except Exception:
+                logger.warning("Hybrid search failed, falling back to ILIKE", exc_info=True)
+
+    if not use_hybrid:
+        facts = await engine.list_facts(
+            offset=offset,
+            limit=limit,
+            search=search,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
+        )
+        total = await engine.count_facts(
+            search=search,
+            fact_type=fact_type,
+            author_org=author_org,
+            source_domain=source_domain,
+        )
+
     return PaginatedFactsResponse(
         items=[
             FactResponse(
@@ -135,7 +183,7 @@ async def get_fact_nodes(
         uid = uuid.UUID(fact_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid fact ID format")
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     # Verify fact exists
     repo = FactRepository(session)
     fact = await repo.get_by_id(uid)
@@ -162,7 +210,7 @@ async def update_fact(
     session: AsyncSession = Depends(get_db_session),
 ) -> FactResponse:
     """Update a fact's editable fields."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(fact_id)
     except ValueError:
@@ -190,7 +238,7 @@ async def delete_fact(
     session: AsyncSession = Depends(get_db_session),
 ) -> DeleteResponse:
     """Delete a fact and unlink it from all nodes."""
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
     try:
         uid = uuid.UUID(fact_id)
     except ValueError:

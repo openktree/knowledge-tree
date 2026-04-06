@@ -26,9 +26,9 @@ from kt_api.schemas import (
     NodesExportResponse,
 )
 from kt_config.settings import get_settings
-from kt_db.models import ConvergenceReport, NodeFact
+from kt_db.models import NodeFact
 from kt_db.repositories.conversations import ConversationRepository
-from kt_graph.engine import GraphEngine
+from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/export", tags=["export"])
 
@@ -36,20 +36,8 @@ router = APIRouter(prefix="/api/v1/export", tags=["export"])
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-async def _batch_convergence_scores(session: AsyncSession, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
-    """Fetch convergence scores for a batch of node IDs in a single query."""
-    if not node_ids:
-        return {}
-    stmt = select(ConvergenceReport.node_id, ConvergenceReport.convergence_score).where(
-        ConvergenceReport.node_id.in_(node_ids)
-    )
-    result = await session.execute(stmt)
-    return {row.node_id: row.convergence_score for row in result.all()}
-
-
 def _node_to_response(
     n: object,
-    cr_map: dict[uuid.UUID, float],
     embedding_map: dict[uuid.UUID, list[float]] | None = None,
 ) -> NodeResponse:
     return NodeResponse(
@@ -64,7 +52,7 @@ def _node_to_response(
         updated_at=n.updated_at,  # type: ignore[attr-defined]
         update_count=n.update_count,  # type: ignore[attr-defined]
         access_count=n.access_count,  # type: ignore[attr-defined]
-        convergence_score=cr_map.get(n.id, 0.0),  # type: ignore[attr-defined]
+        convergence_score=getattr(n, "convergence_score", 0.0),  # type: ignore[attr-defined]
         definition=n.definition,  # type: ignore[attr-defined]
         definition_generated_at=n.definition_generated_at.isoformat() if n.definition_generated_at else None,  # type: ignore[attr-defined]
         metadata=n.metadata_,  # type: ignore[attr-defined]
@@ -72,15 +60,23 @@ def _node_to_response(
     )
 
 
-def _edge_to_response(e: object) -> EdgeResponse:
+def _edge_to_response(
+    e: object,
+    edge_fact_ids: dict[uuid.UUID, list[uuid.UUID]] | None = None,
+) -> EdgeResponse:
+    eid = e.id  # type: ignore[attr-defined]
+    if edge_fact_ids is not None:
+        fact_ids = [str(fid) for fid in edge_fact_ids.get(eid, [])]
+    else:
+        fact_ids = [str(ef.fact_id) for ef in e.edge_facts]  # type: ignore[attr-defined]
     return EdgeResponse(
-        id=str(e.id),  # type: ignore[attr-defined]
+        id=str(eid),
         source_node_id=str(e.source_node_id),  # type: ignore[attr-defined]
         target_node_id=str(e.target_node_id),  # type: ignore[attr-defined]
         relationship_type=e.relationship_type,  # type: ignore[attr-defined]
         weight=e.weight,  # type: ignore[attr-defined]
         justification=e.justification,  # type: ignore[attr-defined]
-        supporting_fact_ids=[str(ef.fact_id) for ef in e.edge_facts],  # type: ignore[attr-defined]
+        supporting_fact_ids=fact_ids,
         created_at=e.created_at,  # type: ignore[attr-defined]
     )
 
@@ -186,9 +182,8 @@ async def export_nodes(
 ) -> NodesExportResponse:
     """Export all nodes in the graph as JSON, including linked facts."""
     qdrant = get_qdrant_client_cached()
-    engine = GraphEngine(session, qdrant_client=qdrant)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant)
     nodes = await engine.list_all_nodes()
-    cr_map = await _batch_convergence_scores(session, [n.id for n in nodes])
 
     # Collect edges
     edges = await engine.list_all_edges()
@@ -239,7 +234,7 @@ async def export_nodes(
             total_items=len(nodes),
             embedding_model=embedding_model,
         ),
-        nodes=[_node_to_response(n, cr_map, embedding_map=node_emb_map) for n in nodes],
+        nodes=[_node_to_response(n, embedding_map=node_emb_map) for n in nodes],
         edges=[_edge_to_response(e) for e in edges],
         facts=[
             _fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in all_facts
@@ -256,7 +251,7 @@ async def export_facts(
 ) -> FactsExportResponse:
     """Export all facts with their sources as JSON."""
     qdrant = get_qdrant_client_cached()
-    engine = GraphEngine(session, qdrant_client=qdrant)
+    engine = ReadGraphEngine(session=session, qdrant_client=qdrant)
     facts = await engine.list_all_facts_with_sources()
 
     # Optionally fetch embeddings
@@ -318,12 +313,11 @@ async def export_conversation(
             continue
 
     # Get subgraph (nodes + edges)
-    engine = GraphEngine(session, qdrant_client=get_qdrant_client_cached())
-    subgraph = await engine.get_subgraph(node_uuids) if node_uuids else {"nodes": [], "edges": []}
+    engine = ReadGraphEngine(session=session, qdrant_client=get_qdrant_client_cached())
+    subgraph = await engine.get_subgraph(node_uuids) if node_uuids else {"nodes": [], "edges": [], "edge_fact_ids": {}}
     nodes = subgraph["nodes"]
     edges = subgraph["edges"]
-    cr_map = await _batch_convergence_scores(session, [n.id for n in nodes])
-
+    sg_edge_fact_ids: dict[uuid.UUID, list[uuid.UUID]] = subgraph.get("edge_fact_ids", {})
     # Fetch node-fact links with junction metadata
     conv_node_ids = [n.id for n in nodes]
     node_fact_links = await _get_node_fact_links(session, conv_node_ids)
@@ -338,11 +332,11 @@ async def export_conversation(
             all_fact_ids.append(fid)
 
     # Also collect facts linked to edges (for justification {fact:UUID} tokens)
-    for e in edges:
-        for ef in e.edge_facts:  # type: ignore[attr-defined]
-            if ef.fact_id not in seen_fact_ids:
-                seen_fact_ids.add(ef.fact_id)
-                all_fact_ids.append(ef.fact_id)
+    for fid_list in sg_edge_fact_ids.values():
+        for fid in fid_list:
+            if fid not in seen_fact_ids:
+                seen_fact_ids.add(fid)
+                all_fact_ids.append(fid)
 
     all_facts = []
     if all_fact_ids:
@@ -374,8 +368,8 @@ async def export_conversation(
             embedding_model=embedding_model,
         ),
         conversation=_conv_to_response(conv),
-        nodes=[_node_to_response(n, cr_map, embedding_map=node_emb_map) for n in nodes],
-        edges=[_edge_to_response(e) for e in edges],
+        nodes=[_node_to_response(n, embedding_map=node_emb_map) for n in nodes],
+        edges=[_edge_to_response(e, edge_fact_ids=sg_edge_fact_ids) for e in edges],
         facts=[
             _fact_to_response(f, include_raw_content=include_raw_content, embedding_map=fact_emb_map) for f in all_facts
         ],

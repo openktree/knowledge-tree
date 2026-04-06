@@ -78,7 +78,7 @@ def create_ingest_tools(
             return json.dumps({"error": "No valid node entries provided"})
 
         result = await build_nodes_impl(node_dicts, ctx, state, scope_name=state.scope)
-        await ctx.session.commit()
+        await ctx.graph_engine.commit()
 
         result["nav_remaining"] = state.nav_remaining
         return json.dumps(result, default=str)
@@ -243,33 +243,53 @@ def create_ingest_tools(
         """
         import uuid as _uuid
 
-        from kt_db.models import IngestSource
-        from kt_db.repositories.facts import FactRepository
-
-        state = get_state()
-        conv_uuid = _uuid.UUID(state.conversation_id)
-
-        # Get raw_source_ids for this conversation
         from sqlalchemy import select
 
-        result = await ctx.session.execute(
-            select(IngestSource.raw_source_id).where(
-                IngestSource.conversation_id == conv_uuid,
-                IngestSource.raw_source_id.isnot(None),
-            )
-        )
-        raw_source_ids = [row[0] for row in result.all()]
+        from kt_db.write_models import WriteFact, WriteFactSource, WriteNode
+
+        state = get_state()
+        write_session = ctx.graph_engine._write_session
+
+        # Use raw_source_ids from state (populated from ProcessedSource)
+        raw_source_ids = [_uuid.UUID(rid) for rid in state.raw_source_ids]
         if not raw_source_ids:
             return json.dumps({"facts": [], "note": "No sources found"})
 
-        repo = FactRepository(ctx.session)
+        # Get raw source URIs from WriteRawSource to match against WriteFactSource
+        from kt_db.write_models import WriteRawSource
 
-        facts = await repo.browse_by_source(
-            raw_source_ids,
-            fact_type=fact_type or None,
-            unlinked_only=unlinked_only,
-            limit=min(limit, 30),
+        uri_result = await write_session.execute(
+            select(WriteRawSource.uri).where(WriteRawSource.id.in_(raw_source_ids))
         )
+        source_uris = [row[0] for row in uri_result.all()]
+        if not source_uris:
+            return json.dumps({"facts": [], "note": "No sources found in write-db"})
+
+        # Find fact_ids linked to these sources via WriteFactSource
+        fact_id_stmt = select(WriteFactSource.fact_id).where(WriteFactSource.raw_source_uri.in_(source_uris)).distinct()
+
+        # Build fact query
+        stmt = select(WriteFact).where(WriteFact.id.in_(fact_id_stmt))
+
+        if fact_type:
+            stmt = stmt.where(WriteFact.fact_type == fact_type)
+
+        if unlinked_only:
+            # Exclude facts that appear in any WriteNode.fact_ids array
+            linked_subq = select(WriteNode.fact_ids).where(WriteNode.fact_ids.isnot(None))
+            linked_result = await write_session.execute(linked_subq)
+            linked_fact_ids: set[str] = set()
+            for (fact_ids_arr,) in linked_result.all():
+                if fact_ids_arr:
+                    linked_fact_ids.update(fact_ids_arr)
+            if linked_fact_ids:
+                linked_uuids = [_uuid.UUID(fid) for fid in linked_fact_ids]
+                stmt = stmt.where(WriteFact.id.notin_(linked_uuids))
+
+        stmt = stmt.order_by(WriteFact.created_at.desc()).limit(min(limit, 30))
+
+        result = await write_session.execute(stmt)
+        facts = list(result.scalars().all())
 
         return json.dumps(
             {

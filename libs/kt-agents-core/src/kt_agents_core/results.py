@@ -52,7 +52,7 @@ async def build_subgraph(
     if not uuids:
         return {"nodes": [], "edges": []}
 
-    subgraph_data: dict[str, Any] = await ctx.graph_engine.get_subgraph(uuids, depth=depth)
+    subgraph_data = await ctx.graph_engine.get_subgraph(uuids, depth=depth)
 
     sg_nodes = subgraph_data.get("nodes", [])
     sg_edges = subgraph_data.get("edges", [])
@@ -127,6 +127,10 @@ async def build_ingest_subgraph(
 
     for eid in edge_ids:
         try:
+            if ctx.session is None:
+                # No graph-db session — skip edge loading (edge data
+                # is supplementary; nodes are the primary output).
+                continue
             from kt_db.repositories.edges import EdgeRepository
 
             edge_repo = EdgeRepository(ctx.session)

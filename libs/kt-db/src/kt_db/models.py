@@ -51,6 +51,13 @@ class Node(Base):
         UUID(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Denormalized counters — maintained by sync worker, read by API/MCP
+    fact_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    edge_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    child_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    dimension_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    convergence_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
+
     def __init__(self, **kwargs: object) -> None:
         self._embedding: list[float] | None = kwargs.pop("embedding", None)  # type: ignore[assignment]
         super().__init__(**kwargs)
@@ -95,6 +102,7 @@ class NodeCounter(Base):
     )
     access_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     update_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    seed_fact_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Edge(Base):
@@ -147,12 +155,18 @@ class Dimension(Base):
 
     def __init__(self, **kwargs: object) -> None:
         self._embedding: list[float] | None = kwargs.pop("embedding", None)  # type: ignore[assignment]
+        self._write_key: str | None = kwargs.pop("write_key", None)  # type: ignore[assignment]
         super().__init__(**kwargs)
 
     @property
     def embedding(self) -> list[float] | None:
         """In-memory embedding (not persisted). Stored in Qdrant."""
         return getattr(self, "_embedding", None)
+
+    @property
+    def write_key(self) -> str | None:
+        """Write-db key (not persisted). Set when loading from write-db."""
+        return getattr(self, "_write_key", None)
 
     @embedding.setter
     def embedding(self, value: list[float] | None) -> None:
@@ -266,6 +280,7 @@ class RawSource(Base):
     prohibited_chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_super_source: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_attempted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    fetch_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     # Relationships
     fact_sources: Mapped[list["FactSource"]] = relationship(back_populates="raw_source", cascade="all, delete-orphan")
@@ -559,6 +574,74 @@ class ApiToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+# ---- MCP OAuth 2.1 tables -------------------------------------------------
+
+
+class OAuthClient(Base):
+    """Dynamically registered OAuth 2.1 clients (RFC 7591)."""
+
+    __tablename__ = "oauth_clients"
+
+    client_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_secret: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    client_id_issued_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_secret_expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OAuthAuthorizationCode(Base):
+    """OAuth 2.1 authorization codes (short-lived, single-use)."""
+
+    __tablename__ = "oauth_authorization_codes"
+
+    code: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(200), ForeignKey("oauth_clients.client_id", ondelete="CASCADE"))
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uri_provided_explicitly: Mapped[bool] = mapped_column(Boolean, default=True)
+    scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    code_challenge: Mapped[str] = mapped_column(String(200), nullable=False)
+    resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False)
+    csrf_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OAuthAccessToken(Base):
+    """OAuth 2.1 access tokens."""
+
+    __tablename__ = "oauth_access_tokens"
+
+    token: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(200), ForeignKey("oauth_clients.client_id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OAuthRefreshToken(Base):
+    """OAuth 2.1 refresh tokens."""
+
+    __tablename__ = "oauth_refresh_tokens"
+
+    token: Mapped[str] = mapped_column(String(200), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(200), ForeignKey("oauth_clients.client_id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    access_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -606,18 +689,24 @@ class ResearchReport(Base):
     __tablename__ = "research_reports"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    message_id: Mapped[uuid.UUID] = mapped_column(
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("conversation_messages.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         unique=True,
     )
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("conversations.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
+
+    # Hatchet workflow run ID for progress tracking
+    workflow_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+
+    # Flexible summary data (seeds, source_urls, fact_count, content_summary, etc.)
+    summary_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Outcome counts
     nodes_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -648,7 +737,7 @@ class ResearchReport(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Relationships
-    message: Mapped["ConversationMessage"] = relationship(back_populates="research_report")
+    message: Mapped["ConversationMessage | None"] = relationship(back_populates="research_report")
     usage_records: Mapped[list["LlmUsageRecord"]] = relationship(
         back_populates="research_report", cascade="all, delete-orphan"
     )

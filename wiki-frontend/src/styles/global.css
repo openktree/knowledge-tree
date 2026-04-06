@@ -1082,6 +1082,40 @@ a:hover {
   margin-top: 0.75rem;
 }
 
+.related-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+  user-select: none;
+  list-style: none;
+  margin-bottom: 0;
+}
+
+.related-summary::-webkit-details-marker { display: none; }
+
+.related-summary::before {
+  content: "›";
+  font-size: 1.1rem;
+  font-weight: 400;
+  line-height: 1;
+  transition: transform var(--t-base);
+  color: var(--color-text-muted);
+}
+
+.related-details[open] .related-summary::before {
+  transform: rotate(90deg);
+}
+
+.related-summary:hover {
+  color: var(--color-text);
+}
+
 .related-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
@@ -2199,6 +2233,32 @@ a.fact-group-title:hover {
   border-radius: var(--radius-sm);
 }
 
+/* ── Mobile Nav Toggle ─────────────────────────────────────── */
+
+.nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: 1px solid var(--color-nav-search-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  padding: 6px;
+  margin-left: auto;
+}
+
+.nav-toggle-bar {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--color-nav-text-dim);
+  border-radius: 1px;
+  transition: transform var(--t-fast), opacity var(--t-fast);
+}
+
 /* ── Responsive ────────────────────────────────────────────── */
 
 @media (max-width: 720px) {
@@ -2206,7 +2266,37 @@ a.fact-group-title:hover {
 
   .site-header { gap: 1rem; padding: 0 1rem; }
 
-  .header-search { max-width: 280px; }
+  .header-search { max-width: none; flex: 1; }
+
+  .nav-toggle { display: flex; }
+
+  .header-actions {
+    position: absolute;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    background: var(--color-nav-bg);
+    border-bottom: 1px solid var(--color-nav-border);
+    flex-direction: column;
+    padding: 0.75rem 1rem;
+    gap: 0.25rem;
+    display: none;
+    z-index: 99;
+  }
+
+  .site-header.nav-open .header-actions {
+    display: flex;
+  }
+
+  .header-actions .header-about-link {
+    padding: 0.5rem 0.75rem;
+    width: 100%;
+    border-radius: var(--radius-sm);
+  }
+
+  .header-actions .header-about-link:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
 
   .node-grid {
     grid-template-columns: 1fr;
@@ -2221,6 +2311,175 @@ a.fact-group-title:hover {
   .page-wrapper { padding: 1.5rem 1rem 2.5rem; }
 
   .index-search-form { max-width: 100%; }
+
+  /* ── Mobile: Stack link + meta on separate lines so links are tappable ── */
+  .node-flat-list li {
+    flex-wrap: wrap;
+  }
+
+  .node-flat-list li .node-flat-link {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
+  .synthesis-group-children li {
+    flex-wrap: wrap;
+  }
+
+  .synthesis-group-children li .node-flat-link {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
+  .synthesis-group-header {
+    flex-wrap: wrap;
+  }
+
+  .synthesis-group-header .node-flat-link {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
+  /* ── Mobile: Prevent horizontal overflow ── */
+  html, body {
+    overflow-x: hidden;
+  }
+
+  .page-wrapper {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  .node-grid,
+  .node-main,
+  .related-section,
+  .facts-section,
+  .dimensions-details {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  /* ── Mobile: Global word-wrap safety ── */
+  .node-definition,
+  .perspective-definition,
+  .dimension-card-body,
+  .fact-card-content,
+  .related-card-name,
+  .relation-dialog-text {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* ── Mobile: Node meta row ── */
+  .node-meta {
+    flex-wrap: wrap;
+  }
+
+  /* ── Mobile: Definitions ── */
+  .node-definition,
+  .perspective-definition {
+    padding: 0 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  /* ── Mobile: Dimensions ── */
+  .dimension-card-header {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .dimension-card-body {
+    padding: 0.75rem;
+    font-size: 0.88rem;
+  }
+
+  /* ── Mobile: Fact lists ── */
+  .fact-group-summary {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .fact-group-title {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    flex-basis: 100%;
+  }
+
+  .fact-group-count,
+  .fact-group-summary .source-domain,
+  .fact-source-author,
+  .fact-source-date {
+    flex-shrink: 1;
+    white-space: normal;
+  }
+
+  .facts-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .facts-search-wrapper {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .facts-domains {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+    scrollbar-width: thin;
+  }
+
+  .fact-card-content {
+    font-size: 0.87rem;
+  }
+
+  /* ── Mobile: Relations grid ── */
+  .related-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .related-card {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .related-card-name {
+    min-height: auto;
+  }
+
+  .related-card-actions {
+    flex-wrap: wrap;
+  }
+
+  .related-card-btn {
+    white-space: normal;
+    min-width: 0;
+  }
+
+  .related-card-fact-count {
+    white-space: normal;
+  }
+
+  /* ── Mobile: Sidebar relation rows ── */
+  .relation-row {
+    padding: 0.28rem 0.75rem;
+    overflow: hidden;
+  }
+
+  .relation-row-main {
+    font-size: 0.85rem;
+  }
+
+  .relation-btn {
+    font-size: 0.68rem;
+    padding: 0.15rem 0.45rem;
+  }
 }
 
 /* ── Synthesis Type Badge ────────────────────────────────────── */
@@ -2261,6 +2520,48 @@ a.fact-group-title:hover {
 .tab--active {
   color: var(--ocean);
   border-bottom-color: var(--ocean);
+}
+
+/* ── Markdown Tables ──────────────────────────────────────── */
+
+.table-scroll {
+  overflow-x: auto;
+  margin: 1rem 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.synthesis-body table,
+.node-definition table,
+.perspective-definition table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.synthesis-body th,
+.node-definition th,
+.perspective-definition th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface-2);
+  white-space: nowrap;
+}
+
+.synthesis-body td,
+.node-definition td,
+.perspective-definition td {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: top;
+}
+
+.synthesis-body tbody tr:hover,
+.node-definition tbody tr:hover,
+.perspective-definition tbody tr:hover {
+  background: var(--color-surface-2);
 }
 
 /* ── Synthesis List (Investigations Tab) ────────────────────── */
@@ -2622,6 +2923,14 @@ a.fact-group-title:hover {
 
 @media (max-width: 480px) {
   .header-search { display: none; }
+  .site-title { font-size: 1rem; }
   .node-grid { grid-template-columns: 1fr; }
   .tab { padding: 0.5rem 0.8rem; font-size: 0.82rem; }
+  .synthesis-body { max-width: 100%; }
+
+  .node-definition,
+  .perspective-definition {
+    font-size: 0.92rem;
+    line-height: 1.65;
+  }
 }

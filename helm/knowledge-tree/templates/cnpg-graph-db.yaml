@@ -15,14 +15,18 @@ spec:
     shared_preload_libraries:
       {{- toYaml .Values.graphDb.postgresql.shared_preload_libraries | nindent 6 }}
     parameters:
-      max_connections: {{ .Values.graphDb.postgresql.max_connections | quote }}
+      {{- range $key, $value := .Values.graphDb.postgresql }}
+      {{- if ne $key "shared_preload_libraries" }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- end }}
 
   bootstrap:
     initdb:
       database: knowledge_tree
       owner: kt
       secret:
-        name: {{ include "knowledge-tree.graphDbName" . }}-credentials
+        name: {{ .Values.graphDb.credentialsSecret | default (printf "%s-credentials" (include "knowledge-tree.graphDbName" .)) }}
       postInitSQL:
         - CREATE EXTENSION IF NOT EXISTS vector
         - CREATE EXTENSION IF NOT EXISTS pg_trgm
@@ -35,14 +39,26 @@ spec:
 
   resources:
     {{- toYaml .Values.graphDb.resources | nindent 4 }}
+{{- if not .Values.graphDb.credentialsSecret }}
 ---
+{{- $credSecretName := printf "%s-credentials" (include "knowledge-tree.graphDbName" .) }}
+{{- $existingCred := lookup "v1" "Secret" .Release.Namespace $credSecretName }}
+{{- $password := "" }}
+{{- if $existingCred }}
+  {{- $password = index (default dict $existingCred.data) "password" | default "" }}
+  {{- if $password }}
+    {{- $password = $password | b64dec }}
+  {{- end }}
+{{- end }}
+{{- $password = $password | default .Values.secrets.graphDbPassword }}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "knowledge-tree.graphDbName" . }}-credentials
+  name: {{ $credSecretName }}
   labels:
     {{- include "knowledge-tree.labels" . | nindent 4 }}
 type: kubernetes.io/basic-auth
 stringData:
   username: kt
-  password: {{ .Values.secrets.graphDbPassword | quote }}
+  password: {{ $password | quote }}
+{{- end }}

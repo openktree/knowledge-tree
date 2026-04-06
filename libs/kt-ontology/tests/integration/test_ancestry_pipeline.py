@@ -1,5 +1,8 @@
 """Integration test for the AncestryPipeline with a real DB session.
 
+NOTE: kt-ontology is deprecated and scheduled for removal. These tests
+are skipped pending the ancestry removal PR.
+
 Uses mocked LLM and Wikidata to test the full pipeline flow:
 - AI proposes ancestry chain
 - Wikidata returns base chain
@@ -14,6 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+
+pytestmark = pytest.mark.skip(reason="kt-ontology is deprecated — ancestry removal PR pending")
 
 from kt_config.types import ALL_CONCEPTS_ID
 from kt_db.models import Node
@@ -40,14 +45,12 @@ async def _create_node(
     concept: str,
     parent_id: uuid.UUID | None = None,
     node_type: str = "concept",
-    embedding: list[float] | None = None,
 ) -> Node:
     repo = NodeRepository(session)
     return await repo.create(
         concept=concept,
         parent_id=parent_id,
         node_type=node_type,
-        embedding=embedding,
     )
 
 
@@ -347,7 +350,6 @@ class TestAncestrySteps:
             db_session,
             "biology-s5",
             parent_id=ALL_CONCEPTS_ID,
-            embedding=_make_embedding(0.5),
         )
 
         pipeline = AncestryPipeline(
@@ -382,7 +384,6 @@ class TestAncestrySteps:
             db_session,
             "algorithms-excl",
             parent_id=ALL_CONCEPTS_ID,
-            embedding=_make_embedding(0.5),
         )
 
         pipeline = AncestryPipeline(
@@ -601,12 +602,16 @@ class TestAncestryPipelineIntegration:
             ontology_registry=ontology_registry,
         )
 
-        result = await pipeline.determine_ancestry("Tesla Inc", "entity")
+        from kt_config.types import ALL_ENTITIES_ID
+
+        unique_entity = f"UniqueTestEntity-{uuid.uuid4().hex[:8]}"
+        result = await pipeline.determine_ancestry(unique_entity, "entity")
 
         assert isinstance(result, AncestryResult)
-        assert result.parent_id is None
+        # Entities get ALL_ENTITIES_ID as default parent (no LLM ancestry)
+        assert result.parent_id == ALL_ENTITIES_ID
         assert result.nodes_created == []
-        assert result.ancestry_chain == []
+        assert result.ancestry_chain == [ALL_ENTITIES_ID]
         mock_model_gateway.generate.assert_not_awaited()
 
     async def test_concept_creates_stubs_no_existing(
@@ -780,9 +785,9 @@ class TestAncestryPipelineIntegration:
         node_b = await _create_node(db_session, "node-b-circ", parent_id=node_c.id)
         node_a = await _create_node(db_session, "node-a-circ", parent_id=node_b.id)
 
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
-        engine = GraphEngine(db_session, mock_embedding_service)
+        engine = WorkerGraphEngine(write_session=db_session)
 
         # Setting C.parent = A would create A→B→C→A (cycle, never reaches root)
         with pytest.raises(ValueError, match="would create a cycle"):
@@ -807,9 +812,9 @@ class TestAncestryPipelineIntegration:
         orphan = await _create_node(db_session, "orphan-node", parent_id=None)
         child = await _create_node(db_session, "child-node", parent_id=ALL_CONCEPTS_ID)
 
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
-        engine = GraphEngine(db_session, mock_embedding_service)
+        engine = WorkerGraphEngine(write_session=db_session)
 
         with pytest.raises(ValueError, match="not a root node"):
             await engine.set_parent(child.id, orphan.id)

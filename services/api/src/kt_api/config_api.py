@@ -22,9 +22,9 @@ async def get_models() -> list[dict[str, Any]]:
             "display_name": "Grok 4.1 Fast",
         },
         {
-            "model_id": "openrouter/anthropic/claude-3.5-sonnet",
+            "model_id": "openrouter/anthropic/claude-sonnet-4.6",
             "provider": "openrouter",
-            "display_name": "Claude 3.5 Sonnet",
+            "display_name": "Claude Sonnet 4.6",
         },
         {
             "model_id": "openrouter/openai/gpt-4o-mini",
@@ -62,6 +62,34 @@ async def get_model_roles() -> dict[str, Any]:
             "chat": settings.chat_thinking_level,
         },
     }
+
+
+# Curated allowlist of models available for user-selected synthesis.
+# Manually maintained — update when OpenRouter model IDs change or models
+# are added/retired.  To make this configurable without a code change,
+# move the list to Settings and populate from env/YAML.
+SYNTHESIS_MODELS: list[dict[str, str]] = [
+    {"model_id": "openrouter/google/gemini-3.1-pro", "display_name": "Gemini 3.1 Pro", "provider": "google"},
+    {"model_id": "openrouter/z-ai/glm-5v-turbo", "display_name": "GLM 5 Turbo", "provider": "z-ai"},
+    {"model_id": "openrouter/minimax/minimax-2.7", "display_name": "MiniMax 2.7", "provider": "minimax"},
+    {"model_id": "openrouter/anthropic/claude-sonnet-4", "display_name": "Claude Sonnet", "provider": "anthropic"},
+    {"model_id": "openrouter/anthropic/claude-opus-4", "display_name": "Claude Opus", "provider": "anthropic"},
+    {"model_id": "openrouter/deepseek/deepseek-v4", "display_name": "DeepSeek V4", "provider": "deepseek"},
+]
+
+SYNTHESIS_MODEL_IDS: set[str] = {m["model_id"] for m in SYNTHESIS_MODELS}
+
+
+@router.get("/synthesis-models")
+async def get_synthesis_models() -> list[dict[str, str]]:
+    """Return the curated list of models available for user-selected synthesis.
+
+    This is separate from ``GET /config/models`` which lists system-level
+    models used across all agent roles.  The synthesis list is a smaller,
+    curated subset of high-quality models that are suitable for long-form
+    document generation and that we want to expose to end-users.
+    """
+    return SYNTHESIS_MODELS
 
 
 @router.get("/filters")

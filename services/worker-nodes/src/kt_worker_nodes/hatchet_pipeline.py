@@ -41,34 +41,21 @@ class HatchetPipeline:
         self._api_key = api_key
 
     @asynccontextmanager
-    async def _open_sessions(
-        self,
-        *,
-        write_only: bool = False,
-    ) -> AsyncGenerator[tuple[Any, Any], None]:
-        """Open graph-db session and optional write-db session.
+    async def _open_sessions(self) -> AsyncGenerator[tuple[None, Any], None]:
+        """Open write-db session for worker pipelines.
 
-        When ``write_only=True`` the graph-db session is skipped entirely,
-        avoiding a connection checkout from the graph-db pool.  Use this for
-        phases that route all reads/writes through write-db + Qdrant.
+        Workers operate in write-db-only mode — all reads route through
+        write-db or Qdrant via WorkerGraphEngine.  No graph-db sessions
+        are opened.
         """
         write_session = None
         if self._state.write_session_factory is not None:
             write_session = self._state.write_session_factory()
-
-        if write_only:
-            try:
-                yield None, write_session
-            finally:
-                if write_session is not None:
-                    await write_session.close()
-        else:
-            async with self._state.session_factory() as session:
-                try:
-                    yield session, write_session
-                finally:
-                    if write_session is not None:
-                        await write_session.close()
+        try:
+            yield None, write_session
+        finally:
+            if write_session is not None:
+                await write_session.close()
 
     # -- Internal helpers --------------------------------------------------
 
@@ -84,7 +71,7 @@ class HatchetPipeline:
         EmbeddingService are created instead of using the shared worker instances.
         """
         from kt_agents_core.state import AgentContext
-        from kt_graph.engine import GraphEngine
+        from kt_graph.worker_engine import WorkerGraphEngine
 
         if self._api_key:
             from kt_models.embeddings import EmbeddingService
@@ -96,10 +83,9 @@ class HatchetPipeline:
             model_gateway = self._state.model_gateway  # type: ignore[assignment]
             embedding_service = self._state.embedding_service  # type: ignore[assignment]
 
-        graph_engine = GraphEngine(
-            session,
+        graph_engine = WorkerGraphEngine(
+            write_session,
             embedding_service,
-            write_session=write_session,
             qdrant_client=self._state.qdrant_client,
         )
         return AgentContext(
@@ -107,7 +93,7 @@ class HatchetPipeline:
             provider_registry=self._state.provider_registry,  # type: ignore[arg-type]
             model_gateway=model_gateway,
             embedding_service=embedding_service,
-            session=session,
+            session=None,
             session_factory=self._state.session_factory,
             content_fetcher=self._state.content_fetcher,  # type: ignore[arg-type]
             emit_event=emit_event,
@@ -208,8 +194,8 @@ class HatchetPipeline:
             from kt_db.repositories.write_nodes import WriteNodeRepository
 
             nid = uuid.UUID(existing_node_id)
-            async with self._open_sessions() as (session, write_session):
-                ctx = await self._build_ctx(session, write_session=write_session)
+            async with self._open_sessions() as (_, write_session):
+                ctx = await self._build_ctx(None, write_session=write_session)
                 node_pipeline = NodeCreationPipeline(ctx)
 
                 wn = await WriteNodeRepository(write_session).get_by_uuid(nid) if write_session else None
@@ -226,16 +212,16 @@ class HatchetPipeline:
                         await node_pipeline.create_batch([task], orch_state)
 
                 try:
-                    await session.commit()
+                    await write_session.commit()
                 except Exception:
-                    await session.rollback()
+                    await write_session.rollback()
 
             # Extract scalar values while task is still populated
             node_id_str = str(task.node.id) if task.node is not None else existing_node_id
             result_node_type = task.node.node_type if task.node is not None else node_type
         else:
-            async with self._open_sessions() as (session, write_session):
-                ctx = await self._build_ctx(session, write_session=write_session)
+            async with self._open_sessions() as (_, write_session):
+                ctx = await self._build_ctx(None, write_session=write_session)
                 node_pipeline = NodeCreationPipeline(ctx)
 
                 await node_pipeline.classify_and_gather_batch([task], orch_state)
@@ -252,9 +238,9 @@ class HatchetPipeline:
                 # back explicitly so we can still read the task results -- the node
                 # was already committed by create_batch's internal commit.
                 try:
-                    await session.commit()
+                    await write_session.commit()
                 except Exception:
-                    await session.rollback()
+                    await write_session.rollback()
 
             # Extract scalar values before the session closes -- accessing
             # expired ORM attributes after session.close() raises
@@ -287,10 +273,10 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("enrich: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
             node = Node(id=nid, concept=wn.concept, node_type=wn.node_type) if wn else None
@@ -330,7 +316,7 @@ class HatchetPipeline:
 
             enricher = PoolEnricher(ctx)
             result = await enricher.enrich(node)
-            await session.commit()
+            await write_session.commit()
 
         return {
             "node_id": node_id,
@@ -353,10 +339,10 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("dimensions: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
             node = Node(id=nid, concept=wn.concept, node_type=wn.node_type) if wn else None
@@ -375,13 +361,19 @@ class HatchetPipeline:
             dim_pipeline = DimensionPipeline(ctx)
             dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
 
-            # Track fact count at build time for staleness detection
+            await write_session.commit()
+
+            # Track fact count at build time for staleness detection.
+            # Committed after graph-db so the watermark only advances
+            # when the graph-db side has succeeded.
+            # When facts is empty, no dimensions were generated and
+            # no watermark update is needed — the write session has
+            # no pending changes to commit.
             if facts:
                 write_node_repo = WriteNodeRepository(write_session)
                 node_key = write_node_repo.node_key(node_type, node.concept)
                 await write_node_repo.update_facts_at_last_build(node_key, len(facts))
-
-            await session.commit()
+                await write_session.commit()
 
         dimensions_created = len(dim_result.dim_results)
         if not facts:
@@ -404,6 +396,12 @@ class HatchetPipeline:
     async def full_dimensions(self, node_id: str) -> dict:
         """Full-mode dimensions: delete all existing, then regenerate from ALL facts.
 
+        Resumable on retry: a ``dim_rebuild_in_progress`` metadata flag tracks
+        whether a previous attempt already deleted the old dimensions.  On retry
+        only draft (non-definitive) dimensions are removed so that definitive
+        dimensions committed during the failed attempt are preserved and
+        ``_batch_facts`` resumes from the first unclaimed fact batch.
+
         Same return shape as ``dimensions()``:
         ``{node_id, node_type, dimensions_created, fact_count}``.
         """
@@ -415,12 +413,13 @@ class HatchetPipeline:
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("full_dimensions: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
-            wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
+            write_node_repo = WriteNodeRepository(write_session)
+            wn = await write_node_repo.get_by_uuid(nid)
             node = Node(id=nid, concept=wn.concept, node_type=wn.node_type) if wn else None
             if node is None:
                 logger.warning("full_dimensions: node %s not found", node_id)
@@ -429,17 +428,39 @@ class HatchetPipeline:
             # Sync seed facts first
             await self._sync_seed_facts_to_node(nid, write_session, ctx.graph_engine)
 
-            # Delete all existing dimensions + derived data
             node_key = make_node_key(node.node_type, node.concept)
             dim_repo = WriteDimensionRepository(write_session)
-            deleted = await dim_repo.delete_all_for_node(node_key)
-            await dim_repo.delete_convergence_report(node_key)
-            await dim_repo.delete_divergent_claims(node_key)
-            if deleted:
-                await write_session.flush()
-                logger.info("full_dimensions: deleted %d existing dimensions for node %s", deleted, node_id)
+            metadata = dict(wn.metadata_ or {})
+            rebuild_in_progress = metadata.get("dim_rebuild_in_progress", False)
+            deleted = 0
 
-            # Regenerate from all facts
+            if not rebuild_in_progress:
+                # First attempt — delete all existing dims and mark rebuild started.
+                # The early commit is intentional: it makes the deletion durable so
+                # that on retry _batch_facts can resume from committed definitive
+                # dims rather than re-deleting everything.
+                deleted = await dim_repo.delete_all_for_node(node_key)
+                await dim_repo.delete_convergence_report(node_key)
+                await dim_repo.delete_divergent_claims(node_key)
+                metadata["dim_rebuild_in_progress"] = True
+                await write_node_repo.update_metadata(node_key, metadata)
+                await write_session.commit()
+                if deleted:
+                    logger.info("full_dimensions: deleted %d existing dimensions for node %s", deleted, node_id)
+            else:
+                # Retry — keep definitive dims from previous attempt, delete only drafts
+                deleted = await dim_repo.delete_drafts_for_node(node_key)
+                await dim_repo.delete_convergence_report(node_key)
+                await dim_repo.delete_divergent_claims(node_key)
+                await write_session.commit()
+                logger.info(
+                    "full_dimensions: retry — kept definitive dims, deleted %d drafts for node %s",
+                    deleted,
+                    node_id,
+                )
+
+            # Regenerate from all facts (writes go to write-db only; sync
+            # worker propagates to graph-db, so no graph-db commit needed).
             facts = await ctx.graph_engine.get_node_facts(nid)
             dim_mode = "neutral" if node.node_type == "concept" else node.node_type
             node_type = node.node_type
@@ -447,12 +468,13 @@ class HatchetPipeline:
             dim_pipeline = DimensionPipeline(ctx)
             dim_result = await dim_pipeline.generate_and_store(node, facts, mode=dim_mode)
 
-            # Update watermark
-            if facts:
-                write_node_repo = WriteNodeRepository(write_session)
-                await write_node_repo.update_facts_at_last_build(node_key, len(facts))
+            # Clear the rebuild flag on success — uses a targeted jsonb key
+            # removal to avoid overwriting concurrent metadata changes.
+            await write_node_repo.remove_metadata_key(node_key, "dim_rebuild_in_progress")
 
-            await session.commit()
+            if facts:
+                await write_node_repo.update_facts_at_last_build(node_key, len(facts))
+            await write_session.commit()
 
         dimensions_created = len(dim_result.dim_results)
         logger.info(
@@ -475,80 +497,36 @@ class HatchetPipeline:
     async def definition(self, node_id: str) -> dict:
         """Phase 3.5: generate a textual definition for a node.
 
-        Skips regeneration for crystallized nodes (ontology_stable).
-
         Returns ``{node_id, has_definition}``.
         """
-        from kt_db.models import Node
         from kt_db.repositories.write_nodes import WriteNodeRepository
-        from kt_ontology.crystallization import _is_crystallized
         from kt_worker_nodes.pipelines.definitions.pipeline import DefinitionPipeline
 
         nid = uuid.UUID(node_id)
 
-        async with self._open_sessions() as (session, write_session):
+        async with self._open_sessions() as (_, write_session):
             if write_session is None:
                 raise RuntimeError("definition: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
-            node = (
-                Node(
-                    id=nid,
-                    concept=wn.concept,
-                    node_type=wn.node_type,
-                    definition=wn.definition,
-                    metadata_=wn.metadata_,
-                )
-                if wn
-                else None
-            )
-            if node is None:
+            if wn is None:
                 logger.warning("definition: node %s not found", node_id)
                 return {"node_id": node_id, "has_definition": False}
 
-            # Skip definition regeneration for crystallized nodes
-            if _is_crystallized(node):
-                logger.debug("definition: skipping crystallized node %s", node_id)
-                return {"node_id": node_id, "has_definition": node.definition is not None}
-
             def_pipeline = DefinitionPipeline(ctx)
-            definition = await def_pipeline.generate_definition(nid, node.concept)
-            await session.commit()
-
-        return {"node_id": node_id, "has_definition": definition is not None}
-
-    # -- Crystallization ---------------------------------------------------
-
-    async def crystallize(self, parent_node_id: str) -> dict:
-        """Check and perform crystallization for a parent node.
-
-        Returns ``{parent_node_id, crystallized}``.
-
-        Runs in write-only mode — no graph-db connection is checked out.
-        All reads route through write-db + Qdrant.
-        """
-        from kt_ontology.crystallization import CrystallizationPipeline
-
-        async with self._open_sessions(write_only=True) as (session, write_session):
-            if write_session is None:
-                raise RuntimeError("crystallize: write_session is required")
-            ctx = await self._build_ctx(session, write_session=write_session)
-            pipeline = CrystallizationPipeline(ctx)
-            crystallized = await pipeline.check_and_crystallize(parent_node_id)
+            definition = await def_pipeline.generate_definition(nid, wn.concept)
             await write_session.commit()
 
-        return {"parent_node_id": parent_node_id, "crystallized": crystallized}
+        return {"node_id": node_id, "has_definition": definition is not None}
 
     # -- Phase 4: edge resolution ------------------------------------------
 
     async def edges(
         self,
         node_id: str,
-        mode: str,
         concept: str = "",
         node_type: str = "concept",
-        cross_type_pair: str | None = None,
     ) -> dict:
         """Phase 4: resolve edges from candidates for a node.
 
@@ -556,9 +534,8 @@ class HatchetPipeline:
         avoid a graph-db lookup for the current node.  The node was just
         created in write-db / Qdrant and may not be in graph-db yet.
 
-        The ``mode`` and ``cross_type_pair`` parameters are retained for
-        API compatibility but are no longer used — the candidate-based
-        resolver handles both same-type and cross-type edges in one pass.
+        The candidate-based resolver handles both same-type and cross-type
+        edges in one pass.
 
         Returns ``{edge_ids, edges_created}``.
         """
@@ -573,8 +550,8 @@ class HatchetPipeline:
         # earlier create_node task via the Hatchet input.
         node = Node(id=nid, concept=concept, node_type=node_type)
 
-        async with self._open_sessions() as (session, write_session):
-            ctx = await self._build_ctx(session, write_session=write_session)
+        async with self._open_sessions() as (_, write_session):
+            ctx = await self._build_ctx(None, write_session=write_session)
 
             task = CreateNodeTask(name=concept, node_type=node_type, seed_key=f"{node_type}:{concept}")
             task.node = node
@@ -589,7 +566,7 @@ class HatchetPipeline:
             edge_pipeline = EdgePipeline(ctx)
             await edge_pipeline.resolve_from_candidates_batch([task], orch_state)
 
-            await session.commit()
+            await write_session.commit()
 
         edge_ids = [str(eid) for eid in task.result.get("edge_ids", [])]
         return {"edge_ids": edge_ids, "edges_created": task.edges_created}
@@ -616,143 +593,10 @@ class HatchetPipeline:
         nid = __import__("uuid").UUID(node_id)
         node = Node(id=nid, concept=concept, node_type=node_type)
 
-        async with self._open_sessions() as (session, write_session):
-            ctx = await self._build_ctx(session, write_session=write_session)
+        async with self._open_sessions() as (_, write_session):
+            ctx = await self._build_ctx(None, write_session=write_session)
             resolver = EdgeResolver(ctx)
             result = await resolver.refresh_existing_edges(node)
-            await session.commit()
+            await write_session.commit()
 
         return result
-
-    # -- Phase 5: ancestry resolution --------------------------------------
-
-    async def ancestry(
-        self,
-        node_id: str,
-        node_name: str,
-        node_type: str,
-        definition: str | None = None,
-    ) -> dict:
-        """Phase 5: determine ontological ancestry for a node.
-
-        Uses the AncestryPipeline to propose, merge, and resolve ancestry
-        against the system graph.  The pipeline creates lightweight stub nodes
-        for any gaps and wires all parent_id relationships immediately.
-
-        Returns ``{node_id, parent_id, nodes_created}``.
-        """
-        from kt_config.types import COMPOSITE_NODE_TYPES, DEFAULT_PARENTS
-        from kt_graph.engine import GraphEngine
-        from kt_ontology.ancestry import AncestryPipeline
-        from kt_ontology.registry import OntologyProviderRegistry
-
-        nid = uuid.UUID(node_id)
-
-        # Composite nodes (synthesis, perspective) have no ancestry/parents.
-        if node_type in COMPOSITE_NODE_TYPES:
-            logger.info("ancestry: skipping — %s is composite, no ancestry", node_type)
-            return {"node_id": node_id, "parent_id": "", "nodes_created": []}
-
-        # Get ontology registry from worker state (may not be set)
-        ontology_registry: OntologyProviderRegistry = (
-            getattr(self._state, "ontology_registry", None) or OntologyProviderRegistry()
-        )
-
-        async with self._open_sessions() as (session, write_session):
-            graph_engine = GraphEngine(
-                session,
-                self._state.embedding_service,  # type: ignore[arg-type]
-                write_session=write_session,
-                qdrant_client=self._state.qdrant_client,
-            )
-
-            if write_session is None:
-                raise RuntimeError("ancestry: write_session is required")
-
-            # Fetch definition and dimension snippets from write-db.
-            if definition is None:
-                from kt_db.repositories.write_nodes import WriteNodeRepository
-
-                wn = await WriteNodeRepository(write_session).get_by_uuid(nid)
-                if wn and wn.definition:
-                    definition = wn.definition
-
-            from kt_db.keys import make_node_key
-            from kt_db.repositories.write_dimensions import WriteDimensionRepository
-
-            write_dim_repo = WriteDimensionRepository(write_session)
-            wn_key = make_node_key(node_type, node_name)
-            write_dims = await write_dim_repo.get_by_node_key(wn_key, limit=3)
-            dim_snippets: list[str] | None = None
-            if write_dims:
-                dim_snippets = [d.content[:300] for d in write_dims]
-
-            ancestry_pipeline = AncestryPipeline(
-                session=session,
-                model_gateway=self._state.model_gateway,  # type: ignore[arg-type]
-                embedding_service=self._state.embedding_service,  # type: ignore[arg-type]
-                ontology_registry=ontology_registry,
-                write_session=write_session,
-                qdrant_client=self._state.qdrant_client,
-            )
-
-            try:
-                result = await ancestry_pipeline.determine_ancestry(
-                    node_name=node_name,
-                    node_type=node_type,
-                    definition=definition,
-                    node_id=nid,
-                    dimension_snippets=dim_snippets,
-                )
-
-                # Entities have no parent -- skip set_parent entirely
-                if result.parent_id is None:
-                    await session.commit()
-                    return {
-                        "node_id": node_id,
-                        "parent_id": "",
-                        "nodes_created": [],
-                    }
-
-                # Set parent on the original node (guard against self-reference)
-                if result.parent_id == nid:
-                    logger.warning(
-                        "ancestry: pipeline returned self-referential parent for %s, falling back to default",
-                        node_id,
-                    )
-                    default_parent = DEFAULT_PARENTS.get(node_type, DEFAULT_PARENTS["concept"])
-                    await graph_engine.set_parent(nid, default_parent)
-                    await session.commit()
-                    return {
-                        "node_id": node_id,
-                        "parent_id": str(default_parent),
-                        "nodes_created": [str(n) for n in result.nodes_created],
-                    }
-
-                await graph_engine.set_parent(nid, result.parent_id)
-                await session.commit()
-
-                return {
-                    "node_id": node_id,
-                    "parent_id": str(result.parent_id),
-                    "nodes_created": [str(nid) for nid in result.nodes_created],
-                }
-            except Exception:
-                logger.warning(
-                    "ancestry: pipeline failed for node %s, assigning default parent",
-                    node_id,
-                    exc_info=True,
-                )
-                default_parent = DEFAULT_PARENTS.get(node_type)
-                if default_parent is not None:
-                    try:
-                        await graph_engine.set_parent(nid, default_parent)
-                        await session.commit()
-                    except Exception:
-                        logger.warning("ancestry: failed to set default parent for %s", node_id, exc_info=True)
-
-                return {
-                    "node_id": node_id,
-                    "parent_id": str(default_parent) if default_parent else "",
-                    "nodes_created": [],
-                }

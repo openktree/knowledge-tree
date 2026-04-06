@@ -10,12 +10,14 @@ from typing import cast
 
 from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
 
+from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 
 logger = logging.getLogger(__name__)
 
 hatchet = get_hatchet()
+_settings = get_settings()
 
 sync_wf = hatchet.workflow(
     name="sync_wf",
@@ -28,7 +30,10 @@ sync_wf = hatchet.workflow(
 )
 
 
-@sync_wf.task(execution_timeout=timedelta(minutes=5), schedule_timeout=timedelta(minutes=2))
+@sync_wf.task(
+    execution_timeout=timedelta(minutes=_settings.sync_task_timeout_minutes),
+    schedule_timeout=timedelta(minutes=2),
+)
 async def sync_task(input: dict, ctx: Context) -> dict:
     """Single sync cycle: poll write-db and push changes to graph-db."""
     from kt_worker_sync.sync_engine import SyncEngine

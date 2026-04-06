@@ -7,7 +7,6 @@ dependencies = [
     "kt-db",
     "kt-models",
     "kt-providers",
-    "kt-ontology",
     "kt-config",
     "kt-qdrant",
     "kt-agents-core",
@@ -25,7 +24,6 @@ build-backend = "hatchling.build"
 kt-db = { workspace = true }
 kt-models = { workspace = true }
 kt-providers = { workspace = true }
-kt-ontology = { workspace = true }
 kt-config = { workspace = true }
 kt-qdrant = { workspace = true }
 kt-agents-core = { workspace = true }

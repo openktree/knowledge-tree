@@ -1,43 +1,52 @@
 """Node pipeline DAG workflow and standalone edge resolution task.
 
+Unified workflow handling both node creation (from seeds) and rebuilds.
+
 DAG structure::
 
-    create_node
-    ├── generate_dimensions (parent: create_node)
-    │   └── update_ancestry (parent: generate_dimensions)
-    └── generate_definition (parent: create_node, parallel with dimensions)
+    prepare_node
+    ├── generate_dimensions (parent: prepare_node)
+    │   └── finalize_node (parent: generate_dimensions)
+    └── generate_definition (parent: prepare_node, parallel with dimensions)
+
+Modes:
+  - ``create`` -- promote a seed to a full node (default, used by bottom-up/ingest)
+  - ``rebuild_incremental`` -- enrich existing node with new facts
+  - ``rebuild_full`` -- delete all dims, regenerate everything
 
 Each task is a thin wrapper around the corresponding ``HatchetPipeline``
 phase method, which opens its own DB session and delegates to the original
 battle-tested sub-pipeline classes.
 
 ``generate_dimensions`` fans out edge resolution as standalone child tasks
-via ``edge_task.aio_run_many()``, collects the results, then proceeds to
-``update_ancestry``.
+via ``edge_task.aio_run_many()`` and collects the results.
 
-Fact gathering (external search) is NOT done here — it is the responsibility
-of ``ScopePlannerAgent`` in ``exploration.py``.  Each ``create_node`` task
-reads from the existing fact pool only (``explore_budget=0``).
+Fact gathering (external search) is NOT done here -- all facts come from
+seeds.  ``prepare_node`` in create mode reads from the existing fact pool
+only (``explore_budget=0``).
 """
 
 from __future__ import annotations
 
-import json
 import logging
+import uuid as _uuid
 from datetime import timedelta
 from typing import cast
 
-from hatchet_sdk import Context, DurableContext
+from hatchet_sdk import (
+    ConcurrencyExpression,
+    ConcurrencyLimitStrategy,
+    Context,
+    DurableContext,
+)
 
 from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import (
-    AncestryOutput,
-    BuildNodeInput,
-    CrystallizeInput,
     DimensionsOutput,
     EdgeOutput,
+    NodePipelineInput,
     UpdateEdgesInput,
 )
 from kt_worker_nodes.hatchet_pipeline import HatchetPipeline
@@ -54,22 +63,30 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 
 node_pipeline_wf = hatchet.workflow(
     name="node_pipeline",
-    input_validator=BuildNodeInput,
+    input_validator=NodePipelineInput,
+    concurrency=ConcurrencyExpression(
+        expression="has(input.node_id) && input.node_id != '' ? input.node_id : input.seed_key",
+        max_runs=1,
+        limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
+    ),
 )
 
 
 @node_pipeline_wf.task(execution_timeout=timedelta(minutes=15), schedule_timeout=_schedule_timeout)
-async def create_node(input: BuildNodeInput, ctx: Context) -> dict:
-    """Phase 1+1.5+2: classify, gather from pool, create/enrich node.
+async def prepare_node(input: NodePipelineInput, ctx: Context) -> dict:
+    """Prepare a node for the pipeline -- create from seed or load for rebuild.
 
-    Delegates to ``HatchetPipeline.create`` which calls the original
-    NodeCreationPipeline phases (classify_and_gather_batch → enrich_batch
-    or create_batch) within a single session.
+    Create mode:
+      Delegates to ``HatchetPipeline.create`` which calls the original
+      NodeCreationPipeline phases (classify_and_gather_batch -> enrich_batch
+      or create_batch) within a single session.  External search is disabled --
+      facts must have been gathered before this task runs.
 
-    External search is disabled — facts must have been gathered by the
-    ScopePlannerAgent before this task runs.
+    Rebuild mode:
+      Loads the existing node from write-db and runs ``HatchetPipeline.enrich``
+      to sync seed facts.  Incremental mode skips nodes with too few facts.
 
-    Returns ``{node_id, action, concept, node_type, explore_charged}``.
+    Returns ``{node_id, concept, node_type, status}`` in all modes.
     """
     from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_models.usage import start_usage_tracking
@@ -77,22 +94,24 @@ async def create_node(input: BuildNodeInput, ctx: Context) -> dict:
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
+    is_rebuild = input.mode.startswith("rebuild")
 
-    ctx.log(f"create_node: concept={input.concept!r}, type={input.node_type}")
+    if is_rebuild:
+        result = await _prepare_rebuild(input, state, ctx)
+    else:
+        result = await _prepare_create(input, state, ctx)
 
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "building",
-            "status": "started",
-        },
-    )
+    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "node_creation")
+    return result
+
+
+async def _prepare_create(
+    input: NodePipelineInput,
+    state: WorkerState,
+    ctx: Context,
+) -> dict:
+    """Create mode: promote seed to node via NodeCreationPipeline."""
+    ctx.log(f"prepare_node[create]: concept={input.concept!r}, type={input.node_type}")
 
     result = await HatchetPipeline(state, api_key=input.api_key).create(
         concept=input.concept,
@@ -100,36 +119,111 @@ async def create_node(input: BuildNodeInput, ctx: Context) -> dict:
         seed_key=input.seed_key,
         query=input.concept,
         entity_subtype=input.entity_subtype,
-        existing_node_id=input.existing_node_id,
-    )
-
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "building",
-            "status": "completed",
-        },
     )
 
     node_id = result.get("node_id")
     action = result.get("action", "unknown")
-    ctx.log(f"create_node: completed node_id={node_id}, action={action}")
-
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "node_creation")
+    ctx.log(f"prepare_node[create]: completed node_id={node_id}, action={action}")
     return result
 
 
+async def _prepare_rebuild(
+    input: NodePipelineInput,
+    state: WorkerState,
+    ctx: Context,
+) -> dict:
+    """Rebuild mode: load existing node, enrich from seed pool."""
+    from kt_config.types import COMPOSITE_NODE_TYPES
+    from kt_db.repositories.write_nodes import WriteNodeRepository
+    from kt_db.repositories.write_seeds import WriteSeedRepository
+
+    nid = input.node_id
+    if not nid:
+        ctx.log("prepare_node[rebuild]: ERROR -- no node_id provided")
+        return {"node_id": None, "status": "error"}
+
+    ctx.log(f"prepare_node[rebuild]: node_id={nid}, mode={input.mode}")
+
+    if state.write_session_factory is None:
+        raise RuntimeError("prepare_node[rebuild]: write_session_factory is required")
+
+    # Load node + check fact count in a single session
+    async with state.write_session_factory() as ws:
+        wn = await WriteNodeRepository(ws).get_by_uuid(_uuid.UUID(nid))
+        if wn is None:
+            ctx.log(f"prepare_node[rebuild]: node {nid} not found in write-db")
+            return {"node_id": nid, "status": "error"}
+
+        node_concept = wn.concept
+        node_type = wn.node_type
+        node_key = wn.key
+        node_fact_ids = wn.fact_ids
+
+        if node_type in COMPOSITE_NODE_TYPES:
+            ctx.log(f"prepare_node[rebuild]: skipping -- {node_type} is composite")
+            return {
+                "node_id": nid,
+                "concept": node_concept,
+                "node_type": node_type,
+                "status": "skipped",
+            }
+
+        # Incremental mode: skip stub/partial nodes with too few facts
+        if input.mode == "rebuild_incremental":
+            settings = get_settings()
+            seed_repo = WriteSeedRepository(ws)
+            seeds = await seed_repo.get_seeds_by_promoted_node_key(node_key)
+            fact_count = 0
+            if seeds:
+                all_fact_ids: set[_uuid.UUID] = set()
+                for seed in seeds:
+                    descendant_facts = await seed_repo.get_all_descendant_facts(seed.key)
+                    all_fact_ids.update(descendant_facts)
+                fact_count = len(all_fact_ids)
+            else:
+                fact_count = len(node_fact_ids or [])
+
+            min_facts = settings.enrichment_min_facts_for_dimensions
+            if fact_count < min_facts:
+                await WriteNodeRepository(ws).set_enrichment_status(node_key, "partial")
+                await ws.commit()
+                ctx.log(
+                    f"prepare_node[rebuild]: node '{node_concept}' has {fact_count} facts "
+                    f"(need {min_facts}) -- marked partial"
+                )
+                return {
+                    "node_id": nid,
+                    "concept": node_concept,
+                    "node_type": node_type,
+                    "status": "skipped",
+                    "fact_count": fact_count,
+                }
+
+    # Enrich: sync seed facts to node
+    pipeline = HatchetPipeline(state, api_key=input.api_key)
+    enrich_result = await pipeline.enrich(nid)
+    new_facts = enrich_result.get("new_facts_linked", 0)
+    ctx.log(f"prepare_node[rebuild]: pool enrichment done, {new_facts} new facts linked")
+
+    return {
+        "node_id": nid,
+        "concept": node_concept,
+        "node_type": node_type,
+        "action": "rebuild",
+        "status": "ok",
+    }
+
+
 @node_pipeline_wf.durable_task(
-    parents=[create_node],
+    parents=[prepare_node],
     execution_timeout=timedelta(minutes=30),
     schedule_timeout=_schedule_timeout,
 )
-async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dict:
-    """Phase 3: generate dimensions, then fan out edge resolution.
+async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> dict:
+    """Generate dimensions, then fan out edge resolution.
 
-    Spawns ``edge_task`` children (1 same_type + N cross_type) via
-    ``aio_run_many`` and collects the results.
+    Respects ``input.mode`` (incremental vs full) and ``input.scope``.
+    Spawns ``edge_task`` via ``aio_run_many`` and collects results.
 
     Returns ``DimensionsOutput`` with node_id and aggregated edge_ids.
     """
@@ -139,104 +233,74 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
+    prepare_result: dict = ctx.task_output(prepare_node)
+    node_id_str: str | None = prepare_result.get("node_id")
+    status = prepare_result.get("status", "ok")
 
-    create_result: dict = ctx.task_output(create_node)
-    node_id_str: str | None = create_result.get("node_id")
+    if not node_id_str or status in ("error", "skipped"):
+        ctx.log(f"generate_dimensions: skipping -- prepare_node status={status}")
+        return DimensionsOutput(node_id=node_id_str or "", edge_ids=[]).model_dump()
 
-    if not node_id_str:
-        ctx.log("generate_dimensions: skipping — create_node returned no node_id")
-        return DimensionsOutput(node_id="", edge_ids=[]).model_dump()
+    node_type: str = prepare_result.get("node_type", input.node_type)
+    concept: str = prepare_result.get("concept", input.concept)
+    pipeline = HatchetPipeline(state, api_key=input.api_key)
 
-    ctx.log(f"generate_dimensions: node_id={node_id_str}")
+    dims_created = 0
+    fact_count = 0
 
-    # ── Generate dimensions ──────────────────────────────────────
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "dimensions",
-            "status": "started",
-        },
-    )
+    # -- Generate dimensions -----------------------------------------------
+    if input.scope in ("all", "dimensions"):
+        ctx.log(f"generate_dimensions: node_id={node_id_str}, mode={input.mode}")
 
-    max_retries = 2
-    dim_result: dict = {}
-    for attempt in range(1, max_retries + 1):
-        try:
-            dim_result = await HatchetPipeline(state, api_key=input.api_key).dimensions(node_id_str)
-            break
-        except Exception:
-            if attempt < max_retries:
-                ctx.log(f"generate_dimensions: attempt {attempt} failed, retrying...")
-                logger.warning(
-                    "generate_dimensions: attempt %d failed for node %s, retrying",
-                    attempt,
-                    node_id_str,
-                    exc_info=True,
-                )
-            else:
-                ctx.log(f"generate_dimensions: ERROR — all {max_retries} attempts failed for node {node_id_str}")
-                logger.exception(
-                    "generate_dimensions: all %d attempts failed for node %s",
-                    max_retries,
-                    node_id_str,
-                )
+        max_retries = 2
+        dim_result: dict = {}
+        for attempt in range(1, max_retries + 1):
+            try:
+                if input.mode == "rebuild_full":
+                    dim_result = await pipeline.full_dimensions(node_id_str)
+                else:
+                    dim_result = await pipeline.dimensions(node_id_str)
+                break
+            except Exception:
+                if attempt < max_retries:
+                    ctx.log(f"generate_dimensions: attempt {attempt} failed, retrying...")
+                    logger.warning(
+                        "generate_dimensions: attempt %d failed for node %s, retrying",
+                        attempt,
+                        node_id_str,
+                        exc_info=True,
+                    )
+                else:
+                    ctx.log(f"generate_dimensions: ERROR -- all {max_retries} attempts failed for node {node_id_str}")
+                    logger.exception(
+                        "generate_dimensions: all %d attempts failed for node %s",
+                        max_retries,
+                        node_id_str,
+                    )
 
-    node_type: str = dim_result.get("node_type", "concept")
-    dims_created: int = dim_result.get("dimensions_created", 0)
-    fact_count: int = dim_result.get("fact_count", 0)
+        node_type = dim_result.get("node_type", node_type)
+        dims_created = dim_result.get("dimensions_created", 0)
+        fact_count = dim_result.get("fact_count", 0)
 
-    ctx.log(f"generate_dimensions: dimensions_created={dims_created}, fact_count={fact_count}, node_type={node_type}")
+        ctx.log(f"generate_dimensions: dimensions_created={dims_created}, fact_count={fact_count}")
 
-    if fact_count > 0 and dims_created == 0:
-        ctx.log(
-            f"generate_dimensions: WARNING — node {node_id_str} has {fact_count} facts "
-            f"but 0 dimensions were generated (LLM error or empty response)"
-        )
+        if fact_count > 0 and dims_created == 0:
+            ctx.log(
+                f"generate_dimensions: WARNING -- node {node_id_str} has {fact_count} facts "
+                f"but 0 dimensions were generated (LLM error or empty response)"
+            )
 
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "dimensions",
-            "status": "completed",
-        },
-    )
-
-    # ── Fan out edge resolution tasks ────────────────────────────
+    # -- Fan out edge resolution tasks -------------------------------------
     all_edge_ids: list[str] = []
 
-    if input.skip_edges:
-        ctx.log("generate_dimensions: skipping edges (skip_edges=True)")
-    else:
-        from kt_hatchet.models import UpdateEdgesInput
-
+    if input.scope in ("all", "edges"):
         ctx.log("generate_dimensions: spawning edge resolution task")
 
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": input.scope_id,
-                "phase": "edges",
-                "status": "started",
-            },
-        )
-
-        concept = create_result.get("concept", input.concept)
-
-        # Single edge task — the candidate-based resolver handles both
-        # same-type and cross-type edges in one pass.
         edge_results = await edge_task.aio_run_many(
             [
                 edge_task.create_bulk_run_item(
                     input=UpdateEdgesInput(
                         node_id=node_id_str,
-                        edge_mode="candidates",
                         concept=concept,
                         node_type=node_type,
                         scope_id=input.scope_id,
@@ -252,16 +316,25 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
             edge_out = EdgeOutput.model_validate(result)
             all_edge_ids.extend(edge_out.edge_ids)
 
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": input.scope_id,
-                "phase": "edges",
-                "status": "completed",
-            },
-        )
+        # Full rebuild: also refresh justifications on existing edges
+        if input.mode == "rebuild_full":
+            try:
+                refresh_result = await pipeline.refresh_edge_justifications(
+                    node_id_str,
+                    concept,
+                    node_type,
+                )
+                edges_refreshed = refresh_result.get("edges_refreshed", 0)
+                if edges_refreshed:
+                    ctx.log(f"generate_dimensions: refreshed {edges_refreshed} existing edge justifications")
+            except Exception:
+                logger.warning(
+                    "generate_dimensions: edge justification refresh failed for %s",
+                    node_id_str,
+                    exc_info=True,
+                )
 
-    ctx.log(f"generate_dimensions: done — {dims_created} dimensions, {len(all_edge_ids)} edges")
+    ctx.log(f"generate_dimensions: done -- {dims_created} dimensions, {len(all_edge_ids)} edges")
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "dimensions")
 
@@ -274,15 +347,14 @@ async def generate_dimensions(input: BuildNodeInput, ctx: DurableContext) -> dic
 
 
 @node_pipeline_wf.task(
-    parents=[create_node],
+    parents=[prepare_node],
     execution_timeout=timedelta(minutes=15),
     schedule_timeout=_schedule_timeout,
 )
-async def generate_definition(input: BuildNodeInput, ctx: Context) -> dict:
-    """Phase 3.5 (parallel): generate a definition for the node.
+async def generate_definition(input: NodePipelineInput, ctx: Context) -> dict:
+    """Generate a definition for the node (parallel with dimensions).
 
-    Runs in parallel with ``generate_dimensions``.  Terminal — no downstream
-    tasks depend on the definition.
+    Respects ``input.scope`` -- skips if scope is "edges" only.
     """
     from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_models.usage import start_usage_tracking
@@ -290,40 +362,21 @@ async def generate_definition(input: BuildNodeInput, ctx: Context) -> dict:
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
+    prepare_result: dict = ctx.task_output(prepare_node)
+    node_id_str: str | None = prepare_result.get("node_id")
+    status = prepare_result.get("status", "ok")
 
-    create_result: dict = ctx.task_output(create_node)
-    node_id_str: str | None = create_result.get("node_id")
-
-    if not node_id_str:
-        ctx.log("generate_definition: skipping — create_node returned no node_id")
+    if not node_id_str or status in ("error", "skipped"):
+        ctx.log(f"generate_definition: skipping -- prepare_node status={status}")
         return {"node_id": None, "has_definition": False}
+
+    if input.scope == "edges":
+        ctx.log("generate_definition: skipping -- scope is edges-only")
+        return {"node_id": node_id_str, "has_definition": False}
 
     ctx.log(f"generate_definition: node_id={node_id_str}")
 
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "definitions",
-            "status": "started",
-        },
-    )
-
     result = await HatchetPipeline(state, api_key=input.api_key).definition(node_id_str)
-
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "definitions",
-            "status": "completed",
-        },
-    )
 
     await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "definition")
 
@@ -333,144 +386,65 @@ async def generate_definition(input: BuildNodeInput, ctx: Context) -> dict:
 
 @node_pipeline_wf.task(
     parents=[generate_dimensions],
-    execution_timeout=timedelta(minutes=15),
+    execution_timeout=timedelta(minutes=5),
     schedule_timeout=_schedule_timeout,
 )
-async def update_ancestry(input: BuildNodeInput, ctx: Context) -> dict:
-    """Phase 5: determine ontological ancestry for the newly built node.
+async def finalize_node(input: NodePipelineInput, ctx: Context) -> dict:
+    """Finalize the node after dimensions and edges are complete.
 
-    Runs after ``generate_dimensions`` (and therefore after all edges are
-    resolved) to ensure the graph is fully populated before ancestry resolution.
+    For rebuild modes: updates enrichment_status, increments update_count,
+    and optionally dispatches dialectic pair rebuild.
 
-    Uses AncestryPipeline to propose AI+base ontology chains, merge them,
-    and resolve against the existing system graph.
-
-    For entity nodes, assigns the default parent only (no ontological ancestry).
+    For create mode: lightweight -- no additional work needed.
     """
     state = cast(WorkerState, ctx.lifespan)
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
+    prepare_result: dict = ctx.task_output(prepare_node)
+    node_id_str: str | None = prepare_result.get("node_id")
+    status = prepare_result.get("status", "ok")
 
-    create_result: dict = ctx.task_output(create_node)
-    node_id_str: str | None = create_result.get("node_id")
-    node_type: str = create_result.get("node_type", input.node_type)
+    if not node_id_str or status in ("error", "skipped"):
+        ctx.log(f"finalize_node: skipping -- prepare_node status={status}")
+        return {"node_id": node_id_str, "status": status}
 
-    # Composite nodes have no ancestry/parents
-    from kt_config.types import COMPOSITE_NODE_TYPES
+    is_rebuild = input.mode.startswith("rebuild")
 
-    if node_type in COMPOSITE_NODE_TYPES:
-        ctx.log(f"update_ancestry: skipping — {node_type} is composite, no ancestry")
-        return AncestryOutput(node_id=node_id_str or "").model_dump()
+    if is_rebuild and state.write_session_factory:
+        from kt_db.repositories.write_nodes import WriteNodeRepository
 
-    if not node_id_str:
-        ctx.log("update_ancestry: skipping — create_node returned no node_id")
-        return AncestryOutput(node_id="").model_dump()
+        # Update enrichment status + check for dialectic pair in one session
+        pair_id_str: str | None = None
+        async with state.write_session_factory() as ws:
+            node_repo = WriteNodeRepository(ws)
+            wn = await node_repo.get_by_uuid(_uuid.UUID(node_id_str))
+            if wn:
+                await node_repo.set_enrichment_status(wn.key, "enriched")
+                await node_repo.increment_update_count(wn.key)
+                await ws.commit()
+                ctx.log("finalize_node: enrichment_status='enriched'")
 
-    # Skip ontology for stub nodes created by the ancestry pipeline itself
-    # to prevent recursive ancestry generation that mutates established chains.
-    if input.skip_ontology:
-        ctx.log(f"update_ancestry: skipping — skip_ontology=True for {node_id_str}")
-        return AncestryOutput(node_id=node_id_str).model_dump()
+                if input.mode == "rebuild_full" and input.scope == "all" and input.recalculate_pair:
+                    pair_id_str = (wn.metadata_ or {}).get("dialectic_pair_id")
 
-    ctx.log(f"update_ancestry: node_id={node_id_str}, type={node_type}")
-
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "ancestry",
-            "status": "started",
-        },
-    )
-
-    result = await HatchetPipeline(state, api_key=input.api_key).ancestry(
-        node_id=node_id_str,
-        node_name=input.concept,
-        node_type=node_type,
-    )
-
-    await emit(
-        "pipeline_phase",
-        {
-            "scope_id": input.scope_id,
-            "phase": "ancestry",
-            "status": "completed",
-        },
-    )
-
-    # Stub nodes are already created and wired by the ancestry pipeline.
-    # Log what was created.
-    nodes_created = result.get("nodes_created", [])
-    if nodes_created:
-        ctx.log(f"update_ancestry: created {len(nodes_created)} stub nodes")
-
-    # Trigger crystallization check for the parent (fire-and-forget).
-    # Use asyncio.create_task so we don't block the ancestry step waiting
-    # for crystallization to complete — it can take minutes.
-    parent_id_str = result.get("parent_id")
-    if parent_id_str:
-        import asyncio
-
-        async def _fire_and_forget_crystallize() -> None:
+        # Dispatch pair rebuild outside the session (fire-and-forget:
+        # pair failure doesn't affect the primary node's result).
+        if pair_id_str:
+            ctx.log(f"finalize_node: triggering pair rebuild for {pair_id_str}")
             try:
-                await crystallize_task.aio_run(
-                    CrystallizeInput(
-                        parent_node_id=parent_id_str,
-                        scope_id=input.scope_id,
-                        message_id=input.message_id,
-                        conversation_id=input.conversation_id,
+                await node_pipeline_wf.aio_run_no_wait(
+                    NodePipelineInput(
+                        mode="rebuild_full",
+                        scope="all",
+                        node_id=str(pair_id_str),
+                        recalculate_pair=False,
                         api_key=input.api_key,
                     ),
                 )
             except Exception:
-                logger.debug(
-                    "update_ancestry: crystallization trigger failed for parent %s",
-                    parent_id_str,
-                    exc_info=True,
-                )
+                logger.warning("Failed to rebuild dialectic pair %s", pair_id_str, exc_info=True)
 
-        asyncio.create_task(_fire_and_forget_crystallize())
-
-    ctx.log(
-        f"update_ancestry: completed for node_id={node_id_str}, "
-        f"parent={result.get('parent_id')}, stubs={len(nodes_created)}"
-    )
-    return AncestryOutput(
-        node_id=node_id_str,
-        parent_id=result.get("parent_id", ""),
-        nodes_created=nodes_created,
-    ).model_dump()
-
-
-# ══════════════════════════════════════════════════════════════
-# Standalone crystallization task
-# ══════════════════════════════════════════════════════════════
-
-
-@hatchet.task(
-    name="crystallize_node",
-    input_validator=CrystallizeInput,
-    execution_timeout=timedelta(minutes=15),
-    schedule_timeout=_schedule_timeout,
-)
-async def crystallize_task(input: CrystallizeInput, ctx: Context) -> dict:
-    """Check and crystallize a parent node if it meets the threshold.
-
-    Spawned by ``update_ancestry`` after setting a node's parent.
-    Fire-and-forget — failure does not affect the node pipeline.
-    """
-    state = cast(WorkerState, ctx.lifespan)
-
-    ctx.log(f"crystallize_task: parent_node_id={input.parent_node_id}")
-
-    result = await HatchetPipeline(state, api_key=input.api_key).crystallize(input.parent_node_id)
-
-    ctx.log(f"crystallize_task: done — crystallized={result.get('crystallized', False)}")
-    return result
+    ctx.log(f"finalize_node: completed node_id={node_id_str}")
+    return {"node_id": node_id_str, "status": "completed"}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -499,24 +473,26 @@ async def edge_task(input: UpdateEdgesInput, ctx: Context) -> dict:
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    ctx.log(
-        f"edge_task: concept={input.concept}, node_id={input.node_id}, mode={input.edge_mode}, cross_type_pair={input.cross_type_pair}"
-    )
+    ctx.log(f"edge_task: concept={input.concept}, node_id={input.node_id}")
 
     result = await HatchetPipeline(state, api_key=input.api_key).edges(
         node_id=input.node_id,
-        mode=input.edge_mode,
         concept=input.concept,
         node_type=input.node_type,
-        cross_type_pair=input.cross_type_pair,
     )
 
     ctx.log(
-        f"edge_task: done — concept={input.concept}, mode={input.edge_mode}, "
-        f"edges_created={result.get('edges_created', 0)}, edge_ids={result.get('edge_ids', [])}"
+        f"edge_task: done -- concept={input.concept}, "
+        f"edges_created={result.get('edges_created', 0)}, "
+        f"edge_ids={result.get('edge_ids', [])}"
     )
 
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "edge_classification")
+    await flush_usage_to_db(
+        state.write_session_factory,
+        input.conversation_id,
+        input.message_id,
+        "edge_classification",
+    )
 
     return EdgeOutput(
         edge_ids=result.get("edge_ids", []),

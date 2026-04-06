@@ -399,11 +399,11 @@ class NodeCreationPipeline:
 
         # Commit all nodes so they're visible to each other in later phases
         try:
-            await ctx.graph_engine._write_session.commit()
+            await ctx.graph_engine.commit()
         except Exception:
             logger.exception("Error committing create_batch")
             try:
-                await ctx.graph_engine._write_session.rollback()
+                await ctx.graph_engine.rollback()
             except Exception:
                 logger.debug("Rollback failed after create_batch commit error", exc_info=True)
             return {"created": 0, "refreshed": 0, "nodes": []}
