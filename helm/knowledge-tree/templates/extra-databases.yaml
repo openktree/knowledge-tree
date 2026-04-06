@@ -1,8 +1,0 @@
-{{/* This file intentionally left empty.
-
-Extra databases (CNPG clusters, PgBouncer, Qdrant) are provisioned in the
-infrastructure layer (knowledge-tree-infra), not by this chart.
-
-The app chart only mounts their credential secrets as env vars — see
-externalDatabases in values.yaml and the sharedEnv helper in _helpers.tpl.
-*/}}
