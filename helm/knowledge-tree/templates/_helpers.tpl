@@ -202,48 +202,39 @@ Outputs a list of env var definitions.
       name: {{ include "knowledge-tree.secretName" . }}
       key: resend-api-key
 {{- end }}
-{{- /* Extra databases: inject per-db env vars from CNPG-generated secrets */}}
-{{- $fullname := include "knowledge-tree.fullname" . }}
-{{- range $name, $db := .Values.extraDatabases }}
-{{- if $db.enabled }}
+{{- /* External databases: mount credentials from infra-provisioned secrets */}}
+{{- range $name, $db := .Values.externalDatabases }}
 {{- $envPrefix := printf "EXTRA_DB_%s" ($name | upper | replace "-" "_") }}
-{{- $graphCluster := printf "%s-%s-graph-db" $fullname $name }}
-{{- $writeCluster := printf "%s-%s-write-db" $fullname $name }}
-{{- $pgbouncerSvc := printf "%s-%s-pgbouncer" $fullname $name }}
-{{- $qdrantSvc := printf "%s-%s-qdrant" $fullname $name }}
-{{- $graphDatabase := printf "knowledge_tree_%s" ($name | replace "-" "_") }}
-{{- $writeDatabase := printf "knowledge_tree_%s_write" ($name | replace "-" "_") }}
 - name: {{ $envPrefix }}_GRAPH_USER
   valueFrom:
     secretKeyRef:
-      name: {{ $db.graphDb.credentialsSecret | default (printf "%s-credentials" $graphCluster) }}
+      name: {{ $db.graphDb.credentialsSecret }}
       key: username
 - name: {{ $envPrefix }}_GRAPH_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ $db.graphDb.credentialsSecret | default (printf "%s-credentials" $graphCluster) }}
+      name: {{ $db.graphDb.credentialsSecret }}
       key: password
 - name: {{ $envPrefix }}_GRAPH_HOST
-  value: {{ printf "%s-rw" $graphCluster }}
+  value: {{ $db.graphDb.host }}
 - name: {{ $envPrefix }}_GRAPH_DATABASE
-  value: {{ $graphDatabase }}
+  value: {{ $db.graphDb.database }}
 - name: {{ $envPrefix }}_WRITE_USER
   valueFrom:
     secretKeyRef:
-      name: {{ $db.writeDb.credentialsSecret | default (printf "%s-credentials" $writeCluster) }}
+      name: {{ $db.writeDb.credentialsSecret }}
       key: username
 - name: {{ $envPrefix }}_WRITE_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ $db.writeDb.credentialsSecret | default (printf "%s-credentials" $writeCluster) }}
+      name: {{ $db.writeDb.credentialsSecret }}
       key: password
 - name: {{ $envPrefix }}_WRITE_HOST
-  value: {{ $pgbouncerSvc }}
+  value: {{ $db.writeDb.host }}
 - name: {{ $envPrefix }}_WRITE_DATABASE
-  value: {{ $writeDatabase }}
+  value: {{ $db.writeDb.database }}
 - name: {{ $envPrefix }}_QDRANT_URL
-  value: "http://{{ $qdrantSvc }}:6333"
-{{- end }}
+  value: {{ $db.qdrantUrl | quote }}
 {{- end }}
 - name: CONFIG_PATH
   value: /app/config.yaml

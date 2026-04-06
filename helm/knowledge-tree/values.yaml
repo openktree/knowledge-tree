@@ -409,48 +409,23 @@ workers:
         memory: 1Gi
 
 # =============================================================================
-# Extra Databases — provision N additional graph+write+pgbouncer+qdrant sets.
-# Each key becomes the config_key used by Settings.graph_databases.
+# External Databases — mount credentials for databases provisioned outside
+# this chart (e.g. in the infra layer).  Each key becomes the config_key
+# used by Settings.graph_databases.  The chart injects EXTRA_DB_<NAME>_*
+# env vars from the referenced secrets/services.
 # =============================================================================
-# extraDatabases:
-#   shared:                          # ← config_key = "shared"
-#     enabled: true
+# externalDatabases:
+#   shared:                                 # ← config_key = "shared"
 #     graphDb:
-#       instances: 1
-#       image: ghcr.io/cloudnative-pg/postgresql:16.8
-#       credentialsSecret: ""        # empty = auto-generate
-#       storage:
-#         size: 20Gi
-#         storageClass: ""
-#       postgresql:
-#         shared_preload_libraries:
-#           - "vector.so"
-#         max_connections: "100"
-#       resources: {}
+#       credentialsSecret: kt-shared-graph-db-credentials   # must have username + password keys
+#       host: kt-shared-graph-db-rw         # CNPG -rw service
+#       database: knowledge_tree_shared
 #     writeDb:
-#       instances: 1
-#       image: ghcr.io/cloudnative-pg/postgresql:16
-#       credentialsSecret: ""
-#       storage:
-#         size: 20Gi
-#         storageClass: ""
-#       postgresql:
-#         max_connections: "400"
-#       resources: {}
-#     pgbouncer:                     # connection pooler for the write-db
-#       poolMode: transaction
-#       maxClientConn: 1000
-#       defaultPoolSize: 50
-#       minPoolSize: 5
-#       reservePoolSize: 5
-#       resources: {}
-#     qdrant:
-#       image: qdrant/qdrant:v1.14.0
-#       replicaCount: 1
-#       persistence:
-#         size: 10Gi
-#       resources: {}
-extraDatabases: {}
+#       credentialsSecret: kt-shared-write-db-credentials
+#       host: kt-shared-pgbouncer           # PgBouncer service for the write-db
+#       database: knowledge_tree_shared_write
+#     qdrantUrl: "http://kt-shared-qdrant:6333"
+externalDatabases: {}
 
 # =============================================================================
 # config.yaml — mounted into all Python services
