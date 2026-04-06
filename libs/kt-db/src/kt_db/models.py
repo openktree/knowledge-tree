@@ -890,16 +890,12 @@ class GraphGroup(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="manual"
-    )  # manual | oidc | scim | ad
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="manual")  # manual | oidc | scim | ad
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     # Relationships
-    members: Mapped[list["GraphGroupMember"]] = relationship(
-        back_populates="group", cascade="all, delete-orphan"
-    )
+    members: Mapped[list["GraphGroupMember"]] = relationship(back_populates="group", cascade="all, delete-orphan")
 
 
 class GraphGroupMember(Base):
@@ -914,9 +910,7 @@ class GraphGroupMember(Base):
     )
     # No FK to user table — users are in system DB (different schema).
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
-    source: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="manual"
-    )  # manual | oidc | scim | ad
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="manual")  # manual | oidc | scim | ad
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Relationships
