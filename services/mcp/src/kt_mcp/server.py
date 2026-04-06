@@ -153,12 +153,15 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
     resolver = get_graph_resolver_cached()
     gs = await resolver.resolve_by_slug(graph)
 
-    # Verify GraphMember membership for non-default graphs
+    # Verify GraphMember membership for non-default graphs (fail closed)
     if token is not None:
         claims = token.claims or {}
         user_id_str = claims.get("user_id")
         is_superuser = claims.get("is_superuser") == "true"
-        if user_id_str and not is_superuser:
+        if not user_id_str:
+            # No user identity — deny access to non-default graphs
+            raise ValueError(f"Token has no user identity; cannot access graph '{graph}'")
+        if not is_superuser:
             import uuid as _uuid
 
             from kt_db.repositories.graphs import GraphRepository

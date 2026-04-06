@@ -8,6 +8,7 @@ that delegates to the ``_impl`` functions in ``kt_api.research``.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import FileResponse
 
 from kt_api.auth.tokens import require_auth
 from kt_api.graph_context import GraphContext, get_graph_context, require_writer
@@ -89,7 +90,7 @@ async def download_graph_ingest_source(
     conversation_id: str,
     source_id: str,
     ctx: GraphContext = Depends(get_graph_context),
-):
+) -> FileResponse:
     """Download the original file for an ingest source in a specific graph."""
     async with ctx.graph_session_factory() as session:
         return await _download_ingest_source_impl(session, conversation_id, source_id)

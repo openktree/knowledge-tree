@@ -169,10 +169,19 @@ async def list_candidates_for_seed(
     return await _list_candidates_for_seed_impl(get_write_session_factory_cached(), seed_key, offset, limit)
 
 
+@router.get("/pair", response_model=EdgeCandidatePairDetail)
+async def get_edge_candidate_pair_query(
+    seed_key_a: str = Query(..., description="First seed key"),
+    seed_key_b: str = Query(..., description="Second seed key"),
+) -> EdgeCandidatePairDetail:
+    """Get full detail for a specific edge candidate pair (query-param variant)."""
+    return await _get_edge_candidate_pair_impl(get_write_session_factory_cached(), seed_key_a, seed_key_b)
+
+
 @router.get("/{seed_key_a:path}/{seed_key_b:path}", response_model=EdgeCandidatePairDetail)
 async def get_edge_candidate_pair(
     seed_key_a: str,
     seed_key_b: str,
 ) -> EdgeCandidatePairDetail:
-    """Get full detail for a specific edge candidate pair."""
+    """Get full detail for a specific edge candidate pair (path-param variant, legacy)."""
     return await _get_edge_candidate_pair_impl(get_write_session_factory_cached(), seed_key_a, seed_key_b)
