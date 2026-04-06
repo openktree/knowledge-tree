@@ -1884,6 +1884,7 @@ dependencies = [
     { name = "kt-graph" },
     { name = "kt-models" },
     { name = "kt-qdrant" },
+    { name = "kt-rbac" },
     { name = "pwdlib", extra = ["argon2", "bcrypt"] },
     { name = "uvicorn" },
 ]
@@ -1898,6 +1899,7 @@ requires-dist = [
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
+    { name = "kt-rbac", editable = "libs/kt-rbac" },
     { name = "pwdlib", extras = ["argon2", "bcrypt"], specifier = ">=0.3.0" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]

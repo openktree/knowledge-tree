@@ -132,20 +132,17 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
 
     For "default", returns the system session factory.
     For other slugs, uses GraphSessionResolver, checks OAuth token scopes,
-    and verifies the user is a GraphMember of the target graph.
+    and verifies the user has GRAPH_READ permission via kt-rbac.
     Raises ValueError if the graph doesn't exist or access is denied.
     """
     if graph == "default":
         return get_session_factory_cached()
 
-    # Check token graph scopes if present:
-    # - No token (SKIP_AUTH) → allow (dev mode)
-    # - Token with no graph:* scopes → check membership instead
-    # - Token with graph:* scopes → must include the requested graph
     from fastmcp.server.dependencies import get_access_token
 
     token = get_access_token()
     if token is not None:
+        # Check token-level graph scopes first
         graph_scopes = [s.removeprefix("graph:") for s in (token.scopes or []) if s.startswith("graph:")]
         if graph_scopes and graph not in graph_scopes:
             raise ValueError(f"Token does not have access to graph '{graph}'")
@@ -153,25 +150,43 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
     resolver = get_graph_resolver_cached()
     gs = await resolver.resolve_by_slug(graph)
 
-    # Verify GraphMember membership for non-default graphs (fail closed)
+    # Verify permission via kt-rbac (fail closed for non-default graphs)
     if token is not None:
+        from kt_rbac import Permission, PermissionDeniedError, default_checker
+        from kt_rbac.context import PermissionContext
+        from kt_rbac.types import GraphRole
+
         claims = token.claims or {}
         user_id_str = claims.get("user_id")
         is_superuser = claims.get("is_superuser") == "true"
         if not user_id_str:
-            # No user identity — deny access to non-default graphs
             raise ValueError(f"Token has no user identity; cannot access graph '{graph}'")
+
+        import uuid as _uuid
+
+        from kt_db.repositories.graphs import GraphRepository
+
+        user_id = _uuid.UUID(user_id_str)
+        graph_role: GraphRole | None = None
+
         if not is_superuser:
-            import uuid as _uuid
-
-            from kt_db.repositories.graphs import GraphRepository
-
-            user_id = _uuid.UUID(user_id_str)
             async with get_session_factory_cached()() as ctrl_session:
                 repo = GraphRepository(ctrl_session)
-                role = await repo.get_member_role(gs.graph.id, user_id)
-                if role is None:
+                raw_role = await repo.get_member_role(gs.graph.id, user_id)
+                if raw_role is None:
                     raise ValueError(f"Not a member of graph '{graph}'")
+                graph_role = GraphRole(raw_role)
+
+        ctx = PermissionContext(
+            user_id=user_id,
+            is_superuser=is_superuser,
+            graph_role=graph_role,
+            is_default_graph=False,
+        )
+        try:
+            default_checker.check_or_raise(ctx, Permission.GRAPH_READ)
+        except PermissionDeniedError:
+            raise ValueError(f"Insufficient permissions for graph '{graph}'")
 
     return gs.graph_session_factory
 
