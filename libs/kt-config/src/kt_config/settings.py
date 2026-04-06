@@ -592,6 +592,10 @@ class Settings(BaseSettings):
     # Frontend
     frontend_url: str = "http://localhost:3000"
 
+    # Multi-graph pool sizes (for schema-mode non-default graphs)
+    graph_pool_size: int = 5
+    graph_max_overflow: int = 10
+
     # Multi-graph: named database connections (config_key → connection config)
     # Configured via YAML under a "graph_databases" section or env vars.
     graph_databases: dict[str, GraphDatabaseConfig] = {}

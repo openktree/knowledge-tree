@@ -219,18 +219,18 @@ class GraphSessionResolver:
             )
             prefix = f"{graph.slug}__"
         else:
-            # Same database, different schema
+            # Same database, different schema — pool sizes from settings
             graph_engine, graph_sf = _make_session_factory(
                 settings.database_url,
-                pool_size=5,
-                max_overflow=10,
+                pool_size=settings.graph_pool_size,
+                max_overflow=settings.graph_max_overflow,
                 schema_name=graph.schema_name,
                 application_name=f"kt-graph-{graph.slug}",
             )
             write_engine, write_sf = _make_session_factory(
                 settings.write_database_url,
-                pool_size=5,
-                max_overflow=10,
+                pool_size=settings.graph_pool_size,
+                max_overflow=settings.graph_max_overflow,
                 schema_name=graph.schema_name,
                 application_name=f"kt-write-{graph.slug}",
             )

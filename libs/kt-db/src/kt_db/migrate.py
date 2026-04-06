@@ -26,12 +26,13 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import kt_db
 from kt_config.settings import get_settings
 from kt_db.models import Graph
 
 logger = logging.getLogger(__name__)
 
-_KT_DB_ROOT = Path(__file__).resolve().parents[2]  # kt_db/migrate.py -> src/kt_db -> kt-db/
+_KT_DB_ROOT = Path(kt_db.__file__).resolve().parents[2]  # kt_db/__init__.py -> src/kt_db -> kt-db/
 
 
 async def migrate_all_graphs() -> None:

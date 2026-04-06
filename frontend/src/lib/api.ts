@@ -200,7 +200,7 @@ export const api = {
     },
 
     get(id: string): Promise<ConversationResponse> {
-      return request<ConversationResponse>(
+      return graphRequest<ConversationResponse>(
         `/conversations/${encodeURIComponent(id)}`,
       );
     },
@@ -223,7 +223,7 @@ export const api = {
       conversationId: string,
       data: SendMessageRequest,
     ): Promise<ConversationMessageResponse> {
-      return request<ConversationMessageResponse>(
+      return graphRequest<ConversationMessageResponse>(
         `/conversations/${encodeURIComponent(conversationId)}/messages`,
         {
           method: "POST",
@@ -236,7 +236,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<{ message_id: string; status: string }> {
-      return request<{ message_id: string; status: string }>(
+      return graphRequest<{ message_id: string; status: string }>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/resynthesize`,
         { method: "POST" },
       );
@@ -246,7 +246,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<{ message_id: string; status: string }> {
-      return request<{ message_id: string; status: string }>(
+      return graphRequest<{ message_id: string; status: string }>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/stop`,
         { method: "POST" },
       );
@@ -256,7 +256,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<ProgressResponse> {
-      return request<ProgressResponse>(
+      return graphRequest<ProgressResponse>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/progress`,
       );
     },
@@ -265,7 +265,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<ResearchReportResponse> {
-      return request<ResearchReportResponse>(
+      return graphRequest<ResearchReportResponse>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/report`,
       );
     },
@@ -274,7 +274,7 @@ export const api = {
       conversationId: string,
       data: UpdateConversationRequest,
     ): Promise<ConversationResponse> {
-      return request<ConversationResponse>(
+      return graphRequest<ConversationResponse>(
         `/conversations/${encodeURIComponent(conversationId)}`,
         {
           method: "PATCH",
@@ -284,7 +284,7 @@ export const api = {
     },
 
     delete(id: string): Promise<DeleteResponse> {
-      return request<DeleteResponse>(
+      return graphRequest<DeleteResponse>(
         `/conversations/${encodeURIComponent(id)}`,
         { method: "DELETE" },
       );
@@ -348,32 +348,32 @@ export const api = {
     },
 
     getDimensions(id: string): Promise<DimensionResponse[]> {
-      return request<DimensionResponse[]>(
+      return graphRequest<DimensionResponse[]>(
         `/nodes/${encodeURIComponent(id)}/dimensions`,
       );
     },
 
     getFacts(id: string): Promise<FactResponse[]> {
-      return request<FactResponse[]>(
+      return graphRequest<FactResponse[]>(
         `/nodes/${encodeURIComponent(id)}/facts`,
       );
     },
 
     getEdges(id: string, direction?: string): Promise<EdgeResponse[]> {
       const qs = buildQuery({ direction });
-      return request<EdgeResponse[]>(
+      return graphRequest<EdgeResponse[]>(
         `/nodes/${encodeURIComponent(id)}/edges${qs}`,
       );
     },
 
     getHistory(id: string): Promise<NodeVersionResponse[]> {
-      return request<NodeVersionResponse[]>(
+      return graphRequest<NodeVersionResponse[]>(
         `/nodes/${encodeURIComponent(id)}/history`,
       );
     },
 
     getConvergence(id: string): Promise<ConvergenceResponse> {
-      return request<ConvergenceResponse>(
+      return graphRequest<ConvergenceResponse>(
         `/nodes/${encodeURIComponent(id)}/convergence`,
       );
     },
@@ -383,7 +383,7 @@ export const api = {
       mode: "full" | "incremental" = "full",
       scope: "all" | "dimensions" | "edges" = "all",
     ): Promise<{ status: string; node_id: string }> {
-      return request<{ status: string; node_id: string }>(
+      return graphRequest<{ status: string; node_id: string }>(
         `/nodes/${encodeURIComponent(id)}/rebuild`,
         {
           method: "POST",
@@ -395,14 +395,14 @@ export const api = {
     regenerateComposite(
       id: string,
     ): Promise<{ status: string; node_id: string }> {
-      return request<{ status: string; node_id: string }>(
+      return graphRequest<{ status: string; node_id: string }>(
         `/nodes/${encodeURIComponent(id)}/regenerate`,
         { method: "POST" },
       );
     },
 
     getSourceNodes(id: string): Promise<NodeResponse[]> {
-      return request<NodeResponse[]>(
+      return graphRequest<NodeResponse[]>(
         `/nodes/${encodeURIComponent(id)}/source-nodes`,
       );
     },
@@ -415,7 +415,7 @@ export const api = {
     },
 
     getPerspectives(id: string): Promise<NodeResponse[]> {
-      return request<NodeResponse[]>(
+      return graphRequest<NodeResponse[]>(
         `/nodes/${encodeURIComponent(id)}/perspectives`,
       );
     },
@@ -423,7 +423,7 @@ export const api = {
     quickPerspectiveValidate(
       data: QuickPerspectiveRequest,
     ): Promise<QuickPerspectiveValidateResponse> {
-      return request<QuickPerspectiveValidateResponse>(
+      return graphRequest<QuickPerspectiveValidateResponse>(
         "/nodes/quick-perspective/validate",
         {
           method: "POST",
@@ -517,7 +517,7 @@ export const api = {
     },
 
     getNodes(id: string): Promise<FactNodeInfo[]> {
-      return request<FactNodeInfo[]>(
+      return graphRequest<FactNodeInfo[]>(
         `/facts/${encodeURIComponent(id)}/nodes`,
       );
     },
@@ -595,7 +595,7 @@ export const api = {
     },
 
     reingest(id: string): Promise<SourceReingestResponse> {
-      return request<SourceReingestResponse>(
+      return graphRequest<SourceReingestResponse>(
         `/sources/${encodeURIComponent(id)}/reingest`,
         { method: "POST" },
       );
@@ -616,7 +616,7 @@ export const api = {
     },
 
     getDivergence(key: string): Promise<SeedDivergenceResponse> {
-      return request<SeedDivergenceResponse>(
+      return graphRequest<SeedDivergenceResponse>(
         `/seeds/divergence/${encodeURIComponent(key)}`,
       );
     },
@@ -640,7 +640,7 @@ export const api = {
     },
 
     getTree(key: string): Promise<SeedTreeResponse> {
-      return request<SeedTreeResponse>(
+      return graphRequest<SeedTreeResponse>(
         `/seeds/tree/${encodeURIComponent(key)}`,
       );
     },
@@ -660,7 +660,7 @@ export const api = {
         status: params?.status,
         source_node_id: params?.source_node_id,
       });
-      return request<PaginatedPerspectiveSeedsResponse>(
+      return graphRequest<PaginatedPerspectiveSeedsResponse>(
         `/seeds/perspectives${qs}`,
       );
     },
@@ -727,7 +727,7 @@ export const api = {
       seedKeyA: string,
       seedKeyB: string,
     ): Promise<EdgeCandidatePairDetail> {
-      return request<EdgeCandidatePairDetail>(
+      return graphRequest<EdgeCandidatePairDetail>(
         `/edge-candidates/${encodeURIComponent(seedKeyA)}/${encodeURIComponent(seedKeyB)}`,
       );
     },
@@ -741,7 +741,7 @@ export const api = {
           params?.offset !== undefined ? String(params.offset) : undefined,
         limit: params?.limit !== undefined ? String(params.limit) : undefined,
       });
-      return request<PaginatedEdgeCandidatePairs>(
+      return graphRequest<PaginatedEdgeCandidatePairs>(
         `/edge-candidates/by-seed/${encodeURIComponent(seedKey)}${qs}`,
       );
     },
@@ -842,7 +842,7 @@ export const api = {
       navBudget: number,
       selectedChunks?: number[] | null,
     ): Promise<ConversationResponse> {
-      return request<ConversationResponse>(
+      return graphRequest<ConversationResponse>(
         `/research/${encodeURIComponent(conversationId)}/confirm`,
         {
           method: "POST",
@@ -855,7 +855,7 @@ export const api = {
     },
 
     getSources(conversationId: string): Promise<IngestSourceResponse[]> {
-      return request<IngestSourceResponse[]>(
+      return graphRequest<IngestSourceResponse[]>(
         `/research/${encodeURIComponent(conversationId)}/sources`,
       );
     },
@@ -868,7 +868,7 @@ export const api = {
       conversationId: string,
       selectedChunks?: number[] | null,
     ): Promise<{ conversation_id: string; message_id: string; status: string }> {
-      return request<{ conversation_id: string; message_id: string; status: string }>(
+      return graphRequest<{ conversation_id: string; message_id: string; status: string }>(
         `/research/${encodeURIComponent(conversationId)}/decompose`,
         {
           method: "POST",
@@ -880,7 +880,7 @@ export const api = {
     },
 
     proposals(conversationId: string): Promise<IngestProposalsResponse> {
-      return request<IngestProposalsResponse>(
+      return graphRequest<IngestProposalsResponse>(
         `/research/${encodeURIComponent(conversationId)}/proposals`,
       );
     },
@@ -889,7 +889,7 @@ export const api = {
       conversationId: string,
       selectedNodes: BottomUpProposedNode[],
     ): Promise<BottomUpBuildResponse> {
-      return request<BottomUpBuildResponse>(
+      return graphRequest<BottomUpBuildResponse>(
         `/research/${encodeURIComponent(conversationId)}/build`,
         {
           method: "POST",
@@ -912,7 +912,7 @@ export const api = {
     bottomUpProposals(
       conversationId: string,
     ): Promise<BottomUpPrepareResponse> {
-      return request<BottomUpPrepareResponse>(
+      return graphRequest<BottomUpPrepareResponse>(
         `/research/${encodeURIComponent(conversationId)}/bottom-up/proposals`,
       );
     },
@@ -922,7 +922,7 @@ export const api = {
       maxSelect: number,
       instructions?: string,
     ): Promise<AgentSelectResponse> {
-      return request<AgentSelectResponse>(
+      return graphRequest<AgentSelectResponse>(
         `/research/${encodeURIComponent(conversationId)}/agent-select`,
         {
           method: "POST",
@@ -937,7 +937,7 @@ export const api = {
     agentSelectStatus(
       conversationId: string,
     ): Promise<AgentSelectStatusResponse> {
-      return request<AgentSelectStatusResponse>(
+      return graphRequest<AgentSelectStatusResponse>(
         `/research/${encodeURIComponent(conversationId)}/agent-select/status`,
       );
     },
@@ -945,7 +945,7 @@ export const api = {
     getSummary(
       conversationId: string,
     ): Promise<ResearchSummaryResponse> {
-      return request<ResearchSummaryResponse>(
+      return graphRequest<ResearchSummaryResponse>(
         `/research/${encodeURIComponent(conversationId)}/summary`,
       );
     },
@@ -956,7 +956,7 @@ export const api = {
   // -------------------------------------------------------------------------
   graphBuilder: {
     autoBuild(): Promise<{ status: string; workflow_run_id: string }> {
-      return request<{ status: string; workflow_run_id: string }>(
+      return graphRequest<{ status: string; workflow_run_id: string }>(
         "/graph-builder/auto-build",
         { method: "POST" },
       );
@@ -1081,11 +1081,11 @@ export const api = {
   // -------------------------------------------------------------------------
   systemSettings: {
     get(): Promise<SystemSettingsResponse> {
-      return request<SystemSettingsResponse>("/system-settings");
+      return graphRequest<SystemSettingsResponse>("/system-settings");
     },
 
     update(data: UpdateSystemSettingsRequest): Promise<SystemSettingsResponse> {
-      return request<SystemSettingsResponse>("/system-settings", {
+      return graphRequest<SystemSettingsResponse>("/system-settings", {
         method: "PATCH",
         body: JSON.stringify(data),
       });
@@ -1097,7 +1097,7 @@ export const api = {
   // -------------------------------------------------------------------------
   members: {
     list(): Promise<MemberResponse[]> {
-      return request<MemberResponse[]>("/members");
+      return graphRequest<MemberResponse[]>("/members");
     },
 
     updateRole(
@@ -1119,7 +1119,7 @@ export const api = {
   // -------------------------------------------------------------------------
   waitlist: {
     submit(data: WaitlistSubmitRequest): Promise<WaitlistSubmitResponse> {
-      return request<WaitlistSubmitResponse>("/waitlist", {
+      return graphRequest<WaitlistSubmitResponse>("/waitlist", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -1127,7 +1127,7 @@ export const api = {
 
     list(status?: string): Promise<WaitlistEntryResponse[]> {
       const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-      return request<WaitlistEntryResponse[]>(`/waitlist${qs}`);
+      return graphRequest<WaitlistEntryResponse[]>(`/waitlist${qs}`);
     },
 
     review(
@@ -1149,14 +1149,14 @@ export const api = {
   // -------------------------------------------------------------------------
   invites: {
     create(data: InviteCreateRequest): Promise<InviteResponse> {
-      return request<InviteResponse>("/invites", {
+      return graphRequest<InviteResponse>("/invites", {
         method: "POST",
         body: JSON.stringify(data),
       });
     },
 
     list(): Promise<InviteResponse[]> {
-      return request<InviteResponse[]>("/invites");
+      return graphRequest<InviteResponse[]>("/invites");
     },
 
     validate(
@@ -1294,7 +1294,7 @@ export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
 }
 
 export async function getWorkflowProgress(workflowRunId: string) {
-  return request<PipelineSnapshotResponse>(
+  return graphRequest<PipelineSnapshotResponse>(
     `/workflows/${encodeURIComponent(workflowRunId)}/progress`
   );
 }
@@ -1310,7 +1310,7 @@ export async function getSynthesis(id: string) {
 }
 
 export async function getSentenceFacts(synthesisId: string, position: number) {
-  return request<SentenceFactLink[]>(
+  return graphRequest<SentenceFactLink[]>(
     `/syntheses/${synthesisId}/sentences/${position}/facts`
   );
 }
@@ -1320,14 +1320,14 @@ export async function getSynthesisNodes(synthesisId: string) {
 }
 
 export async function deleteSynthesis(id: string) {
-  return request<{ deleted: boolean; id: string }>(
+  return graphRequest<{ deleted: boolean; id: string }>(
     `/syntheses/${id}`,
     { method: "DELETE" }
   );
 }
 
 export async function updateSynthesisVisibility(id: string, visibility: string) {
-  return request<{ id: string; visibility: string }>(
+  return graphRequest<{ id: string; visibility: string }>(
     `/syntheses/${id}`,
     { method: "PATCH", body: JSON.stringify({ visibility }) }
   );
@@ -1338,11 +1338,11 @@ export async function updateSynthesisVisibility(id: string, visibility: string) 
 // ---------------------------------------------------------------------------
 
 export async function listGraphs() {
-  return request<GraphResponse[]>("/graphs");
+  return graphRequest<GraphResponse[]>("/graphs");
 }
 
 export async function createGraph(data: CreateGraphRequest) {
-  return request<GraphResponse>("/graphs", {
+  return graphRequest<GraphResponse>("/graphs", {
     method: "POST",
     body: JSON.stringify(data),
   });
