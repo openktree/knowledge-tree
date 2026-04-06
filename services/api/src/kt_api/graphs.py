@@ -318,7 +318,7 @@ async def create_graph(
 
 @router.get("/database-connections", response_model=list[DatabaseConnectionResponse])
 async def list_database_connections(
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_GRAPHS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DatabaseConnectionResponse]:
     """List available database connections (admin only)."""
