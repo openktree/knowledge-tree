@@ -493,7 +493,7 @@ async def rebuild_node(
     raw_mode = (body or {}).get("mode", "full")
     pipeline_mode = f"rebuild_{raw_mode}" if raw_mode in ("full", "incremental") else "rebuild_full"
     scope = (body or {}).get("scope", "all")
-    api_key = require_api_key(user)
+    require_api_key(user)  # fail-fast validation
     await dispatch_with_graph(
         "node_pipeline",
         {
@@ -501,7 +501,7 @@ async def rebuild_node(
             "node_id": node_id,
             "scope": scope,
             "recalculate_pair": True,
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
     )
 

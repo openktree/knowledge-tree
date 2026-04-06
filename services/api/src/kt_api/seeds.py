@@ -323,7 +323,7 @@ async def promote_seed_to_node(
     from kt_api.dispatch import dispatch_with_graph
 
     scope_id = f"seed-promote-{_uuid.uuid4().hex[:8]}"
-    api_key = require_api_key(user)
+    require_api_key(user)  # fail-fast validation
 
     try:
         run_id = await dispatch_with_graph(
@@ -336,7 +336,7 @@ async def promote_seed_to_node(
                 "seed_key": seed_key,
                 "message_id": scope_id,
                 "conversation_id": scope_id,
-                "api_key": api_key,
+                "user_id": str(user.id),
             },
         )
     except Exception as exc:

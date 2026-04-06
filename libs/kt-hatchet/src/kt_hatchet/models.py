@@ -122,7 +122,7 @@ class NodePipelineInput(GraphAwareMixin):
     # Shared
     message_id: str = ""
     conversation_id: str = ""
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 # Backward-compatible alias -- callers (bottom-up, ingest) use this name.
@@ -145,7 +145,7 @@ class GenerateDimensionsInput(GraphAwareMixin):
     scope_id: str
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class DimensionsOutput(BaseModel):
@@ -163,7 +163,7 @@ class GenerateDefinitionInput(GraphAwareMixin):
     node_id: str
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class UpdateEdgesInput(GraphAwareMixin):
@@ -175,7 +175,7 @@ class UpdateEdgesInput(GraphAwareMixin):
     scope_id: str = ""
     message_id: str = ""
     conversation_id: str = ""
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class EdgeOutput(BaseModel):
@@ -196,7 +196,7 @@ class BottomUpInput(GraphAwareMixin):
     nav_budget: int = 0
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpScopeInput(GraphAwareMixin):
@@ -209,7 +209,7 @@ class BottomUpScopeInput(GraphAwareMixin):
     wave_number: int = 0
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpScopeOutput(BaseModel):
@@ -242,7 +242,7 @@ class BottomUpPrepareScopeInput(GraphAwareMixin):
     explore_slice: int
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpPrepareScopeOutput(BaseModel):
@@ -295,7 +295,7 @@ class BottomUpPrepareInput(GraphAwareMixin):
     explore_budget: int
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpPrepareOutput(BaseModel):
@@ -332,7 +332,7 @@ class AgentSelectInput(GraphAwareMixin):
     instructions: str = ""
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class AgentSelectOutput(BaseModel):
@@ -351,7 +351,7 @@ class QueryInput(GraphAwareMixin):
     nav_budget: int
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class FollowUpInput(GraphAwareMixin):
@@ -365,7 +365,7 @@ class FollowUpInput(GraphAwareMixin):
     wave_count: int = 1
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class ResynthesizeInput(GraphAwareMixin):
@@ -374,7 +374,7 @@ class ResynthesizeInput(GraphAwareMixin):
     query: str
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestConfirmInput(GraphAwareMixin):
@@ -384,7 +384,7 @@ class IngestConfirmInput(GraphAwareMixin):
     selected_chunks: list[int] | None = None
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestDecomposeInput(GraphAwareMixin):
@@ -393,7 +393,7 @@ class IngestDecomposeInput(GraphAwareMixin):
     conversation_id: str
     message_id: str
     selected_chunks: list[int] | None = None
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestDecomposeOutput(BaseModel):
@@ -413,7 +413,7 @@ class IngestBuildInput(GraphAwareMixin):
     selected_nodes: list[ConfirmedNode]
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestPartitionInput(GraphAwareMixin):

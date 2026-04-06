@@ -252,8 +252,8 @@ async def enrich_edge(
 
     from kt_api.dispatch import dispatch_with_graph
 
-    api_key = require_api_key(user)
-    await dispatch_with_graph("enrich_edge", {"edge_id": edge_id, "api_key": api_key})
+    require_api_key(user)  # fail-fast validation
+    await dispatch_with_graph("enrich_edge", {"edge_id": edge_id, "user_id": str(user.id)})
     return {"status": "started", "edge_id": edge_id}
 
 
