@@ -18,9 +18,13 @@ async def dispatch_with_graph(
     (default-graph behaviour).  Graph-scoped endpoint wrappers supply
     ``graph_id=str(ctx.graph.id)`` to route workflows to the correct
     per-graph session factories.
-    """
-    from kt_hatchet.client import dispatch_workflow
 
-    if graph_id is not None:
-        input_dict = {**input_dict, "graph_id": graph_id}
-    return await dispatch_workflow(workflow_name, input_dict, additional_metadata=additional_metadata)
+    Accepts plain dicts or Pydantic models (coerced via ``model_dump()``).
+    """
+    from kt_hatchet.client import dispatch_workflow, inject_graph_id
+
+    return await dispatch_workflow(
+        workflow_name,
+        inject_graph_id(input_dict, graph_id),
+        additional_metadata=additional_metadata,
+    )

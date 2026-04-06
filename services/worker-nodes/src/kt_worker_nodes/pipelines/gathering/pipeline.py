@@ -420,7 +420,7 @@ class GatherFactsPipeline:
         # Dispatch seed dedup as independent Hatchet tasks (non-fatal)
         if all_seed_keys:
             try:
-                from kt_hatchet.client import dispatch_workflow
+                from kt_hatchet.client import dispatch_workflow, inject_graph_id
 
                 unique_keys = list(dict.fromkeys(all_seed_keys))
                 batch_size = 10
@@ -430,7 +430,7 @@ class GatherFactsPipeline:
                     *[
                         dispatch_workflow(
                             "seed_dedup_batch",
-                            {"seed_keys": b, "scope_id": scope_id, "graph_id": self._graph_id},
+                            inject_graph_id({"seed_keys": b, "scope_id": scope_id}, self._graph_id),
                         )
                         for b in batches
                     ]
