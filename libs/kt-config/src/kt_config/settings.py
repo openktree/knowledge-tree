@@ -60,6 +60,7 @@ _register(
         "redis_url": "redis_url",
         "redis_tls": "redis_tls",
         "db_sslmode": "db_sslmode",
+        "write_db_sslmode": "write_db_sslmode",
         "sync_interval_seconds": "sync_interval_seconds",
         "sync_batch_size": "sync_batch_size",
         "sync_max_retries": "sync_max_retries",
@@ -450,6 +451,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     redis_tls: bool = False  # use TLS for Redis connections
     db_sslmode: str = ""  # PostgreSQL sslmode (e.g. "require", "verify-full"); empty = no SSL
+    write_db_sslmode: str = ""  # sslmode for write-db; falls back to db_sslmode when empty
     ontology_cache_ttl: int = 604800  # 7 days in seconds
     ontology_model: str = "openrouter/x-ai/grok-4.1-fast"
     wikidata_user_agent: str = "KnowledgeTree/1.0 (example@openktree.com)"

@@ -13,8 +13,13 @@ def get_qdrant_client() -> AsyncQdrantClient:
     if _client is None:
         settings = get_settings()
         url = settings.qdrant_url
-        if settings.qdrant_tls and url.startswith("http://"):
-            url = url.replace("http://", "https://", 1)
+        if settings.qdrant_tls:
+            if url.startswith("http://"):
+                url = url.replace("http://", "https://", 1)
+            elif not url.startswith("https://"):
+                import logging
+
+                logging.getLogger(__name__).warning("qdrant_tls is enabled but qdrant_url=%r does not use https", url)
         _client = AsyncQdrantClient(url=url, timeout=settings.qdrant_timeout)
     return _client
 

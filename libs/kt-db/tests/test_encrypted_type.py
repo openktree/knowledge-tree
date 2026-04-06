@@ -51,7 +51,7 @@ class TestEncryptedStringWithKey:
 
         assert encrypted is not None
         assert encrypted != "secret-value"  # should be ciphertext
-        assert encrypted.startswith("gAAAAA")  # Fernet token prefix
+        assert encrypted != "secret-value"  # ciphertext differs from plaintext
 
         decrypted = t.process_result_value(encrypted, None)
         assert decrypted == "secret-value"

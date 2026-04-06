@@ -18,34 +18,31 @@ from kt_config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 _fernet: Fernet | None = None
-_initialized = False
+_fernet_resolved = False
 
 
 def _get_fernet() -> Fernet | None:
     """Return a Fernet instance if ``encryption_key`` is configured, else None.
 
-    Re-checks settings when no key was found previously, so that a worker
-    that starts before ENCRYPTION_KEY is set will pick it up on the next call.
+    Once a valid key is found it is cached for the process lifetime.
+    When no key is configured, each call re-reads settings so that a
+    worker started before ENCRYPTION_KEY is set will pick it up later.
     """
-    global _fernet, _initialized
-    if _fernet is not None:
+    global _fernet, _fernet_resolved
+    if _fernet_resolved:
         return _fernet
-    if _initialized:
-        # Previously checked and no key was set — re-check settings in case
-        # the key has been configured since.
-        pass
     key = get_settings().encryption_key
     if key:
         _fernet = Fernet(key.encode() if isinstance(key, str) else key)
-    _initialized = True
+        _fernet_resolved = True
     return _fernet
 
 
 def reset_fernet_cache() -> None:
     """Reset cached Fernet instance (for testing)."""
-    global _fernet, _initialized
+    global _fernet, _fernet_resolved
     _fernet = None
-    _initialized = False
+    _fernet_resolved = False
 
 
 class EncryptedString(TypeDecorator):

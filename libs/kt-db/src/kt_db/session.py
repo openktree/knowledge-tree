@@ -1,6 +1,12 @@
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from kt_config.settings import get_settings
+
+logger = logging.getLogger(__name__)
+
+_SUPPORTED_SSLMODES = {"require", "verify-ca", "verify-full"}
 
 
 def _ssl_connect_args(sslmode: str) -> dict:
@@ -9,17 +15,24 @@ def _ssl_connect_args(sslmode: str) -> dict:
         return {}
     import ssl as _ssl
 
+    if sslmode not in _SUPPORTED_SSLMODES:
+        logger.warning(
+            "Unrecognised db_sslmode=%r — ignoring (supported: %s)",
+            sslmode,
+            ", ".join(sorted(_SUPPORTED_SSLMODES)),
+        )
+        return {}
+
     if sslmode == "require":
         ctx = _ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = _ssl.CERT_NONE
         return {"ssl": ctx}
-    if sslmode in ("verify-ca", "verify-full"):
-        ctx = _ssl.create_default_context()
-        if sslmode == "verify-ca":
-            ctx.check_hostname = False
-        return {"ssl": ctx}
-    return {}
+    # verify-ca / verify-full
+    ctx = _ssl.create_default_context()
+    if sslmode == "verify-ca":
+        ctx.check_hostname = False
+    return {"ssl": ctx}
 
 
 def get_engine(
@@ -69,7 +82,7 @@ def get_write_engine(
     connect_args: dict = {
         "statement_cache_size": 0,
         "server_settings": {"application_name": application_name},
-        **_ssl_connect_args(settings.db_sslmode),
+        **_ssl_connect_args(settings.write_db_sslmode or settings.db_sslmode),
     }
     return create_async_engine(
         url,

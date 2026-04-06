@@ -34,5 +34,10 @@ def test_verify_ca_sslmode():
     assert ctx.check_hostname is False
 
 
-def test_unknown_sslmode_returns_empty():
-    assert _ssl_connect_args("disable") == {}
+def test_unknown_sslmode_returns_empty_and_warns(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="kt_db.session"):
+        result = _ssl_connect_args("disable")
+    assert result == {}
+    assert "Unrecognised db_sslmode" in caplog.text

@@ -28,6 +28,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # WARNING: Fernet ciphertext exceeds 200 chars — any encrypted values
+    # will be silently truncated by this downgrade, corrupting secrets.
+    # Decrypt all client_secret values before running this downgrade.
     op.alter_column(
         "oauth_clients",
         "client_secret",

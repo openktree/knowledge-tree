@@ -27,3 +27,10 @@ def test_encryption_key_default():
 
     settings = get_settings()
     assert settings.encryption_key == ""
+
+
+def test_write_db_sslmode_default():
+    from kt_config.settings import get_settings
+
+    settings = get_settings()
+    assert settings.write_db_sslmode == ""
