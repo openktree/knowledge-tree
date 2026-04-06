@@ -1398,6 +1398,7 @@ export interface GraphResponse {
   storage_mode: string;
   schema_name: string;
   database_connection_id: string | null;
+  database_connection_name: string | null;
   status: string;
   created_by: string | null;
   created_at: string;
@@ -1437,4 +1438,11 @@ export interface AddGraphMemberRequest {
 
 export interface UpdateGraphMemberRoleRequest {
   role: string;
+}
+
+export interface DatabaseConnectionResponse {
+  id: string;
+  name: string;
+  config_key: string;
+  created_at: string;
 }

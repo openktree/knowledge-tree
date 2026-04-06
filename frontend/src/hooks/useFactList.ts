@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FactResponse } from "@/types";
 import { api } from "@/lib/api";
+import { useGraph } from "@/contexts/graph";
 
 export interface UseFactListResult {
   facts: FactResponse[];
@@ -21,6 +22,7 @@ export interface UseFactListResult {
 const PAGE_SIZE = 20;
 
 export function useFactList(): UseFactListResult {
+  const { switchGeneration } = useGraph();
   const [facts, setFacts] = useState<FactResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -66,7 +68,8 @@ export function useFactList(): UseFactListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, factType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, factType, switchGeneration]);
 
   useEffect(() => {
     fetchData();

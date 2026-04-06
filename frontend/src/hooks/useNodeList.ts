@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NodeResponse } from "@/types";
 import { api } from "@/lib/api";
+import { useGraph } from "@/contexts/graph";
 
 export interface UseNodeListResult {
   nodes: NodeResponse[];
@@ -23,6 +24,7 @@ export interface UseNodeListResult {
 const PAGE_SIZE = 20;
 
 export function useNodeList(): UseNodeListResult {
+  const { switchGeneration } = useGraph();
   const [nodes, setNodes] = useState<NodeResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -75,7 +77,11 @@ export function useNodeList(): UseNodeListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, nodeType, sort]);
+    // switchGeneration forces refetch when the active graph changes.
+    // The API layer reads the module-level slug, so we just need a new
+    // callback identity to trigger the useEffect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, nodeType, sort, switchGeneration]);
 
   useEffect(() => {
     fetchData();

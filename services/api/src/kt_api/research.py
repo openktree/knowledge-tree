@@ -427,7 +427,7 @@ async def _confirm_ingest_impl(
     )
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     require_api_key(user)
     payload: dict[str, Any] = {
@@ -437,12 +437,11 @@ async def _confirm_ingest_impl(
         "message_id": str(assistant_msg.id),
         "user_id": str(user.id),
     }
-    if graph_id:
-        payload["graph_id"] = graph_id
 
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "ingest_confirm",
         payload,
+        graph_id=graph_id,
         additional_metadata={
             "conversation_id": conversation_id,
             "message_id": str(assistant_msg.id),
@@ -548,7 +547,7 @@ async def _decompose_ingest_impl(
     )
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     require_api_key(user)
     payload: dict[str, Any] = {
@@ -557,12 +556,11 @@ async def _decompose_ingest_impl(
         "selected_chunks": body.selected_chunks,
         "user_id": str(user.id),
     }
-    if graph_id:
-        payload["graph_id"] = graph_id
 
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "ingest_decompose",
         payload,
+        graph_id=graph_id,
         additional_metadata={
             "conversation_id": conversation_id,
             "message_id": str(assistant_msg.id),
@@ -663,7 +661,7 @@ async def _build_ingest_impl(
     )
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
     from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
 
     confirmed_nodes = [
@@ -685,12 +683,11 @@ async def _build_ingest_impl(
         message_id=str(assistant_msg.id),
         user_id=str(user.id),
     ).model_dump()
-    if graph_id:
-        input_data["graph_id"] = graph_id
 
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "ingest_build",
         input_data,
+        graph_id=graph_id,
         additional_metadata={
             "conversation_id": str(conv_uuid),
             "message_id": str(assistant_msg.id),
@@ -731,7 +728,7 @@ async def _bottom_up_prepare_impl(
     )
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     require_api_key(user)
     payload: dict[str, Any] = {
@@ -741,12 +738,11 @@ async def _bottom_up_prepare_impl(
         "message_id": str(assistant_msg.id),
         "user_id": str(user.id),
     }
-    if graph_id:
-        payload["graph_id"] = graph_id
 
-    run_id = await dispatch_workflow(
+    run_id = await dispatch_with_graph(
         "bottom_up_prepare",
         payload,
+        graph_id=graph_id,
         additional_metadata={
             "conversation_id": str(conv.id),
             "message_id": str(assistant_msg.id),
@@ -875,7 +871,7 @@ async def _agent_select_impl(
     await conv_repo.update_message(uuid.UUID(msg_id), metadata_json=metadata)
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
     require_api_key(user)
     payload: dict[str, Any] = {
@@ -886,12 +882,11 @@ async def _agent_select_impl(
         "message_id": msg_id or "",
         "user_id": str(user.id),
     }
-    if graph_id:
-        payload["graph_id"] = graph_id
 
-    await dispatch_workflow(
+    await dispatch_with_graph(
         "agent_select",
         payload,
+        graph_id=graph_id,
         additional_metadata={
             "conversation_id": str(conv_uuid),
             "message_id": msg_id,

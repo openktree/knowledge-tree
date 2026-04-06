@@ -5,6 +5,7 @@ import { Clock, ChevronRight, CheckCircle2, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { useGraph } from "@/contexts/graph";
 import type { ConversationListItem } from "@/types";
 
 interface ResearchHistoryProps {
@@ -57,6 +58,7 @@ function formatRelativeTime(isoDate: string): string {
 }
 
 export function ResearchHistory({ onResume, onView }: ResearchHistoryProps) {
+  const { switchGeneration } = useGraph();
   const [items, setItems] = useState<ConversationListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -72,7 +74,8 @@ export function ResearchHistory({ onResume, onView }: ResearchHistoryProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [switchGeneration]);
 
   useEffect(() => {
     fetchHistory();

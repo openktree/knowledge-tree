@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EdgeResponse } from "@/types";
 import { api } from "@/lib/api";
+import { useGraph } from "@/contexts/graph";
 
 export interface UseEdgeListResult {
   edges: EdgeResponse[];
@@ -21,6 +22,7 @@ export interface UseEdgeListResult {
 const PAGE_SIZE = 20;
 
 export function useEdgeList(): UseEdgeListResult {
+  const { switchGeneration } = useGraph();
   const [edges, setEdges] = useState<EdgeResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -66,7 +68,8 @@ export function useEdgeList(): UseEdgeListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, relationshipType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, relationshipType, switchGeneration]);
 
   useEffect(() => {
     fetchData();

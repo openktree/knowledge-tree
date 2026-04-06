@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { SeedResponse } from "@/types";
 import { api } from "@/lib/api";
+import { useGraph } from "@/contexts/graph";
 
 export interface UseSeedListResult {
   seeds: SeedResponse[];
@@ -24,6 +25,7 @@ export interface UseSeedListResult {
 const PAGE_SIZE = 20;
 
 export function useSeedList(): UseSeedListResult {
+  const { switchGeneration } = useGraph();
   const [seeds, setSeeds] = useState<SeedResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [promotionThreshold, setPromotionThreshold] = useState(10);
@@ -78,7 +80,8 @@ export function useSeedList(): UseSeedListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, status, nodeType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, status, nodeType, switchGeneration]);
 
   useEffect(() => {
     fetchData();

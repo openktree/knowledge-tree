@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeResponse, EdgeResponse } from "@/types";
 import { api } from "@/lib/api";
+import { useGraph } from "@/contexts/graph";
 
 export interface UseGraphExplorerResult {
   nodes: NodeResponse[];
@@ -35,12 +36,23 @@ export function useGraphExplorer(
   const [neighborDepth, setNeighborDepthRaw] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { switchGeneration } = useGraph();
 
   const nodes = useMemo(() => Array.from(nodeMap.values()), [nodeMap]);
 
   // Use a ref to track whether we've already loaded initial seeds,
   // so we only do it once even if the prop reference changes.
   const initialLoadedRef = useRef(false);
+
+  // Reset the view when the active graph changes
+  useEffect(() => {
+    initialLoadedRef.current = false;
+    setNodeMap(new Map());
+    setEdges([]);
+    setSeedIds(new Set());
+    setSelectedNodeId(null);
+    setError(null);
+  }, [switchGeneration]);
 
   useEffect(() => {
     if (initialLoadedRef.current) return;

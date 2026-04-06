@@ -6,6 +6,10 @@ import hashlib
 import logging
 import re
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
 from collections.abc import Awaitable, Callable
 
 from sqlalchemy.exc import IntegrityError
@@ -46,7 +50,7 @@ async def import_facts(
     cleanup_min_words: int = 12,
     cleanup_gateway: ModelGateway | None = None,
     cleanup_batch_size: int = 20,
-    qdrant_client: object | None = None,
+    qdrant_client: AsyncQdrantClient | None = None,
     write_session: AsyncSession | None = None,
 ) -> tuple[list[ImportResultItem], dict[str, str], list[RejectedFactInfo]]:
     """Import facts with optional cleanup and deduplication.
@@ -161,7 +165,7 @@ async def import_nodes(
     session: AsyncSession,
     embedding_service: EmbeddingService | None = None,
     on_progress: ProgressCallback | None = None,
-    qdrant_client: object | None = None,
+    qdrant_client: AsyncQdrantClient | None = None,
 ) -> tuple[list[ImportResultItem], dict[str, str]]:
     """Import nodes with deduplication. Returns (results, old_id->new_id map)."""
     node_repo = NodeRepository(session)
@@ -478,7 +482,7 @@ async def _find_existing_node(
     node_repo: NodeRepository,
     concept: str,
     embedding_service: EmbeddingService | None,
-    qdrant_client: object | None = None,
+    qdrant_client: AsyncQdrantClient | None = None,
     pre_embedding: list[float] | None = None,
 ) -> Node | None:
     """Try to find an existing node by text search, then embedding fallback."""
