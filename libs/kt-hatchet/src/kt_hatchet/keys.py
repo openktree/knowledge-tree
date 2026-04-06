@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
+from typing import Any
 
 from cryptography.fernet import Fernet
 
 from kt_config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Type alias for async session factories (sessionmaker-style callables).
+SessionFactory = Callable[..., Any]
 
 
 def _get_fernet() -> Fernet:
@@ -30,7 +35,7 @@ def decrypt_api_key(ciphertext: str) -> str:
 
 
 async def resolve_user_api_key(
-    session_factory: object,
+    session_factory: SessionFactory,
     user_id: str | None,
 ) -> str | None:
     """Resolve API key for a user on the worker side.
@@ -48,7 +53,6 @@ async def resolve_user_api_key(
         return settings.openrouter_api_key or None
 
     from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
 
     from kt_db.models import User
 
@@ -58,9 +62,9 @@ async def resolve_user_api_key(
         logger.warning("Invalid user_id for API key resolution: %s", user_id)
         return settings.openrouter_api_key or None
 
-    async with session_factory() as session:  # type: ignore[operator]
-        result = await session.execute(select(User).options(selectinload(User.oauth_accounts)).where(User.id == uid))
-        user = result.unique().scalar_one_or_none()
+    async with session_factory() as session:
+        result = await session.execute(select(User).where(User.id == uid))
+        user = result.scalar_one_or_none()
 
     if user is None:
         logger.warning("User %s not found for API key resolution", user_id)
@@ -72,6 +76,7 @@ async def resolve_user_api_key(
             return decrypt_api_key(user.encrypted_openrouter_key)
         except Exception:
             logger.warning("Failed to decrypt BYOK key for user %s", user_id)
+            # Fall through: superusers get system key, others get None
 
     # Superusers fall back to system key
     if user.is_superuser:

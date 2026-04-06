@@ -60,7 +60,14 @@ async def _build_agent_context(
     from kt_graph.worker_engine import WorkerGraphEngine
     from kt_hatchet.keys import resolve_user_api_key
 
-    api_key = await resolve_user_api_key(state.session_factory, user_id) if user_id else None
+    # Cache resolved key on state to avoid repeated DB lookups within
+    # the same workflow run (multiple _build_agent_context calls).
+    cache_attr = "_resolved_api_key"
+    if not hasattr(state, cache_attr):
+        object.__setattr__(
+            state, cache_attr, await resolve_user_api_key(state.session_factory, user_id) if user_id else None
+        )
+    api_key: str | None = getattr(state, cache_attr)
     if api_key:
         from kt_models.embeddings import EmbeddingService
         from kt_models.gateway import ModelGateway
