@@ -8,8 +8,10 @@ import { listSyntheses, deleteSynthesis } from "@/lib/api";
 import { CreateSynthesisDialog } from "@/components/synthesis/CreateSynthesisDialog";
 import type { SynthesisListItem } from "@/types";
 import { formatSynthesisConcept, formatModelName } from "@/components/synthesis/utils";
+import { useGraph } from "@/contexts/graph";
 
 export default function SynthesesPage() {
+  const { switchGeneration } = useGraph();
   const [items, setItems] = useState<SynthesisListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,8 @@ export default function SynthesesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [switchGeneration]);
 
   const handleDelete = useCallback(
     async (e: React.MouseEvent, id: string) => {

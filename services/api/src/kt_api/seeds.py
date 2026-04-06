@@ -31,6 +31,7 @@ from kt_db.repositories.write_seeds import WriteSeedRepository
 from kt_db.write_models import WriteFact, WriteSeed
 
 if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 router = APIRouter(prefix="/api/v1/seeds", tags=["seeds"])
@@ -406,7 +407,7 @@ async def mark_seed_garbage(
 async def _get_seed_divergence_impl(
     write_session_factory: async_sessionmaker[AsyncSession],
     seed_key: str,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     collection_name: str = "facts",
 ) -> SeedDivergenceResponse:
     """Shared implementation for computing fact embedding divergence."""

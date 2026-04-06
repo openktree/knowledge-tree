@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
 
 from kt_db.keys import key_to_uuid, make_url_key, url_key_to_node_key
 
@@ -190,7 +194,7 @@ def _parse_node_id(node_id: str) -> uuid.UUID:
 async def _get_node_impl(
     node_id: str,
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     write_session_factory: async_sessionmaker | None = None,
 ) -> NodeResponse:
     """Core logic for GET /nodes/{node_id}."""
@@ -209,7 +213,7 @@ async def _get_node_impl(
 async def _get_node_dimensions_impl(
     node_id: str,
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
 ) -> list[DimensionResponse]:
     """Core logic for GET /nodes/{node_id}/dimensions."""
     uid = _parse_node_id(node_id)
@@ -238,7 +242,7 @@ async def _get_node_dimensions_impl(
 async def _get_node_facts_impl(
     node_id: str,
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
 ) -> list[FactResponse]:
     """Core logic for GET /nodes/{node_id}/facts."""
     uid = _parse_node_id(node_id)
@@ -263,7 +267,7 @@ async def _get_node_facts_impl(
 async def _get_node_edges_impl(
     node_id: str,
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     direction: str = "both",
 ) -> list[EdgeResponse]:
     """Core logic for GET /nodes/{node_id}/edges."""
@@ -297,7 +301,7 @@ async def _get_node_edges_impl(
 async def _get_node_history_impl(
     node_id: str,
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
 ) -> list[NodeVersionResponse]:
     """Core logic for GET /nodes/{node_id}/history."""
     uid = _parse_node_id(node_id)
@@ -322,7 +326,7 @@ async def _get_node_history_impl(
 async def _get_node_convergence_impl(
     node_id: str,
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
 ) -> ConvergenceResponse:
     """Core logic for GET /nodes/{node_id}/convergence."""
     uid = _parse_node_id(node_id)
@@ -343,7 +347,7 @@ async def _get_node_convergence_impl(
 async def _get_node_perspectives_impl(
     node_id: str,
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     write_session_factory: async_sessionmaker | None = None,
 ) -> list[NodeResponse]:
     """Core logic for GET /nodes/{node_id}/perspectives."""
