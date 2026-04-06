@@ -84,16 +84,9 @@ async def _build_agent_context(
     """
     from kt_agents_core.state import AgentContext
     from kt_graph.worker_engine import WorkerGraphEngine
-    from kt_hatchet.keys import resolve_user_api_key
+    from kt_hatchet.keys import resolve_user_api_key_cached
 
-    # Cache resolved key on state to avoid repeated DB lookups within
-    # the same workflow run (multiple _build_agent_context calls).
-    cache_attr = "_resolved_api_key"
-    if not hasattr(state, cache_attr):
-        object.__setattr__(
-            state, cache_attr, await resolve_user_api_key(state.session_factory, user_id) if user_id else None
-        )
-    api_key: str | None = getattr(state, cache_attr)
+    api_key = await resolve_user_api_key_cached(state, user_id)
     if api_key:
         from kt_models.embeddings import EmbeddingService
         from kt_models.gateway import ModelGateway
@@ -386,16 +379,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         content_index: ContentIndex | None = None
         try:
-            from kt_hatchet.keys import resolve_user_api_key
+            from kt_hatchet.keys import resolve_user_api_key_cached
 
-            cache_attr = "_resolved_api_key"
-            if not hasattr(worker_state, cache_attr):
-                object.__setattr__(
-                    worker_state,
-                    cache_attr,
-                    await resolve_user_api_key(worker_state.session_factory, input.user_id) if input.user_id else None,
-                )
-            _resolved_key: str | None = getattr(worker_state, cache_attr)
+            _resolved_key = await resolve_user_api_key_cached(worker_state, input.user_id)
             if _resolved_key:
                 from kt_models.gateway import ModelGateway
 
