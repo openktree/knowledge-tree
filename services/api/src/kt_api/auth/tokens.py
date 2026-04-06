@@ -32,7 +32,12 @@ class ApiTokenRepository:
         self._verifier = ApiTokenVerifier(session)
 
     async def create(
-        self, user_id: uuid.UUID, name: str, raw_token: str, expires_at: datetime | None = None
+        self,
+        user_id: uuid.UUID,
+        name: str,
+        raw_token: str,
+        expires_at: datetime | None = None,
+        graph_slugs: list[str] | None = None,
     ) -> ApiToken:
         token = ApiToken(
             id=uuid.uuid4(),
@@ -40,6 +45,7 @@ class ApiTokenRepository:
             name=name,
             token_hash=hash_token(raw_token),
             expires_at=expires_at.replace(tzinfo=None) if expires_at and expires_at.tzinfo else expires_at,
+            graph_slugs=graph_slugs,
         )
         self._session.add(token)
         await self._session.flush()
@@ -135,6 +141,8 @@ async def require_auth(
         result = await session.execute(select(User).where(User.id == api_token.user_id))
         user = result.unique().scalar_one_or_none()
         if user is not None and user.is_active:
+            # Store token's graph scope on request.state for GraphContext to check
+            request.state.token_graph_slugs = api_token.graph_slugs
             return user
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")

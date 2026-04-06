@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.session import get_session_factory
 from kt_models.embeddings import EmbeddingService
 
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 _qdrant_client: object | None = None
 _embedding_service: EmbeddingService | None = None
+_graph_resolver: GraphSessionResolver | None = None
 
 
 def get_session_factory_cached() -> async_sessionmaker[AsyncSession]:
@@ -18,6 +20,18 @@ def get_session_factory_cached() -> async_sessionmaker[AsyncSession]:
     if _session_factory is None:
         _session_factory = get_session_factory(application_name="kt-mcp")
     return _session_factory
+
+
+def get_graph_resolver_cached() -> GraphSessionResolver:
+    """Return a cached GraphSessionResolver singleton."""
+    global _graph_resolver  # noqa: PLW0603
+    if _graph_resolver is None:
+        sf = get_session_factory_cached()
+        # MCP is read-only — no default_write_session_factory needed.
+        # Non-default graphs that use database mode will lazily create write pools
+        # only if write operations are attempted (they won't be from MCP tools).
+        _graph_resolver = GraphSessionResolver(sf, default_graph_session_factory=sf)
+    return _graph_resolver
 
 
 def get_qdrant_client_cached() -> object:
@@ -44,7 +58,8 @@ def get_embedding_service_cached() -> EmbeddingService | None:
 
 def reset_singletons() -> None:
     """Reset cached singletons (used in tests)."""
-    global _session_factory, _qdrant_client, _embedding_service  # noqa: PLW0603
+    global _session_factory, _qdrant_client, _embedding_service, _graph_resolver  # noqa: PLW0603
     _session_factory = None
     _qdrant_client = None
     _embedding_service = None
+    _graph_resolver = None

@@ -15,6 +15,8 @@ from kt_api.export import router as export_router
 from kt_api.facts import router as facts_router
 from kt_api.graph import router as graph_router
 from kt_api.graph_builder import router as graph_builder_router
+from kt_api.graph_nodes import router as graph_nodes_router
+from kt_api.graphs import router as graphs_router
 from kt_api.health import router as health_router
 from kt_api.import_router import router as import_router
 from kt_api.invites import router as invites_router
@@ -43,6 +45,8 @@ api_router.include_router(conversations_router, dependencies=_auth_dep)
 api_router.include_router(nodes_router, dependencies=_auth_dep)
 api_router.include_router(edges_router, dependencies=_auth_dep)
 api_router.include_router(graph_router, dependencies=_auth_dep)
+api_router.include_router(graphs_router, dependencies=_auth_dep)
+api_router.include_router(graph_nodes_router, dependencies=_auth_dep)
 api_router.include_router(facts_router, dependencies=_auth_dep)
 api_router.include_router(sources_router, dependencies=_auth_dep)
 api_router.include_router(config_router, dependencies=_auth_dep)

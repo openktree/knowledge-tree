@@ -17,6 +17,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { UserMenu } from "@/components/auth/UserMenu";
+import { GraphPicker } from "@/components/graphs/GraphPicker";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useAuth } from "@/contexts/auth";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -220,6 +221,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               <span className="text-sm font-semibold truncate">Knowledge Tree</span>
             </div>
 
+            <GraphPicker collapsed={false} />
+
             <NavContent
               collapsed={false}
               isAdmin={isAdmin}
@@ -257,6 +260,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <span className="text-sm font-semibold truncate">Knowledge Tree</span>
           )}
         </div>
+
+        <GraphPicker collapsed={collapsed} />
 
         <NavContent
           collapsed={collapsed}

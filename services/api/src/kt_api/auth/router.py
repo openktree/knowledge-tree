@@ -63,6 +63,7 @@ async def get_me(user: User = Depends(require_auth)) -> UserRead:
 class ApiTokenCreateRequest(BaseModel):
     name: str
     expires_at: datetime | None = None
+    graph_slugs: list[str] | None = None  # NULL = all graphs user can access
 
 
 class ApiTokenResponse(BaseModel):
@@ -71,6 +72,7 @@ class ApiTokenResponse(BaseModel):
     created_at: str
     expires_at: str | None = None
     last_used_at: str | None = None
+    graph_slugs: list[str] | None = None
 
 
 class ApiTokenCreated(ApiTokenResponse):
@@ -91,6 +93,7 @@ async def list_tokens(
             created_at=t.created_at.isoformat(),
             expires_at=t.expires_at.isoformat() if t.expires_at else None,
             last_used_at=t.last_used_at.isoformat() if t.last_used_at else None,
+            graph_slugs=t.graph_slugs,
         )
         for t in tokens
     ]
@@ -102,15 +105,30 @@ async def create_token(
     user: User = Depends(require_auth),
     session: AsyncSession = Depends(get_db_session),
 ) -> ApiTokenCreated:
+    # Validate graph_slugs if provided
+    if body.graph_slugs is not None:
+        from kt_db.repositories.graphs import GraphRepository
+
+        graph_repo = GraphRepository(session)
+        for slug in body.graph_slugs:
+            graph = await graph_repo.get_by_slug(slug)
+            if graph is None:
+                raise HTTPException(status_code=400, detail=f"Graph '{slug}' not found")
+            if not graph.is_default and not user.is_superuser:
+                role = await graph_repo.get_member_role(graph.id, user.id)
+                if role is None:
+                    raise HTTPException(status_code=403, detail=f"No access to graph '{slug}'")
+
     raw = generate_token()
     repo = ApiTokenRepository(session)
-    token = await repo.create(user.id, body.name, raw, expires_at=body.expires_at)
+    token = await repo.create(user.id, body.name, raw, expires_at=body.expires_at, graph_slugs=body.graph_slugs)
     await session.commit()
     return ApiTokenCreated(
         id=token.id,
         name=token.name,
         created_at=token.created_at.isoformat(),
         expires_at=token.expires_at.isoformat() if token.expires_at else None,
+        graph_slugs=token.graph_slugs,
         token=raw,
     )
 

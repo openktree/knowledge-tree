@@ -251,9 +251,14 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
             return AccessToken(token=token, client_id="skip_auth", scopes=[], expires_at=None)
 
         async with self._session() as session:
-            valid = await verify_bearer_token(token, session)
-            if valid:
-                return AccessToken(token=token, client_id="api_token", scopes=[], expires_at=None)
+            api_token = await verify_bearer_token(token, session)
+            if api_token is not None:
+                # Carry API token's graph_slugs as graph:{slug} scopes
+                graph_scopes: list[str] = []
+                slugs = getattr(api_token, "graph_slugs", None)
+                if slugs:
+                    graph_scopes = [f"graph:{s}" for s in slugs]
+                return AccessToken(token=token, client_id="api_token", scopes=graph_scopes, expires_at=None)
 
         return None
 

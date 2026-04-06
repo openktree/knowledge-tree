@@ -106,8 +106,12 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         if user_count == 1:
             user.is_superuser = True
             session.add(user)
-            await session.flush()
             logger.info("First user %s auto-promoted to admin", user.email)
+
+        # fastapi-users commits user creation in its own transaction, so any
+        # changes made here (invite redemption, admin promotion) are in a new
+        # implicit transaction that must be committed explicitly.
+        await session.commit()
 
         # Request email verification when enabled (best-effort — don't fail registration)
         settings = get_settings()

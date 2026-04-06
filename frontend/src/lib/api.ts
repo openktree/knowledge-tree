@@ -86,6 +86,12 @@ import type {
   SentenceFactLink,
   SynthesisNodeResponse,
   PipelineSnapshotResponse,
+  GraphResponse,
+  CreateGraphRequest,
+  UpdateGraphRequest,
+  GraphMemberResponse,
+  AddGraphMemberRequest,
+  UpdateGraphMemberRoleRequest,
 } from "@/types";
 
 const BASE_URL =
@@ -93,6 +99,22 @@ const BASE_URL =
   "http://localhost:8000";
 
 const API_PREFIX = "/api/v1";
+
+// ---------------------------------------------------------------------------
+// Active graph (module-level state set by GraphProvider)
+// ---------------------------------------------------------------------------
+
+let _activeGraphSlug = "default";
+
+/** Called by GraphProvider when the active graph changes. */
+export function setActiveGraphSlug(slug: string): void {
+  _activeGraphSlug = slug;
+}
+
+/** Returns the current active graph slug. */
+export function getActiveGraphSlug(): string {
+  return _activeGraphSlug;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -137,6 +159,22 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+/**
+ * Make a request scoped to the active graph.
+ * Routes through /graphs/{slug}/... for non-default graphs,
+ * falls back to the standard /... path for the default graph.
+ */
+export async function graphRequest<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const slug = _activeGraphSlug;
+  if (slug && slug !== "default") {
+    return request<T>(`/graphs/${encodeURIComponent(slug)}${path}`, options);
+  }
+  return request<T>(path, options);
+}
+
 function buildQuery(params: Record<string, string | undefined>): string {
   const entries = Object.entries(params).filter(
     (entry): entry is [string, string] => entry[1] !== undefined,
@@ -155,14 +193,14 @@ export const api = {
   // -------------------------------------------------------------------------
   conversations: {
     create(data: CreateConversationRequest): Promise<ConversationResponse> {
-      return request<ConversationResponse>("/conversations", {
+      return graphRequest<ConversationResponse>("/conversations", {
         method: "POST",
         body: JSON.stringify(data),
       });
     },
 
     get(id: string): Promise<ConversationResponse> {
-      return request<ConversationResponse>(
+      return graphRequest<ConversationResponse>(
         `/conversations/${encodeURIComponent(id)}`,
       );
     },
@@ -178,14 +216,14 @@ export const api = {
         limit: params?.limit !== undefined ? String(params.limit) : undefined,
         mode: params?.mode,
       });
-      return request<PaginatedConversationsResponse>(`/conversations${qs}`);
+      return graphRequest<PaginatedConversationsResponse>(`/conversations${qs}`);
     },
 
     sendMessage(
       conversationId: string,
       data: SendMessageRequest,
     ): Promise<ConversationMessageResponse> {
-      return request<ConversationMessageResponse>(
+      return graphRequest<ConversationMessageResponse>(
         `/conversations/${encodeURIComponent(conversationId)}/messages`,
         {
           method: "POST",
@@ -198,7 +236,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<{ message_id: string; status: string }> {
-      return request<{ message_id: string; status: string }>(
+      return graphRequest<{ message_id: string; status: string }>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/resynthesize`,
         { method: "POST" },
       );
@@ -208,7 +246,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<{ message_id: string; status: string }> {
-      return request<{ message_id: string; status: string }>(
+      return graphRequest<{ message_id: string; status: string }>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/stop`,
         { method: "POST" },
       );
@@ -218,7 +256,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<ProgressResponse> {
-      return request<ProgressResponse>(
+      return graphRequest<ProgressResponse>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/progress`,
       );
     },
@@ -227,7 +265,7 @@ export const api = {
       conversationId: string,
       messageId: string,
     ): Promise<ResearchReportResponse> {
-      return request<ResearchReportResponse>(
+      return graphRequest<ResearchReportResponse>(
         `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/report`,
       );
     },
@@ -236,7 +274,7 @@ export const api = {
       conversationId: string,
       data: UpdateConversationRequest,
     ): Promise<ConversationResponse> {
-      return request<ConversationResponse>(
+      return graphRequest<ConversationResponse>(
         `/conversations/${encodeURIComponent(conversationId)}`,
         {
           method: "PATCH",
@@ -246,7 +284,7 @@ export const api = {
     },
 
     delete(id: string): Promise<DeleteResponse> {
-      return request<DeleteResponse>(
+      return graphRequest<DeleteResponse>(
         `/conversations/${encodeURIComponent(id)}`,
         { method: "DELETE" },
       );
@@ -267,7 +305,7 @@ export const api = {
   // -------------------------------------------------------------------------
   nodes: {
     get(id: string): Promise<NodeResponse> {
-      return request<NodeResponse>(`/nodes/${encodeURIComponent(id)}`);
+      return graphRequest<NodeResponse>(`/nodes/${encodeURIComponent(id)}`);
     },
 
     list(params?: {
@@ -285,18 +323,18 @@ export const api = {
         node_type: params?.node_type,
         sort: params?.sort,
       });
-      return request<PaginatedNodesResponse>(`/nodes${qs}`);
+      return graphRequest<PaginatedNodesResponse>(`/nodes${qs}`);
     },
 
     update(id: string, data: NodeUpdateRequest): Promise<NodeResponse> {
-      return request<NodeResponse>(`/nodes/${encodeURIComponent(id)}`, {
+      return graphRequest<NodeResponse>(`/nodes/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       });
     },
 
     delete(id: string): Promise<DeleteResponse> {
-      return request<DeleteResponse>(`/nodes/${encodeURIComponent(id)}`, {
+      return graphRequest<DeleteResponse>(`/nodes/${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
     },
@@ -306,36 +344,36 @@ export const api = {
         query,
         limit: limit !== undefined ? String(limit) : undefined,
       });
-      return request<NodeResponse[]>(`/nodes/search${qs}`);
+      return graphRequest<NodeResponse[]>(`/nodes/search${qs}`);
     },
 
     getDimensions(id: string): Promise<DimensionResponse[]> {
-      return request<DimensionResponse[]>(
+      return graphRequest<DimensionResponse[]>(
         `/nodes/${encodeURIComponent(id)}/dimensions`,
       );
     },
 
     getFacts(id: string): Promise<FactResponse[]> {
-      return request<FactResponse[]>(
+      return graphRequest<FactResponse[]>(
         `/nodes/${encodeURIComponent(id)}/facts`,
       );
     },
 
     getEdges(id: string, direction?: string): Promise<EdgeResponse[]> {
       const qs = buildQuery({ direction });
-      return request<EdgeResponse[]>(
+      return graphRequest<EdgeResponse[]>(
         `/nodes/${encodeURIComponent(id)}/edges${qs}`,
       );
     },
 
     getHistory(id: string): Promise<NodeVersionResponse[]> {
-      return request<NodeVersionResponse[]>(
+      return graphRequest<NodeVersionResponse[]>(
         `/nodes/${encodeURIComponent(id)}/history`,
       );
     },
 
     getConvergence(id: string): Promise<ConvergenceResponse> {
-      return request<ConvergenceResponse>(
+      return graphRequest<ConvergenceResponse>(
         `/nodes/${encodeURIComponent(id)}/convergence`,
       );
     },
@@ -345,7 +383,7 @@ export const api = {
       mode: "full" | "incremental" = "full",
       scope: "all" | "dimensions" | "edges" = "all",
     ): Promise<{ status: string; node_id: string }> {
-      return request<{ status: string; node_id: string }>(
+      return graphRequest<{ status: string; node_id: string }>(
         `/nodes/${encodeURIComponent(id)}/rebuild`,
         {
           method: "POST",
@@ -357,27 +395,27 @@ export const api = {
     regenerateComposite(
       id: string,
     ): Promise<{ status: string; node_id: string }> {
-      return request<{ status: string; node_id: string }>(
+      return graphRequest<{ status: string; node_id: string }>(
         `/nodes/${encodeURIComponent(id)}/regenerate`,
         { method: "POST" },
       );
     },
 
     getSourceNodes(id: string): Promise<NodeResponse[]> {
-      return request<NodeResponse[]>(
+      return graphRequest<NodeResponse[]>(
         `/nodes/${encodeURIComponent(id)}/source-nodes`,
       );
     },
 
     quickAdd(data: QuickAddNodeRequest): Promise<QuickAddNodeResponse> {
-      return request<QuickAddNodeResponse>("/nodes/quick-add", {
+      return graphRequest<QuickAddNodeResponse>("/nodes/quick-add", {
         method: "POST",
         body: JSON.stringify(data),
       });
     },
 
     getPerspectives(id: string): Promise<NodeResponse[]> {
-      return request<NodeResponse[]>(
+      return graphRequest<NodeResponse[]>(
         `/nodes/${encodeURIComponent(id)}/perspectives`,
       );
     },
@@ -385,7 +423,7 @@ export const api = {
     quickPerspectiveValidate(
       data: QuickPerspectiveRequest,
     ): Promise<QuickPerspectiveValidateResponse> {
-      return request<QuickPerspectiveValidateResponse>(
+      return graphRequest<QuickPerspectiveValidateResponse>(
         "/nodes/quick-perspective/validate",
         {
           method: "POST",
@@ -397,7 +435,7 @@ export const api = {
     quickPerspective(
       data: QuickPerspectiveRequest,
     ): Promise<QuickPerspectiveResponse> {
-      return request<QuickPerspectiveResponse>("/nodes/quick-perspective", {
+      return graphRequest<QuickPerspectiveResponse>("/nodes/quick-perspective", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -413,11 +451,11 @@ export const api = {
         node_ids: nodeIds.join(","),
         depth: depth !== undefined ? String(depth) : undefined,
       });
-      return request<SubgraphResponse>(`/graph/subgraph${qs}`);
+      return graphRequest<SubgraphResponse>(`/graph/subgraph${qs}`);
     },
 
     getStats(): Promise<GraphStatsResponse> {
-      return request<GraphStatsResponse>("/graph/stats");
+      return graphRequest<GraphStatsResponse>("/graph/stats");
     },
 
     getPaths(
@@ -432,7 +470,7 @@ export const api = {
         max_depth: maxDepth !== undefined ? String(maxDepth) : undefined,
         limit: limit !== undefined ? String(limit) : undefined,
       });
-      return request<PathsResponse>(`/graph/paths${qs}`);
+      return graphRequest<PathsResponse>(`/graph/paths${qs}`);
     },
   },
 
@@ -441,7 +479,7 @@ export const api = {
   // -------------------------------------------------------------------------
   facts: {
     get(id: string): Promise<FactResponse> {
-      return request<FactResponse>(`/facts/${encodeURIComponent(id)}`);
+      return graphRequest<FactResponse>(`/facts/${encodeURIComponent(id)}`);
     },
 
     list(params?: {
@@ -457,29 +495,29 @@ export const api = {
         search: params?.search,
         fact_type: params?.fact_type,
       });
-      return request<PaginatedFactsResponse>(`/facts${qs}`);
+      return graphRequest<PaginatedFactsResponse>(`/facts${qs}`);
     },
 
     update(id: string, data: FactUpdateRequest): Promise<FactResponse> {
-      return request<FactResponse>(`/facts/${encodeURIComponent(id)}`, {
+      return graphRequest<FactResponse>(`/facts/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       });
     },
 
     delete(id: string): Promise<DeleteResponse> {
-      return request<DeleteResponse>(`/facts/${encodeURIComponent(id)}`, {
+      return graphRequest<DeleteResponse>(`/facts/${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
     },
 
     search(factType?: string): Promise<FactResponse[]> {
       const qs = buildQuery({ fact_type: factType });
-      return request<FactResponse[]>(`/facts/search${qs}`);
+      return graphRequest<FactResponse[]>(`/facts/search${qs}`);
     },
 
     getNodes(id: string): Promise<FactNodeInfo[]> {
-      return request<FactNodeInfo[]>(
+      return graphRequest<FactNodeInfo[]>(
         `/facts/${encodeURIComponent(id)}/nodes`,
       );
     },
@@ -490,7 +528,7 @@ export const api = {
   // -------------------------------------------------------------------------
   edges: {
     get(id: string): Promise<EdgeDetailResponse> {
-      return request<EdgeDetailResponse>(`/edges/${encodeURIComponent(id)}`);
+      return graphRequest<EdgeDetailResponse>(`/edges/${encodeURIComponent(id)}`);
     },
 
     list(params?: {
@@ -508,11 +546,11 @@ export const api = {
         node_id: params?.node_id,
         search: params?.search,
       });
-      return request<PaginatedEdgesResponse>(`/edges${qs}`);
+      return graphRequest<PaginatedEdgesResponse>(`/edges${qs}`);
     },
 
     delete(id: string): Promise<DeleteResponse> {
-      return request<DeleteResponse>(`/edges/${encodeURIComponent(id)}`, {
+      return graphRequest<DeleteResponse>(`/edges/${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
     },
@@ -523,7 +561,7 @@ export const api = {
   // -------------------------------------------------------------------------
   sources: {
     get(id: string): Promise<SourceDetailResponse> {
-      return request<SourceDetailResponse>(`/sources/${encodeURIComponent(id)}`);
+      return graphRequest<SourceDetailResponse>(`/sources/${encodeURIComponent(id)}`);
     },
 
     list(params?: {
@@ -553,11 +591,11 @@ export const api = {
             : undefined,
         fetch_status: params?.fetch_status,
       });
-      return request<PaginatedSourcesResponse>(`/sources${qs}`);
+      return graphRequest<PaginatedSourcesResponse>(`/sources${qs}`);
     },
 
     reingest(id: string): Promise<SourceReingestResponse> {
-      return request<SourceReingestResponse>(
+      return graphRequest<SourceReingestResponse>(
         `/sources/${encodeURIComponent(id)}/reingest`,
         { method: "POST" },
       );
@@ -565,7 +603,7 @@ export const api = {
 
     getInsights(since?: string): Promise<SourceInsightsResponse> {
       const qs = buildQuery({ since });
-      return request<SourceInsightsResponse>(`/sources/insights${qs}`);
+      return graphRequest<SourceInsightsResponse>(`/sources/insights${qs}`);
     },
   },
 
@@ -574,11 +612,11 @@ export const api = {
   // -------------------------------------------------------------------------
   seeds: {
     get(key: string): Promise<SeedDetailResponse> {
-      return request<SeedDetailResponse>(`/seeds/${encodeURIComponent(key)}`);
+      return graphRequest<SeedDetailResponse>(`/seeds/${encodeURIComponent(key)}`);
     },
 
     getDivergence(key: string): Promise<SeedDivergenceResponse> {
-      return request<SeedDivergenceResponse>(
+      return graphRequest<SeedDivergenceResponse>(
         `/seeds/divergence/${encodeURIComponent(key)}`,
       );
     },
@@ -598,11 +636,11 @@ export const api = {
         status: params?.status,
         node_type: params?.node_type,
       });
-      return request<PaginatedSeedsResponse>(`/seeds${qs}`);
+      return graphRequest<PaginatedSeedsResponse>(`/seeds${qs}`);
     },
 
     getTree(key: string): Promise<SeedTreeResponse> {
-      return request<SeedTreeResponse>(
+      return graphRequest<SeedTreeResponse>(
         `/seeds/tree/${encodeURIComponent(key)}`,
       );
     },
@@ -622,7 +660,7 @@ export const api = {
         status: params?.status,
         source_node_id: params?.source_node_id,
       });
-      return request<PaginatedPerspectiveSeedsResponse>(
+      return graphRequest<PaginatedPerspectiveSeedsResponse>(
         `/seeds/perspectives${qs}`,
       );
     },
@@ -682,14 +720,14 @@ export const api = {
             ? String(params.min_facts)
             : undefined,
       });
-      return request<PaginatedEdgeCandidatePairs>(`/edge-candidates${qs}`);
+      return graphRequest<PaginatedEdgeCandidatePairs>(`/edge-candidates${qs}`);
     },
 
     get(
       seedKeyA: string,
       seedKeyB: string,
     ): Promise<EdgeCandidatePairDetail> {
-      return request<EdgeCandidatePairDetail>(
+      return graphRequest<EdgeCandidatePairDetail>(
         `/edge-candidates/${encodeURIComponent(seedKeyA)}/${encodeURIComponent(seedKeyB)}`,
       );
     },
@@ -703,7 +741,7 @@ export const api = {
           params?.offset !== undefined ? String(params.offset) : undefined,
         limit: params?.limit !== undefined ? String(params.limit) : undefined,
       });
-      return request<PaginatedEdgeCandidatePairs>(
+      return graphRequest<PaginatedEdgeCandidatePairs>(
         `/edge-candidates/by-seed/${encodeURIComponent(seedKey)}${qs}`,
       );
     },
@@ -804,7 +842,7 @@ export const api = {
       navBudget: number,
       selectedChunks?: number[] | null,
     ): Promise<ConversationResponse> {
-      return request<ConversationResponse>(
+      return graphRequest<ConversationResponse>(
         `/research/${encodeURIComponent(conversationId)}/confirm`,
         {
           method: "POST",
@@ -817,7 +855,7 @@ export const api = {
     },
 
     getSources(conversationId: string): Promise<IngestSourceResponse[]> {
-      return request<IngestSourceResponse[]>(
+      return graphRequest<IngestSourceResponse[]>(
         `/research/${encodeURIComponent(conversationId)}/sources`,
       );
     },
@@ -830,7 +868,7 @@ export const api = {
       conversationId: string,
       selectedChunks?: number[] | null,
     ): Promise<{ conversation_id: string; message_id: string; status: string }> {
-      return request<{ conversation_id: string; message_id: string; status: string }>(
+      return graphRequest<{ conversation_id: string; message_id: string; status: string }>(
         `/research/${encodeURIComponent(conversationId)}/decompose`,
         {
           method: "POST",
@@ -842,7 +880,7 @@ export const api = {
     },
 
     proposals(conversationId: string): Promise<IngestProposalsResponse> {
-      return request<IngestProposalsResponse>(
+      return graphRequest<IngestProposalsResponse>(
         `/research/${encodeURIComponent(conversationId)}/proposals`,
       );
     },
@@ -851,7 +889,7 @@ export const api = {
       conversationId: string,
       selectedNodes: BottomUpProposedNode[],
     ): Promise<BottomUpBuildResponse> {
-      return request<BottomUpBuildResponse>(
+      return graphRequest<BottomUpBuildResponse>(
         `/research/${encodeURIComponent(conversationId)}/build`,
         {
           method: "POST",
@@ -865,7 +903,7 @@ export const api = {
       explore_budget: number;
       title?: string;
     }): Promise<ConversationResponse> {
-      return request<ConversationResponse>("/research/bottom-up/prepare", {
+      return graphRequest<ConversationResponse>("/research/bottom-up/prepare", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -874,7 +912,7 @@ export const api = {
     bottomUpProposals(
       conversationId: string,
     ): Promise<BottomUpPrepareResponse> {
-      return request<BottomUpPrepareResponse>(
+      return graphRequest<BottomUpPrepareResponse>(
         `/research/${encodeURIComponent(conversationId)}/bottom-up/proposals`,
       );
     },
@@ -884,7 +922,7 @@ export const api = {
       maxSelect: number,
       instructions?: string,
     ): Promise<AgentSelectResponse> {
-      return request<AgentSelectResponse>(
+      return graphRequest<AgentSelectResponse>(
         `/research/${encodeURIComponent(conversationId)}/agent-select`,
         {
           method: "POST",
@@ -899,7 +937,7 @@ export const api = {
     agentSelectStatus(
       conversationId: string,
     ): Promise<AgentSelectStatusResponse> {
-      return request<AgentSelectStatusResponse>(
+      return graphRequest<AgentSelectStatusResponse>(
         `/research/${encodeURIComponent(conversationId)}/agent-select/status`,
       );
     },
@@ -907,7 +945,7 @@ export const api = {
     getSummary(
       conversationId: string,
     ): Promise<ResearchSummaryResponse> {
-      return request<ResearchSummaryResponse>(
+      return graphRequest<ResearchSummaryResponse>(
         `/research/${encodeURIComponent(conversationId)}/summary`,
       );
     },
@@ -918,7 +956,7 @@ export const api = {
   // -------------------------------------------------------------------------
   graphBuilder: {
     autoBuild(): Promise<{ status: string; workflow_run_id: string }> {
-      return request<{ status: string; workflow_run_id: string }>(
+      return graphRequest<{ status: string; workflow_run_id: string }>(
         "/graph-builder/auto-build",
         { method: "POST" },
       );
@@ -1000,10 +1038,14 @@ export const api = {
       return request<ApiTokenRead[]>("/auth/tokens");
     },
 
-    createToken(name: string, expiresAt?: string): Promise<ApiTokenCreated> {
+    createToken(name: string, expiresAt?: string, graphSlugs?: string[]): Promise<ApiTokenCreated> {
       return request<ApiTokenCreated>("/auth/tokens", {
         method: "POST",
-        body: JSON.stringify({ name, expires_at: expiresAt ?? null }),
+        body: JSON.stringify({
+          name,
+          expires_at: expiresAt ?? null,
+          graph_slugs: graphSlugs ?? null,
+        }),
       });
     },
 
@@ -1252,7 +1294,7 @@ export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
 }
 
 export async function getWorkflowProgress(workflowRunId: string) {
-  return request<PipelineSnapshotResponse>(
+  return graphRequest<PipelineSnapshotResponse>(
     `/workflows/${encodeURIComponent(workflowRunId)}/progress`
   );
 }
@@ -1260,33 +1302,99 @@ export async function getWorkflowProgress(workflowRunId: string) {
 export async function listSyntheses(offset = 0, limit = 20, visibility?: string) {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (visibility) params.set("visibility", visibility);
-  return request<PaginatedSynthesesResponse>(`/syntheses?${params}`);
+  return graphRequest<PaginatedSynthesesResponse>(`/syntheses?${params}`);
 }
 
 export async function getSynthesis(id: string) {
-  return request<SynthesisDocumentResponse>(`/syntheses/${id}`);
+  return graphRequest<SynthesisDocumentResponse>(`/syntheses/${id}`);
 }
 
 export async function getSentenceFacts(synthesisId: string, position: number) {
-  return request<SentenceFactLink[]>(
+  return graphRequest<SentenceFactLink[]>(
     `/syntheses/${synthesisId}/sentences/${position}/facts`
   );
 }
 
 export async function getSynthesisNodes(synthesisId: string) {
-  return request<SynthesisNodeResponse[]>(`/syntheses/${synthesisId}/nodes`);
+  return graphRequest<SynthesisNodeResponse[]>(`/syntheses/${synthesisId}/nodes`);
 }
 
 export async function deleteSynthesis(id: string) {
-  return request<{ deleted: boolean; id: string }>(
+  return graphRequest<{ deleted: boolean; id: string }>(
     `/syntheses/${id}`,
     { method: "DELETE" }
   );
 }
 
 export async function updateSynthesisVisibility(id: string, visibility: string) {
-  return request<{ id: string; visibility: string }>(
+  return graphRequest<{ id: string; visibility: string }>(
     `/syntheses/${id}`,
     { method: "PATCH", body: JSON.stringify({ visibility }) }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Graphs (multi-graph management)
+// ---------------------------------------------------------------------------
+
+export async function listGraphs() {
+  return graphRequest<GraphResponse[]>("/graphs");
+}
+
+export async function createGraph(data: CreateGraphRequest) {
+  return graphRequest<GraphResponse>("/graphs", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getGraph(slug: string) {
+  return request<GraphResponse>(`/graphs/${encodeURIComponent(slug)}`);
+}
+
+export async function updateGraph(slug: string, data: UpdateGraphRequest) {
+  return request<GraphResponse>(`/graphs/${encodeURIComponent(slug)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteGraph(slug: string) {
+  return request<void>(`/graphs/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listGraphMembers(slug: string) {
+  return request<GraphMemberResponse[]>(
+    `/graphs/${encodeURIComponent(slug)}/members`
+  );
+}
+
+export async function addGraphMember(
+  slug: string,
+  data: AddGraphMemberRequest
+) {
+  return request<GraphMemberResponse>(
+    `/graphs/${encodeURIComponent(slug)}/members`,
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function updateGraphMemberRole(
+  slug: string,
+  userId: string,
+  data: UpdateGraphMemberRoleRequest
+) {
+  return request<GraphMemberResponse>(
+    `/graphs/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
+    { method: "PUT", body: JSON.stringify(data) }
+  );
+}
+
+export async function removeGraphMember(slug: string, userId: string) {
+  return request<void>(
+    `/graphs/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" }
   );
 }
