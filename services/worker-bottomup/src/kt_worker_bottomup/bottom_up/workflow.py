@@ -108,14 +108,17 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         },
     )
 
-    async with _open_sessions(state) as (session, write_session):
-        agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
+    async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
+        agent_ctx = await _build_agent_context(
+            state, session, write_session=write_session, user_id=input.user_id, graph_id=input.graph_id
+        )
         plan = await run_bottom_up_scope_pipeline(
             agent_ctx,
             scope_description=input.scope_description,
             explore_slice=input.explore_slice,
             message_id=input.message_id,
             conversation_id=input.conversation_id,
+            graph_id=input.graph_id,
         )
         if write_session is not None:
             await write_session.commit()
@@ -192,7 +195,7 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
                     seed_key=sk,
                     message_id=input.message_id,
                     conversation_id=input.conversation_id,
-                    api_key=input.api_key,
+                    user_id=input.user_id,
                 ),
                 options=node_meta,
             )
@@ -234,12 +237,12 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
     max_perspectives = max(1, len(built_nodes) // 10)
 
     if built_nodes:
-        async with _open_sessions(state) as (session, write_session):
+        async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
             persp_ctx = await _build_agent_context(
                 state,
                 session,
                 write_session=write_session,
-                api_key=input.api_key,
+                user_id=input.user_id,
             )
             thesis_keys = await plan_and_store_perspective_seeds(
                 persp_ctx,
@@ -390,8 +393,10 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
 
     scout_queries = [input.query, f"overview of {input.query}"]
     scout_results: dict[str, Any] = {}
-    async with _open_sessions(state) as (session, write_session):
-        agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
+    async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
+        agent_ctx = await _build_agent_context(
+            state, session, write_session=write_session, user_id=input.user_id, graph_id=input.graph_id
+        )
         try:
             scout_results = await scout_impl(scout_queries, agent_ctx)
         except Exception:
@@ -560,8 +565,10 @@ async def _run_waves(
             },
         )
 
-        async with _open_sessions(state) as (session, write_session):
-            agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
+        async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
+            agent_ctx = await _build_agent_context(
+                state, session, write_session=write_session, user_id=input.user_id, graph_id=input.graph_id
+            )
             scopes = await _plan_wave(
                 input.query,
                 wave_num,
@@ -609,7 +616,7 @@ async def _run_waves(
                         wave_number=wave_num,
                         message_id=input.message_id,
                         conversation_id=input.conversation_id,
-                        api_key=input.api_key,
+                        user_id=input.user_id,
                     ),
                     options=child_meta,
                 )
@@ -693,7 +700,7 @@ async def _run_single_scope(
             wave_number=0,
             message_id=input.message_id,
             conversation_id=input.conversation_id,
-            api_key=input.api_key,
+            user_id=input.user_id,
         ),
         options=TriggerWorkflowOptions(
             additional_metadata={
@@ -783,14 +790,17 @@ async def bottom_up_prepare_scope(
         },
     )
 
-    async with _open_sessions(state) as (session, write_session):
-        agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
+    async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
+        agent_ctx = await _build_agent_context(
+            state, session, write_session=write_session, user_id=input.user_id, graph_id=input.graph_id
+        )
         plan = await run_bottom_up_scope_pipeline(
             agent_ctx,
             scope_description=input.scope_description,
             explore_slice=input.explore_slice,
             message_id=input.message_id,
             conversation_id=input.conversation_id,
+            graph_id=input.graph_id,
         )
         if write_session is not None:
             await write_session.commit()
@@ -894,8 +904,10 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
 
     scout_queries = [input.query, f"overview of {input.query}"]
     scout_results: dict[str, Any] = {}
-    async with _open_sessions(state) as (session, write_session):
-        agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
+    async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
+        agent_ctx = await _build_agent_context(
+            state, session, write_session=write_session, user_id=input.user_id, graph_id=input.graph_id
+        )
         try:
             scout_results = await scout_impl(scout_queries, agent_ctx)
         except Exception:
@@ -924,8 +936,10 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
         },
     )
 
-    async with _open_sessions(state) as (session, write_session):
-        agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
+    async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
+        agent_ctx = await _build_agent_context(
+            state, session, write_session=write_session, user_id=input.user_id, graph_id=input.graph_id
+        )
         scopes = await _plan_wave(
             input.query,
             1,
@@ -982,7 +996,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
                     explore_slice=scope.explore_budget,
                     message_id=input.message_id,
                     conversation_id=input.conversation_id,
-                    api_key=input.api_key,
+                    user_id=input.user_id,
                 ),
                 options=scope_meta,
             )
@@ -1041,7 +1055,7 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
 
     seed_summaries: list[SeedSummary] = []
     try:
-        async with _open_sessions(state) as (session, write_session):
+        async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
             if write_session is not None:
                 seed_repo = WriteSeedRepository(write_session)
                 # Get all active seeds created during gathering.  The high limit
@@ -1188,8 +1202,10 @@ async def agent_select(input: AgentSelectInput, ctx: DurableContext) -> dict:
 
     ctx.log(f"Agent selecting up to {input.max_select} from {len(input.proposed_nodes)} nodes")
 
-    async with _open_sessions(state) as (session, write_session):
-        agent_ctx = await _build_agent_context(state, session, write_session=write_session, api_key=input.api_key)
+    async with _open_sessions(state, graph_id=input.graph_id) as (session, write_session):
+        agent_ctx = await _build_agent_context(
+            state, session, write_session=write_session, user_id=input.user_id, graph_id=input.graph_id
+        )
         updated_nodes = await agent_select_nodes(
             agent_ctx,
             input.proposed_nodes,

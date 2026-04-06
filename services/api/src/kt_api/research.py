@@ -347,17 +347,17 @@ async def confirm_ingest(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
-    api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    require_api_key(user)  # fail-fast validation
+    run_id = await dispatch_with_graph(
         "ingest_confirm",
         {
             "nav_budget": body.nav_budget,
             "selected_chunks": body.selected_chunks,
             "conversation_id": conversation_id,
             "message_id": str(assistant_msg.id),
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": conversation_id,
@@ -490,16 +490,16 @@ async def decompose_ingest(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
-    api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    require_api_key(user)  # fail-fast validation
+    run_id = await dispatch_with_graph(
         "ingest_decompose",
         {
             "conversation_id": conversation_id,
             "message_id": str(assistant_msg.id),
             "selected_chunks": body.selected_chunks,
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": conversation_id,
@@ -643,7 +643,7 @@ async def build_ingest(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
     from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
 
     confirmed_nodes = [
@@ -658,14 +658,14 @@ async def build_ingest(
         for n in body.selected_nodes
     ]
 
-    api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    require_api_key(user)  # fail-fast validation
+    run_id = await dispatch_with_graph(
         "ingest_build",
         IngestBuildInput(
             selected_nodes=confirmed_nodes,
             conversation_id=str(conv_uuid),
             message_id=str(assistant_msg.id),
-            api_key=api_key,
+            user_id=str(user.id),
         ).model_dump(),
         additional_metadata={
             "conversation_id": str(conv_uuid),
@@ -723,17 +723,17 @@ async def bottom_up_prepare(
 
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
-    api_key = require_api_key(user)
-    run_id = await dispatch_workflow(
+    require_api_key(user)  # fail-fast validation
+    run_id = await dispatch_with_graph(
         "bottom_up_prepare",
         {
             "query": body.query,
             "explore_budget": body.explore_budget,
             "conversation_id": str(conv.id),
             "message_id": str(assistant_msg.id),
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": str(conv.id),
@@ -1022,10 +1022,10 @@ async def agent_select(
     await conv_repo.update_message(uuid.UUID(msg_id), metadata_json=metadata)
     await session.commit()
 
-    from kt_hatchet.client import dispatch_workflow
+    from kt_api.dispatch import dispatch_with_graph
 
-    api_key = require_api_key(user)
-    await dispatch_workflow(
+    require_api_key(user)  # fail-fast validation
+    await dispatch_with_graph(
         "agent_select",
         {
             "proposed_nodes": proposed_nodes,
@@ -1033,7 +1033,7 @@ async def agent_select(
             "instructions": instructions,
             "conversation_id": str(conv_uuid),
             "message_id": msg_id or "",
-            "api_key": api_key,
+            "user_id": str(user.id),
         },
         additional_metadata={
             "conversation_id": str(conv_uuid),

@@ -1,11 +1,13 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from kt_config.settings import get_settings
+from kt_db.keys import validate_schema_name
 from kt_db.write_models import WriteBase
 
 config = context.config
@@ -17,6 +19,11 @@ target_metadata = WriteBase.metadata
 
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.write_database_url)
+
+# Optional schema override for multi-graph migrations.
+_schema_override = os.environ.get("ALEMBIC_SCHEMA")
+if _schema_override:
+    validate_schema_name(_schema_override)
 
 
 def run_migrations_offline() -> None:
@@ -32,7 +39,13 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
-    context.configure(connection=connection, target_metadata=target_metadata)
+    opts = {"connection": connection, "target_metadata": target_metadata}
+    if _schema_override:
+        opts["version_table_schema"] = _schema_override
+    context.configure(**opts)
+    if _schema_override:
+        # SECURITY: safe because validate_schema_name() enforces ^[a-z0-9_]+$ above
+        connection.execute(text(f"SET search_path TO {_schema_override}, public"))
     with context.begin_transaction():
         context.run_migrations()
 

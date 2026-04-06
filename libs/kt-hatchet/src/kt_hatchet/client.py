@@ -46,6 +46,32 @@ async def get_workflow_run_details(workflow_run_id: str) -> object:
         raise RuntimeError(f"Failed to fetch workflow run '{workflow_run_id}': {exc}") from exc
 
 
+def _ensure_dict(input: dict | object) -> dict:
+    """Coerce *input* to a plain dict.
+
+    Accepts ``dict`` (pass-through) or a Pydantic ``BaseModel`` (calls
+    ``.model_dump()``).  Raises ``TypeError`` for anything else.
+    """
+    if isinstance(input, dict):
+        return input
+    # Pydantic v2 BaseModel — duck-type check avoids hard import
+    if hasattr(input, "model_dump"):
+        return input.model_dump()  # type: ignore[union-attr]
+    raise TypeError(f"Expected dict or Pydantic model, got {type(input).__name__}")
+
+
+def inject_graph_id(input: dict | object, graph_id: str | None) -> dict:
+    """Return a plain dict with ``graph_id`` merged in when non-None.
+
+    Safe to call from both API and worker code — lives in kt_hatchet so
+    neither side crosses a service boundary.
+    """
+    d = _ensure_dict(input)
+    if graph_id is not None:
+        return {**d, "graph_id": graph_id}
+    return d
+
+
 async def dispatch_workflow(
     workflow_name: str,
     input: dict,

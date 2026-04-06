@@ -93,11 +93,13 @@ class SyncEngine:
         embedding_service: object | None = None,
         batch_size: int = 100,
         qdrant_client: object | None = None,
+        graph_slug: str = "default",
     ) -> None:
         self._write_sf = write_session_factory
         self._graph_sf = graph_session_factory
         self._embedding_service = embedding_service
         self._batch_size = batch_size
+        self._graph_slug = graph_slug
         self._qdrant_node_repo = None
         if qdrant_client is not None:
             from kt_qdrant.repositories.nodes import QdrantNodeRepository
@@ -165,7 +167,10 @@ class SyncEngine:
 
     async def _get_watermark(self, write_session: AsyncSession, table_name: str) -> datetime:
         result = await write_session.execute(
-            select(SyncWatermark.last_synced_at).where(SyncWatermark.table_name == table_name)
+            select(SyncWatermark.last_synced_at).where(
+                SyncWatermark.table_name == table_name,
+                SyncWatermark.graph_slug == self._graph_slug,
+            )
         )
         row = result.scalar_one_or_none()
         return row if row is not None else _EPOCH
@@ -173,9 +178,9 @@ class SyncEngine:
     async def _set_watermark(self, write_session: AsyncSession, table_name: str, ts: datetime) -> None:
         stmt = (
             pg_insert(SyncWatermark)
-            .values(table_name=table_name, last_synced_at=ts)
+            .values(table_name=table_name, graph_slug=self._graph_slug, last_synced_at=ts)
             .on_conflict_do_update(
-                index_elements=[SyncWatermark.table_name],
+                index_elements=[SyncWatermark.table_name, SyncWatermark.graph_slug],
                 set_={"last_synced_at": ts},
             )
         )
@@ -734,7 +739,10 @@ class SyncEngine:
     # ── Nodes ──────────────────────────────────────────────────────────
 
     async def _sync_nodes(self) -> int:
-        async with self._write_sf() as ws, self._graph_sf() as gs:
+        # Phase 1: Read from write-db, then release the connection.
+        # This avoids holding a write-db session idle through pgbouncer
+        # during the long graph-db upsert phase.
+        async with self._write_sf() as ws:
             watermark = await self._get_watermark(ws, "write_nodes")
             rows = (
                 (
@@ -752,16 +760,6 @@ class SyncEngine:
             if not rows:
                 return 0
 
-            logger.info(
-                "Syncing %d nodes (watermark=%s)",
-                len(rows),
-                watermark.isoformat(),
-            )
-
-            max_ts = watermark
-            count = 0
-            first_failure_ts: datetime | None = None
-
             # Pre-load rejected fact IDs for all nodes in this batch so the
             # upsert can skip creating NodeFact rows for rejected facts.
             all_node_uuids = [wn.node_uuid for wn in rows]
@@ -776,7 +774,22 @@ class SyncEngine:
             rejected_by_node: dict[uuid.UUID, set[str]] = {}
             for nid, fid in rejection_rows:
                 rejected_by_node.setdefault(nid, set()).add(str(fid))
+            # Detach ORM objects before closing the session
+            ws.expunge_all()
 
+        logger.info(
+            "Syncing %d nodes (watermark=%s)",
+            len(rows),
+            watermark.isoformat(),
+        )
+
+        max_ts = watermark
+        count = 0
+        first_failure_ts: datetime | None = None
+        pending_failures: list[tuple[str, Exception]] = []
+
+        # Phase 2: Upsert into graph-db (no write-db session held).
+        async with self._graph_sf() as gs:
             # Pass 1: upsert all nodes WITHOUT self-referencing FKs (parent_id,
             # source_concept_id) to avoid FK violations when referenced nodes
             # haven't been synced yet.
@@ -796,7 +809,7 @@ class SyncEngine:
                     logger.error("Failed to sync node %s, skipping", wn.key, exc_info=True)
                     if first_failure_ts is None:
                         first_failure_ts = wn.updated_at
-                    await self._record_failure(ws, "write_nodes", wn.key, exc)
+                    pending_failures.append((wn.key, exc))
                     continue
 
                 if wn.parent_key:
@@ -841,24 +854,27 @@ class SyncEngine:
                 affected_ids.add(ref_id)
             await self._refresh_node_stats(gs, affected_ids)
 
-            safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
-            if first_failure_ts is not None:
-                failed = len(rows) - count
-                logger.warning(
-                    "Nodes: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
-                    count,
-                    len(rows),
-                    failed,
-                    safe_ts.isoformat(),
-                )
             await gs.commit()
+
+        # Phase 3: Update watermark and record failures in write-db.
+        safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
+        if first_failure_ts is not None:
+            failed = len(rows) - count
+            logger.warning(
+                "Nodes: %d/%d synced, %d failed — watermark frozen at %s (first failure)",
+                count,
+                len(rows),
+                failed,
+                safe_ts.isoformat(),
+            )
+
+        async with self._write_sf() as ws:
+            for key, exc in pending_failures:
+                await self._record_failure(ws, "write_nodes", key, exc)
             await self._set_watermark(ws, "write_nodes", safe_ts)
             await ws.commit()
 
         # Repair orphaned parent/source_concept refs from previous cycles.
-        # Uses its own sessions to avoid holding the write-db connection idle
-        # during long graph-db operations (which can exceed idle_in_transaction
-        # timeout and kill the connection).
         await self._repair_orphaned_node_refs()
 
         return count

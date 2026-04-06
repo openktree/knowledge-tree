@@ -79,7 +79,7 @@ async def decompose_source_task(input: DecomposeSourceInput, ctx: Context) -> di
     # Read source from write-db (behind pgbouncer) instead of graph-db
     # to avoid exhausting the graph-db connection pool when many
     # decompose tasks run concurrently.
-    write_session = state.write_session_factory()
+    write_session = (await state.resolve_sessions(input.graph_id))[1]()
     try:
         write_source_repo = WriteSourceRepository(write_session)
         source = await write_source_repo.get_by_id(uuid.UUID(input.raw_source_id))
@@ -231,7 +231,7 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
 
     # Load facts from write-db by IDs (read-only)
     fact_uuids = [uuid.UUID(fid) for fid in input.fact_ids]
-    write_session = state.write_session_factory()
+    write_session = (await state.resolve_sessions(input.graph_id))[1]()
     try:
         write_fact_repo = WriteFactRepository(write_session)
         write_facts = await write_fact_repo.get_by_ids(fact_uuids)
@@ -427,7 +427,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
         for node in extracted_nodes:
             all_referenced_fact_ids.update(node.get("fact_ids", []))
 
-        write_session = state.write_session_factory()
+        write_session = (await state.resolve_sessions(input.graph_id))[1]()
         try:
             from kt_db.repositories.write_facts import WriteFactRepository
             from kt_db.repositories.write_seeds import WriteSeedRepository
@@ -562,7 +562,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
     from kt_db.repositories.write_sources import WriteSourceRepository
     from kt_providers.fetcher import ContentFetcher
 
-    write_session = state.write_session_factory()
+    write_session = (await state.resolve_sessions(input.graph_id))[1]()
     content_updated = False
     fact_count = 0
     fact_ids: list[str] = []

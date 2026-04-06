@@ -36,21 +36,21 @@ class HatchetPipeline:
     state across phases.
     """
 
-    def __init__(self, state: WorkerState, api_key: str | None = None) -> None:
+    def __init__(self, state: WorkerState, user_id: str | None = None, graph_id: str | None = None) -> None:
         self._state = state
-        self._api_key = api_key
+        self._user_id = user_id
+        self._resolved_api_key: str | None = None
+        self._key_resolved: bool = False
+        self._graph_id = graph_id
 
     @asynccontextmanager
     async def _open_sessions(self) -> AsyncGenerator[tuple[None, Any], None]:
         """Open write-db session for worker pipelines.
 
-        Workers operate in write-db-only mode — all reads route through
-        write-db or Qdrant via WorkerGraphEngine.  No graph-db sessions
-        are opened.
+        Uses per-graph session factories when graph_id is set.
         """
-        write_session = None
-        if self._state.write_session_factory is not None:
-            write_session = self._state.write_session_factory()
+        _, write_sf = await self._state.resolve_sessions(self._graph_id)
+        write_session = write_sf() if write_sf is not None else None
         try:
             yield None, write_session
         finally:
@@ -67,18 +67,26 @@ class HatchetPipeline:
     ) -> Any:
         """Build AgentContext from WorkerState and an open session.
 
-        When ``self._api_key`` is set (BYOK), per-request ModelGateway and
-        EmbeddingService are created instead of using the shared worker instances.
+        When ``self._user_id`` is set, the user's API key is resolved from
+        the database and per-request ModelGateway / EmbeddingService instances
+        are created instead of using the shared worker instances.
         """
         from kt_agents_core.state import AgentContext
         from kt_graph.worker_engine import WorkerGraphEngine
 
-        if self._api_key:
+        # Resolve once per pipeline instance, cache for subsequent phases
+        if not self._key_resolved:
+            from kt_hatchet.keys import resolve_user_api_key_cached
+
+            self._resolved_api_key = await resolve_user_api_key_cached(self._state, self._user_id)
+            self._key_resolved = True
+
+        if self._resolved_api_key:
             from kt_models.embeddings import EmbeddingService
             from kt_models.gateway import ModelGateway
 
-            model_gateway = ModelGateway(api_key=self._api_key)
-            embedding_service = EmbeddingService(api_key=self._api_key)
+            model_gateway = ModelGateway(api_key=self._resolved_api_key)
+            embedding_service = EmbeddingService(api_key=self._resolved_api_key)
         else:
             model_gateway = self._state.model_gateway  # type: ignore[assignment]
             embedding_service = self._state.embedding_service  # type: ignore[assignment]
@@ -88,16 +96,18 @@ class HatchetPipeline:
             embedding_service,
             qdrant_client=self._state.qdrant_client,
         )
+        resolved_sf, resolved_write_sf = await self._state.resolve_sessions(self._graph_id)
+
         return AgentContext(
             graph_engine=graph_engine,
             provider_registry=self._state.provider_registry,  # type: ignore[arg-type]
             model_gateway=model_gateway,
             embedding_service=embedding_service,
             session=None,
-            session_factory=self._state.session_factory,
+            session_factory=resolved_sf,
             content_fetcher=self._state.content_fetcher,  # type: ignore[arg-type]
             emit_event=emit_event,
-            write_session_factory=self._state.write_session_factory,
+            write_session_factory=resolved_write_sf,
             qdrant_client=self._state.qdrant_client,
         )
 

@@ -11,6 +11,19 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# -- Graph-aware mixin -------------------------------------------------
+
+
+class GraphAwareMixin(BaseModel):
+    """Mixin that adds optional graph_id to workflow inputs.
+
+    When graph_id is None, the workflow operates on the default graph.
+    When set, workers resolve per-graph session factories via GraphSessionResolver.
+    """
+
+    graph_id: str | None = None
+
+
 # -- Token usage -------------------------------------------------------
 
 
@@ -27,7 +40,7 @@ class TokenUsageSummary(BaseModel):
 # -- Search & decomposition --------------------------------------------
 
 
-class WebSearchInput(BaseModel):
+class WebSearchInput(GraphAwareMixin):
     """Input for a web search task."""
 
     scope_id: str
@@ -44,7 +57,7 @@ class SearchOutput(BaseModel):
     page_count: int = 0
 
 
-class DecomposePageInput(BaseModel):
+class DecomposePageInput(GraphAwareMixin):
     """Input for page decomposition (chunking + fan-out)."""
 
     raw_source_id: str
@@ -60,7 +73,7 @@ class DecomposePageOutput(BaseModel):
     fact_count: int = 0
 
 
-class DecomposeChunkInput(BaseModel):
+class DecomposeChunkInput(GraphAwareMixin):
     """Input for decomposing a single text chunk into facts."""
 
     raw_source_id: str
@@ -82,7 +95,7 @@ class DecomposeChunkOutput(BaseModel):
 # -- Node pipeline -----------------------------------------------------
 
 
-class NodePipelineInput(BaseModel):
+class NodePipelineInput(GraphAwareMixin):
     """Unified input for the node pipeline DAG workflow.
 
     Supports three modes:
@@ -109,7 +122,7 @@ class NodePipelineInput(BaseModel):
     # Shared
     message_id: str = ""
     conversation_id: str = ""
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 # Backward-compatible alias -- callers (bottom-up, ingest) use this name.
@@ -125,14 +138,14 @@ class BuildNodeOutput(BaseModel):
     edge_count: int = 0
 
 
-class GenerateDimensionsInput(BaseModel):
+class GenerateDimensionsInput(GraphAwareMixin):
     """Input for dimension generation task (within node pipeline DAG)."""
 
     node_id: str
     scope_id: str
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class DimensionsOutput(BaseModel):
@@ -144,16 +157,16 @@ class DimensionsOutput(BaseModel):
     edge_ids: list[str] = Field(default_factory=list)
 
 
-class GenerateDefinitionInput(BaseModel):
+class GenerateDefinitionInput(GraphAwareMixin):
     """Input for definition generation task (within node pipeline DAG)."""
 
     node_id: str
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
-class UpdateEdgesInput(BaseModel):
+class UpdateEdgesInput(GraphAwareMixin):
     """Input for a single edge resolution task (candidates-only)."""
 
     node_id: str
@@ -162,7 +175,7 @@ class UpdateEdgesInput(BaseModel):
     scope_id: str = ""
     message_id: str = ""
     conversation_id: str = ""
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class EdgeOutput(BaseModel):
@@ -175,7 +188,7 @@ class EdgeOutput(BaseModel):
 # -- Bottom-up exploration ---------------------------------------------
 
 
-class BottomUpInput(BaseModel):
+class BottomUpInput(GraphAwareMixin):
     """Input for the bottom-up exploration workflow."""
 
     query: str
@@ -183,10 +196,10 @@ class BottomUpInput(BaseModel):
     nav_budget: int = 0
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
-class BottomUpScopeInput(BaseModel):
+class BottomUpScopeInput(GraphAwareMixin):
     """Input for a bottom-up scope task (gather → extract → prioritize → build)."""
 
     scope_id: str
@@ -196,7 +209,7 @@ class BottomUpScopeInput(BaseModel):
     wave_number: int = 0
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpScopeOutput(BaseModel):
@@ -215,7 +228,7 @@ class BottomUpScopeOutput(BaseModel):
 # -- Bottom-up ingest (two-phase) -------------------------------------
 
 
-class BottomUpPrepareScopeInput(BaseModel):
+class BottomUpPrepareScopeInput(GraphAwareMixin):
     """Input for a prepare-phase scope (fact gathering only, no node building).
 
     NOTE: Does NOT receive the original user query — only the scope
@@ -229,7 +242,7 @@ class BottomUpPrepareScopeInput(BaseModel):
     explore_slice: int
     message_id: str
     conversation_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpPrepareScopeOutput(BaseModel):
@@ -275,14 +288,14 @@ class ProposedNode(BaseModel):
     ambiguity: ProposedNodeAmbiguity | None = None
 
 
-class BottomUpPrepareInput(BaseModel):
+class BottomUpPrepareInput(GraphAwareMixin):
     """Phase 1: gather facts, extract candidate nodes, return proposals."""
 
     query: str
     explore_budget: int
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class BottomUpPrepareOutput(BaseModel):
@@ -311,7 +324,7 @@ class ConfirmedNode(BaseModel):
 # -- Agent-assisted node selection --------------------------------------
 
 
-class AgentSelectInput(BaseModel):
+class AgentSelectInput(GraphAwareMixin):
     """Input for agent-assisted node selection workflow."""
 
     proposed_nodes: list[ProposedNode]
@@ -319,7 +332,7 @@ class AgentSelectInput(BaseModel):
     instructions: str = ""
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class AgentSelectOutput(BaseModel):
@@ -331,17 +344,17 @@ class AgentSelectOutput(BaseModel):
 # -- Conversations -----------------------------------------------------
 
 
-class QueryInput(BaseModel):
+class QueryInput(GraphAwareMixin):
     """Input for lightweight query workflow (graph navigation + synthesis)."""
 
     query: str
     nav_budget: int
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
-class FollowUpInput(BaseModel):
+class FollowUpInput(GraphAwareMixin):
     """Input for follow-up conversation turns."""
 
     follow_up_query: str
@@ -352,35 +365,35 @@ class FollowUpInput(BaseModel):
     wave_count: int = 1
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
-class ResynthesizeInput(BaseModel):
+class ResynthesizeInput(GraphAwareMixin):
     """Input for re-synthesis without re-exploration."""
 
     query: str
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
-class IngestConfirmInput(BaseModel):
+class IngestConfirmInput(GraphAwareMixin):
     """Input for the ingest confirmation workflow."""
 
     nav_budget: int
     selected_chunks: list[int] | None = None
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
-class IngestDecomposeInput(BaseModel):
+class IngestDecomposeInput(GraphAwareMixin):
     """Input for the phased ingest decompose workflow (Phase 1)."""
 
     conversation_id: str
     message_id: str
     selected_chunks: list[int] | None = None
-    api_key: str | None = None
+    user_id: str | None = None
 
 
 class IngestDecomposeOutput(BaseModel):
@@ -394,16 +407,16 @@ class IngestDecomposeOutput(BaseModel):
     fact_type_counts: dict[str, int] = Field(default_factory=dict)
 
 
-class IngestBuildInput(BaseModel):
+class IngestBuildInput(GraphAwareMixin):
     """Input for the phased ingest build workflow (Phase 2)."""
 
     selected_nodes: list[ConfirmedNode]
     conversation_id: str
     message_id: str
-    api_key: str | None = None
+    user_id: str | None = None
 
 
-class IngestPartitionInput(BaseModel):
+class IngestPartitionInput(GraphAwareMixin):
     """Input for a single ingest partition (parallel agent)."""
 
     conversation_id: str
@@ -431,7 +444,7 @@ class IngestPartitionOutput(BaseModel):
 # -- Composite nodes ---------------------------------------------------
 
 
-class BuildCompositeInput(BaseModel):
+class BuildCompositeInput(GraphAwareMixin):
     """Input for building a composite node (synthesis or perspective)."""
 
     node_type: str  # "synthesis" or "perspective"
@@ -456,7 +469,7 @@ class BuildCompositeOutput(BaseModel):
     draws_from_edge_ids: list[str] = Field(default_factory=list)
 
 
-class RegenerateCompositeInput(BaseModel):
+class RegenerateCompositeInput(GraphAwareMixin):
     """Input for on-demand regeneration of a composite node."""
 
     node_id: str
@@ -479,7 +492,7 @@ class RegenerateCompositeOutput(BaseModel):
 # -- Source decomposition (scope-based, Flow B) ---------------------------
 
 
-class DecomposeSourceInput(BaseModel):
+class DecomposeSourceInput(GraphAwareMixin):
     """Input for decomposing a single raw source into facts."""
 
     raw_source_id: str
@@ -500,7 +513,7 @@ class DecomposeSourceOutput(BaseModel):
     author_org: str | None = None
 
 
-class DecomposeSourcesInput(BaseModel):
+class DecomposeSourcesInput(GraphAwareMixin):
     """Input for the decompose_sources workflow (fan-out per source)."""
 
     raw_source_ids: list[str]
@@ -520,7 +533,7 @@ class DecomposeSourcesOutput(BaseModel):
     seed_keys: list[str] = Field(default_factory=list)
 
 
-class EntityExtractionInput(BaseModel):
+class EntityExtractionInput(GraphAwareMixin):
     """Input for entity extraction from facts + seed creation."""
 
     fact_ids: list[str]
@@ -545,7 +558,7 @@ class EntityExtractionOutput(BaseModel):
 # -- Seed deduplication ---------------------------------------------------
 
 
-class SeedDedupBatchInput(BaseModel):
+class SeedDedupBatchInput(GraphAwareMixin):
     """Input for a batch of seed deduplication tasks."""
 
     seed_keys: list[str]
@@ -589,7 +602,7 @@ class ResearchSummaryOutput(BaseModel):
 # -- Auto Build ------------------------------------------------------------
 
 
-class AutoBuildInput(BaseModel):
+class AutoBuildInput(GraphAwareMixin):
     """Input for auto_build_graph task (no params, reads thresholds from settings)."""
 
     pass
@@ -604,7 +617,7 @@ class AutoBuildOutput(BaseModel):
     nodes_enrichment_dispatched: int = 0
 
 
-class ReingestSourceInput(BaseModel):
+class ReingestSourceInput(GraphAwareMixin):
     """Input for reingesting a raw source (re-fetch + re-decompose)."""
 
     raw_source_id: str
@@ -624,7 +637,7 @@ class ReingestSourceOutput(BaseModel):
 # -- Synthesis workflows -----------------------------------------------
 
 
-class SynthesizerInput(BaseModel):
+class SynthesizerInput(GraphAwareMixin):
     """Input for the synthesizer workflow."""
 
     topic: str = ""
@@ -644,7 +657,7 @@ class SynthesizerOutput(BaseModel):
     nodes_referenced: int = 0
 
 
-class SuperSynthesizerInput(BaseModel):
+class SuperSynthesizerInput(GraphAwareMixin):
     """Input for the super-synthesizer workflow."""
 
     topic: str = ""

@@ -17,21 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def _open_sessions(state: WorkerState) -> AsyncGenerator[tuple[Any, Any], None]:
+async def _open_sessions(state: WorkerState, graph_id: str | None = None) -> AsyncGenerator[tuple[Any, Any], None]:
     """Open write-db session for worker pipelines.
 
     Yields ``(session, write_session)`` where ``session`` is **None**.
-    Workers operate in write-db-only mode — all reads route through
-    write-db or Qdrant, and the sync worker propagates to graph-db.
-
-    Previously this opened a graph-db session that was held for the
-    entire pipeline (hours during bottom-up research), leaking
-    connections from the limited graph-db pool (max_connections=100)
-    and starving the API / wiki-frontend.
+    When ``graph_id`` is set, resolves per-graph session factories.
     """
-    write_session = None
-    if state.write_session_factory is not None:
-        write_session = state.write_session_factory()
+    _, write_sf = await state.resolve_sessions(graph_id)
+    write_session = write_sf() if write_sf is not None else None
     try:
         yield None, write_session
     finally:
@@ -44,7 +37,8 @@ async def _build_agent_context(
     session: Any | None = None,
     emit_event: Any | None = None,
     write_session: Any | None = None,
-    api_key: str | None = None,
+    user_id: str | None = None,
+    graph_id: str | None = None,
 ) -> Any:
     """Build an AgentContext from WorkerState.
 
@@ -58,12 +52,15 @@ async def _build_agent_context(
     PerspectiveBuilder) to the Hatchet stream.  The callback must have
     signature ``async def(event_type: str, **kwargs) -> None``.
 
-    When ``api_key`` is provided (BYOK), per-request ModelGateway and
-    EmbeddingService are created instead of using the shared worker instances.
+    When ``user_id`` is provided, the user's API key is resolved from the
+    database and per-request ModelGateway / EmbeddingService instances are
+    created instead of using the shared worker instances.
     """
     from kt_agents_core.state import AgentContext
     from kt_graph.worker_engine import WorkerGraphEngine
+    from kt_hatchet.keys import resolve_user_api_key_cached
 
+    api_key = await resolve_user_api_key_cached(state, user_id)
     if api_key:
         from kt_models.embeddings import EmbeddingService
         from kt_models.gateway import ModelGateway
@@ -73,6 +70,8 @@ async def _build_agent_context(
     else:
         model_gateway = state.model_gateway
         embedding_service = state.embedding_service
+
+    resolved_sf, resolved_write_sf = await state.resolve_sessions(graph_id)
 
     graph_engine = WorkerGraphEngine(
         write_session,
@@ -85,10 +84,10 @@ async def _build_agent_context(
         model_gateway=model_gateway,
         embedding_service=embedding_service,
         session=None,
-        session_factory=state.session_factory,
+        session_factory=resolved_sf,
         content_fetcher=state.content_fetcher,
         emit_event=emit_event,
-        write_session_factory=state.write_session_factory,
+        write_session_factory=resolved_write_sf,
         qdrant_client=state.qdrant_client,
     )
 

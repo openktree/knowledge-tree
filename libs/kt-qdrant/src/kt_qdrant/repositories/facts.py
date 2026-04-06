@@ -55,28 +55,29 @@ class QdrantFactRepository:
     payload for filtering. The fact_id links back to the PG Fact row.
     """
 
-    def __init__(self, client: AsyncQdrantClient) -> None:
+    def __init__(self, client: AsyncQdrantClient, collection_name: str = FACTS_COLLECTION) -> None:
         self._client = client
+        self._collection_name = collection_name
 
     async def ensure_collection(self) -> None:
         """Create the facts collection if it doesn't exist."""
         settings = get_settings()
         collections = await self._client.get_collections()
         existing = {c.name for c in collections.collections}
-        if FACTS_COLLECTION not in existing:
+        if self._collection_name not in existing:
             await self._client.create_collection(
-                collection_name=FACTS_COLLECTION,
+                collection_name=self._collection_name,
                 vectors_config=VectorParams(
                     size=settings.embedding_dimensions,
                     distance=Distance.COSINE,
                 ),
             )
-            logger.info("Created Qdrant collection '%s' (dim=%d)", FACTS_COLLECTION, settings.embedding_dimensions)
+            logger.info("Created Qdrant collection '%s' (dim=%d)", self._collection_name, settings.embedding_dimensions)
 
     async def ensure_text_index(self) -> None:
         """Create a full-text index on the 'content' payload field if not present."""
         try:
-            collection_info = await self._client.get_collection(FACTS_COLLECTION)
+            collection_info = await self._client.get_collection(self._collection_name)
             existing_indexes = collection_info.payload_schema or {}
             if "content" in existing_indexes:
                 return
@@ -84,7 +85,7 @@ class QdrantFactRepository:
             pass
 
         await self._client.create_payload_index(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             field_name="content",
             field_schema=TextIndexParams(
                 type=TextIndexType.TEXT,
@@ -94,7 +95,7 @@ class QdrantFactRepository:
                 lowercase=True,
             ),
         )
-        logger.info("Created text index on '%s.content'", FACTS_COLLECTION)
+        logger.info("Created text index on '%s.content'", self._collection_name)
 
     async def upsert(
         self,
@@ -127,7 +128,7 @@ class QdrantFactRepository:
             payload=payload,
         )
         await self._client.upsert(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             points=[point],
         )
 
@@ -167,7 +168,7 @@ class QdrantFactRepository:
                     payload["node_ids"] = [str(nid) for nid in node_ids]
                 points.append(PointStruct(id=str(fid), vector=emb, payload=payload))
             await self._client.upsert(
-                collection_name=FACTS_COLLECTION,
+                collection_name=self._collection_name,
                 points=points,
             )
 
@@ -199,7 +200,7 @@ class QdrantFactRepository:
         for attempt in range(_SEARCH_MAX_RETRIES):
             try:
                 results = await self._client.query_points(
-                    collection_name=FACTS_COLLECTION,
+                    collection_name=self._collection_name,
                     query=embedding,
                     limit=limit,
                     score_threshold=score_threshold,
@@ -258,7 +259,7 @@ class QdrantFactRepository:
         )
 
         results = await self._client.query_points(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             query=embedding,
             limit=limit,
             score_threshold=score_threshold,
@@ -325,7 +326,7 @@ class QdrantFactRepository:
         )
 
         results = await self._client.query_points(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             prefetch=[keyword_prefetch, vector_prefetch],
             query=FusionQuery(fusion=Fusion.RRF),
             limit=limit,
@@ -350,7 +351,7 @@ class QdrantFactRepository:
         if not fact_ids:
             return {}
         points = await self._client.retrieve(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             ids=[str(fid) for fid in fact_ids],
             with_vectors=True,
             with_payload=False,
@@ -364,7 +365,7 @@ class QdrantFactRepository:
     async def delete(self, fact_id: uuid.UUID) -> None:
         """Delete a fact vector from Qdrant."""
         await self._client.delete(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             points_selector=[str(fact_id)],
         )
 
@@ -373,7 +374,7 @@ class QdrantFactRepository:
         if not fact_ids:
             return
         await self._client.delete(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             points_selector=[str(fid) for fid in fact_ids],
         )
 
@@ -384,7 +385,7 @@ class QdrantFactRepository:
     ) -> None:
         """Update the node_ids payload for a fact point."""
         await self._client.set_payload(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             payload={"node_ids": [str(nid) for nid in node_ids]},
             points=[str(fact_id)],
         )
@@ -401,7 +402,7 @@ class QdrantFactRepository:
         is authoritative) and the backfill script can repair any drift.
         """
         points = await self._client.retrieve(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             ids=[str(fact_id)],
             with_payload=["node_ids"],
             with_vectors=False,
@@ -415,7 +416,7 @@ class QdrantFactRepository:
         if nid_str not in existing:
             existing.append(nid_str)
             await self._client.set_payload(
-                collection_name=FACTS_COLLECTION,
+                collection_name=self._collection_name,
                 payload={"node_ids": existing},
                 points=[str(fact_id)],
             )
@@ -426,7 +427,7 @@ class QdrantFactRepository:
         No-op if the fact point does not exist in Qdrant.
         """
         points = await self._client.retrieve(
-            collection_name=FACTS_COLLECTION,
+            collection_name=self._collection_name,
             ids=[str(fact_id)],
             with_payload=["node_ids"],
             with_vectors=False,
@@ -440,14 +441,14 @@ class QdrantFactRepository:
         if nid_str in existing:
             existing.remove(nid_str)
             await self._client.set_payload(
-                collection_name=FACTS_COLLECTION,
+                collection_name=self._collection_name,
                 payload={"node_ids": existing},
                 points=[str(fact_id)],
             )
 
     async def count(self) -> int:
         """Count total facts in the collection."""
-        info = await self._client.get_collection(FACTS_COLLECTION)
+        info = await self._client.get_collection(self._collection_name)
         return info.points_count or 0
 
     def _build_filter(
