@@ -1081,11 +1081,11 @@ export const api = {
   // -------------------------------------------------------------------------
   systemSettings: {
     get(): Promise<SystemSettingsResponse> {
-      return graphRequest<SystemSettingsResponse>("/system-settings");
+      return request<SystemSettingsResponse>("/system-settings");
     },
 
     update(data: UpdateSystemSettingsRequest): Promise<SystemSettingsResponse> {
-      return graphRequest<SystemSettingsResponse>("/system-settings", {
+      return request<SystemSettingsResponse>("/system-settings", {
         method: "PATCH",
         body: JSON.stringify(data),
       });
@@ -1097,7 +1097,7 @@ export const api = {
   // -------------------------------------------------------------------------
   members: {
     list(): Promise<MemberResponse[]> {
-      return graphRequest<MemberResponse[]>("/members");
+      return request<MemberResponse[]>("/members");
     },
 
     updateRole(
@@ -1119,7 +1119,7 @@ export const api = {
   // -------------------------------------------------------------------------
   waitlist: {
     submit(data: WaitlistSubmitRequest): Promise<WaitlistSubmitResponse> {
-      return graphRequest<WaitlistSubmitResponse>("/waitlist", {
+      return request<WaitlistSubmitResponse>("/waitlist", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -1127,7 +1127,7 @@ export const api = {
 
     list(status?: string): Promise<WaitlistEntryResponse[]> {
       const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-      return graphRequest<WaitlistEntryResponse[]>(`/waitlist${qs}`);
+      return request<WaitlistEntryResponse[]>(`/waitlist${qs}`);
     },
 
     review(
@@ -1149,14 +1149,14 @@ export const api = {
   // -------------------------------------------------------------------------
   invites: {
     create(data: InviteCreateRequest): Promise<InviteResponse> {
-      return graphRequest<InviteResponse>("/invites", {
+      return request<InviteResponse>("/invites", {
         method: "POST",
         body: JSON.stringify(data),
       });
     },
 
     list(): Promise<InviteResponse[]> {
-      return graphRequest<InviteResponse[]>("/invites");
+      return request<InviteResponse[]>("/invites");
     },
 
     validate(
