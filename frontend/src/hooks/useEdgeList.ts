@@ -68,17 +68,12 @@ export function useEdgeList(): UseEdgeListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, relationshipType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, relationshipType, switchGeneration]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    setOffset(0);
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [switchGeneration]);
 
   return {
     edges,

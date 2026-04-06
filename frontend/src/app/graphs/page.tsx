@@ -47,13 +47,15 @@ export default function GraphsPage() {
   }, [fetchGraphs]);
 
   // Fetch DB connections when create form opens (superusers only)
+  const [dbLoaded, setDbLoaded] = useState(false);
   useEffect(() => {
-    if (showCreate && user?.is_superuser && dbConnections.length === 0) {
+    if (showCreate && user?.is_superuser && !dbLoaded) {
+      setDbLoaded(true);
       listDatabaseConnections()
         .then(setDbConnections)
-        .catch(() => {});
+        .catch(() => setDbLoaded(false));
     }
-  }, [showCreate, user?.is_superuser, dbConnections.length]);
+  }, [showCreate, user?.is_superuser, dbLoaded]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -25,7 +29,7 @@ from kt_db.graph_sessions import GraphSessionResolver
 
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 _write_session_factory: async_sessionmaker[AsyncSession] | None = None
-_qdrant_client: object | None = None
+_qdrant_client: AsyncQdrantClient | None = None
 _graph_session_resolver: GraphSessionResolver | None = None
 
 
@@ -66,7 +70,7 @@ def get_graph_session_resolver() -> GraphSessionResolver:
     return _graph_session_resolver
 
 
-def get_qdrant_client_cached() -> object:
+def get_qdrant_client_cached() -> AsyncQdrantClient:
     """Return a cached Qdrant client singleton."""
     global _qdrant_client  # noqa: PLW0603
     if _qdrant_client is None:

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronsUpDown, Loader2, User } from "lucide-react";
+import { AlertCircle, Check, ChevronsUpDown, Loader2, User } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -30,19 +30,28 @@ export function MemberSearch({ onSelect, excludeUserIds = [] }: MemberSearchProp
   const [members, setMembers] = useState<MemberResponse[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MemberResponse | null>(null);
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
-    if (next && !loaded) {
+    if (next && !loaded && !loading) {
       setLoading(true);
+      setError(null);
       api.members
         .list()
         .then((data) => {
           setMembers(data);
           setLoaded(true);
         })
-        .catch(() => {})
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : "Failed to load users";
+          if (msg.includes("403")) {
+            setError("Insufficient permissions to search users. Ask a superuser to add members.");
+          } else {
+            setError(msg);
+          }
+        })
         .finally(() => setLoading(false));
     }
   };
@@ -74,6 +83,11 @@ export function MemberSearch({ onSelect, excludeUserIds = [] }: MemberSearchProp
             {loading ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : error ? (
+              <div className="flex items-center gap-2 px-3 py-4 text-sm text-muted-foreground">
+                <AlertCircle className="size-4 shrink-0 text-destructive" />
+                <span>{error}</span>
               </div>
             ) : (
               <>

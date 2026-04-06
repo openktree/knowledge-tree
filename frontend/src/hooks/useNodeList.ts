@@ -77,18 +77,15 @@ export function useNodeList(): UseNodeListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, nodeType, sort]);
+    // switchGeneration forces refetch when the active graph changes.
+    // The API layer reads the module-level slug, so we just need a new
+    // callback identity to trigger the useEffect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, nodeType, sort, switchGeneration]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Refetch when the active graph changes
-  useEffect(() => {
-    setOffset(0);
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [switchGeneration]);
 
   return {
     nodes,

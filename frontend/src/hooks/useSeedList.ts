@@ -80,17 +80,12 @@ export function useSeedList(): UseSeedListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, status, nodeType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, status, nodeType, switchGeneration]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    setOffset(0);
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [switchGeneration]);
 
   return {
     seeds,

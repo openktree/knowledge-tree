@@ -68,17 +68,12 @@ export function useFactList(): UseFactListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, factType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, factType, switchGeneration]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    setOffset(0);
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [switchGeneration]);
 
   return {
     facts,

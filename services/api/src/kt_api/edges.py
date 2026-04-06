@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,7 +54,7 @@ def _edge_to_response(
 
 async def _list_edges_impl(
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     offset: int,
     limit: int,
     relationship_type: str | None,
@@ -112,7 +116,7 @@ async def list_edges(
 
 async def _get_edges_between_impl(
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     source: str,
     target: str,
 ) -> list[EdgeDetailResponse]:
@@ -197,7 +201,7 @@ async def get_edges_between(
 
 async def _get_edge_impl(
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     edge_id: str,
 ) -> EdgeDetailResponse:
     """Shared implementation for getting a single edge by ID."""

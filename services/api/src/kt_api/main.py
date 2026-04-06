@@ -83,16 +83,19 @@ async def _recover_stuck_graphs() -> None:
 
     sf = get_session_factory_cached()
     async with sf() as session:
-        from sqlalchemy import select, update
+        from sqlalchemy import update
 
-        stmt = select(Graph).where(Graph.status == "provisioning")
+        stmt = (
+            update(Graph)
+            .where(Graph.status == "provisioning")
+            .values(status="error")
+            .returning(Graph.slug)
+        )
         result = await session.execute(stmt)
-        stuck = result.scalars().all()
-        if stuck:
-            slugs = [g.slug for g in stuck]
-            logger.warning("Found %d graph(s) stuck in provisioning: %s — marking as error", len(stuck), slugs)
-            await session.execute(update(Graph).where(Graph.status == "provisioning").values(status="error"))
-            await session.commit()
+        slugs = [row[0] for row in result.all()]
+        if slugs:
+            logger.warning("Found %d graph(s) stuck in provisioning: %s — marked as error", len(slugs), slugs)
+        await session.commit()
 
 
 def create_app() -> FastAPI:

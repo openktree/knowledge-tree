@@ -669,7 +669,7 @@ export const api = {
     synthesizePerspective(
       seedKey: string,
     ): Promise<{ thesis_seed_key: string; antithesis_seed_key: string | null; status: string }> {
-      return request(
+      return graphRequest(
         `/seeds/perspectives/${encodeURIComponent(seedKey)}/synthesize`,
         { method: "POST" },
       );
@@ -678,7 +678,7 @@ export const api = {
     dismissPerspective(
       seedKey: string,
     ): Promise<{ status: string }> {
-      return request(
+      return graphRequest(
         `/seeds/perspectives/${encodeURIComponent(seedKey)}`,
         { method: "DELETE" },
       );
@@ -692,7 +692,7 @@ export const api = {
       workflow_run_id: string | null;
       node_id: string | null;
     }> {
-      return request(
+      return graphRequest(
         `/seeds/promote/${encodeURIComponent(seedKey)}`,
         { method: "POST" },
       );
@@ -770,15 +770,15 @@ export const api = {
   // -------------------------------------------------------------------------
   export: {
     nodes(): Promise<NodesExportResponse> {
-      return request<NodesExportResponse>("/export/nodes");
+      return graphRequest<NodesExportResponse>("/export/nodes");
     },
 
     facts(): Promise<FactsExportResponse> {
-      return request<FactsExportResponse>("/export/facts");
+      return graphRequest<FactsExportResponse>("/export/facts");
     },
 
     conversation(id: string): Promise<ConversationExportResponse> {
-      return request<ConversationExportResponse>(
+      return graphRequest<ConversationExportResponse>(
         `/export/conversations/${encodeURIComponent(id)}`,
       );
     },
@@ -789,14 +789,14 @@ export const api = {
   // -------------------------------------------------------------------------
   import: {
     facts(data: ImportFactsRequest): Promise<ImportResponse> {
-      return request<ImportResponse>("/import/facts", {
+      return graphRequest<ImportResponse>("/import/facts", {
         method: "POST",
         body: JSON.stringify(data),
       });
     },
 
     nodes(data: ImportNodesRequest): Promise<ImportResponse> {
-      return request<ImportResponse>("/import/nodes", {
+      return graphRequest<ImportResponse>("/import/nodes", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -1205,12 +1205,21 @@ export const api = {
 // Streaming import helper
 // ---------------------------------------------------------------------------
 
+/** Build a graph-scoped API path (for non-request helpers like SSE). */
+function graphPath(path: string): string {
+  const slug = _activeGraphSlug;
+  if (slug && slug !== "default") {
+    return `/graphs/${encodeURIComponent(slug)}${path}`;
+  }
+  return path;
+}
+
 async function streamImport(
   path: string,
   data: unknown,
   onProgress: (progress: ImportProgress) => void,
 ): Promise<ImportResponse> {
-  const url = `${BASE_URL}${API_PREFIX}${path}`;
+  const url = `${BASE_URL}${API_PREFIX}${graphPath(path)}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAuthHeader() },
@@ -1339,11 +1348,11 @@ export async function updateSynthesisVisibility(id: string, visibility: string) 
 // ---------------------------------------------------------------------------
 
 export async function listGraphs() {
-  return graphRequest<GraphResponse[]>("/graphs");
+  return request<GraphResponse[]>("/graphs");
 }
 
 export async function createGraph(data: CreateGraphRequest) {
-  return graphRequest<GraphResponse>("/graphs", {
+  return request<GraphResponse>("/graphs", {
     method: "POST",
     body: JSON.stringify(data),
   });

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +49,7 @@ def _get_embedding_service():  # noqa: ANN202
 
 async def _list_facts_impl(
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     offset: int,
     limit: int,
     search: str | None,
@@ -173,7 +177,7 @@ async def _get_fact_impl(
 
 async def _get_fact_nodes_impl(
     session: AsyncSession,
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     fact_id: str,
 ) -> list[FactNodeInfo]:
     """Core implementation for getting all nodes linked to a fact."""

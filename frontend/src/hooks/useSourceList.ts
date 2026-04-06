@@ -104,17 +104,12 @@ export function useSourceList(): UseSourceListResult {
     } finally {
       setIsLoading(false);
     }
-  }, [offset, debouncedSearch, providerId, sortBy, hasProhibited, isSuperSource, fetchStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, debouncedSearch, providerId, sortBy, hasProhibited, isSuperSource, fetchStatus, switchGeneration]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    setOffset(0);
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [switchGeneration]);
 
   return {
     sources,

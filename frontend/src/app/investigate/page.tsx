@@ -29,7 +29,8 @@ export default function SynthesesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [switchGeneration]);
 
   const handleDelete = useCallback(
     async (e: React.MouseEvent, id: string) => {
@@ -52,12 +53,6 @@ export default function SynthesesPage() {
   useEffect(() => {
     fetchSyntheses();
   }, [fetchSyntheses]);
-
-  // Refetch when the active graph changes
-  useEffect(() => {
-    fetchSyntheses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [switchGeneration]);
 
   return (
     <div className="mx-auto max-w-3xl py-12 px-4">

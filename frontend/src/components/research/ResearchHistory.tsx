@@ -74,18 +74,12 @@ export function ResearchHistory({ onResume, onView }: ResearchHistoryProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [switchGeneration]);
 
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
-
-  // Refetch when the active graph changes
-  useEffect(() => {
-    setLoading(true);
-    fetchHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [switchGeneration]);
 
   if (loading) {
     return (

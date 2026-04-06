@@ -5,6 +5,10 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qdrant_client import AsyncQdrantClient
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +141,7 @@ async def _get_node_fact_links(
 
 
 async def _fetch_embeddings(
-    qdrant_client: object,
+    qdrant_client: AsyncQdrantClient,
     node_ids: list[uuid.UUID],
     fact_ids: list[uuid.UUID],
 ) -> tuple[dict[uuid.UUID, list[float]], dict[uuid.UUID, list[float]]]:
