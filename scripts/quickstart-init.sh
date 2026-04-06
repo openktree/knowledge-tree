@@ -11,6 +11,13 @@ set -e
 
 COMPOSE_FILE="docker-compose.quickstart.yml"
 
+if [ ! -f .env ]; then
+    echo "ERROR: .env not found."
+    echo "  Run 'cp .env.example .env' and add your API keys first."
+    echo "  At minimum you need OPENROUTER_API_KEY."
+    exit 1
+fi
+
 echo "==> Starting infrastructure..."
 docker compose -f "$COMPOSE_FILE" up -d postgres postgres-write pgbouncer-write redis qdrant hatchet-db hatchet
 

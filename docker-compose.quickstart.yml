@@ -110,6 +110,9 @@ services:
 
   hatchet:
     image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.79.22
+    # Uncomment to expose the Hatchet UI for workflow debugging:
+    # ports:
+    #   - "8080:8080"
     depends_on:
       hatchet-db:
         condition: service_healthy
