@@ -56,7 +56,11 @@ _register(
         "write_db_max_overflow": "write_db_max_overflow",
         "write_db_pool_timeout": "write_db_pool_timeout",
         "qdrant_url": "qdrant_url",
+        "qdrant_tls": "qdrant_tls",
         "redis_url": "redis_url",
+        "redis_tls": "redis_tls",
+        "db_sslmode": "db_sslmode",
+        "write_db_sslmode": "write_db_sslmode",
         "sync_interval_seconds": "sync_interval_seconds",
         "sync_batch_size": "sync_batch_size",
         "sync_max_retries": "sync_max_retries",
@@ -78,6 +82,7 @@ _register(
         "google_oauth_client_id": "google_oauth_client_id",
         "google_oauth_client_secret": "google_oauth_client_secret",
         "byok_encryption_key": "byok_encryption_key",
+        "encryption_key": "encryption_key",
         "mcp_oauth_base_url": "mcp_oauth_base_url",
     },
 )
@@ -442,7 +447,11 @@ class Settings(BaseSettings):
     # Ontology ancestry
     qdrant_url: str = "http://localhost:6333"
     qdrant_timeout: int = 30  # seconds — default REST timeout for Qdrant client
+    qdrant_tls: bool = False  # use HTTPS for Qdrant connections
     redis_url: str = "redis://localhost:6379/0"
+    redis_tls: bool = False  # use TLS for Redis connections
+    db_sslmode: str = ""  # PostgreSQL sslmode (e.g. "require", "verify-full"); empty = no SSL
+    write_db_sslmode: str = ""  # sslmode for write-db; falls back to db_sslmode when empty
     ontology_cache_ttl: int = 604800  # 7 days in seconds
     ontology_model: str = "openrouter/x-ai/grok-4.1-fast"
     wikidata_user_agent: str = "KnowledgeTree/1.0 (example@openktree.com)"
@@ -581,6 +590,12 @@ class Settings(BaseSettings):
 
     # BYOK (Bring Your Own Key) — Fernet encryption key for stored API keys
     byok_encryption_key: str = ""
+
+    # Column encryption — Fernet key for PII/credential fields (e.g. OAuth client secrets).
+    # Separate from byok_encryption_key: BYOK protects user-supplied API keys (rotated per
+    # user), while this protects system-owned credential columns.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    encryption_key: str = ""
 
     # Email
     email_enabled: bool = False
