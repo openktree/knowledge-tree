@@ -13,16 +13,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.auth.permissions import require_graph_permission, require_system_permission
+from kt_api.auth.permissions import require_system_permission
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_graph_session_resolver
-from kt_api.graph_context import GraphContext, get_graph_context
 from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.keys import validate_schema_name
 from kt_db.models import Graph, Node, User
+from kt_db.repositories.graphs import GraphRepository
 from kt_rbac import Permission
 from kt_rbac.types import GraphRole
-from kt_db.repositories.graphs import GraphRepository
 
 logger = logging.getLogger(__name__)
 

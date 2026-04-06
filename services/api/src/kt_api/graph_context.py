@@ -87,5 +87,3 @@ async def get_graph_context(
         user=user,
         user_role=user_role,
     )
-
-

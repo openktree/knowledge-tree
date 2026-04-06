@@ -11,10 +11,10 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.auth.permissions import require_system_permission
-from kt_rbac import Permission
 from kt_api.dependencies import get_db_session
 from kt_db.models import User
 from kt_db.repositories.invites import InviteRepository
+from kt_rbac import Permission
 
 router = APIRouter(prefix="/api/v1/invites", tags=["invites"])
 

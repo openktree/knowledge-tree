@@ -13,7 +13,6 @@ from fastapi.responses import FileResponse
 from kt_api.auth.permissions import require_graph_permission
 from kt_api.auth.tokens import require_auth
 from kt_api.graph_context import GraphContext, get_graph_context
-from kt_rbac import Permission
 from kt_api.research import (
     _agent_select_impl,
     _agent_select_status_impl,
@@ -46,6 +45,7 @@ from kt_api.schemas import (
     ResearchSummaryResponse,
 )
 from kt_db.models import User
+from kt_rbac import Permission
 
 router = APIRouter(prefix="/api/v1/graphs/{graph_slug}/research", tags=["graph-research"])
 

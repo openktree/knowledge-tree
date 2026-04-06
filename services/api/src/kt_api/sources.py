@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.auth.permissions import require_system_permission
-from kt_rbac import Permission
 from kt_api.dependencies import get_db_session
 from kt_api.schemas import (
     DailyFailureCount,
@@ -28,6 +27,7 @@ from kt_api.schemas import (
 )
 from kt_db.models import User
 from kt_db.repositories.sources import SourceRepository
+from kt_rbac import Permission
 
 logger = logging.getLogger(__name__)
 

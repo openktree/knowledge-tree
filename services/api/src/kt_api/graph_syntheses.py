@@ -13,7 +13,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from kt_api.auth.permissions import require_graph_permission
 from kt_api.graph_context import GraphContext, get_graph_context
-from kt_rbac import Permission
 from kt_api.syntheses import (
     CreateSuperSynthesisRequest,
     CreateSynthesisRequest,
@@ -26,6 +25,7 @@ from kt_api.syntheses import (
     _get_synthesis_nodes_impl,
     _list_syntheses_impl,
 )
+from kt_rbac import Permission
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,6 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 
 from kt_api.auth.permissions import require_system_permission
-from kt_rbac import Permission
 from kt_api.dependencies import get_session_factory_cached
 from kt_api.schemas import (
     ConversationUsageResponse,
@@ -23,6 +22,7 @@ from kt_api.schemas import (
     UsageSummaryResponse,
 )
 from kt_db.models import User
+from kt_rbac import Permission
 
 router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 
