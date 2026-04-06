@@ -192,14 +192,13 @@ async def create_super_synthesis(
     return {"status": "pending", "workflow_run_id": run_id, "topic": body.topic}
 
 
-@router.get("/syntheses", response_model=PaginatedSynthesesResponse)
-async def list_syntheses(
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    visibility: str | None = None,
-    session: AsyncSession = Depends(get_db_session),
+async def _list_syntheses_impl(
+    session: AsyncSession,
+    offset: int,
+    limit: int,
+    visibility: str | None,
 ) -> PaginatedSynthesesResponse:
-    """List all synthesis and supersynthesis documents."""
+    """Shared implementation for listing synthesis documents."""
     base_filter = Node.node_type.in_(["synthesis", "supersynthesis"])
     if visibility:
         base_filter = base_filter & (Node.visibility == visibility)
@@ -230,12 +229,22 @@ async def list_syntheses(
     return PaginatedSynthesesResponse(items=items, total=total, offset=offset, limit=limit)
 
 
-@router.get("/syntheses/{synthesis_id}", response_model=SynthesisDocumentResponse)
-async def get_synthesis(
-    synthesis_id: str,
+@router.get("/syntheses", response_model=PaginatedSynthesesResponse)
+async def list_syntheses(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    visibility: str | None = None,
     session: AsyncSession = Depends(get_db_session),
+) -> PaginatedSynthesesResponse:
+    """List all synthesis and supersynthesis documents."""
+    return await _list_syntheses_impl(session, offset, limit, visibility)
+
+
+async def _get_synthesis_impl(
+    session: AsyncSession,
+    synthesis_id: str,
 ) -> SynthesisDocumentResponse:
-    """Get a synthesis document with sentences, node links, and fact counts."""
+    """Shared implementation for getting a synthesis document."""
     try:
         nid = uuid.UUID(synthesis_id)
     except ValueError:
@@ -301,13 +310,21 @@ async def get_synthesis(
     )
 
 
-@router.get("/syntheses/{synthesis_id}/sentences/{position}/facts")
-async def get_sentence_facts(
+@router.get("/syntheses/{synthesis_id}", response_model=SynthesisDocumentResponse)
+async def get_synthesis(
+    synthesis_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> SynthesisDocumentResponse:
+    """Get a synthesis document with sentences, node links, and fact counts."""
+    return await _get_synthesis_impl(session, synthesis_id)
+
+
+async def _get_sentence_facts_impl(
+    session: AsyncSession,
     synthesis_id: str,
     position: int,
-    session: AsyncSession = Depends(get_db_session),
 ) -> list[SentenceFactResponse]:
-    """Get fact links for a specific sentence."""
+    """Shared implementation for getting sentence fact links."""
     try:
         nid = uuid.UUID(synthesis_id)
     except ValueError:
@@ -365,12 +382,21 @@ async def get_sentence_facts(
     ]
 
 
-@router.get("/syntheses/{synthesis_id}/nodes")
-async def get_synthesis_nodes(
+@router.get("/syntheses/{synthesis_id}/sentences/{position}/facts")
+async def get_sentence_facts(
     synthesis_id: str,
+    position: int,
     session: AsyncSession = Depends(get_db_session),
+) -> list[SentenceFactResponse]:
+    """Get fact links for a specific sentence."""
+    return await _get_sentence_facts_impl(session, synthesis_id, position)
+
+
+async def _get_synthesis_nodes_impl(
+    session: AsyncSession,
+    synthesis_id: str,
 ) -> list[SynthesisNodeResponse]:
-    """Get all nodes referenced in a synthesis document."""
+    """Shared implementation for getting synthesis referenced nodes."""
     try:
         nid = uuid.UUID(synthesis_id)
     except ValueError:
@@ -389,6 +415,15 @@ async def get_synthesis_nodes(
         )
         for rn in doc.get("referenced_nodes", [])
     ]
+
+
+@router.get("/syntheses/{synthesis_id}/nodes")
+async def get_synthesis_nodes(
+    synthesis_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> list[SynthesisNodeResponse]:
+    """Get all nodes referenced in a synthesis document."""
+    return await _get_synthesis_nodes_impl(session, synthesis_id)
 
 
 @router.delete("/syntheses/{synthesis_id}")

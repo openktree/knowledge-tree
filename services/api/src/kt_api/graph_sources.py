@@ -14,10 +14,8 @@ from kt_api.graph_context import GraphContext, get_graph_context
 from kt_api.schemas import (
     PaginatedSourcesResponse,
     SourceDetailResponse,
-    SourceResponse,
 )
-from kt_api.sources import _build_source_detail
-from kt_db.repositories.sources import SourceRepository
+from kt_api.sources import _build_source_detail, _list_sources_impl
 
 router = APIRouter(prefix="/api/v1/graphs/{graph_slug}/sources", tags=["graph-sources"])
 
@@ -40,44 +38,8 @@ async def list_graph_sources(
 ) -> PaginatedSourcesResponse:
     """List raw sources in a specific graph."""
     async with ctx.graph_session_factory() as session:
-        repo = SourceRepository(session)
-        sources = await repo.list_sources(
-            offset=offset,
-            limit=limit,
-            search=search,
-            provider_id=provider_id,
-            sort_by=sort_by,
-            has_prohibited=has_prohibited,
-            is_super_source=is_super_source,
-            fetch_status=fetch_status,
-        )
-        total = await repo.count_sources(
-            search=search,
-            provider_id=provider_id,
-            has_prohibited=has_prohibited,
-            is_super_source=is_super_source,
-            fetch_status=fetch_status,
-        )
-        return PaginatedSourcesResponse(
-            items=[
-                SourceResponse(
-                    id=str(s.id),
-                    uri=s.uri,
-                    title=s.title,
-                    provider_id=s.provider_id,
-                    retrieved_at=s.retrieved_at,
-                    fact_count=s.fact_count,
-                    prohibited_chunk_count=s.prohibited_chunk_count,
-                    is_super_source=s.is_super_source,
-                    is_full_text=s.is_full_text,
-                    fetch_attempted=s.fetch_attempted,
-                    fetch_error=s.fetch_error,
-                )
-                for s in sources
-            ],
-            total=total,
-            offset=offset,
-            limit=limit,
+        return await _list_sources_impl(
+            session, offset, limit, search, provider_id, sort_by, has_prohibited, is_super_source, fetch_status
         )
 
 

@@ -155,8 +155,10 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
 
     # Verify GraphMember membership for non-default graphs
     if token is not None:
-        user_id_str = (token.claims or {}).get("user_id")
-        if user_id_str:
+        claims = token.claims or {}
+        user_id_str = claims.get("user_id")
+        is_superuser = claims.get("is_superuser") == "true"
+        if user_id_str and not is_superuser:
             import uuid as _uuid
 
             from kt_db.repositories.graphs import GraphRepository
@@ -166,12 +168,7 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
                 repo = GraphRepository(ctrl_session)
                 role = await repo.get_member_role(gs.graph.id, user_id)
                 if role is None:
-                    # Check if user is superuser
-                    from kt_db.models import User
-
-                    user = await ctrl_session.get(User, user_id)
-                    if not user or not user.is_superuser:
-                        raise ValueError(f"Not a member of graph '{graph}'")
+                    raise ValueError(f"Not a member of graph '{graph}'")
 
     return gs.graph_session_factory
 

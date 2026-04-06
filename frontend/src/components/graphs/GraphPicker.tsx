@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export function GraphPicker({ collapsed }: { collapsed: boolean }) {
-  const { activeGraph, graphs, setActiveGraph, loading, switching, activeGraphInfo } = useGraph();
+  const { activeGraph, graphs, setActiveGraph, loading, activeGraphInfo } = useGraph();
 
   // Don't show picker if there's only one graph (or none) AND it's the default
   if (!loading && graphs.length <= 1 && activeGraph === "default") {
@@ -42,11 +42,9 @@ export function GraphPicker({ collapsed }: { collapsed: boolean }) {
               <button
                 key={g.slug}
                 onClick={() => setActiveGraph(g.slug)}
-                disabled={switching}
                 className={cn(
                   "px-3 py-1.5 text-xs text-left hover:bg-accent transition-colors",
                   g.slug === activeGraph && "font-medium text-primary",
-                  switching && "opacity-50 cursor-wait",
                 )}
               >
                 {g.name}
@@ -63,11 +61,7 @@ export function GraphPicker({ collapsed }: { collapsed: boolean }) {
       <select
         value={activeGraph}
         onChange={(e) => setActiveGraph(e.target.value)}
-        disabled={switching}
-        className={cn(
-          "w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring truncate",
-          switching && "opacity-50 cursor-wait",
-        )}
+        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring truncate"
         title="Active graph"
       >
         {graphs.map((g) => (

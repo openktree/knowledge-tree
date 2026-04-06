@@ -35,6 +35,7 @@ from kt_db.models import (
     OAuthAuthorizationCode,
     OAuthClient,
     OAuthRefreshToken,
+    User,
 )
 from kt_mcp.auth import verify_bearer_token
 from kt_mcp.dependencies import get_session_factory_cached
@@ -234,6 +235,10 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
             claims: dict[str, str] = {}
             if row.user_id is not None:
                 claims["user_id"] = str(row.user_id)
+                # Cache is_superuser to avoid extra DB lookups in MCP tools
+                user = await session.get(User, row.user_id)
+                if user and user.is_superuser:
+                    claims["is_superuser"] = "true"
             return AccessToken(
                 token=token,
                 client_id=row.client_id,
@@ -265,6 +270,9 @@ class KnowledgeTreeOAuthProvider(OAuthProvider):
                 claims: dict[str, str] = {}
                 if hasattr(api_token, "user_id") and api_token.user_id is not None:
                     claims["user_id"] = str(api_token.user_id)
+                    user = await session.get(User, api_token.user_id)
+                    if user and user.is_superuser:
+                        claims["is_superuser"] = "true"
                 return AccessToken(
                     token=token, client_id="api_token", scopes=graph_scopes, expires_at=None, claims=claims
                 )

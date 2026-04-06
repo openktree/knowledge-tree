@@ -14,8 +14,8 @@ interface GraphState {
   loading: boolean;
   /** Error message from last graph operation */
   error: string | null;
-  /** Whether a graph switch is in progress */
-  switching: boolean;
+  /** Monotonically increasing counter that bumps on every graph switch */
+  switchGeneration: number;
   /** Switch to a different graph */
   setActiveGraph: (slug: string) => void;
   /** Refresh the graph list */
@@ -32,7 +32,7 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
   const [graphs, setGraphs] = useState<GraphResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [switching, setSwitching] = useState(false);
+  const [switchGeneration, setSwitchGeneration] = useState(0);
 
   // Read persisted graph from localStorage on mount and sync to api module
   useEffect(() => {
@@ -78,13 +78,12 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
 
   const setActiveGraph = useCallback(
     (slug: string) => {
-      setSwitching(true);
       setError(null);
       setActiveGraphState(slug);
       setActiveGraphSlug(slug);
       localStorage.setItem("active_graph", slug);
-      // Brief delay to let dependent queries fire, then clear switching state
-      setTimeout(() => setSwitching(false), 100);
+      // Bump generation so consumers can key/reset on graph switch
+      setSwitchGeneration((g) => g + 1);
     },
     [],
   );
@@ -98,7 +97,7 @@ export function GraphProvider({ children }: { children: React.ReactNode }) {
         graphs,
         loading,
         error,
-        switching,
+        switchGeneration,
         setActiveGraph,
         refreshGraphs,
         activeGraphInfo,

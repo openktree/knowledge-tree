@@ -129,9 +129,9 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
                     await QdrantNodeRepository(qdrant_client, f"{prefix}nodes").ensure_collection()
                     await QdrantSeedRepository(qdrant_client, f"{prefix}seeds").ensure_collection()
                 except Exception:
-                    logger.warning("Failed to ensure Qdrant collections for graph %s", g.slug, exc_info=True)
+                    logger.error("Failed to ensure Qdrant collections for graph %s", g.slug, exc_info=True)
     except Exception:
-        logger.warning("Failed to ensure per-graph Qdrant collections", exc_info=True)
+        logger.error("Failed to ensure per-graph Qdrant collections", exc_info=True)
 
     graph_resolver = GraphSessionResolver(
         session_factory,

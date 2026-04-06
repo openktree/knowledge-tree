@@ -173,7 +173,15 @@ export async function graphRequest<T>(
     try {
       return await request<T>(`/graphs/${encodeURIComponent(slug)}${path}`, options);
     } catch (err) {
-      if (err instanceof Error && err.message.includes("API error 404")) {
+      // Distinguish route-level 404 (endpoint not implemented) from
+      // resource-level 404 (e.g. node not found). Route 404s include
+      // "Not Found" with no detail body from FastAPI's default handler.
+      if (
+        err instanceof Error &&
+        err.message.includes("API error 404") &&
+        err.message.includes("Not Found:") &&
+        !err.message.includes("not found")
+      ) {
         throw new Error(
           `This endpoint is not yet available for non-default graphs (${path})`,
         );

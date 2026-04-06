@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.dependencies import get_write_session_factory_cached
 from kt_api.schemas import (
@@ -19,18 +21,23 @@ from kt_db.write_models import WriteFact
 
 router = APIRouter(prefix="/api/v1/edge-candidates", tags=["edge-candidates"])
 
+# Type alias for the async session context manager factory
+WriteSessionFactory = Callable[..., "AsyncSession"]
 
-@router.get("", response_model=PaginatedEdgeCandidatePairs)
-async def list_edge_candidate_pairs(
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    status: str | None = Query(None, description="Filter pairs that have facts with this status"),
-    search: str | None = Query(None, description="Filter by seed name (case-insensitive)"),
-    min_facts: int = Query(1, ge=1, description="Minimum total facts per pair"),
+
+# ── Shared implementations ───────────────────────────────────────
+
+
+async def _list_edge_candidate_pairs_impl(
+    write_session_factory: WriteSessionFactory,
+    offset: int,
+    limit: int,
+    status: str | None,
+    search: str | None,
+    min_facts: int,
 ) -> PaginatedEdgeCandidatePairs:
-    """List edge candidate pairs with pagination and filters."""
-    write_sf = get_write_session_factory_cached()
-    async with write_sf() as session:
+    """Shared implementation for listing edge candidate pairs."""
+    async with write_session_factory() as session:
         repo = WriteSeedRepository(session)
         items = await repo.list_edge_candidate_pairs(
             status_filter=status,
@@ -52,15 +59,14 @@ async def list_edge_candidate_pairs(
         )
 
 
-@router.get("/by-seed/{seed_key:path}", response_model=PaginatedEdgeCandidatePairs)
-async def list_candidates_for_seed(
+async def _list_candidates_for_seed_impl(
+    write_session_factory: WriteSessionFactory,
     seed_key: str,
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    offset: int,
+    limit: int,
 ) -> PaginatedEdgeCandidatePairs:
-    """List edge candidate pairs involving a specific seed."""
-    write_sf = get_write_session_factory_cached()
-    async with write_sf() as session:
+    """Shared implementation for listing candidates for a specific seed."""
+    async with write_session_factory() as session:
         repo = WriteSeedRepository(session)
         items, total = await repo.list_candidate_pairs_for_seed(
             seed_key,
@@ -75,17 +81,16 @@ async def list_candidates_for_seed(
         )
 
 
-@router.get("/{seed_key_a:path}/{seed_key_b:path}", response_model=EdgeCandidatePairDetail)
-async def get_edge_candidate_pair(
+async def _get_edge_candidate_pair_impl(
+    write_session_factory: WriteSessionFactory,
     seed_key_a: str,
     seed_key_b: str,
 ) -> EdgeCandidatePairDetail:
-    """Get full detail for a specific edge candidate pair."""
+    """Shared implementation for getting edge candidate pair detail."""
     # Canonical sort
     a, b = sorted([seed_key_a, seed_key_b])
 
-    write_sf = get_write_session_factory_cached()
-    async with write_sf() as session:
+    async with write_session_factory() as session:
         repo = WriteSeedRepository(session)
         candidates = await repo.get_edge_candidate_pair_detail(a, b)
         if not candidates:
@@ -135,3 +140,39 @@ async def get_edge_candidate_pair(
             accepted_count=accepted,
             rejected_count=rejected,
         )
+
+
+# ── Endpoints ─────────────────────────────────────────────────────
+
+
+@router.get("", response_model=PaginatedEdgeCandidatePairs)
+async def list_edge_candidate_pairs(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None, description="Filter pairs that have facts with this status"),
+    search: str | None = Query(None, description="Filter by seed name (case-insensitive)"),
+    min_facts: int = Query(1, ge=1, description="Minimum total facts per pair"),
+) -> PaginatedEdgeCandidatePairs:
+    """List edge candidate pairs with pagination and filters."""
+    return await _list_edge_candidate_pairs_impl(
+        get_write_session_factory_cached(), offset, limit, status, search, min_facts
+    )
+
+
+@router.get("/by-seed/{seed_key:path}", response_model=PaginatedEdgeCandidatePairs)
+async def list_candidates_for_seed(
+    seed_key: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+) -> PaginatedEdgeCandidatePairs:
+    """List edge candidate pairs involving a specific seed."""
+    return await _list_candidates_for_seed_impl(get_write_session_factory_cached(), seed_key, offset, limit)
+
+
+@router.get("/{seed_key_a:path}/{seed_key_b:path}", response_model=EdgeCandidatePairDetail)
+async def get_edge_candidate_pair(
+    seed_key_a: str,
+    seed_key_b: str,
+) -> EdgeCandidatePairDetail:
+    """Get full detail for a specific edge candidate pair."""
+    return await _get_edge_candidate_pair_impl(get_write_session_factory_cached(), seed_key_a, seed_key_b)
