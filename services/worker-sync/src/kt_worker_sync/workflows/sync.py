@@ -17,10 +17,18 @@ from datetime import timedelta
 from typing import cast
 
 from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
+from pydantic import BaseModel
 
 from kt_config.settings import get_settings
 from kt_hatchet.client import dispatch_workflow, get_hatchet
 from kt_hatchet.lifespan import WorkerState
+
+
+class SyncGraphInput(BaseModel):
+    """Input for ``sync_graph_wf`` — identifies which graph to sync."""
+
+    graph_slug: str = "default"
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +86,7 @@ async def dispatch_sync_tasks(input: dict, ctx: Context) -> dict:
 
 sync_graph_wf = hatchet.workflow(
     name="sync_graph_wf",
+    input_validator=SyncGraphInput,
     concurrency=ConcurrencyExpression(
         expression="input.graph_slug",
         max_runs=1,
@@ -90,12 +99,12 @@ sync_graph_wf = hatchet.workflow(
     execution_timeout=timedelta(minutes=sync_task_timeout_minutes),
     schedule_timeout=timedelta(minutes=2),
 )
-async def sync_graph_task(input: dict, ctx: Context) -> dict:
+async def sync_graph_task(input: SyncGraphInput, ctx: Context) -> dict:
     """Sync a single graph: poll write-db and push changes to graph-db."""
     from kt_worker_sync.sync_engine import SyncEngine
 
     worker_state = cast(WorkerState, ctx.lifespan)
-    graph_slug = input.get("graph_slug", "default")
+    graph_slug = input.graph_slug
 
     logger.debug("Sync task starting for graph '%s'", graph_slug)
     t0 = time.monotonic()

@@ -65,7 +65,10 @@ async def resolve_user_api_key(
 
     async with session_factory() as session:
         result = await session.execute(select(User).where(User.id == uid))
-        user = result.scalar_one_or_none()
+        # User.oauth_accounts is a lazy="joined" collection, so the result
+        # contains duplicate parent rows and must be uniquified before
+        # scalar_one_or_none() (SQLAlchemy 2.0 safety check).
+        user = result.unique().scalar_one_or_none()
 
     if user is None:
         logger.warning("User %s not found for API key resolution", user_id)
