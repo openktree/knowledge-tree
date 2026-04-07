@@ -40,7 +40,6 @@ class Permission(str, Enum):
     GRAPH_WRITE = "graph:write"
     GRAPH_MANAGE_MEMBERS = "graph:manage_members"
     GRAPH_MANAGE_METADATA = "graph:manage_metadata"
-    GRAPH_DELETE = "graph:delete"
 
     # Source scope — role-based + group-based
     SOURCE_READ = "source:read"

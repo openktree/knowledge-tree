@@ -130,7 +130,15 @@ async def _require_graph_access(
     session: AsyncSession,
     permission: Permission = Permission.GRAPH_READ,
 ) -> Graph:
-    """Load graph and verify access using kt-rbac. Raises 404/403 as needed."""
+    """Load graph ORM object and verify access using kt-rbac.
+
+    This helper exists because graph management endpoints (member CRUD, metadata
+    update) need the ORM Graph object and use ``{slug}`` as a path param — not
+    ``{graph_slug}`` which ``get_graph_context`` expects. The permission logic
+    delegates to the same ``PermissionChecker`` used by ``require_graph_permission``.
+
+    For graph-scoped data endpoints, prefer ``require_graph_permission()`` instead.
+    """
     from kt_rbac import PermissionDeniedError, default_checker
     from kt_rbac.context import PermissionContext
 

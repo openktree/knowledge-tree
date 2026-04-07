@@ -4,8 +4,8 @@ Supports per-graph group-based source-level access control.
 Groups are scoped to each graph schema (no cross-org collision).
 access_groups on raw_sources: NULL/empty = public, non-empty = restricted.
 
-Revision ID: zz9z
-Revises: zz9y8x7w6v5u
+Revision ID: f982135a0b7f
+Revises: f6da7767d71f
 Create Date: 2026-04-06
 """
 
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "zz9z"
-down_revision = "zz9y8x7w6v5u"
+revision = "f982135a0b7f"
+down_revision = "f6da7767d71f"
 
 
 def upgrade() -> None:

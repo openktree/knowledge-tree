@@ -54,14 +54,25 @@ def require_graph_permission(permission: Permission) -> Callable[..., Any]:
     """FastAPI dependency factory for graph-scoped permissions.
 
     Returns the resolved GraphContext if the permission check passes.
+    Eagerly loads the user's graph-local groups so that downstream
+    source-level access checks (via PermissionContext.user_groups) work
+    correctly for restricted sources.
     """
 
     async def _check(ctx: GraphContext = Depends(get_graph_context)) -> GraphContext:
+        # Load user's graph-local groups for source-level access checks
+        user_groups: frozenset[str] = frozenset()
+        if not ctx.user.is_superuser and ctx.user_role is not None:
+            async with ctx.graph_session_factory() as graph_session:
+                groups = await load_user_graph_groups(ctx.user.id, graph_session)
+                user_groups = frozenset(groups)
+
         perm_ctx = PermissionContext(
             user_id=ctx.user.id,
             is_superuser=ctx.user.is_superuser,
             graph_role=ctx.user_role,
             is_default_graph=ctx.graph.is_default,
+            user_groups=user_groups,
         )
         try:
             default_checker.check_or_raise(perm_ctx, permission)
@@ -70,6 +81,8 @@ def require_graph_permission(permission: Permission) -> Callable[..., Any]:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requires permission: {permission.value}",
             )
+        # Store the permission context on GraphContext for downstream source filtering
+        ctx.permission_context = perm_ctx
         return ctx
 
     return _check

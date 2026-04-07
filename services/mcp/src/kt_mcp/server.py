@@ -177,11 +177,26 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
                     raise ValueError(f"Not a member of graph '{graph}'")
                 graph_role = GraphRole(raw_role)
 
+        # Load user's graph-local groups for source-level access checks
+        user_groups: frozenset[str] = frozenset()
+        if not is_superuser and graph_role is not None:
+            from kt_db.models import GraphGroup, GraphGroupMember
+
+            async with gs.graph_session_factory() as graph_session:
+                stmt = (
+                    select(GraphGroup.name)
+                    .join(GraphGroupMember, GraphGroupMember.group_id == GraphGroup.id)
+                    .where(GraphGroupMember.user_id == user_id)
+                )
+                result = await graph_session.execute(stmt)
+                user_groups = frozenset(result.scalars().all())
+
         ctx = PermissionContext(
             user_id=user_id,
             is_superuser=is_superuser,
             graph_role=graph_role,
             is_default_graph=False,
+            user_groups=user_groups,
         )
         try:
             default_checker.check_or_raise(ctx, Permission.GRAPH_READ)

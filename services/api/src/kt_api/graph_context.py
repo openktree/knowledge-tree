@@ -6,7 +6,8 @@ access, and yields the correct session factories for that graph.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -17,6 +18,9 @@ from kt_db.graph_sessions import GraphInfo, GraphSessionResolver
 from kt_db.models import User
 from kt_db.repositories.graphs import GraphRepository
 from kt_rbac.types import GraphRole
+
+if TYPE_CHECKING:
+    from kt_rbac.context import PermissionContext
 
 
 @dataclass
@@ -34,6 +38,8 @@ class GraphContext:
     qdrant_collection_prefix: str
     user: User
     user_role: GraphRole | None  # None for superuser or default graph
+    # Set by require_graph_permission(); includes user_groups for source-level checks.
+    permission_context: PermissionContext | None = field(default=None, repr=False)
 
 
 async def get_graph_context(

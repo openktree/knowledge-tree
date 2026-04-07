@@ -54,12 +54,6 @@ def test_admin_can_manage_members() -> None:
     assert Permission.GRAPH_MANAGE_METADATA in admin_perms
 
 
-def test_admin_cannot_delete_graph() -> None:
-    """Graph deletion is superadmin-only — not included in admin role."""
-    admin_perms = GRAPH_ROLE_PERMISSIONS[GraphRole.admin]
-    assert Permission.GRAPH_DELETE not in admin_perms
-
-
 def test_default_graph_public_permissions() -> None:
     assert Permission.GRAPH_READ in DEFAULT_GRAPH_PUBLIC_PERMISSIONS
     assert Permission.SOURCE_READ in DEFAULT_GRAPH_PUBLIC_PERMISSIONS

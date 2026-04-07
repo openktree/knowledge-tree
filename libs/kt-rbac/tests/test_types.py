@@ -28,7 +28,7 @@ def test_system_permissions_start_with_system() -> None:
 
 def test_graph_permissions_start_with_graph() -> None:
     graph_perms = [p for p in Permission if p.value.startswith("graph:")]
-    assert len(graph_perms) == 5
+    assert len(graph_perms) == 4
 
 
 def test_source_permissions_start_with_source() -> None:

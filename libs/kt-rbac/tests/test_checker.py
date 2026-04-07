@@ -81,10 +81,6 @@ class TestGraphPermissions:
         assert checker.check(ctx, Permission.GRAPH_MANAGE_MEMBERS) is True
         assert checker.check(ctx, Permission.GRAPH_MANAGE_METADATA) is True
 
-    def test_admin_cannot_delete_graph(self, checker: PermissionChecker) -> None:
-        ctx = _ctx(graph_role=GraphRole.admin)
-        assert checker.check(ctx, Permission.GRAPH_DELETE) is False
-
     def test_no_role_means_no_access(self, checker: PermissionChecker) -> None:
         ctx = _ctx(graph_role=None)
         assert checker.check(ctx, Permission.GRAPH_READ) is False
