@@ -40,6 +40,27 @@ async def session_factory(engine):
     return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
+async def stub_users_in_db(session_factory):
+    """Insert the stub superuser/regular user into the User table so any
+    create_graph call that writes ``created_by`` won't trip the FK constraint.
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    async with session_factory() as s:
+        for uid, is_super in ((SUPERUSER_ID, True), (REGULAR_USER_ID, False)):
+            stmt = pg_insert(User).values(
+                id=uid,
+                email=f"user-{uid}@example.com",
+                hashed_password="x",
+                is_active=True,
+                is_superuser=is_super,
+                is_verified=True,
+            )
+            await s.execute(stmt.on_conflict_do_nothing(index_elements=[User.id]))
+        await s.commit()
+
+
 def _make_app(session_factory, *, is_superuser: bool, user_id: uuid.UUID):
     application = create_app()
 
@@ -133,3 +154,44 @@ async def test_create_database_connection_rejects_default_key(session_factory):
         repo = GraphRepository(s)
         with pytest.raises(ValueError, match="reserved"):
             await repo.create_database_connection(name="Bad", config_key="default")
+
+
+@pytest.mark.asyncio
+async def test_create_graph_with_default_key_uses_system_db(
+    superuser_client: AsyncClient,
+    session_factory,
+    stub_users_in_db,
+):
+    """Passing ``database_connection_config_key="default"`` (the magic string)
+    must store the graph with ``database_connection_id=NULL`` — i.e. the
+    system DB. Sanity check the create-graph branch that treats "default"
+    specially.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from sqlalchemy import delete
+
+    from kt_db.models import Graph
+
+    # Patch the synchronous schema/alembic/qdrant work — we only want to
+    # exercise the resolution branch in create_graph, not actually provision.
+    with patch("kt_api.graphs._provision_graph", new=AsyncMock(return_value=None)):
+        resp = await superuser_client.post(
+            "/api/v1/graphs",
+            json={
+                "slug": "default_key_test",
+                "name": "Default Key Test",
+                "database_connection_config_key": "default",
+            },
+        )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    # The graph row must NOT reference any DatabaseConnection
+    assert body["database_connection_id"] is None
+    assert body["database_connection_name"] is None
+
+    # Cleanup so the test is repeatable
+    async with session_factory() as s:
+        await s.execute(delete(Graph).where(Graph.slug == "default_key_test"))
+        await s.commit()

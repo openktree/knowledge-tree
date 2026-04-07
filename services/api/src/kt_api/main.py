@@ -64,11 +64,45 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("Failed to run graph provisioning recovery", exc_info=True)
 
+    # Assert no DatabaseConnection row holds the reserved "default" config_key.
+    # Such a row would silently shadow the synthetic system-DB entry surfaced
+    # by GET /api/v1/graphs/database-connections.
+    try:
+        await _assert_default_db_key_unreserved()
+    except Exception:
+        logger.warning("Failed to validate reserved default db config_key", exc_info=True)
+
     yield
     # Shutdown
     from kt_api.dependencies import reset_session_factory
 
     reset_session_factory()
+
+
+async def _assert_default_db_key_unreserved() -> None:
+    """Fail loudly at startup if a real database_connections row holds the
+    reserved ``DEFAULT_DB_CONFIG_KEY``. The repository ``create`` guard
+    catches new inserts; this catches anything that may have slipped in
+    via raw SQL or a previous version that lacked the guard.
+    """
+    from sqlalchemy import select
+
+    from kt_api.dependencies import get_session_factory_cached
+    from kt_config.settings import DEFAULT_DB_CONFIG_KEY
+    from kt_db.models import DatabaseConnection
+
+    sf = get_session_factory_cached()
+    async with sf() as session:
+        stmt = select(DatabaseConnection.id).where(DatabaseConnection.config_key == DEFAULT_DB_CONFIG_KEY)
+        result = await session.execute(stmt)
+        row = result.first()
+        if row is not None:
+            logger.error(
+                "DatabaseConnection row exists with reserved config_key=%r (id=%s); this row will be "
+                "silently shadowed by the synthetic default entry. Either rename it or delete it.",
+                DEFAULT_DB_CONFIG_KEY,
+                row[0],
+            )
 
 
 async def _recover_stuck_graphs() -> None:

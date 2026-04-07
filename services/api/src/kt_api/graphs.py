@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_api.auth.permissions import require_system_permission
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_graph_session_resolver
-from kt_config.settings import get_settings
+from kt_config.settings import DEFAULT_DB_CONFIG_KEY, get_settings
 from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.keys import validate_schema_name
 from kt_db.models import Graph, Node, User
@@ -280,12 +280,12 @@ async def create_graph(
     if existing:
         raise HTTPException(status_code=409, detail=f"Graph with slug '{body.slug}' already exists")
 
-    # Resolve the chosen database. ``None`` or ``"default"`` → system DB.
-    # Any other key → an external DB row in ``database_connections``. Schema
-    # is always the isolation strategy; the only choice is which DB the
-    # schema lives in.
+    # Resolve the chosen database. ``None`` or the reserved default key →
+    # system DB. Any other key → an external DB row in
+    # ``database_connections``. Schema is always the isolation strategy;
+    # the only choice is which DB the schema lives in.
     db_conn_id: uuid.UUID | None = None
-    if body.database_connection_config_key and body.database_connection_config_key != "default":
+    if body.database_connection_config_key and body.database_connection_config_key != DEFAULT_DB_CONFIG_KEY:
         db_conn = await repo.get_database_connection_by_key(body.database_connection_config_key)
         if db_conn is None:
             raise HTTPException(
@@ -348,7 +348,9 @@ async def list_database_connections(
     repo = GraphRepository(session)
     connections = await repo.list_database_connections()
     out: list[DatabaseConnectionResponse] = [
-        DatabaseConnectionResponse(id=None, name="default", config_key="default", created_at=None)
+        DatabaseConnectionResponse(
+            id=None, name=DEFAULT_DB_CONFIG_KEY, config_key=DEFAULT_DB_CONFIG_KEY, created_at=None
+        )
     ]
     out.extend(
         DatabaseConnectionResponse(
@@ -659,6 +661,16 @@ async def _provision_graph(
     is determined by ``graph.database_connection_id``: a NULL connection
     routes to the system DBs; a set connection routes to the external DB
     referenced by its ``config_key`` in ``Settings.graph_databases``.
+
+    **Failure recovery.** The Graph row is committed in ``"provisioning"``
+    status BEFORE this function runs (see ``create_graph``). Every step
+    here is idempotent — ``CREATE SCHEMA IF NOT EXISTS``, ``alembic upgrade
+    head``, and ``ensure_collection`` — so a partial failure leaves the
+    row marked ``"error"`` and the user can retry via
+    ``POST /api/v1/graphs/{slug}/retry-provision``. The retry re-runs this
+    function and is safe to call any number of times. We deliberately do
+    NOT drop schemas / Qdrant collections on failure: cleanup itself can
+    fail, and idempotent retry is the simpler recovery path.
     """
     schema = graph.schema_name
     if schema == "public":
@@ -773,7 +785,10 @@ async def _provision_graph(
     from kt_qdrant.repositories.nodes import QdrantNodeRepository
     from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
-    use_per_graph_qdrant = bool(qdrant_url) and qdrant_url != settings.qdrant_url
+    # Normalize trailing slashes when comparing — http://h:6333 and
+    # http://h:6333/ are the same Qdrant. Avoids needlessly spawning a
+    # fresh client + closing it on every default-DB provisioning.
+    use_per_graph_qdrant = bool(qdrant_url) and qdrant_url.rstrip("/") != settings.qdrant_url.rstrip("/")
     client = make_qdrant_client(qdrant_url) if use_per_graph_qdrant else get_qdrant_client()
     prefix = f"{graph.slug}__"
 

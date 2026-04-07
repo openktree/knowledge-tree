@@ -12,6 +12,15 @@ from pydantic_settings import (
     PydanticBaseSettingsSource,
 )
 
+#: Reserved ``config_key`` value for the system database. The
+#: ``GET /api/v1/graphs/database-connections`` endpoint always returns a
+#: synthetic entry with this key first; the create-graph handler treats it
+#: as ``database_connection_id=NULL`` (system DB). Real rows in the
+#: ``database_connections`` table MUST NOT use this value — the repository
+#: rejects it on insert and a startup check asserts no pre-existing row
+#: holds it.
+DEFAULT_DB_CONFIG_KEY = "default"
+
 
 def _normalize_async_pg_url(url: str) -> str:
     """Force the asyncpg driver on Postgres URLs.
