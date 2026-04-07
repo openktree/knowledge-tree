@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_api.auth.permissions import require_system_permission
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_graph_session_resolver
+from kt_config.settings import get_settings
 from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.keys import validate_schema_name
 from kt_db.models import Graph, Node, User
@@ -55,10 +56,18 @@ class GraphResponse(BaseModel):
 
 
 class DatabaseConnectionResponse(BaseModel):
-    id: str
+    """A database the user can pick when creating a graph.
+
+    The synthetic ``default`` entry has ``id=None`` and ``created_at=None``;
+    every other entry comes from the ``database_connections`` table whose
+    ``config_key`` must exist in ``Settings.graph_databases`` (auto-discovered
+    from ``EXTRA_DB_*`` env vars or set explicitly via YAML).
+    """
+
+    id: str | None = None
     name: str
     config_key: str
-    created_at: datetime
+    created_at: datetime | None = None
 
 
 class CreateGraphRequest(BaseModel):
@@ -67,7 +76,11 @@ class CreateGraphRequest(BaseModel):
     description: str | None = None
     graph_type: str = Field(default="v1", pattern="^v[0-9]+$")
     byok_enabled: bool = False
-    storage_mode: str = Field(default="schema", pattern="^(schema|database)$")
+    # "default" or omitted = system database; otherwise a config_key from
+    # /database-connections (an external DB provisioned in the infra layer).
+    # Schema is always the isolation strategy — the only choice is which DB
+    # the schema lives in. To get a graph isolated to its own DB, just don't
+    # create another graph against the same connection.
     database_connection_config_key: str | None = None
 
 
@@ -267,16 +280,12 @@ async def create_graph(
     if existing:
         raise HTTPException(status_code=409, detail=f"Graph with slug '{body.slug}' already exists")
 
-    # Validate storage_mode=database requires a connection key
-    if body.storage_mode == "database" and not body.database_connection_config_key:
-        raise HTTPException(
-            status_code=400,
-            detail="storage_mode='database' requires database_connection_config_key",
-        )
-
-    # Resolve database connection if specified
+    # Resolve the chosen database. ``None`` or ``"default"`` → system DB.
+    # Any other key → an external DB row in ``database_connections``. Schema
+    # is always the isolation strategy; the only choice is which DB the
+    # schema lives in.
     db_conn_id: uuid.UUID | None = None
-    if body.database_connection_config_key:
+    if body.database_connection_config_key and body.database_connection_config_key != "default":
         db_conn = await repo.get_database_connection_by_key(body.database_connection_config_key)
         if db_conn is None:
             raise HTTPException(
@@ -293,7 +302,9 @@ async def create_graph(
         description=body.description,
         graph_type=body.graph_type,
         byok_enabled=body.byok_enabled,
-        storage_mode=body.storage_mode,
+        # storage_mode is now legacy: every non-default graph is schema-mode.
+        # Kept on the column for backward-compat with older rows.
+        storage_mode="schema",
         schema_name=schema_name,
         database_connection_id=db_conn_id,
         created_by=admin.id,
@@ -326,13 +337,20 @@ async def create_graph(
 
 @router.get("/database-connections", response_model=list[DatabaseConnectionResponse])
 async def list_database_connections(
-    admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_GRAPHS)),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_GRAPHS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DatabaseConnectionResponse]:
-    """List available database connections (admin only)."""
+    """List databases an admin can pick when creating a graph.
+
+    The synthetic ``default`` entry (system DB) is always returned first,
+    followed by every row from ``database_connections``.
+    """
     repo = GraphRepository(session)
     connections = await repo.list_database_connections()
-    return [
+    out: list[DatabaseConnectionResponse] = [
+        DatabaseConnectionResponse(id=None, name="default", config_key="default", created_at=None)
+    ]
+    out.extend(
         DatabaseConnectionResponse(
             id=str(c.id),
             name=c.name,
@@ -340,7 +358,8 @@ async def list_database_connections(
             created_at=c.created_at,
         )
         for c in connections
-    ]
+    )
+    return out
 
 
 # -- Graph detail -----------------------------------------------------------
@@ -636,8 +655,10 @@ async def _provision_graph(
 ) -> None:
     """Create schema + Qdrant collections for a new graph.
 
-    For storage_mode="schema", creates the schema in the graph-db and write-db.
-    For storage_mode="database", the schema is created in the configured database.
+    Schema is the only isolation strategy. The DATABASE the schema lives in
+    is determined by ``graph.database_connection_id``: a NULL connection
+    routes to the system DBs; a set connection routes to the external DB
+    referenced by its ``config_key`` in ``Settings.graph_databases``.
     """
     schema = graph.schema_name
     if schema == "public":
@@ -648,24 +669,55 @@ async def _provision_graph(
     # SECURITY: f-string in DDL is safe ONLY because validate_schema_name() above
     # enforces ^[a-z0-9_]+$ — if that regex is ever loosened, these become injectable.
 
-    # Create schema in graph-db
-    await session.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-    await session.commit()
+    # ---- Resolve target URLs based on the chosen DatabaseConnection -------
+    settings = get_settings()
+    if graph.database_connection_id is not None:
+        repo = GraphRepository(session)
+        db_conn = await repo.get_database_connection(graph.database_connection_id)
+        if db_conn is None:
+            raise RuntimeError(
+                f"Graph '{graph.slug}' references missing DatabaseConnection {graph.database_connection_id}"
+            )
+        cfg = settings.graph_databases.get(db_conn.config_key)
+        if cfg is None:
+            raise RuntimeError(
+                f"Database connection '{db_conn.config_key}' is not configured in "
+                f"settings.graph_databases — check that EXTRA_DB_"
+                f"{db_conn.config_key.upper().replace('-', '_')}_* env vars "
+                f"are set on the API pod"
+            )
+        graph_url = cfg.graph_database_url
+        write_url = cfg.write_database_url
+        qdrant_url = cfg.qdrant_url or settings.qdrant_url
+    else:
+        graph_url = settings.database_url
+        write_url = settings.write_database_url
+        qdrant_url = settings.qdrant_url
 
-    # Create schema in write-db using a one-off engine
-    # (don't go through resolver — that would cache engines before migrations finish)
-    from kt_db.session import get_write_engine
+    # ---- Create schema in graph-db (one-off engine) -----------------------
+    from sqlalchemy.ext.asyncio import create_async_engine
 
-    provision_engine = get_write_engine(application_name="kt-provision")
+    g_eng = create_async_engine(graph_url, future=True)
     try:
-        async with provision_engine.connect() as conn:
+        async with g_eng.begin() as conn:
             await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-            await conn.commit()
     finally:
-        await provision_engine.dispose()
+        await g_eng.dispose()
 
-    # Run Alembic migrations in a thread pool to avoid blocking the event loop
-    import asyncio
+    # ---- Create schema in write-db (one-off engine) -----------------------
+    # write_url usually points at PgBouncer (transaction pool mode); a single
+    # CREATE SCHEMA statement is fine through that.
+    w_eng = create_async_engine(write_url, future=True)
+    try:
+        async with w_eng.begin() as conn:
+            await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+    finally:
+        await w_eng.dispose()
+
+    # ---- Run Alembic migrations against the chosen DBs --------------------
+    # libs/kt-db/alembic{,_write}/env.py both call get_settings() at startup;
+    # Pydantic Settings reads DATABASE_URL / WRITE_DATABASE_URL from env, so
+    # the override below propagates into the subprocess via env={...}.
     import os
     import subprocess
     import sys
@@ -673,9 +725,12 @@ async def _provision_graph(
     import kt_db
 
     kt_db_root = Path(kt_db.__file__).resolve().parents[2]  # kt_db/__init__.py -> src/kt_db -> kt-db/
-    # Inherits parent env (DATABASE_URL, etc.) which is intentional — Alembic
-    # reads DB URLs from Settings/env. ALEMBIC_SCHEMA is the only override.
-    env = {**os.environ, "ALEMBIC_SCHEMA": schema}
+    env = {
+        **os.environ,
+        "ALEMBIC_SCHEMA": schema,
+        "DATABASE_URL": graph_url,
+        "WRITE_DATABASE_URL": write_url,
+    }
 
     def _run_migrations() -> None:
         for ini_file in ("alembic.ini", "alembic_write.ini"):
@@ -692,15 +747,23 @@ async def _provision_graph(
 
     await asyncio.to_thread(_run_migrations)
 
-    # Create Qdrant collections — failure here should prevent graph going active
-    from kt_qdrant.client import get_qdrant_client
+    # ---- Create Qdrant collections ----------------------------------------
+    # Use the per-graph Qdrant if it differs from the system one. The system
+    # singleton client is reused for the default-DB code path so we don't
+    # spawn a fresh client per provisioning.
+    from kt_qdrant.client import get_qdrant_client, make_qdrant_client
     from kt_qdrant.repositories.facts import QdrantFactRepository
     from kt_qdrant.repositories.nodes import QdrantNodeRepository
     from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
-    client = get_qdrant_client()
+    use_per_graph_qdrant = bool(qdrant_url) and qdrant_url != settings.qdrant_url
+    client = make_qdrant_client(qdrant_url) if use_per_graph_qdrant else get_qdrant_client()
     prefix = f"{graph.slug}__"
 
-    await QdrantFactRepository(client, f"{prefix}facts").ensure_collection()
-    await QdrantNodeRepository(client, f"{prefix}nodes").ensure_collection()
-    await QdrantSeedRepository(client, f"{prefix}seeds").ensure_collection()
+    try:
+        await QdrantFactRepository(client, f"{prefix}facts").ensure_collection()
+        await QdrantNodeRepository(client, f"{prefix}nodes").ensure_collection()
+        await QdrantSeedRepository(client, f"{prefix}seeds").ensure_collection()
+    finally:
+        if use_per_graph_qdrant:
+            await client.close()

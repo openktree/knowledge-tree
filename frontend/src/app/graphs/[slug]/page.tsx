@@ -223,13 +223,8 @@ export default function GraphDetailPage() {
             <p className="font-mono text-xs">{graph.schema_name}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Storage</p>
-            <p>
-              {graph.database_connection_name ??
-                (graph.storage_mode === "database"
-                  ? "Separate DB"
-                  : "Shared DB")}
-            </p>
+            <p className="text-xs text-muted-foreground">Database</p>
+            <p>{graph.database_connection_name ?? "default"}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Nodes</p>

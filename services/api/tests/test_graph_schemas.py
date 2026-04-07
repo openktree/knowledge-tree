@@ -43,7 +43,6 @@ class TestSchemaNameValidation:
 class TestCreateGraphRequest:
     def test_defaults(self):
         req = CreateGraphRequest(slug="test_graph", name="Test Graph")
-        assert req.storage_mode == "schema"
         assert req.graph_type == "v1"
         assert req.byok_enabled is False
         assert req.database_connection_config_key is None
@@ -55,15 +54,15 @@ class TestCreateGraphRequest:
             description="A test graph",
             graph_type="v1",
             byok_enabled=True,
-            storage_mode="database",
             database_connection_config_key="my-db",
         )
         assert req.byok_enabled is True
-        assert req.storage_mode == "database"
+        assert req.database_connection_config_key == "my-db"
 
-    def test_invalid_storage_mode(self):
-        with pytest.raises(ValidationError):
-            CreateGraphRequest(slug="test", name="Test", storage_mode="invalid")
+    def test_default_connection_key_accepted(self):
+        # "default" is the magic string the UI sends for the system DB
+        req = CreateGraphRequest(slug="test_graph", name="Test", database_connection_config_key="default")
+        assert req.database_connection_config_key == "default"
 
     def test_slug_too_short(self):
         with pytest.raises(ValidationError):

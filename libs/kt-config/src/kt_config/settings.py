@@ -4,13 +4,26 @@ from typing import Any
 from urllib.parse import quote as url_quote
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
     PydanticBaseSettingsSource,
 )
+
+
+def _normalize_async_pg_url(url: str) -> str:
+    """Force the asyncpg driver on Postgres URLs.
+
+    Operators may set EXTRA_DB_*_GRAPH_HOST / WRITE_HOST or YAML configs with a
+    plain ``postgresql://...`` URL; the runtime always uses async engines via
+    ``create_async_engine`` which requires the ``+asyncpg`` dialect. Normalizing
+    here is harmless when the dialect is already correct.
+    """
+    if url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + url[len("postgresql://") :]
+    return url
 
 
 class GraphDatabaseConfig(BaseModel):
@@ -21,6 +34,11 @@ class GraphDatabaseConfig(BaseModel):
     qdrant_url: str = ""  # per-graph Qdrant URL; empty = use global qdrant_url
     pool_size: int = 5
     max_overflow: int = 10
+
+    @field_validator("graph_database_url", "write_database_url")
+    @classmethod
+    def _force_asyncpg(cls, v: str) -> str:
+        return _normalize_async_pg_url(v)
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
