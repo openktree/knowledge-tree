@@ -227,7 +227,7 @@ export default function GraphsPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={creating}>
+            <Button type="submit" size="sm" disabled={creating || dbError !== null}>
               {creating ? "Creating..." : "Create"}
             </Button>
             <Button

@@ -695,9 +695,21 @@ async def _provision_graph(
         qdrant_url = settings.qdrant_url
 
     # ---- Create schema in graph-db (one-off engine) -----------------------
+    # NullPool + tagged application_name: these are single-shot connections
+    # used only for the CREATE SCHEMA below, so we don't want a connection
+    # pool, and tagging makes them visible in pg_stat_activity.
+    from sqlalchemy import NullPool
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    g_eng = create_async_engine(graph_url, future=True)
+    _provision_app_name = f"kt-provision-{graph.slug}"
+    _provision_connect_args = {"server_settings": {"application_name": _provision_app_name}}
+
+    g_eng = create_async_engine(
+        graph_url,
+        future=True,
+        poolclass=NullPool,
+        connect_args=_provision_connect_args,
+    )
     try:
         async with g_eng.begin() as conn:
             await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
@@ -707,7 +719,12 @@ async def _provision_graph(
     # ---- Create schema in write-db (one-off engine) -----------------------
     # write_url usually points at PgBouncer (transaction pool mode); a single
     # CREATE SCHEMA statement is fine through that.
-    w_eng = create_async_engine(write_url, future=True)
+    w_eng = create_async_engine(
+        write_url,
+        future=True,
+        poolclass=NullPool,
+        connect_args=_provision_connect_args,
+    )
     try:
         async with w_eng.begin() as conn:
             await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))

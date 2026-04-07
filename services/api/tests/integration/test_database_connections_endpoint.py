@@ -12,12 +12,13 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session
 from kt_api.main import create_app
-from kt_db.models import User
+from kt_db.models import DatabaseConnection, User
 from kt_db.repositories.graphs import GraphRepository
 
 SUPERUSER_ID = uuid.UUID("00000000-0000-0000-0000-000000000020")
@@ -77,9 +78,6 @@ async def cleanup_connections(session_factory):
     """Wipe database_connections after each test to keep the schema clean."""
     yield
     async with session_factory() as s:
-        from kt_db.models import DatabaseConnection
-        from sqlalchemy import delete
-
         await s.execute(delete(DatabaseConnection))
         await s.commit()
 
