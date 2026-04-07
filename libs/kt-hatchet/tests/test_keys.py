@@ -33,7 +33,9 @@ def _mock_session_factory(user: SimpleNamespace | None = None):
     """Return a callable that yields an async-context session mock."""
     session = AsyncMock()
     result_mock = MagicMock()
-    result_mock.scalar_one_or_none.return_value = user
+    # The production code calls result.unique().scalar_one_or_none() because
+    # User has a joined-eager-loaded oauth_accounts collection.
+    result_mock.unique.return_value.scalar_one_or_none.return_value = user
     session.execute = AsyncMock(return_value=result_mock)
 
     @asynccontextmanager
