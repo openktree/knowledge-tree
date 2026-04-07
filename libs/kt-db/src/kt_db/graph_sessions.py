@@ -11,7 +11,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from kt_config.settings import Settings, get_settings
@@ -284,10 +284,27 @@ def _make_session_factory(
 
     Returns (engine, session_factory) so callers can store the engine for disposal.
     """
+    # ``application_name`` is in PgBouncer's default startup-parameter
+    # whitelist so it is safe to send via asyncpg ``server_settings``.
+    # ``search_path`` is NOT — PgBouncer (transaction mode) rejects it as a
+    # startup parameter with ProtocolViolationError. Adding it to PgBouncer's
+    # ``ignore_startup_parameters`` would silently DROP the value (asyncpg
+    # has no compensation logic for search_path the way it does for
+    # extra_float_digits), so every query would land in ``public`` —
+    # exchanging a loud bug for silent data corruption.
+    #
+    # Instead we set search_path via a SQLAlchemy ``begin`` event listener
+    # using ``SET LOCAL``. SET LOCAL is transaction-scoped, which is exactly
+    # what PgBouncer transaction pooling supports: each transaction gets its
+    # own backing PG connection and PgBouncer runs ``server_reset_query``
+    # (DISCARD ALL) between transactions, so any session-scoped SET would
+    # not survive. SET LOCAL re-applies on every BEGIN, regardless of which
+    # backing connection PgBouncer hands out.
     server_settings: dict[str, str] = {"application_name": application_name}
+    schema_search_path: str | None = None
     if schema_name and schema_name != "public":
         validate_schema_name(schema_name)
-        server_settings["search_path"] = f"{schema_name},public"
+        schema_search_path = f"{schema_name},public"
 
     engine = create_async_engine(
         database_url,
@@ -302,5 +319,14 @@ def _make_session_factory(
             "server_settings": server_settings,
         },
     )
+
+    if schema_search_path is not None:
+        # Capture by closure; search_path is validated by validate_schema_name above.
+        _set_local_sql = f"SET LOCAL search_path TO {schema_search_path}"
+
+        @event.listens_for(engine.sync_engine, "begin")
+        def _set_local_search_path(conn):  # type: ignore[no-untyped-def]
+            conn.exec_driver_sql(_set_local_sql)
+
     sf = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return engine, sf
