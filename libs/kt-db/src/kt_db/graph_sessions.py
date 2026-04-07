@@ -197,45 +197,42 @@ class GraphSessionResolver:
                     application_name="kt-write-default",
                 )
             prefix = ""
-        elif graph.storage_mode == "database":
-            # Different database — load connection config
-            db_conn = await self._resolve_db_connection(graph, session)
-            graph_db_config = settings.graph_databases.get(db_conn.config_key)
-            if graph_db_config is None:
-                raise ValueError(
-                    f"Graph '{graph.slug}' references config_key '{db_conn.config_key}' "
-                    f"not found in settings.graph_databases"
-                )
-            graph_engine, graph_sf = _make_session_factory(
-                graph_db_config.graph_database_url,
-                pool_size=graph_db_config.pool_size,
-                max_overflow=graph_db_config.max_overflow,
-                schema_name=graph.schema_name,
-                application_name=f"kt-graph-{graph.slug}",
-            )
-            write_engine, write_sf = _make_session_factory(
-                graph_db_config.write_database_url,
-                pool_size=graph_db_config.pool_size,
-                max_overflow=graph_db_config.max_overflow,
-                schema_name=graph.schema_name,
-                application_name=f"kt-write-{graph.slug}",
-            )
-            prefix = f"{graph.slug}__"
-            if graph_db_config.qdrant_url:
-                _qdrant_url = graph_db_config.qdrant_url
         else:
-            # Same database, different schema — pool sizes from settings
+            # Schema strategy is the only strategy: every non-default graph
+            # gets its own schema. The DATABASE the schema lives in is
+            # determined by ``database_connection_id``: NULL → system DBs,
+            # otherwise → external DBs from settings.graph_databases.
+            if graph.database_connection_id is not None:
+                db_conn = await self._resolve_db_connection(graph, session)
+                graph_db_config = settings.graph_databases.get(db_conn.config_key)
+                if graph_db_config is None:
+                    raise ValueError(
+                        f"Graph '{graph.slug}' references config_key '{db_conn.config_key}' "
+                        f"not found in settings.graph_databases"
+                    )
+                graph_url = graph_db_config.graph_database_url
+                write_url = graph_db_config.write_database_url
+                pool_size = graph_db_config.pool_size
+                max_overflow = graph_db_config.max_overflow
+                if graph_db_config.qdrant_url:
+                    _qdrant_url = graph_db_config.qdrant_url
+            else:
+                graph_url = settings.database_url
+                write_url = settings.write_database_url
+                pool_size = settings.graph_pool_size
+                max_overflow = settings.graph_max_overflow
+
             graph_engine, graph_sf = _make_session_factory(
-                settings.database_url,
-                pool_size=settings.graph_pool_size,
-                max_overflow=settings.graph_max_overflow,
+                graph_url,
+                pool_size=pool_size,
+                max_overflow=max_overflow,
                 schema_name=graph.schema_name,
                 application_name=f"kt-graph-{graph.slug}",
             )
             write_engine, write_sf = _make_session_factory(
-                settings.write_database_url,
-                pool_size=settings.graph_pool_size,
-                max_overflow=settings.graph_max_overflow,
+                write_url,
+                pool_size=pool_size,
+                max_overflow=max_overflow,
                 schema_name=graph.schema_name,
                 application_name=f"kt-write-{graph.slug}",
             )

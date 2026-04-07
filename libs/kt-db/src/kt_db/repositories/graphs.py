@@ -176,6 +176,14 @@ class GraphRepository:
         return list(result.scalars().all())
 
     async def create_database_connection(self, *, name: str, config_key: str) -> DatabaseConnection:
+        # The reserved key is for the synthetic system-DB entry surfaced by
+        # GET /api/v1/graphs/database-connections. A real row with this key
+        # would be silently shadowed and graphs created against it would
+        # actually land in the system DB.
+        from kt_config.settings import DEFAULT_DB_CONFIG_KEY
+
+        if config_key == DEFAULT_DB_CONFIG_KEY:
+            raise ValueError(f"config_key '{DEFAULT_DB_CONFIG_KEY}' is reserved for the system database")
         conn = DatabaseConnection(
             id=uuid.uuid4(),
             name=name,

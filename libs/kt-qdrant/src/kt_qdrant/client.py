@@ -24,6 +24,18 @@ def get_qdrant_client() -> AsyncQdrantClient:
     return _client
 
 
+def make_qdrant_client(url: str, timeout: int | None = None) -> AsyncQdrantClient:
+    """Construct a non-singleton client for an arbitrary Qdrant URL.
+
+    Used by per-graph provisioning when a graph lives in a database whose
+    associated Qdrant instance differs from the system default. The caller
+    is responsible for closing the returned client when done.
+    """
+    if timeout is None:
+        timeout = get_settings().qdrant_timeout
+    return AsyncQdrantClient(url=url, timeout=timeout)
+
+
 async def close_qdrant_client() -> None:
     """Close the singleton client (for graceful shutdown)."""
     global _client

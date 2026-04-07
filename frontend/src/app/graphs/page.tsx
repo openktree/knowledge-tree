@@ -27,8 +27,9 @@ export default function GraphsPage() {
   const [newSlug, setNewSlug] = useState("");
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [newStorageMode, setNewStorageMode] = useState("schema");
-  const [newDbConnKey, setNewDbConnKey] = useState("");
+  // "default" → system DB; otherwise a config_key from listDatabaseConnections().
+  // Schema is the only isolation strategy — the database picker is the only choice.
+  const [newDbKey, setNewDbKey] = useState("default");
   const [dbConnections, setDbConnections] = useState<DatabaseConnectionResponse[]>([]);
 
   const fetchGraphs = useCallback(async () => {
@@ -66,15 +67,13 @@ export default function GraphsPage() {
         slug: newSlug,
         name: newName,
         description: newDescription || undefined,
-        storage_mode: newStorageMode,
-        database_connection_config_key:
-          newStorageMode === "database" && newDbConnKey ? newDbConnKey : undefined,
+        // Omit when "default" so the backend uses the system DB.
+        ...(newDbKey !== "default" && { database_connection_config_key: newDbKey }),
       });
       setNewSlug("");
       setNewName("");
       setNewDescription("");
-      setNewStorageMode("schema");
-      setNewDbConnKey("");
+      setNewDbKey("default");
       setShowCreate(false);
       fetchGraphs();
       refreshGraphContext();
@@ -113,7 +112,7 @@ export default function GraphsPage() {
       (g.description ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesDb =
       dbFilter === "all" ||
-      (dbFilter === "schema" && !g.database_connection_id) ||
+      (dbFilter === "default" && !g.database_connection_id) ||
       g.database_connection_id === dbFilter;
     return matchesSearch && matchesDb;
   });
@@ -201,51 +200,34 @@ export default function GraphsPage() {
               className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="g-mode" className="text-xs font-medium text-muted-foreground">
-                Storage Mode
-              </label>
-              <select
-                id="g-mode"
-                value={newStorageMode}
-                onChange={(e) => {
-                  setNewStorageMode(e.target.value);
-                  if (e.target.value === "schema") setNewDbConnKey("");
-                }}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="schema">Schema (same DB, separate schema)</option>
-                <option value="database">Database (different DB)</option>
-              </select>
-            </div>
-            {newStorageMode === "database" && (
-              <div className="flex flex-col gap-1">
-                <label htmlFor="g-db" className="text-xs font-medium text-muted-foreground">
-                  Database Connection
-                </label>
-                <select
-                  id="g-db"
-                  required
-                  value={newDbConnKey}
-                  onChange={(e) => setNewDbConnKey(e.target.value)}
-                  className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">Select a connection...</option>
-                  {dbConnections.map((c) => (
-                    <option key={c.config_key} value={c.config_key}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                {dbError && (
-                  <p className="text-xs text-destructive">{dbError}</p>
-                )}
-              </div>
-            )}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="g-db" className="text-xs font-medium text-muted-foreground">
+              Database
+            </label>
+            <select
+              id="g-db"
+              value={newDbKey}
+              onChange={(e) => setNewDbKey(e.target.value)}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring w-fit"
+            >
+              {dbConnections.length === 0 ? (
+                <option value="default">default</option>
+              ) : (
+                dbConnections.map((c) => (
+                  <option key={c.config_key} value={c.config_key}>
+                    {c.name}
+                  </option>
+                ))
+              )}
+            </select>
+            {dbError && <p className="text-xs text-destructive">{dbError}</p>}
+            <p className="text-[10px] text-muted-foreground">
+              Schema isolation: each graph gets its own schema in the chosen database.
+              For full DB-level isolation, just keep one graph per database.
+            </p>
           </div>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={creating}>
+            <Button type="submit" size="sm" disabled={creating || dbError !== null}>
               {creating ? "Creating..." : "Create"}
             </Button>
             <Button
@@ -279,7 +261,7 @@ export default function GraphsPage() {
               className="rounded-md border border-border bg-background px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="all">All databases</option>
-              <option value="schema">Default (schema mode)</option>
+              <option value="default">default</option>
               {uniqueDbConnections.map(([id, name]) => (
                 <option key={id} value={id}>
                   {name}
@@ -344,13 +326,7 @@ export default function GraphsPage() {
                 </span>
               </div>
               <div className="flex gap-2 mt-2 text-[10px] text-muted-foreground">
-                <span>
-                  {g.database_connection_name
-                    ? g.database_connection_name
-                    : g.storage_mode === "database"
-                      ? "Separate DB"
-                      : "Shared DB"}
-                </span>
+                <span>DB: {g.database_connection_name ?? "default"}</span>
                 <span>Type: {g.graph_type}</span>
                 {g.byok_enabled && (
                   <Badge variant="outline" className="text-[10px] h-4">

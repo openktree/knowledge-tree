@@ -1413,7 +1413,8 @@ export interface CreateGraphRequest {
   description?: string;
   graph_type?: string;
   byok_enabled?: boolean;
-  storage_mode?: string;
+  // "default" or omitted = system DB; otherwise a config_key from
+  // listDatabaseConnections() (an external DB provisioned in the infra layer).
   database_connection_config_key?: string;
 }
 
@@ -1441,8 +1442,9 @@ export interface UpdateGraphMemberRoleRequest {
 }
 
 export interface DatabaseConnectionResponse {
-  id: string;
+  // null for the synthetic "default" entry; non-null for real database_connections rows
+  id: string | null;
   name: string;
   config_key: string;
-  created_at: string;
+  created_at: string | null;
 }
