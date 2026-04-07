@@ -18,7 +18,10 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Escape ``%`` to ``%%`` for ConfigParser interpolation. URLs with
+# URL-encoded passwords (e.g. ``%2B`` for ``+``) would otherwise raise
+# ``ValueError: invalid interpolation syntax`` inside ``set_main_option``.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 # Optional schema override for multi-graph migrations.
 # Set ALEMBIC_SCHEMA=graph_acme to run migrations in a non-default schema.
