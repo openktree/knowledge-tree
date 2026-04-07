@@ -6,7 +6,8 @@ access, and yields the correct session factories for that graph.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -16,6 +17,10 @@ from kt_api.dependencies import get_db_session, get_graph_session_resolver
 from kt_db.graph_sessions import GraphInfo, GraphSessionResolver
 from kt_db.models import User
 from kt_db.repositories.graphs import GraphRepository
+from kt_rbac.types import GraphRole
+
+if TYPE_CHECKING:
+    from kt_rbac.context import PermissionContext
 
 
 @dataclass
@@ -32,7 +37,9 @@ class GraphContext:
     write_session_factory: async_sessionmaker[AsyncSession]
     qdrant_collection_prefix: str
     user: User
-    user_role: str | None  # None for superuser or default graph
+    user_role: GraphRole | None  # None for superuser or default graph
+    # Set by require_graph_permission(); includes user_groups for source-level checks.
+    permission_context: PermissionContext | None = field(default=None, repr=False)
 
 
 async def get_graph_context(
@@ -65,14 +72,16 @@ async def get_graph_context(
         raise HTTPException(status_code=403, detail="Token does not have access to this graph")
 
     # Access check
-    user_role: str | None = None
+    user_role: GraphRole | None = None
     if not graph.is_default and not user.is_superuser:
-        user_role = await repo.get_member_role(graph.id, user.id)
-        if user_role is None:
+        raw_role = await repo.get_member_role(graph.id, user.id)
+        if raw_role is None:
             raise HTTPException(status_code=403, detail="Not a member of this graph")
+        user_role = GraphRole(raw_role)
     elif not graph.is_default:
         # Superuser — still fetch role for informational purposes
-        user_role = await repo.get_member_role(graph.id, user.id)
+        raw_role = await repo.get_member_role(graph.id, user.id)
+        user_role = GraphRole(raw_role) if raw_role else None
 
     gs = await resolver.resolve(graph.id)
 
@@ -84,27 +93,3 @@ async def get_graph_context(
         user=user,
         user_role=user_role,
     )
-
-
-def require_writer(ctx: GraphContext) -> GraphContext:
-    """Verify the user has at least writer access on the graph.
-
-    Default graph: superuser-only for writes (no membership model).
-    Non-default graphs: requires writer or admin role.
-    """
-    if ctx.user.is_superuser:
-        return ctx
-    if ctx.graph.is_default:
-        raise HTTPException(status_code=403, detail="Admin access required for default graph writes")
-    if ctx.user_role in ("writer", "admin"):
-        return ctx
-    raise HTTPException(status_code=403, detail="Requires at least writer role")
-
-
-def require_graph_admin(ctx: GraphContext) -> GraphContext:
-    """Verify the user has admin access on the graph."""
-    if ctx.user.is_superuser:
-        return ctx
-    if ctx.user_role == "admin":
-        return ctx
-    raise HTTPException(status_code=403, detail="Requires admin role on this graph")

@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.auth.tokens import require_admin
+from kt_api.auth.permissions import require_system_permission
 from kt_api.dependencies import get_db_session
 from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.system_settings import SystemSettingsRepository
+from kt_rbac import Permission
 
 router = APIRouter(prefix="/api/v1/system-settings", tags=["system-settings"])
 
@@ -26,7 +27,7 @@ class UpdateSystemSettingsRequest(BaseModel):
 
 @router.get("", response_model=SystemSettingsResponse)
 async def get_system_settings(
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_SETTINGS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> SystemSettingsResponse:
     """Return all system settings with their source."""
@@ -49,7 +50,7 @@ async def get_system_settings(
 @router.patch("", response_model=SystemSettingsResponse)
 async def update_system_settings(
     body: UpdateSystemSettingsRequest,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_SETTINGS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> SystemSettingsResponse:
     """Update system settings (DB values only)."""

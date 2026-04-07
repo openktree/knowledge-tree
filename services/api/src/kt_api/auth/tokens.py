@@ -146,12 +146,3 @@ async def require_auth(
             return user
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
-
-
-async def require_admin(
-    user: User = Depends(require_auth),
-) -> User:
-    """Dependency that requires the user to be an admin (is_superuser)."""
-    if not user.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    return user

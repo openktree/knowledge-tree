@@ -10,9 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.auth.tokens import require_admin
+from kt_api.auth.permissions import require_system_permission
 from kt_api.dependencies import get_db_session
 from kt_db.models import User
+from kt_rbac import Permission
 
 router = APIRouter(prefix="/api/v1/members", tags=["members"])
 
@@ -33,7 +34,7 @@ class UpdateRoleRequest(BaseModel):
 
 @router.get("", response_model=list[MemberResponse])
 async def list_members(
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_USERS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[MemberResponse]:
     """List all users (admin only)."""
@@ -57,7 +58,7 @@ async def list_members(
 async def update_member_role(
     user_id: str,
     body: UpdateRoleRequest,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_USERS)),
     session: AsyncSession = Depends(get_db_session),
 ) -> MemberResponse:
     """Update a user's admin role (admin only). Cannot demote yourself."""

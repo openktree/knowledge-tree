@@ -12,7 +12,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 
-from kt_api.auth.tokens import require_admin
+from kt_api.auth.permissions import require_system_permission
 from kt_api.dependencies import get_session_factory_cached
 from kt_api.schemas import (
     ConversationUsageResponse,
@@ -22,6 +22,7 @@ from kt_api.schemas import (
     UsageSummaryResponse,
 )
 from kt_db.models import User
+from kt_rbac import Permission
 
 router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/api/v1/usage", tags=["usage"])
 async def get_usage_summary(
     since: datetime | None = Query(None, description="Start of time range (ISO 8601)"),
     until: datetime | None = Query(None, description="End of time range (ISO 8601)"),
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_ADMIN_OPS)),
 ) -> UsageSummaryResponse:
     """Global token usage summary across all tasks."""
     from kt_db.repositories.llm_usage import LlmUsageRepository
@@ -70,7 +71,7 @@ async def get_usage_summary(
 async def get_usage_by_conversation(
     since: datetime | None = Query(None),
     until: datetime | None = Query(None),
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_ADMIN_OPS)),
 ) -> list[ConversationUsageSummary]:
     """Token usage aggregated per conversation."""
     from kt_db.repositories.llm_usage import LlmUsageRepository
@@ -98,7 +99,7 @@ async def get_usage_by_conversation(
 @router.get("/conversations/{conversation_id}", response_model=ConversationUsageResponse)
 async def get_conversation_usage(
     conversation_id: str,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_ADMIN_OPS)),
 ) -> ConversationUsageResponse:
     """Token usage for a specific conversation, broken down by message."""
     from kt_db.repositories.llm_usage import LlmUsageRepository
@@ -140,7 +141,7 @@ async def get_conversation_usage(
 async def get_usage_by_model(
     since: datetime | None = Query(None),
     until: datetime | None = Query(None),
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_ADMIN_OPS)),
 ) -> list[TokenUsageByModel]:
     """Token usage aggregated by model."""
     from kt_db.repositories.llm_usage import LlmUsageRepository

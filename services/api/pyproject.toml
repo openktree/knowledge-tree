@@ -24,6 +24,7 @@ dependencies = [
     "structlog>=25.5.0",
     "cryptography>=46.0.5",
     "kt-auth",
+    "kt-rbac",
 ]
 
 [build-system]
@@ -43,6 +44,7 @@ kt-worker-ingest = { workspace = true }
 kt-worker-synthesis = { workspace = true }
 kt-worker-nodes = { workspace = true }
 kt-auth = { workspace = true }
+kt-rbac = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

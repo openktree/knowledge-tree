@@ -10,10 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kt_api.auth.tokens import require_admin
+from kt_api.auth.permissions import require_system_permission
 from kt_api.dependencies import get_db_session
 from kt_db.models import User
 from kt_db.repositories.invites import InviteRepository
+from kt_rbac import Permission
 
 router = APIRouter(prefix="/api/v1/invites", tags=["invites"])
 
@@ -68,7 +69,7 @@ def _invite_response(inv: object) -> InviteResponse:
 @router.post("", response_model=InviteResponse, status_code=201)
 async def create_invite(
     body: InviteCreateRequest,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_INVITES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> InviteResponse:
     """Admin: generate a new invite for a specific email."""
@@ -87,7 +88,7 @@ async def create_invite(
 
 @router.get("", response_model=list[InviteResponse])
 async def list_invites(
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_INVITES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[InviteResponse]:
     """Admin: list all invites."""
@@ -99,7 +100,7 @@ async def list_invites(
 @router.delete("/{invite_id}", status_code=204)
 async def revoke_invite(
     invite_id: str,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_system_permission(Permission.SYSTEM_MANAGE_INVITES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Admin: revoke an unredeemed invite."""
