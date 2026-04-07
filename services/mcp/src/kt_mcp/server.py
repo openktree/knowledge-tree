@@ -180,16 +180,10 @@ async def _get_graph_factory(graph: str) -> async_sessionmaker:
         # Load user's graph-local groups for source-level access checks
         user_groups: frozenset[str] = frozenset()
         if not is_superuser and graph_role is not None:
-            from kt_db.models import GraphGroup, GraphGroupMember
+            from kt_db.repositories.graph_groups import GraphGroupRepository
 
             async with gs.graph_session_factory() as graph_session:
-                stmt = (
-                    select(GraphGroup.name)
-                    .join(GraphGroupMember, GraphGroupMember.group_id == GraphGroup.id)
-                    .where(GraphGroupMember.user_id == user_id)
-                )
-                result = await graph_session.execute(stmt)
-                user_groups = frozenset(result.scalars().all())
+                user_groups = frozenset(await GraphGroupRepository(graph_session).get_user_group_names(user_id))
 
         ctx = PermissionContext(
             user_id=user_id,

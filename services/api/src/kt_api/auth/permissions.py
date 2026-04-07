@@ -15,16 +15,17 @@ Usage in endpoints:
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from typing import Any
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_api.auth.tokens import require_auth
 from kt_api.graph_context import GraphContext, get_graph_context
-from kt_db.models import GraphGroupMember, User
+from kt_db.models import User
+from kt_db.repositories.graph_groups import GraphGroupRepository
 from kt_rbac import Permission, PermissionDeniedError, default_checker
 from kt_rbac.context import PermissionContext
 from kt_rbac.types import GraphRole
@@ -88,20 +89,9 @@ def require_graph_permission(permission: Permission) -> Callable[..., Any]:
     return _check
 
 
-async def load_user_graph_groups(user_id: Any, graph_session: AsyncSession) -> list[str]:
-    """Load a user's group names from a graph's schema.
-
-    Queries graph_group_members → graph_groups in the graph-specific schema.
-    """
-    from kt_db.models import GraphGroup
-
-    stmt = (
-        select(GraphGroup.name)
-        .join(GraphGroupMember, GraphGroupMember.group_id == GraphGroup.id)
-        .where(GraphGroupMember.user_id == user_id)
-    )
-    result = await graph_session.execute(stmt)
-    return list(result.scalars().all())
+async def load_user_graph_groups(user_id: uuid.UUID, graph_session: AsyncSession) -> list[str]:
+    """Load a user's group names from a graph's schema."""
+    return await GraphGroupRepository(graph_session).get_user_group_names(user_id)
 
 
 async def build_permission_context(
