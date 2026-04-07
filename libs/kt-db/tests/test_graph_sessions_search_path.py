@@ -57,8 +57,7 @@ class TestSchemaSearchPath:
 
         server_settings = captured["connect_args"]["server_settings"]
         assert "search_path" not in server_settings, (
-            "search_path must not be sent as an asyncpg startup parameter "
-            "(PgBouncer transaction mode rejects it)."
+            "search_path must not be sent as an asyncpg startup parameter (PgBouncer transaction mode rejects it)."
         )
         # application_name is on PgBouncer's whitelist and is fine
         assert server_settings["application_name"] == "kt"
