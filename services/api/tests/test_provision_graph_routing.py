@@ -132,7 +132,9 @@ async def test_provision_routes_to_external_db_when_connection_set(stub_provisio
     assert len(fake_subprocess_calls) == 2  # one per ini file
     for env in fake_subprocess_calls:
         assert env["DATABASE_URL"] == "postgresql+asyncpg://kt:pw@shared-graph-rw:5432/knowledge_tree_shared"
-        assert env["WRITE_DATABASE_URL"] == "postgresql+asyncpg://kt:pw@shared-pgbouncer:5432/knowledge_tree_shared_write"
+        assert (
+            env["WRITE_DATABASE_URL"] == "postgresql+asyncpg://kt:pw@shared-pgbouncer:5432/knowledge_tree_shared_write"
+        )
         assert env["ALEMBIC_SCHEMA"] == "graph_prov_test"
 
 
