@@ -164,8 +164,8 @@ async def contribute_processed_to_public(
 ) -> int:
     """Push freshly-decomposed eligible sources upstream to the public graph.
 
-    Returns the number of sources for which a contribute call was attempted.
-    All errors are caught and logged at WARNING — contribute is best-effort
+    Returns the number of sources for which a contribute call **succeeded**
+    (failures are caught and logged at WARNING). Contribute is best-effort
     and must never abort the surrounding ingest pipeline.
 
     Sources that were just served from the public cache are skipped: there
@@ -176,7 +176,7 @@ async def contribute_processed_to_public(
         return 0
 
     skip = cache_hit_source_ids or set()
-    attempted = 0
+    succeeded = 0
 
     for ps in processed:
         if ps.source_id in skip:
@@ -194,8 +194,9 @@ async def contribute_processed_to_public(
 
         try:
             await engine.contribute_to_public(raw_source_id=raw_uuid)
-            attempted += 1
         except Exception:
             logger.warning("contribute_to_public failed for %s", ps.name, exc_info=True)
+            continue
+        succeeded += 1
 
-    return attempted
+    return succeeded

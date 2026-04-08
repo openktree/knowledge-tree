@@ -1663,7 +1663,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.42.0"
+version = "0.44.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1881,6 +1881,7 @@ dependencies = [
     { name = "kt-agents-core" },
     { name = "kt-config" },
     { name = "kt-db" },
+    { name = "kt-graph" },
     { name = "kt-models" },
     { name = "kt-providers" },
     { name = "kt-qdrant" },
@@ -1896,6 +1897,7 @@ requires-dist = [
     { name = "kt-agents-core", editable = "libs/kt-agents-core" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
+    { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
