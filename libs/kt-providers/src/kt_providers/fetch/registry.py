@@ -72,6 +72,15 @@ class FetchProviderRegistry:
     def has_provider(self, provider_id: str) -> bool:
         return provider_id in self._providers
 
+    def get_provider(self, provider_id: str) -> ContentFetcherProvider | None:
+        """Look up a registered provider by id, or ``None`` if not present.
+
+        Public accessor used by tests and any caller that needs to inspect
+        provider state (e.g. ``is_public``) without reaching into the private
+        ``_providers`` dict.
+        """
+        return self._providers.get(provider_id)
+
     async def fetch(
         self,
         uri: str,

@@ -134,6 +134,14 @@ def _fake_settings(**overrides: object) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
+def _provider(reg: FetchProviderRegistry, pid: str) -> ContentFetcherProvider:
+    """Test helper: assert a provider is registered and return it via the
+    public ``get_provider`` accessor (avoids reaching into ``_providers``)."""
+    p = reg.get_provider(pid)
+    assert p is not None, f"expected provider {pid!r} to be registered"
+    return p
+
+
 def test_builder_applies_public_overrides_per_instance():
     settings = _fake_settings(
         fetch_provider_public_overrides={"httpx": False},
@@ -143,10 +151,10 @@ def test_builder_applies_public_overrides_per_instance():
     # The override only patches *this* registry's instance — fresh providers
     # built without the override stay public.
     fresh = build_fetch_registry(_fake_settings())
-    assert registry._providers["httpx"].is_public is False
-    assert fresh._providers["httpx"].is_public is True
+    assert _provider(registry, "httpx").is_public is False
+    assert _provider(fresh, "httpx").is_public is True
     # Untouched providers keep their default classification.
-    assert registry._providers["doi"].is_public is True
+    assert _provider(registry, "doi").is_public is True
 
 
 def test_builder_ignores_overrides_for_unknown_provider_ids():
@@ -156,7 +164,9 @@ def test_builder_ignores_overrides_for_unknown_provider_ids():
     # Should not raise — unknown ids are silently ignored so a stale config
     # entry doesn't break worker startup.
     registry = build_fetch_registry(settings)
-    assert all(p.is_public is True for p in registry._providers.values())
+    # All registered providers keep their default (public) classification.
+    for pid in ("doi", "httpx"):
+        assert _provider(registry, pid).is_public is True
 
 
 @pytest.mark.asyncio
