@@ -69,7 +69,7 @@ async def get_model_roles() -> dict[str, Any]:
 # are added/retired.  To make this configurable without a code change,
 # move the list to Settings and populate from env/YAML.
 SYNTHESIS_MODELS: list[dict[str, str]] = [
-    {"model_id": "openrouter/google/gemini-3.1-pro", "display_name": "Gemini 3.1 Pro", "provider": "google"},
+    {"model_id": "openrouter/google/gemini-3.1-pro-preview", "display_name": "Gemini 3.1 Pro", "provider": "google"},
     {"model_id": "openrouter/z-ai/glm-5v-turbo", "display_name": "GLM 5 Turbo", "provider": "z-ai"},
     {"model_id": "openrouter/minimax/minimax-2.7", "display_name": "MiniMax 2.7", "provider": "minimax"},
     {"model_id": "openrouter/anthropic/claude-sonnet-4", "display_name": "Claude Sonnet", "provider": "anthropic"},
