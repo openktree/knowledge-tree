@@ -61,6 +61,8 @@ class GraphRepository:
         created_by: uuid.UUID | None = None,
         is_default: bool = False,
         status: str = "provisioning",
+        contribute_to_public: bool = True,
+        use_public_cache: bool = True,
     ) -> Graph:
         resolved_schema = schema_name or f"graph_{slug}"
         validate_schema_name(resolved_schema)
@@ -78,6 +80,8 @@ class GraphRepository:
             created_by=created_by,
             is_default=is_default,
             status=status,
+            contribute_to_public=contribute_to_public,
+            use_public_cache=use_public_cache,
         )
         self._session.add(graph)
         await self._session.flush()
@@ -90,6 +94,8 @@ class GraphRepository:
         name: str | None = None,
         description: str | None = None,
         status: str | None = None,
+        contribute_to_public: bool | None = None,
+        use_public_cache: bool | None = None,
     ) -> Graph:
         if name is not None:
             graph.name = name
@@ -97,6 +103,10 @@ class GraphRepository:
             graph.description = description
         if status is not None:
             graph.status = status
+        if contribute_to_public is not None:
+            graph.contribute_to_public = contribute_to_public
+        if use_public_cache is not None:
+            graph.use_public_cache = use_public_cache
         await self._session.flush()
         return graph
 

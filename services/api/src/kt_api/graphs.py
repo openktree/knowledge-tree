@@ -53,6 +53,11 @@ class GraphResponse(BaseModel):
     updated_at: datetime
     member_count: int = 0
     node_count: int = 0
+    # Multigraph public-cache toggles. Both are server-defaulted to True
+    # for non-default graphs. The default graph itself ignores them — it
+    # never participates as either source or target of the bridge.
+    contribute_to_public: bool = True
+    use_public_cache: bool = True
 
 
 class DatabaseConnectionResponse(BaseModel):
@@ -82,11 +87,21 @@ class CreateGraphRequest(BaseModel):
     # the schema lives in. To get a graph isolated to its own DB, just don't
     # create another graph against the same connection.
     database_connection_config_key: str | None = None
+    # Public-cache toggles — accepted at creation time so an admin can
+    # carve out a graph that opts out of either side of the bridge from
+    # day one. Both default to True; both are ignored for is_default=True.
+    contribute_to_public: bool = True
+    use_public_cache: bool = True
 
 
 class UpdateGraphRequest(BaseModel):
     name: str | None = None
     description: str | None = None
+    # Public-cache toggles — both are ignored when ``graph.is_default`` is
+    # True (the endpoint rejects such updates with HTTP 400). Use ``None``
+    # to leave the existing value unchanged.
+    contribute_to_public: bool | None = None
+    use_public_cache: bool | None = None
 
 
 class GraphMemberResponse(BaseModel):
@@ -134,6 +149,8 @@ def _graph_response(
         updated_at=graph.updated_at,
         member_count=member_count,
         node_count=node_count,
+        contribute_to_public=graph.contribute_to_public,
+        use_public_cache=graph.use_public_cache,
     )
 
 
@@ -309,6 +326,8 @@ async def create_graph(
         database_connection_id=db_conn_id,
         created_by=admin.id,
         status="provisioning",
+        contribute_to_public=body.contribute_to_public,
+        use_public_cache=body.use_public_cache,
     )
     await session.commit()
 
@@ -414,12 +433,41 @@ async def update_graph(
     body: UpdateGraphRequest,
     user: User = Depends(require_auth),
     session: AsyncSession = Depends(get_db_session),
+    resolver: GraphSessionResolver = Depends(get_graph_session_resolver),
 ) -> GraphResponse:
-    """Update graph name/description. Requires admin role on the graph."""
+    """Update graph name/description and public-cache toggles.
+
+    Requires admin role on the graph. The default graph rejects toggle
+    edits with HTTP 400 — it has no upstream graph to share with or pull
+    from, so the toggles are meaningless there.
+    """
     graph = await _require_graph_access(slug, user, session, permission=Permission.GRAPH_MANAGE_METADATA)
+
+    toggle_change = body.contribute_to_public is not None or body.use_public_cache is not None
+    if toggle_change and graph.is_default:
+        raise HTTPException(
+            status_code=400,
+            detail="The default graph has no upstream — public-cache toggles cannot be edited",
+        )
+
     repo = GraphRepository(session)
-    graph = await repo.update(graph, name=body.name, description=body.description)
+    graph = await repo.update(
+        graph,
+        name=body.name,
+        description=body.description,
+        contribute_to_public=body.contribute_to_public,
+        use_public_cache=body.use_public_cache,
+    )
     await session.commit()
+
+    # The resolver caches a snapshot of these toggles in ``GraphInfo`` —
+    # invalidate so the next workflow run picks up the new values. The
+    # cache invalidation is cheap (just an entry pop + engine dispose for
+    # non-default graphs) and is exactly what existing endpoints already
+    # do for status changes (see ``retry_provision`` / ``delete_graph``).
+    if toggle_change:
+        await resolver.invalidate(graph.id)
+
     members = await repo.get_members(graph.id)
     return _graph_response(graph, member_count=len(members))
 
