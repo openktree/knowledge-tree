@@ -102,6 +102,17 @@ def build_fetch_registry(
 
     host_overrides = getattr(settings, "fetch_host_overrides", None) or {}
 
+    # Apply per-provider is_public overrides from Settings.  Patches the
+    # *instance* (not the class) so test doubles and other process-local
+    # registries are unaffected.  Future tenant fetchers (jira/sharepoint)
+    # declare ``is_public = False`` on the class itself; this hook is for
+    # operators who want to flip a normally-public fetcher private when it
+    # is pointed at an intranet.
+    public_overrides = getattr(settings, "fetch_provider_public_overrides", None) or {}
+    for provider in providers:
+        if provider.provider_id in public_overrides:
+            provider.is_public = public_overrides[provider.provider_id]
+
     pref_store: HostPreferenceStore | None
     if in_memory_prefs:
         pref_store = InMemoryHostPreferenceStore()

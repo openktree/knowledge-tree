@@ -19,6 +19,17 @@ from kt_providers.fetch.types import FetchResult
 class ContentFetcherProvider(ABC):
     """Abstract base class for content-fetcher providers."""
 
+    #: Whether content fetched by this provider is considered public — i.e.
+    #: safe to cache in / contribute to the shared default graph. Built-in
+    #: web fetchers (doi, httpx, curl_cffi, flaresolverr) are public. Future
+    #: connectors that pull from authenticated tenant systems (Jira,
+    #: Confluence, SharePoint, etc.) MUST override this to False. Operator
+    #: overrides live in ``Settings.fetch_provider_public_overrides`` and are
+    #: applied per-instance by ``build_fetch_registry`` (so this is a
+    #: regular class attribute, not a ``ClassVar``, to allow instance
+    #: assignment).
+    is_public: bool = True
+
     @property
     @abstractmethod
     def provider_id(self) -> str:
