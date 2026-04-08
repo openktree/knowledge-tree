@@ -439,9 +439,7 @@ class SyncEngine:
                     # graph-db id. This avoids ambiguity if graph-db ever
                     # holds duplicate rows with the same hash.
                     wrs_id_row = await ws.execute(
-                        select(WriteRawSource.id)
-                        .where(WriteRawSource.content_hash == wpc.source_content_hash)
-                        .limit(1)
+                        select(WriteRawSource.id).where(WriteRawSource.content_hash == wpc.source_content_hash).limit(1)
                     )
                     raw_source_id = wrs_id_row.scalar_one_or_none()
                     if raw_source_id is None:
@@ -455,9 +453,7 @@ class SyncEngine:
                         continue
                     # Confirm the graph-db row exists; if not, the
                     # raw_sources sync hasn't caught up yet — defer.
-                    gs_row = await gs.execute(
-                        select(RawSource.id).where(RawSource.id == raw_source_id)
-                    )
+                    gs_row = await gs.execute(select(RawSource.id).where(RawSource.id == raw_source_id))
                     if gs_row.scalar_one_or_none() is None:
                         logger.info(
                             "graph-db RawSource %s not yet synced, deferring prohibited_chunk %s",
@@ -632,9 +628,7 @@ class SyncEngine:
             real_source = await write_repo.get_by_content_hash(wfs.raw_source_content_hash)
 
         if real_source is not None:
-            existing = await gs.execute(
-                select(RawSource.id).where(RawSource.id == real_source.id)
-            )
+            existing = await gs.execute(select(RawSource.id).where(RawSource.id == real_source.id))
             if existing.scalar_one_or_none() is not None:
                 raw_source_id = real_source.id
             else:
