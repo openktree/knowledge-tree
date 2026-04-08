@@ -14,6 +14,7 @@ const sidebars: SidebarsConfig = {
         "how-it-works/relations-and-edges",
         "how-it-works/dimensions",
         "how-it-works/synthesis-and-super-synthesis",
+        "how-it-works/fetch-providers",
       ],
     },
   ],

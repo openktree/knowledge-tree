@@ -44,12 +44,31 @@ All configuration flows through `get_settings()`. Never hardcode API keys or con
 
 ## kt-providers
 
-**Knowledge providers** — external data sources.
+**External data sources.** Two parallel provider families that mirror each
+other architecturally — both built around an abstract base class plus a
+registry that composes concrete implementations.
 
-- `KnowledgeProvider` abstract base class
-- `SerperProvider` — Serper search API (default)
-- `BraveProvider` — Brave Search API
+**Knowledge providers (search):**
+- `KnowledgeProvider` abstract base class (`base.py`)
+- `ProviderRegistry` — fan-out across all enabled providers, deduplicate by URI
+- `SerperSearchProvider` — Serper.dev (Google) API (default)
+- `BraveSearchProvider` — Brave Search API
 - New providers implement the ABC with a single `search()` method
+
+**Fetch providers (URL → content):** in the `fetch/` subpackage.
+- `ContentFetcherProvider` abstract base class
+- `FetchProviderRegistry` — ordered fallback chain with per-call `preferred=`,
+  static and Redis-backed per-host preferences, and an SSRF guard at the
+  entry of every fetch
+- `DoiContentFetcher` — Crossref + Unpaywall shortcut for academic publishers
+- `HttpxContentFetcher` — plain async HTTP baseline
+- `CurlCffiContentFetcher` — TLS fingerprint impersonation (defeats most
+  Cloudflare blocks without launching a browser)
+- `FlareSolverrContentFetcher` — headless Chromium fallback (Byparr/FlareSolverr)
+
+See [How It Works → Fetch Providers](/how-it-works/fetch-providers) for the
+full design rationale, configuration, and instructions for adding a new
+provider.
 
 ## kt-graph
 

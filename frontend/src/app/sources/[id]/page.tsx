@@ -365,6 +365,36 @@ export default function SourceDetailPage({
             </div>
           )}
 
+          {/* Fetcher strategy audit — shows which providers were tried and who won */}
+          {source.fetcher && source.fetcher.attempts.length > 0 && (
+            <div className="mb-3 rounded-md bg-muted/40 border border-border px-4 py-2.5 text-xs">
+              <div className="mb-1 font-medium text-muted-foreground">
+                {source.fetcher.winner ? (
+                  <>Fetched via <span className="text-foreground">{source.fetcher.winner}</span></>
+                ) : (
+                  <>All fetchers failed</>
+                )}
+                {source.fetcher.attempts.length > 1 && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    (tried {source.fetcher.attempts.map((a) => a.provider_id).join(" → ")})
+                  </span>
+                )}
+              </div>
+              <ul className="space-y-0.5 font-mono">
+                {source.fetcher.attempts.map((attempt, idx) => (
+                  <li
+                    key={`${attempt.provider_id}-${idx}`}
+                    className={attempt.success ? "text-green-500" : "text-muted-foreground"}
+                  >
+                    {attempt.success ? "✓" : "✗"} {attempt.provider_id} — {attempt.elapsed_ms}ms
+                    {attempt.error && <span className="text-red-400/80"> {attempt.error}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* URI display */}
           <div className="text-xs text-muted-foreground truncate pb-3" title={source.uri}>
             {source.uri}

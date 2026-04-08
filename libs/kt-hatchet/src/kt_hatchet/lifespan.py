@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
     from kt_models.embeddings import EmbeddingService
     from kt_models.gateway import ModelGateway
-    from kt_providers.fetcher import ContentFetcher
+    from kt_providers.fetch import FetchProviderRegistry
     from kt_providers.registry import ProviderRegistry
 
 
@@ -41,7 +41,7 @@ class WorkerState:
     model_gateway: ModelGateway
     embedding_service: EmbeddingService
     provider_registry: ProviderRegistry
-    content_fetcher: ContentFetcher | None
+    fetch_registry: FetchProviderRegistry | None
     qdrant_client: AsyncQdrantClient | None = None
 
     # Multi-graph session resolver (resolves graph_id to per-graph session factories)
@@ -92,14 +92,11 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
 
         provider_registry.register(SerperSearchProvider(settings.serper_key))
 
-    content_fetcher = None
+    fetch_registry = None
     if settings.enable_full_text_fetch:
-        from kt_providers.fetcher import ContentFetcher
+        from kt_providers.fetch import build_fetch_registry
 
-        content_fetcher = ContentFetcher(
-            timeout=settings.full_text_fetch_timeout,
-            max_concurrent=settings.full_text_fetch_max_urls,
-        )
+        fetch_registry = build_fetch_registry(settings)
 
     # Qdrant vector search client (required for all vector search)
     from kt_qdrant.client import get_qdrant_client
@@ -147,7 +144,7 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         model_gateway=model_gateway,
         embedding_service=embedding_service,
         provider_registry=provider_registry,
-        content_fetcher=content_fetcher,
+        fetch_registry=fetch_registry,
         qdrant_client=qdrant_client,
         graph_resolver=graph_resolver,
     )
@@ -194,14 +191,11 @@ async def build_worker_state() -> WorkerState:
 
         provider_registry.register(SerperSearchProvider(settings.serper_key))
 
-    content_fetcher = None
+    fetch_registry = None
     if settings.enable_full_text_fetch:
-        from kt_providers.fetcher import ContentFetcher
+        from kt_providers.fetch import build_fetch_registry
 
-        content_fetcher = ContentFetcher(
-            timeout=settings.full_text_fetch_timeout,
-            max_concurrent=settings.full_text_fetch_max_urls,
-        )
+        fetch_registry = build_fetch_registry(settings)
 
     # Qdrant vector search client (required for all vector search)
     from kt_qdrant.client import get_qdrant_client
@@ -228,7 +222,7 @@ async def build_worker_state() -> WorkerState:
         model_gateway=model_gateway,
         embedding_service=embedding_service,
         provider_registry=provider_registry,
-        content_fetcher=content_fetcher,
+        fetch_registry=fetch_registry,
         qdrant_client=qdrant_client,
         graph_resolver=graph_resolver,
     )

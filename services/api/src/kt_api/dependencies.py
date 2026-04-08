@@ -19,7 +19,7 @@ from kt_graph.read_engine import ReadGraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_providers.brave import BraveSearchProvider
-from kt_providers.fetcher import ContentFetcher
+from kt_providers.fetch import build_fetch_registry
 from kt_providers.registry import ProviderRegistry
 from kt_providers.serper import SerperSearchProvider
 
@@ -114,12 +114,9 @@ async def get_agent_context(
     if default_provider in ("serper", "all") and settings.serper_key:
         provider_registry.register(SerperSearchProvider(settings.serper_key))
 
-    content_fetcher = None
+    fetch_registry = None
     if settings.enable_full_text_fetch:
-        content_fetcher = ContentFetcher(
-            timeout=settings.full_text_fetch_timeout,
-            max_concurrent=settings.full_text_fetch_max_urls,
-        )
+        fetch_registry = build_fetch_registry(settings)
 
     return AgentContext(
         graph_engine=graph_engine,
@@ -128,7 +125,7 @@ async def get_agent_context(
         embedding_service=embedding_service,
         session=session,
         emit_event=emit_event,
-        content_fetcher=content_fetcher,
+        fetch_registry=fetch_registry,
         session_factory=factory,
         qdrant_client=qdrant_client,
     )

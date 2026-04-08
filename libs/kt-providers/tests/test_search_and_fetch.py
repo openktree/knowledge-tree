@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kt_config.types import RawSearchResult
-from kt_providers.fetcher import FetchResult
+from kt_providers.fetch import FetchResult
 from kt_providers.search_and_fetch import filter_fresh_urls, search_and_store
 
 
@@ -35,10 +35,10 @@ def _make_write_source(uri: str = "https://example.com", is_full_text: bool = Fa
     return source
 
 
-def _make_ctx(content_fetcher: MagicMock | None = None) -> MagicMock:
+def _make_ctx(fetch_registry: MagicMock | None = None) -> MagicMock:
     """Create a mock AgentContext."""
     ctx = MagicMock()
-    ctx.content_fetcher = content_fetcher
+    ctx.fetch_registry = fetch_registry
 
     # Write session factory returns a mock session
     mock_write_session = MagicMock()
@@ -84,7 +84,7 @@ def _mock_page_log(fresh_urls: set[str] | None = None) -> MagicMock:
 @pytest.mark.asyncio
 async def test_search_and_store_no_fetcher():
     """Without a content_fetcher, search_and_store just searches and stores."""
-    ctx = _make_ctx(content_fetcher=None)
+    ctx = _make_ctx(fetch_registry=None)
     results = [_make_search_result("https://a.com"), _make_search_result("https://b.com")]
     ctx.provider_registry.search_all = AsyncMock(return_value=results)
 
@@ -112,13 +112,13 @@ async def test_search_and_store_with_fetcher_updates_content():
     """With content_fetcher, full-text content is fetched and sources are updated."""
     fetcher = MagicMock()
     full_text = "x" * 200
-    fetcher.fetch_urls = AsyncMock(
+    fetcher.fetch_many = AsyncMock(
         return_value=[
             FetchResult(uri="https://a.com", content=full_text),
         ]
     )
 
-    ctx = _make_ctx(content_fetcher=fetcher)
+    ctx = _make_ctx(fetch_registry=fetcher)
     results = [_make_search_result("https://a.com")]
     ctx.provider_registry.search_all = AsyncMock(return_value=results)
 
@@ -149,13 +149,13 @@ async def test_search_and_store_with_fetcher_updates_content():
 async def test_search_and_store_fetch_failure_keeps_snippet():
     """When full-text fetch fails, the original snippet is preserved."""
     fetcher = MagicMock()
-    fetcher.fetch_urls = AsyncMock(
+    fetcher.fetch_many = AsyncMock(
         return_value=[
             FetchResult(uri="https://a.com", error="Timeout"),
         ]
     )
 
-    ctx = _make_ctx(content_fetcher=fetcher)
+    ctx = _make_ctx(fetch_registry=fetcher)
     results = [_make_search_result("https://a.com")]
     ctx.provider_registry.search_all = AsyncMock(return_value=results)
 
@@ -186,9 +186,9 @@ async def test_search_and_store_fetch_failure_keeps_snippet():
 async def test_search_and_store_skips_already_full_text():
     """Sources that are already full_text are not re-fetched."""
     fetcher = MagicMock()
-    fetcher.fetch_urls = AsyncMock(return_value=[])
+    fetcher.fetch_many = AsyncMock(return_value=[])
 
-    ctx = _make_ctx(content_fetcher=fetcher)
+    ctx = _make_ctx(fetch_registry=fetcher)
     results = [_make_search_result("https://a.com")]
     ctx.provider_registry.search_all = AsyncMock(return_value=results)
 
@@ -209,7 +209,7 @@ async def test_search_and_store_skips_already_full_text():
 
     assert len(raw_sources) == 1
     # fetch_urls called with empty list since all sources are already full_text
-    fetcher.fetch_urls.assert_not_called()
+    fetcher.fetch_many.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -217,14 +217,14 @@ async def test_search_and_store_respects_max_fetch_urls():
     """Only max_fetch_urls sources are fetched even if more are available."""
     fetcher = MagicMock()
     full_text = "x" * 200
-    fetcher.fetch_urls = AsyncMock(
+    fetcher.fetch_many = AsyncMock(
         return_value=[
             FetchResult(uri="https://a.com", content=full_text),
             FetchResult(uri="https://b.com", content=full_text),
         ]
     )
 
-    ctx = _make_ctx(content_fetcher=fetcher)
+    ctx = _make_ctx(fetch_registry=fetcher)
     results = [
         _make_search_result("https://a.com"),
         _make_search_result("https://b.com"),
@@ -253,7 +253,7 @@ async def test_search_and_store_respects_max_fetch_urls():
         raw_sources = await search_and_store("test query", ctx, max_fetch_urls=2)
 
     # fetch_urls should have been called with only 2 URLs
-    call_args = fetcher.fetch_urls.call_args
+    call_args = fetcher.fetch_many.call_args
     fetched_uris = call_args[0][0]
     assert len(fetched_uris) == 2
 
@@ -261,7 +261,7 @@ async def test_search_and_store_respects_max_fetch_urls():
 @pytest.mark.asyncio
 async def test_search_and_store_empty_results():
     """Empty search results return empty list."""
-    ctx = _make_ctx(content_fetcher=None)
+    ctx = _make_ctx(fetch_registry=None)
     ctx.provider_registry.search_all = AsyncMock(return_value=[])
 
     with pytest.MonkeyPatch.context() as mp:
@@ -326,7 +326,7 @@ async def testfilter_fresh_urls_empty_input():
 @pytest.mark.asyncio
 async def test_search_and_store_skips_fresh_urls():
     """Fresh URLs from write_page_fetch_log are excluded from results."""
-    ctx = _make_ctx(content_fetcher=None)
+    ctx = _make_ctx(fetch_registry=None)
     results = [
         _make_search_result("https://fresh.com"),
         _make_search_result("https://new.com"),
@@ -356,7 +356,7 @@ async def test_search_and_store_skips_fresh_urls():
 @pytest.mark.asyncio
 async def test_search_and_store_records_fetches_in_log():
     """Processed URLs are recorded in the page fetch log."""
-    ctx = _make_ctx(content_fetcher=None)
+    ctx = _make_ctx(fetch_registry=None)
     results = [_make_search_result("https://a.com")]
     ctx.provider_registry.search_all = AsyncMock(return_value=results)
 

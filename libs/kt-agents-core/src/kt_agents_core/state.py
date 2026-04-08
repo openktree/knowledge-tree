@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from kt_graph.worker_engine import WorkerGraphEngine
     from kt_models.embeddings import EmbeddingService
     from kt_models.gateway import ModelGateway
-    from kt_providers.fetcher import ContentFetcher, FileDataStore
+    from kt_providers.fetch import FetchProviderRegistry, FileDataStore
     from kt_providers.registry import ProviderRegistry
 
     # Either engine type can be used as graph_engine
@@ -114,7 +114,7 @@ class AgentContext:
         embedding_service: EmbeddingService | None,
         session: AsyncSession | None,
         emit_event: EventCallback | None = None,
-        content_fetcher: ContentFetcher | None = None,
+        fetch_registry: FetchProviderRegistry | None = None,
         session_factory: async_sessionmaker[AsyncSession] | None = None,
         file_data_store: FileDataStore | None = None,
         parent: AgentContext | None = None,
@@ -128,7 +128,7 @@ class AgentContext:
         self.embedding_service = embedding_service
         self.session = session
         self._emit_event = emit_event
-        self.content_fetcher = content_fetcher
+        self.fetch_registry = fetch_registry
         self.session_factory = session_factory
         self.write_session_factory = write_session_factory
         self.qdrant_client = qdrant_client
@@ -137,7 +137,7 @@ class AgentContext:
         self.pipeline_tracker: Any | None = pipeline_tracker
 
         if file_data_store is None:
-            from kt_providers.fetcher import FileDataStore as _FDS
+            from kt_providers.fetch import FileDataStore as _FDS
 
             file_data_store = _FDS()
         self.file_data_store: FileDataStore = file_data_store
@@ -172,7 +172,7 @@ class AgentContext:
             embedding_service=self.embedding_service,
             session=None,
             emit_event=self._emit_event,
-            content_fetcher=self.content_fetcher,
+            fetch_registry=self.fetch_registry,
             session_factory=self.session_factory,
             file_data_store=self.file_data_store,
             parent=self,

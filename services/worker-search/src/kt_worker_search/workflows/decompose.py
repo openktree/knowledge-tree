@@ -560,7 +560,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
     state = cast(WorkerState, ctx.lifespan)
 
     from kt_db.repositories.write_sources import WriteSourceRepository
-    from kt_providers.fetcher import ContentFetcher
+    from kt_providers.fetch import build_fetch_registry
 
     write_session = (await state.resolve_sessions(input.graph_id))[1]()
     content_updated = False
@@ -577,18 +577,23 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
             logger.warning("reingest: source %s not found", input.raw_source_id)
             return ReingestSourceOutput(message=message).model_dump()
 
-        # Step 1: Re-fetch URL content
+        # Step 1: Re-fetch URL content via the full provider chain
         ctx.log(f"Re-fetching URL: {source.uri}")
-        fetcher = ContentFetcher()
+        registry = build_fetch_registry(state.settings)
         try:
-            result = await fetcher.fetch_url(source.uri)
+            result = await registry.fetch(source.uri)
         finally:
-            await fetcher.close()
+            await registry.close()
 
+        fetcher_attempts = [a.to_dict() for a in result.attempts]
         if not result.success:
             message = f"Failed to fetch source content: {result.error}"
             ctx.log(message)
-            await write_source_repo.mark_fetch_attempted(source.id, error=result.error)
+            await write_source_repo.mark_fetch_attempted(
+                source.id,
+                error=result.error,
+                fetcher_attempts=fetcher_attempts,
+            )
             await write_session.commit()
             return ReingestSourceOutput(message=message).model_dump()
 
@@ -609,7 +614,12 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
             values["content_type"] = result.content_type
 
         await write_session.execute(sa_update(WriteRawSource).where(WriteRawSource.id == source.id).values(**values))
-        await write_source_repo.mark_fetch_attempted(source.id, error=None)
+        await write_source_repo.mark_fetch_attempted(
+            source.id,
+            error=None,
+            fetcher_winner=result.provider_id,
+            fetcher_attempts=fetcher_attempts,
+        )
         await write_session.commit()
         content_updated = True
         ctx.log("Source content updated, starting decomposition")

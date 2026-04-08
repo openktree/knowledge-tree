@@ -16,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_config.settings import get_settings
 from kt_db.models import RawSource
 from kt_db.repositories.ingest_sources import IngestSourceRepository
-from kt_providers.fetcher import ContentFetcher, FileDataStore
+from kt_providers.fetch import (
+    FetchProviderRegistry,
+    FileDataStore,
+    build_fetch_registry,
+)
 from kt_worker_ingest.ingest.processing import process_uploaded_file
 from kt_worker_ingest.ingest.section_index import SectionMeta, build_section_index
 
@@ -202,7 +206,7 @@ async def process_ingest_sources(
 
     For each source:
     1. File uploads: classify and extract text or prepare image bytes
-    2. Link sources: fetch via ContentFetcher
+    2. Link sources: fetch via FetchProviderRegistry (fallback chain)
     3. Create RawSource record for provenance (or reuse existing)
     4. Build section index for text sources
     5. Update status
@@ -216,7 +220,7 @@ async def process_ingest_sources(
     if not sources:
         return []
 
-    content_fetcher = ContentFetcher(timeout=15.0, max_concurrent=3)
+    fetch_registry = build_fetch_registry(settings)
     results: list[ProcessedSource] = []
     upload_base = Path(settings.ingest_upload_dir)
 
@@ -276,7 +280,7 @@ async def process_ingest_sources(
                 else:
                     processed = await _process_link_source(
                         source,
-                        content_fetcher,
+                        fetch_registry,
                         file_data_store,
                         session,
                         write_session=write_session,
@@ -311,7 +315,7 @@ async def process_ingest_sources(
                 except Exception:
                     logger.debug("Failed to update source status after error", exc_info=True)
     finally:
-        await content_fetcher.close()
+        await fetch_registry.close()
 
     return results
 
@@ -818,6 +822,37 @@ async def _lookup_raw_source(
         return None
 
 
+async def _persist_fetcher_audit(
+    write_session: AsyncSession | None,
+    source_id: uuid.UUID,
+    *,
+    winner: str | None,
+    attempts: list[dict],
+) -> None:
+    """Best-effort write of the fetcher audit trail to write-db.
+
+    Failures here must not block the ingest pipeline — the user already
+    has their content; persistence of the strategy log is purely
+    diagnostic.  Logged at warning so an outage of the write-db (or any
+    other persistent failure mode) doesn't silently swallow the only
+    breadcrumb explaining why a fetch took the path it did.
+    """
+    if write_session is None:
+        return
+    try:
+        from kt_db.repositories.write_sources import WriteSourceRepository
+
+        write_repo = WriteSourceRepository(write_session)
+        await write_repo.mark_fetch_attempted(
+            source_id,
+            error=None,
+            fetcher_winner=winner,
+            fetcher_attempts=attempts,
+        )
+    except Exception:
+        logger.warning("failed to persist fetcher audit for %s", source_id, exc_info=True)
+
+
 async def _find_or_create_raw_source(
     session: AsyncSession,
     *,
@@ -1087,20 +1122,47 @@ async def _process_file_source(
 
 async def _process_link_source(
     source: object,
-    content_fetcher: ContentFetcher,
+    fetch_registry: FetchProviderRegistry,
     file_data_store: FileDataStore,
     session: AsyncSession,
     write_session: AsyncSession | None = None,
 ) -> ProcessedSource | None:
-    """Process a link source by fetching the URL."""
+    """Process a link source by fetching the URL via the fetch provider chain.
+
+    Persists the strategy audit trail (which providers were tried, who won)
+    onto the resulting RawSource via WriteSourceRepository.mark_fetch_attempted
+    so the API/UI can later show "blocked by Cloudflare (tried httpx →
+    curl_cffi → flaresolverr)" instead of a generic "failed fetch".
+    """
     from kt_db.models import IngestSource
 
     src: IngestSource = source  # type: ignore[assignment]
     uri = src.original_name  # For links, original_name is the URL
 
-    fetch_result = await content_fetcher.fetch_url(uri)
+    fetch_result = await fetch_registry.fetch(uri)
+    fetcher_attempts = [a.to_dict() for a in fetch_result.attempts]
 
     if not fetch_result.success and not fetch_result.is_image:
+        # Hard failure across the entire chain.  Best-effort: persist the
+        # audit trail on the existing source row if one exists, so users
+        # see *why* it failed.  No row exists yet for fresh links, so the
+        # call is wrapped in try/except — the ingest_sources status update
+        # already records the user-visible failure.
+        if write_session is not None:
+            try:
+                from kt_db.keys import uri_to_source_id
+                from kt_db.repositories.write_sources import WriteSourceRepository
+
+                existing_id = uri_to_source_id(uri)
+                write_repo = WriteSourceRepository(write_session)
+                if (await write_repo.get_by_id(existing_id)) is not None:
+                    await write_repo.mark_fetch_attempted(
+                        existing_id,
+                        error=fetch_result.error,
+                        fetcher_attempts=fetcher_attempts,
+                    )
+            except Exception:
+                logger.warning("failed to persist fetch attempts for %s", uri, exc_info=True)
         return None
 
     # Handle image URLs
@@ -1116,6 +1178,12 @@ async def _process_link_source(
             content_type=fetch_result.content_type or "image/png",
             provider_id="ingest_link",
             write_session=write_session,
+        )
+        await _persist_fetcher_audit(
+            write_session,
+            raw_source.id,
+            winner=fetch_result.provider_id,
+            attempts=fetcher_attempts,
         )
 
         return ProcessedSource(
@@ -1141,6 +1209,12 @@ async def _process_link_source(
         content_type=fetch_result.content_type or "text/html",
         provider_id="ingest_link",
         write_session=write_session,
+    )
+    await _persist_fetcher_audit(
+        write_session,
+        raw_source.id,
+        winner=fetch_result.provider_id,
+        attempts=fetcher_attempts,
     )
 
     settings = get_settings()

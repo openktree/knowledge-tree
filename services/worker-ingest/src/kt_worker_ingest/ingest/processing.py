@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 
 from kt_facts.processing.file_processing import classify_content_type, extract_pdf_pages
-from kt_providers.fetcher import FileDataStore
+from kt_providers.fetch import FileDataStore
 
 logger = logging.getLogger(__name__)
 

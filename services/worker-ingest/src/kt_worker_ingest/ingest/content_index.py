@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from kt_models.gateway import ModelGateway
-    from kt_providers.fetcher import FileDataStore
+    from kt_providers.fetch import FileDataStore
 
 from kt_worker_ingest.ingest.pipeline import ProcessedSource
 

@@ -551,6 +551,37 @@ class Settings(BaseSettings):
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     )
 
+    # ── Fetch provider chain ────────────────────────────────────────
+    # Ordered list of provider ids tried for each URL.  Each provider
+    # self-disables when its config/dep is missing, so the chain can
+    # safely include providers the current environment cannot run.
+    fetch_provider_chain: str = "doi,curl_cffi,httpx,flaresolverr"
+
+    # TLS-impersonation profile for the curl_cffi provider.  See
+    # https://github.com/lexiforest/curl_cffi#supported-impersonate-versions
+    fetch_curl_cffi_impersonate: str = "chrome124"
+
+    # FlareSolverr / Byparr endpoint.  Empty string disables the provider
+    # (it self-disables via is_available()).  PR 2 ships a Byparr container
+    # in compose + k8s and sets this to "http://byparr:8191/v1".
+    fetch_flaresolverr_url: str = ""
+    fetch_flaresolverr_timeout: float = 60.0
+
+    # Per-host static preferred providers.  Mapping of host -> provider id.
+    # The host can be exact ("www.cell.com") or a parent suffix ("cell.com").
+    # When a host matches, the chosen provider is tried *first*; on failure
+    # the registry falls back to the full chain.
+    fetch_host_overrides: dict[str, str] = {}
+
+    # Crossref + Unpaywall contact emails (used by the DOI fetcher).
+    # Crossref's "polite pool" gives configured users better rate limits;
+    # Unpaywall *requires* an email parameter on every request.
+    crossref_email: str = ""
+    unpaywall_email: str = ""
+
+    # TTL for the Redis-backed learned-host-preference cache.
+    fetch_host_pref_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 days
+
     # Page fetch dedup — skip URLs already processed within this window
     page_stale_days: int = 30
     page_fetch_max_extra_pages: int = 3  # max search pagination rounds to backfill skipped URLs

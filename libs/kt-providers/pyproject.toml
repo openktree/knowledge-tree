@@ -10,6 +10,7 @@ dependencies = [
     "trafilatura>=2.0.0",
     "pydantic>=2.12.5",
     "structlog>=25.5.0",
+    "curl-cffi>=0.15.0",
 ]
 
 [build-system]
