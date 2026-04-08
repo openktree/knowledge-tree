@@ -35,16 +35,16 @@ _DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>]+)", re.IGNORECASE)
 _SCHEME_HOST_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*://)([^/?#]+)")
 
 
-def _simple_canonicalize(uri: str) -> str:
+def _simple_canonicalize(uri: str) -> str | None:
     if not uri:
-        return uri
+        return None
     frag_idx = uri.find("#")
     if frag_idx != -1:
         uri = uri[:frag_idx]
     m = _SCHEME_HOST_RE.match(uri)
     if not m:
-        return uri
-    return f"{m.group(1).lower()}{m.group(2).lower()}{uri[m.end():]}"
+        return uri or None
+    return f"{m.group(1).lower()}{m.group(2).lower()}{uri[m.end() :]}"
 
 
 def _extract_doi(uri: str) -> str | None:
@@ -52,7 +52,8 @@ def _extract_doi(uri: str) -> str | None:
         return None
     m = _DOI_RE.search(uri)
     if m:
-        return m.group(1).rstrip(".)")
+        # Broader trailing-punctuation strip — backfill sees scraped URIs.
+        return m.group(1).rstrip(".),;]")
     return None
 
 
@@ -80,11 +81,7 @@ def upgrade() -> None:
     batch_size = 1000
     while True:
         rows = bind.execute(
-            sa.text(
-                "SELECT id, uri FROM write_raw_sources "
-                "WHERE canonical_url IS NULL AND uri IS NOT NULL "
-                "LIMIT :n"
-            ),
+            sa.text("SELECT id, uri FROM write_raw_sources WHERE canonical_url IS NULL AND uri IS NOT NULL LIMIT :n"),
             {"n": batch_size},
         ).fetchall()
         if not rows:
@@ -93,11 +90,7 @@ def upgrade() -> None:
             canonical = _simple_canonicalize(row.uri)
             doi = _extract_doi(row.uri)
             bind.execute(
-                sa.text(
-                    "UPDATE write_raw_sources "
-                    "SET canonical_url = :canonical, doi = :doi "
-                    "WHERE id = :id"
-                ),
+                sa.text("UPDATE write_raw_sources SET canonical_url = :canonical, doi = :doi WHERE id = :id"),
                 {"canonical": canonical, "doi": doi, "id": row.id},
             )
         if len(rows) < batch_size:
