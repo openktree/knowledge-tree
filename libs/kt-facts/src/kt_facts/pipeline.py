@@ -32,7 +32,7 @@ from kt_facts.models import (
 from kt_facts.processing.dedup import deduplicate_facts
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
-from kt_providers.fetcher import FileDataStore
+from kt_providers.fetch import FileDataStore
 
 if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient

@@ -310,7 +310,7 @@ async def _prepare_ingest_impl(
 
     await session.commit()
 
-    from kt_providers.fetcher import FileDataStore
+    from kt_providers.fetch import FileDataStore
 
     file_data_store = FileDataStore()
     from kt_worker_ingest.ingest.pipeline import process_ingest_sources

@@ -238,6 +238,26 @@ class ProhibitedChunkResponse(BaseModel):
     created_at: datetime
 
 
+class FetcherAttemptResponse(BaseModel):
+    """A single fetch-provider attempt recorded by FetchProviderRegistry."""
+
+    provider_id: str
+    success: bool
+    error: str | None = None
+    elapsed_ms: int = 0
+
+
+class FetcherAuditResponse(BaseModel):
+    """Audit trail of the fetch provider chain for a source.
+
+    Lets the UI show "blocked by Cloudflare (tried httpx → curl_cffi →
+    flaresolverr)" instead of a generic "failed fetch".
+    """
+
+    winner: str | None = None
+    attempts: list[FetcherAttemptResponse] = Field(default_factory=list)
+
+
 class SourceResponse(BaseModel):
     """Response body for a single raw source."""
 
@@ -252,6 +272,7 @@ class SourceResponse(BaseModel):
     is_full_text: bool = False
     fetch_attempted: bool = False
     fetch_error: str | None = None
+    fetcher: FetcherAuditResponse | None = None
 
 
 class SourceLinkedNode(BaseModel):
@@ -275,6 +296,7 @@ class SourceDetailResponse(BaseModel):
     prohibited_chunk_count: int = 0
     is_full_text: bool = False
     fetch_error: str | None = None
+    fetcher: FetcherAuditResponse | None = None
     content_type: str | None = None
     content_preview: str | None = None
     facts: list[FactResponse] = Field(default_factory=list)

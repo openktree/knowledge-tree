@@ -11,7 +11,7 @@ from kt_facts.processing.file_processing import (
     extract_facts_from_image,
     extract_text_from_pdf,
 )
-from kt_providers.fetcher import FetchResult, FileDataStore
+from kt_providers.fetch import FetchResult, FileDataStore
 
 # ── classify_content_type tests ─────────────────────────────────
 

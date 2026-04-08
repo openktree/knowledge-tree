@@ -256,6 +256,18 @@ export interface ProhibitedChunkResponse {
   created_at: string;
 }
 
+export interface FetcherAttempt {
+  provider_id: string;
+  success: boolean;
+  error: string | null;
+  elapsed_ms: number;
+}
+
+export interface FetcherAudit {
+  winner: string | null;
+  attempts: FetcherAttempt[];
+}
+
 export interface SourceResponse {
   id: string;
   uri: string;
@@ -268,6 +280,7 @@ export interface SourceResponse {
   is_full_text: boolean;
   fetch_attempted: boolean;
   fetch_error: string | null;
+  fetcher: FetcherAudit | null;
 }
 
 export interface SourceLinkedNode {
@@ -287,6 +300,7 @@ export interface SourceDetailResponse {
   prohibited_chunk_count: number;
   is_full_text: boolean;
   fetch_error: string | null;
+  fetcher: FetcherAudit | null;
   content_type: string | null;
   content_preview: string | null;
   facts: FactResponse[];

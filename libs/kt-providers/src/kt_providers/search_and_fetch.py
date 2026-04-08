@@ -39,7 +39,7 @@ async def search_and_store(
     2. Filter out URLs that were recently processed (write_page_fetch_log).
     3. If too many were skipped, paginate to get replacement URLs.
     4. Deduplicate and store each result as a WriteRawSource.
-    5. If ctx.content_fetcher is available, fetch full page content for the
+    5. If ctx.fetch_registry is available, fetch full page content for the
        top N URLs and update the stored WriteRawSource records.
     6. Record successful fetches in write_page_fetch_log.
 
@@ -169,7 +169,7 @@ async def store_and_fetch(
 
     Args:
         raw_results: Pre-fetched search results to store.
-        ctx: AgentContext with optional content_fetcher.
+        ctx: AgentContext with optional fetch_registry.
         max_fetch_urls: Maximum URLs to fetch full content for.
             Defaults to ``settings.full_text_fetch_max_urls`` when *None*.
         write_session: Optional write-db session.  If provided, caller manages
@@ -201,7 +201,7 @@ async def store_and_fetch(
             )
             raw_sources.append(source)
 
-        if not raw_sources or ctx.content_fetcher is None:
+        if not raw_sources or ctx.fetch_registry is None:
             if owns_session:
                 await write_session.commit()
             return raw_sources
@@ -220,7 +220,7 @@ async def store_and_fetch(
             return raw_sources
 
         uris = [uri for _, uri in urls_to_fetch]
-        fetch_results = await ctx.content_fetcher.fetch_urls(uris)
+        fetch_results = await ctx.fetch_registry.fetch_many(uris)
 
         # Pre-compute super source thresholds once
         _ss_settings = get_settings()
@@ -232,14 +232,19 @@ async def store_and_fetch(
             source.fetch_attempted = True
             source.fetch_error = fetch_result.error if not fetch_result.success else None
 
-            # Store PDF/HTML metadata in provider_metadata for author extraction
-            if fetch_result.pdf_metadata or fetch_result.html_metadata:
-                existing_meta = source.provider_metadata or {}
-                if fetch_result.pdf_metadata:
-                    existing_meta["pdf_metadata"] = fetch_result.pdf_metadata
-                if fetch_result.html_metadata:
-                    existing_meta["html_metadata"] = fetch_result.html_metadata
-                source.provider_metadata = existing_meta
+            # Store PDF/HTML metadata in provider_metadata for author extraction.
+            # Always also persist the fetcher audit trail (winner + attempts) so
+            # the API/UI can show which strategy unblocked the URL.
+            existing_meta = dict(source.provider_metadata or {})
+            if fetch_result.pdf_metadata:
+                existing_meta["pdf_metadata"] = fetch_result.pdf_metadata
+            if fetch_result.html_metadata:
+                existing_meta["html_metadata"] = fetch_result.html_metadata
+            existing_meta["fetcher"] = {
+                "winner": fetch_result.provider_id if fetch_result.success else None,
+                "attempts": [a.to_dict() for a in fetch_result.attempts],
+            }
+            source.provider_metadata = existing_meta
 
             # ── Super source detection ──────────────────────────────────
             is_super = False

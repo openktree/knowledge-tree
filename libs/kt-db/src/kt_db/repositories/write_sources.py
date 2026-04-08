@@ -152,11 +152,42 @@ class WriteSourceRepository:
         await self._session.flush()
         return True
 
-    async def mark_fetch_attempted(self, source_id: uuid.UUID, *, error: str | None = None) -> None:
+    async def mark_fetch_attempted(
+        self,
+        source_id: uuid.UUID,
+        *,
+        error: str | None = None,
+        fetcher_winner: str | None = None,
+        fetcher_attempts: list[dict] | None = None,
+    ) -> None:
         """Mark a source as having had a fetch attempt (success or failure).
 
-        If error is provided, it is stored as fetch_error for UI display.
+        Args:
+            source_id: WriteRawSource id.
+            error: When non-None, stored on `fetch_error` for UI display.
+            fetcher_winner: provider_id of the strategy that produced the
+                successful result (if any).  Persisted under
+                ``provider_metadata.fetcher.winner``.
+            fetcher_attempts: Audit trail of every provider tried, as
+                produced by ``FetchAttempt.to_dict()``.  Persisted under
+                ``provider_metadata.fetcher.attempts``.
         """
         values: dict[str, object] = {"fetch_attempted": True, "fetch_error": error}
+        if fetcher_winner is not None or fetcher_attempts is not None:
+            # Merge into existing provider_metadata so we don't clobber other
+            # provider-specific fields stored alongside the fetcher payload.
+            existing_row = await self._session.execute(
+                select(WriteRawSource.provider_metadata).where(WriteRawSource.id == source_id)
+            )
+            existing = existing_row.scalar_one_or_none() or {}
+            if not isinstance(existing, dict):
+                existing = {}
+            fetcher_payload: dict[str, object] = {}
+            if fetcher_winner is not None:
+                fetcher_payload["winner"] = fetcher_winner
+            if fetcher_attempts is not None:
+                fetcher_payload["attempts"] = fetcher_attempts
+            new_metadata = {**existing, "fetcher": fetcher_payload}
+            values["provider_metadata"] = new_metadata
         await self._session.execute(update(WriteRawSource).where(WriteRawSource.id == source_id).values(**values))
         await self._session.flush()

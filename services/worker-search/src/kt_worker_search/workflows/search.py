@@ -209,11 +209,11 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
 
     from kt_config.types import RawSearchResult
     from kt_db.repositories.write_sources import WriteSourceRepository
-    from kt_providers.fetcher import ContentFetcher
+    from kt_providers.fetch import FetchProviderRegistry
     from kt_providers.registry import ProviderRegistry
 
     provider_registry = cast(ProviderRegistry, state.provider_registry)
-    content_fetcher = cast(ContentFetcher | None, state.content_fetcher)
+    fetch_registry = cast(FetchProviderRegistry | None, state.fetch_registry)
 
     # 1. Search all providers
     results: list[RawSearchResult] = await provider_registry.search_all(
@@ -237,8 +237,8 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
             )
             sources.append(source)
 
-        # Fetch full-text content for top N URLs if fetcher is available
-        if sources and content_fetcher is not None:
+        # Fetch full-text content for top N URLs if a fetch registry exists
+        if sources and fetch_registry is not None:
             urls_to_fetch: list[tuple[int, str]] = []
             for i, source in enumerate(sources):
                 if source.is_full_text:
@@ -248,13 +248,19 @@ async def web_search(input: WebSearchInput, ctx: Context) -> dict:
 
             if urls_to_fetch:
                 uris = [uri for _, uri in urls_to_fetch]
-                fetch_results = await content_fetcher.fetch_urls(uris)
+                fetch_results = await fetch_registry.fetch_many(uris)
 
                 for (idx, _uri), fetch_result in zip(urls_to_fetch, fetch_results):
                     src = sources[idx]
                     src.fetch_attempted = True
                     fetch_err = fetch_result.error if not fetch_result.success else None
-                    await write_source_repo.mark_fetch_attempted(src.id, error=fetch_err)
+                    fetcher_attempts = [a.to_dict() for a in fetch_result.attempts]
+                    await write_source_repo.mark_fetch_attempted(
+                        src.id,
+                        error=fetch_err,
+                        fetcher_winner=fetch_result.provider_id if fetch_result.success else None,
+                        fetcher_attempts=fetcher_attempts,
+                    )
                     if fetch_result.success and fetch_result.content:
                         try:
                             updated = await write_source_repo.update_content(

@@ -388,7 +388,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 _model_gateway = ModelGateway(api_key=_resolved_key, graph_id=input.graph_id)
             else:
                 _model_gateway = worker_state.model_gateway
-            from kt_providers.fetcher import FileDataStore as _FDS
+            from kt_providers.fetch import FileDataStore as _FDS
 
             content_index = await build_content_index(
                 processed,

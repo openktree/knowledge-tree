@@ -17,6 +17,8 @@ from kt_api.schemas import (
     ErrorGroupCount,
     FactResponse,
     FactSourceInfo,
+    FetcherAttemptResponse,
+    FetcherAuditResponse,
     PaginatedSourcesResponse,
     ProhibitedChunkResponse,
     SourceDetailResponse,
@@ -32,6 +34,43 @@ from kt_rbac import Permission
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
+
+
+def _build_fetcher_audit(provider_metadata: object) -> FetcherAuditResponse | None:
+    """Build a `FetcherAuditResponse` from `RawSource.provider_metadata`.
+
+    The pipeline writes the strategy log under
+    ``provider_metadata["fetcher"] = {"winner": ..., "attempts": [...]}``.
+    Older sources have no fetcher block — return None for those so the UI
+    can hide the audit panel for legacy data.
+    """
+    if not isinstance(provider_metadata, dict):
+        return None
+    fetcher = provider_metadata.get("fetcher")
+    if not isinstance(fetcher, dict):
+        return None
+    raw_attempts = fetcher.get("attempts") or []
+    attempts: list[FetcherAttemptResponse] = []
+    if isinstance(raw_attempts, list):
+        for a in raw_attempts:
+            if not isinstance(a, dict):
+                continue
+            try:
+                attempts.append(
+                    FetcherAttemptResponse(
+                        provider_id=str(a.get("provider_id", "")),
+                        success=bool(a.get("success", False)),
+                        error=a.get("error") if a.get("error") is None else str(a.get("error")),
+                        elapsed_ms=int(a.get("elapsed_ms", 0) or 0),
+                    )
+                )
+            except Exception:
+                logger.debug("malformed fetcher attempt: %s", a, exc_info=True)
+    winner_raw = fetcher.get("winner")
+    winner = str(winner_raw) if winner_raw is not None else None
+    if not winner and not attempts:
+        return None
+    return FetcherAuditResponse(winner=winner, attempts=attempts)
 
 
 async def _build_source_detail(
@@ -62,6 +101,7 @@ async def _build_source_detail(
         prohibited_chunk_count=source.prohibited_chunk_count,
         is_full_text=source.is_full_text,
         fetch_error=source.fetch_error,
+        fetcher=_build_fetcher_audit(source.provider_metadata),
         content_type=source.content_type,
         content_preview=content_preview,
         facts=[
@@ -148,6 +188,7 @@ async def _list_sources_impl(
                 is_full_text=s.is_full_text,
                 fetch_attempted=s.fetch_attempted,
                 fetch_error=s.fetch_error,
+                fetcher=_build_fetcher_audit(s.provider_metadata),
             )
             for s in sources
         ],
