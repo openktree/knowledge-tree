@@ -24,17 +24,11 @@ from kt_providers.fetch.canonical import (
 
 
 def test_canonicalize_url_lowercases_scheme_and_host():
-    assert (
-        canonicalize_url("HTTPS://Example.COM/Article")
-        == "https://example.com/Article"
-    )
+    assert canonicalize_url("HTTPS://Example.COM/Article") == "https://example.com/Article"
 
 
 def test_canonicalize_url_drops_fragment():
-    assert (
-        canonicalize_url("https://example.com/post#section-2")
-        == "https://example.com/post"
-    )
+    assert canonicalize_url("https://example.com/post#section-2") == "https://example.com/post"
 
 
 def test_canonicalize_url_strips_default_ports():
@@ -43,34 +37,22 @@ def test_canonicalize_url_strips_default_ports():
 
 
 def test_canonicalize_url_keeps_nondefault_ports():
-    assert (
-        canonicalize_url("https://example.com:8443/x")
-        == "https://example.com:8443/x"
-    )
+    assert canonicalize_url("https://example.com:8443/x") == "https://example.com:8443/x"
 
 
 def test_canonicalize_url_collapses_duplicate_slashes_in_path():
-    assert (
-        canonicalize_url("https://example.com//foo///bar")
-        == "https://example.com/foo/bar"
-    )
+    assert canonicalize_url("https://example.com//foo///bar") == "https://example.com/foo/bar"
 
 
 def test_canonicalize_url_strips_utm_and_known_trackers():
-    raw = (
-        "https://example.com/post?utm_source=newsletter&utm_medium=email"
-        "&gclid=abc&fbclid=def&id=42&page=2"
-    )
+    raw = "https://example.com/post?utm_source=newsletter&utm_medium=email&gclid=abc&fbclid=def&id=42&page=2"
     # utm_*, gclid, fbclid removed; ``id`` and ``page`` preserved (they
     # are part of resource identity for many CMSes).
     assert canonicalize_url(raw) == "https://example.com/post?id=42&page=2"
 
 
 def test_canonicalize_url_strips_mc_prefix_and_other_known_trackers():
-    raw = (
-        "https://example.com/x?mc_cid=1&mc_eid=2&_ga=GA1.2&"
-        "ref=twitter&igshid=foo&keep=this"
-    )
+    raw = "https://example.com/x?mc_cid=1&mc_eid=2&_ga=GA1.2&ref=twitter&igshid=foo&keep=this"
     assert canonicalize_url(raw) == "https://example.com/x?keep=this"
 
 
@@ -91,10 +73,7 @@ def test_canonicalize_url_preserves_query_param_order():
 def test_canonicalize_url_handles_blank_query_values():
     """``?flag=`` is a meaningful pattern in some apps; the empty value
     must survive canonicalisation."""
-    assert (
-        canonicalize_url("https://example.com/x?flag=&foo=bar")
-        == "https://example.com/x?flag=&foo=bar"
-    )
+    assert canonicalize_url("https://example.com/x?flag=&foo=bar") == "https://example.com/x?flag=&foo=bar"
 
 
 def test_canonicalize_url_passes_through_non_url_strings():
@@ -135,17 +114,11 @@ def test_doi_regex_is_anchored_on_word_boundary():
 
 
 def test_extract_doi_from_doi_org_path():
-    assert (
-        extract_doi("https://doi.org/10.1038/nature12373")
-        == "10.1038/nature12373"
-    )
+    assert extract_doi("https://doi.org/10.1038/nature12373") == "10.1038/nature12373"
 
 
 def test_extract_doi_from_dx_doi_org_path():
-    assert (
-        extract_doi("http://dx.doi.org/10.1038/nature12373")
-        == "10.1038/nature12373"
-    )
+    assert extract_doi("http://dx.doi.org/10.1038/nature12373") == "10.1038/nature12373"
 
 
 def test_extract_doi_from_publisher_url_substring():
@@ -165,9 +138,7 @@ def test_extract_doi_prefers_html_metadata_over_url():
 
 def test_extract_doi_falls_back_to_url_when_metadata_missing_doi():
     metadata = {"title": "Test", "author": "Jane"}
-    assert (
-        extract_doi("https://doi.org/10.1038/x", metadata) == "10.1038/x"
-    )
+    assert extract_doi("https://doi.org/10.1038/x", metadata) == "10.1038/x"
 
 
 def test_extract_doi_returns_none_when_no_doi_anywhere():
@@ -188,6 +159,4 @@ def test_extract_doi_handles_empty_metadata_doi():
     the URL fallback — operators have seen publishers emit empty meta
     tags and we should treat that as "no metadata DOI"."""
     metadata = {"doi": "", "title": "T"}
-    assert (
-        extract_doi("https://doi.org/10.1038/y", metadata) == "10.1038/y"
-    )
+    assert extract_doi("https://doi.org/10.1038/y", metadata) == "10.1038/y"
