@@ -172,6 +172,7 @@ class FetchProviderRegistry:
             )
             if result.success:
                 result.provider_id = pid
+                result.is_public = provider.is_public
                 result.attempts = attempts
                 # Record the winning provider for this host so future fetches
                 # can skip earlier (failing) tiers.  Skip recording for the

@@ -362,6 +362,7 @@ _register(
         "fetch_flaresolverr_url": "flaresolverr_url",
         "fetch_flaresolverr_timeout": "flaresolverr_timeout",
         "fetch_host_overrides": "host_overrides",
+        "fetch_provider_public_overrides": "provider_public_overrides",
         "fetch_host_pref_ttl_seconds": "host_pref_ttl_seconds",
         "crossref_email": "crossref_email",
         "unpaywall_email": "unpaywall_email",
@@ -588,6 +589,20 @@ class Settings(BaseSettings):
     # When a host matches, the chosen provider is tried *first*; on failure
     # the registry falls back to the full chain.
     fetch_host_overrides: dict[str, str] = {}
+
+    # Per-provider overrides for the ``is_public`` classification used by the
+    # multigraph public-cache machinery.  Mapping of provider id -> bool.
+    # Use this to mark e.g. the ``httpx`` provider private when it has been
+    # pointed at an internal intranet, so its results never reach the shared
+    # default graph.  Built-in fetchers default to public; future tenant
+    # connectors (jira, sharepoint, ...) declare ``is_public = False`` on the
+    # class itself.
+    fetch_provider_public_overrides: dict[str, bool] = {}
+
+    # Per-provider overrides for ``KnowledgeProvider.is_public`` (search /
+    # data providers).  Same semantics as ``fetch_provider_public_overrides``
+    # but applied to the search side.
+    search_provider_public_overrides: dict[str, bool] = {}
 
     # Crossref + Unpaywall contact emails (used by the DOI fetcher).
     # Crossref's "polite pool" gives configured users better rate limits;

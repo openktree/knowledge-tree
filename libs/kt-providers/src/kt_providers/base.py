@@ -6,6 +6,17 @@ from kt_config.types import RawSearchResult
 class KnowledgeProvider(ABC):
     """Abstract base class for knowledge providers."""
 
+    #: Whether results from this provider are considered public — i.e. safe to
+    #: cache in / contribute to the shared default graph. Public providers
+    #: (web search APIs like Serper, Brave) default to True. Future internal
+    #: connectors (Jira, Confluence, SharePoint, etc.) MUST override this to
+    #: False so the multigraph public-cache machinery never crosses the
+    #: tenancy boundary. Operator overrides live in
+    #: ``Settings.search_provider_public_overrides`` and are applied
+    #: per-instance, so this is a regular class attribute (not a ``ClassVar``)
+    #: to allow instance assignment.
+    is_public: bool = True
+
     @property
     @abstractmethod
     def provider_id(self) -> str:

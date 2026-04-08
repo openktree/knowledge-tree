@@ -57,6 +57,11 @@ class FetchResult:
     # Strategy audit — populated by the registry, not by individual providers.
     provider_id: str | None = None  # id of the winning provider (if any)
     attempts: list[FetchAttempt] = field(default_factory=list)
+    # Whether the winning provider is classified as public. The registry sets
+    # this on success based on ``ContentFetcherProvider.is_public`` (with any
+    # ``Settings.fetch_provider_public_overrides`` already applied at build
+    # time). None when the fetch failed or no provider succeeded.
+    is_public: bool | None = None
 
     @property
     def success(self) -> bool:
