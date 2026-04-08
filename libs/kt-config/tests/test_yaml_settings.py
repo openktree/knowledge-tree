@@ -184,6 +184,40 @@ def test_multiple_fields_per_section(tmp_path, monkeypatch):
     assert s.default_max_content_tokens == 1000
 
 
+def test_fetch_section_maps_to_settings(tmp_path, monkeypatch):
+    """fetch: section should populate Settings.crossref_email / fetch_flaresolverr_url etc."""
+    _isolate_config(
+        monkeypatch,
+        tmp_path,
+        "fetch:\n"
+        "  crossref_email: ops@example.com\n"
+        "  unpaywall_email: ops@example.com\n"
+        "  flaresolverr_url: http://byparr:8191/v1\n"
+        "  flaresolverr_timeout: 90.0\n"
+        "  provider_chain: doi,httpx\n"
+        "  curl_cffi_impersonate: chrome131\n",
+    )
+    for var in (
+        "CROSSREF_EMAIL",
+        "UNPAYWALL_EMAIL",
+        "FETCH_FLARESOLVERR_URL",
+        "FETCH_FLARESOLVERR_TIMEOUT",
+        "FETCH_PROVIDER_CHAIN",
+        "FETCH_CURL_CFFI_IMPERSONATE",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    from kt_config.settings import Settings
+
+    s = Settings()
+    assert s.crossref_email == "ops@example.com"
+    assert s.unpaywall_email == "ops@example.com"
+    assert s.fetch_flaresolverr_url == "http://byparr:8191/v1"
+    assert s.fetch_flaresolverr_timeout == 90.0
+    assert s.fetch_provider_chain == "doi,httpx"
+    assert s.fetch_curl_cffi_impersonate == "chrome131"
+
+
 def test_project_config_yaml_loads():
     """The project root config.yaml should load without errors."""
     from kt_config.settings import Settings

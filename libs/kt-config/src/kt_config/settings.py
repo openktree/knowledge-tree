@@ -352,6 +352,22 @@ _register(
     },
 )
 
+# ---- Fetch (URL fetcher providers) -----------------------------------------
+_register(
+    "fetch",
+    {
+        "fetch_user_agent": "user_agent",
+        "fetch_provider_chain": "provider_chain",
+        "fetch_curl_cffi_impersonate": "curl_cffi_impersonate",
+        "fetch_flaresolverr_url": "flaresolverr_url",
+        "fetch_flaresolverr_timeout": "flaresolverr_timeout",
+        "fetch_host_overrides": "host_overrides",
+        "fetch_host_pref_ttl_seconds": "host_pref_ttl_seconds",
+        "crossref_email": "crossref_email",
+        "unpaywall_email": "unpaywall_email",
+    },
+)
+
 
 class YamlSettingsSource(PydanticBaseSettingsSource):
     """Load settings from a sectioned YAML file.

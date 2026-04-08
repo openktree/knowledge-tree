@@ -87,6 +87,32 @@ search:
 
 
 # =============================================================================
+# Fetch — URL content fetcher provider chain (DOI, httpx, curl_cffi, byparr)
+# =============================================================================
+# fetch:
+#   # Provider chain — comma-separated, order = fallback order.
+#   provider_chain: "doi,curl_cffi,httpx,flaresolverr"
+#
+#   # Browser-like UA used by httpx/doi tiers.
+#   user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ..."
+#
+#   # curl_cffi impersonation profile (defeats most Cloudflare TLS fingerprinting).
+#   curl_cffi_impersonate: "chrome124"
+#
+#   # FlareSolverr / Byparr endpoint.  Empty string disables the tier.
+#   # In k8s the Byparr ClusterIP is reachable at http://byparr:8191/v1
+#   flaresolverr_url: ""
+#   flaresolverr_timeout: 60.0
+#
+#   # Static per-host preferred provider overrides.  Format: {host: provider_id}.
+#   host_overrides: {}
+#
+#   # Crossref + Unpaywall require/recommend a contact email.
+#   crossref_email: ""
+#   unpaywall_email: ""
+
+
+# =============================================================================
 # Orchestrator — budgets, waves, timeouts, semantic expansion
 # =============================================================================
 orchestrator:
