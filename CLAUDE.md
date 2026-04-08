@@ -61,7 +61,7 @@ The system is designed so that over time, frequently queried topics accumulate i
 - **kt-graph** — GraphEngine — node/edge CRUD, search, convergence
 - **kt-facts** — Fact decomposition, extraction, dedup
 - **kt-ontology** — *(deprecated — do not use)*
-- **kt-hatchet** — Hatchet client singleton, worker state, workflow I/O models
+- **kt-hatchet** — Hatchet client singleton, worker state, workflow I/O models. Depends on `kt-graph` so `WorkerState.make_worker_engine()` can wire a `PublicGraphBridge` into every per-workflow engine. The dep direction is one-way: `kt-graph` MUST NOT import `kt-hatchet`.
 - **kt-agents-core** — Base agent classes, shared state models
 - **kt-qdrant** — Qdrant vector search repositories
 
