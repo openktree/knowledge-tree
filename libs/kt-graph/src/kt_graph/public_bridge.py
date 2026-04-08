@@ -294,8 +294,8 @@ class PublicGraphBridge:
         new_qdrant_node_ids: list[uuid.UUID] = []
 
         try:
-            await self._upsert_raw_source(target_write_session, import_data.raw_source)
-            result.raw_source_id = import_data.raw_source.id
+            local_raw_id = await self._upsert_raw_source(target_write_session, import_data.raw_source)
+            result.raw_source_id = local_raw_id
 
             # ── Facts: dedup against target Qdrant ─────────────────────
             fact_collection = f"{target_qdrant_prefix}facts"
@@ -394,6 +394,10 @@ class PublicGraphBridge:
         try:
             async with gs.write_session_factory() as target_session:
                 async with target_session.begin():
+                    # Return value intentionally discarded — contribute
+                    # only cares that the source landed; downstream rows
+                    # are keyed on ``content_hash`` denormalised onto each
+                    # write_fact_source row, not on the raw source id.
                     await self._upsert_raw_source(target_session, source_snapshot)
 
                     target_collection = f"{gs.qdrant_collection_prefix}facts"
@@ -479,12 +483,18 @@ class PublicGraphBridge:
     async def _fact_sources_for_source(self, session: "AsyncSession", source: WriteRawSource) -> list[WriteFactSource]:
         return await self._load_linked_fact_sources(session, source)
 
-    async def _upsert_raw_source(self, session: "AsyncSession", snapshot: CachedRawSourceSnapshot) -> None:
+    async def _upsert_raw_source(self, session: "AsyncSession", snapshot: CachedRawSourceSnapshot) -> uuid.UUID:
         """Idempotent upsert keyed on the unique ``content_hash`` index.
 
         We deliberately do NOT use ``id`` as the conflict target — different
         graphs may have generated different UUIDs for the same content
         before this PR landed. ``content_hash`` is the only stable identity.
+
+        Returns the **local** row id. When the insert lands a new row this
+        is the remote id we just wrote; when ON CONFLICT no-ops we re-look
+        the existing local row by ``content_hash`` so callers (and the
+        ImportResult counters) see the local identity, never the remote
+        one.
         """
         stmt = (
             pg_insert(WriteRawSource)
@@ -503,8 +513,18 @@ class PublicGraphBridge:
                 fact_count=snapshot.fact_count,
             )
             .on_conflict_do_nothing(index_elements=["content_hash"])
+            .returning(WriteRawSource.id)
         )
-        await session.execute(stmt)
+        result = await session.execute(stmt)
+        returned = result.scalar_one_or_none()
+        if returned is not None:
+            return returned
+        # ON CONFLICT no-op: a row with this content_hash already exists.
+        existing = await session.execute(
+            select(WriteRawSource.id).where(WriteRawSource.content_hash == snapshot.content_hash)
+        )
+        existing_id = existing.scalar_one_or_none()
+        return existing_id if existing_id is not None else snapshot.id
 
     async def _dedup_or_create_fact(
         self,
@@ -570,15 +590,21 @@ class PublicGraphBridge:
         fs: CachedFactSourceSnapshot,
         local_fact_id: uuid.UUID,
     ) -> None:
-        """Insert a fact-source row, ignoring duplicates by ``content_hash``.
+        """Insert a fact-source row idempotently across re-imports.
 
-        ``write_fact_sources`` does not have a unique constraint on
-        ``(fact_id, content_hash)``; we rely on the bridge being called
-        once per (source, target graph) so duplicate inserts shouldn't
-        happen. We still use ON CONFLICT DO NOTHING on the ``id`` column
-        as a belt-and-braces guard against re-imports.
+        ``write_fact_sources`` has no unique constraint on
+        ``(fact_id, raw_source_content_hash)``, so two imports of the same
+        source into the same target graph would otherwise create duplicate
+        provenance rows. We synthesize a deterministic UUID5 from
+        ``(fact_id, content_hash)`` and use ON CONFLICT DO NOTHING on the
+        ``id`` column to dedup at the row level — re-imports become true
+        no-ops without needing a schema change. PR5 should still avoid
+        re-imports at the workflow level, this is defence in depth.
         """
-        new_id = uuid.uuid4()
+        new_id = uuid.uuid5(
+            uuid.NAMESPACE_OID,
+            f"write_fact_source:{local_fact_id}:{fs.raw_source_content_hash}",
+        )
         stmt = (
             pg_insert(WriteFactSource)
             .values(
@@ -638,15 +664,23 @@ class PublicGraphBridge:
             except Exception:
                 logger.debug("node concept-match failed in %s", collection, exc_info=True)
 
-        # Miss — create a new local node. Reuse the remote uuid so the
-        # snapshot round-trips cleanly; the deterministic key formula in
-        # ``kt_db.keys.make_node_key`` produces the same key from the
-        # ``(concept, node_type)`` pair on either side.
-        from kt_db.keys import make_node_key
+        # Miss — create a new local node. The local node_uuid is derived
+        # deterministically from the (node_type, concept) key — NOT from the
+        # remote uuid, which may have come from an older row predating the
+        # deterministic-key migration. Trusting the remote uuid would break
+        # the unique index on ``write_nodes.node_uuid`` whenever the same
+        # concept already exists locally under a different historical id.
+        from kt_db.keys import key_to_uuid, make_node_key
 
         new_key = make_node_key(node.node_type, node.concept)
-        new_uuid = node.node_uuid
+        new_uuid = key_to_uuid(new_key)
         local_fact_ids = [str(local_fact_id_by_remote[fid]) for fid in node.fact_ids if fid in local_fact_id_by_remote]
+        # ``RETURNING node_uuid`` lets us distinguish a real insert from an
+        # ON CONFLICT no-op (PG returns no rows in the latter case). The
+        # bridge's nodes_created vs nodes_matched counts depend on this —
+        # without RETURNING the bridge would over-report inserts whenever
+        # the local key already existed (e.g. created by a parallel
+        # ingest).
         stmt = (
             pg_insert(WriteNode)
             .values(
@@ -658,9 +692,21 @@ class PublicGraphBridge:
                 fact_ids=local_fact_ids or None,
             )
             .on_conflict_do_nothing(index_elements=[WriteNode.key])
+            .returning(WriteNode.node_uuid)
         )
-        await session.execute(stmt)
+        result = await session.execute(stmt)
+        returned = result.scalar_one_or_none()
+        if returned is None:
+            # ON CONFLICT no-op: a row with this key already exists. Look
+            # up its node_uuid so we can return the *local* identity (not
+            # the remote one) and report this as a match, not a create.
+            existing = await session.execute(select(WriteNode.node_uuid).where(WriteNode.key == new_key))
+            existing_uuid = existing.scalar_one_or_none()
+            local_uuid = existing_uuid if existing_uuid is not None else new_uuid
+            return PublicGraphBridge._NodeMatchOutcome(local_node_id=local_uuid, created=False)
 
+        # Real insert — push the embedding into the target collection so
+        # future cache imports in this graph will dedup against it.
         if node.embedding is not None and self._qdrant_client is not None:
             try:
                 from kt_qdrant.repositories.nodes import QdrantNodeRepository

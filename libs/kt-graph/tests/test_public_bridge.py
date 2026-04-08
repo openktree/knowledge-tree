@@ -314,7 +314,7 @@ class TestLookupHappyPath:
         assert len(result.nodes) == 1
         assert result.nodes[0].embedding == [0.4, 0.5, 0.6]
         assert result.nodes[0].fact_ids == [fact_id]
-        assert result.is_stale is True  # row's updated_at is from 2026-01-01
+        assert result.is_stale is True  # fixture's updated_at is 2023-01-01, > 365 days old
 
     @pytest.mark.asyncio
     async def test_lookup_returns_none_when_no_match(self):

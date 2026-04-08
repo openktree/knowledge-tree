@@ -97,6 +97,16 @@ class WorkerState:
             and graph_id is not None
             and graph_id != self.default_graph_id
         ):
+            # Defence in depth: a non-default graph that's missing its
+            # Qdrant prefix would silently dedup against the *default*
+            # graph's collection — exactly the cross-contamination this
+            # whole subsystem exists to prevent. Fail loud at construction
+            # time rather than discovering it in production.
+            if not qdrant_collection_prefix:
+                raise ValueError(
+                    f"make_worker_engine: graph_id={graph_id} is non-default but "
+                    "qdrant_collection_prefix is empty — refusing to wire the bridge"
+                )
             bridge = PublicGraphBridge(
                 resolver=self.graph_resolver,
                 qdrant_client=self.qdrant_client,
@@ -112,6 +122,31 @@ class WorkerState:
             public_bridge=bridge,
             qdrant_collection_prefix=qdrant_collection_prefix,
         )
+
+
+async def _resolve_default_graph_id(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> uuid.UUID | None:
+    """Look up the public/default graph row's id once at worker startup.
+
+    Drives the public-cache bridge — when a workflow's current ``graph_id``
+    matches this, the bridge is omitted entirely. Failures are swallowed so
+    a misconfigured environment still boots; cache features just silently
+    disable themselves until the row appears.
+    """
+    try:
+        from sqlalchemy import select as _sa_select
+
+        from kt_db.models import Graph as _GraphModel
+
+        async with session_factory() as ctrl:
+            row = (
+                await ctrl.execute(_sa_select(_GraphModel.id).where(_GraphModel.is_default.is_(True)).limit(1))
+            ).scalar_one_or_none()
+            return row
+    except Exception:
+        logger.warning("worker lifespan: failed to resolve default graph id", exc_info=True)
+        return None
 
 
 async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
@@ -188,25 +223,7 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         default_write_session_factory=write_session_factory,
     )
 
-    # Resolve the default ("public") graph id once. This drives the
-    # public-cache bridge — when a workflow's current graph_id matches
-    # this, the bridge is omitted entirely. We swallow lookup failures
-    # so a misconfigured environment still boots; cache features just
-    # silently disable themselves.
-    default_graph_id: uuid.UUID | None = None
-    try:
-        from sqlalchemy import select as _sa_select
-
-        from kt_db.models import Graph as _GraphModel
-
-        async with session_factory() as _ctrl:
-            _row = (
-                await _ctrl.execute(_sa_select(_GraphModel.id).where(_GraphModel.is_default.is_(True)).limit(1))
-            ).scalar_one_or_none()
-            if _row is not None:
-                default_graph_id = _row
-    except Exception:
-        logger.warning("worker lifespan: failed to resolve default graph id", exc_info=True)
+    default_graph_id = await _resolve_default_graph_id(session_factory)
 
     yield WorkerState(
         session_factory=session_factory,
@@ -287,25 +304,7 @@ async def build_worker_state() -> WorkerState:
         default_write_session_factory=write_session_factory,
     )
 
-    # Resolve the default ("public") graph id once. This drives the
-    # public-cache bridge — when a workflow's current graph_id matches
-    # this, the bridge is omitted entirely. We swallow lookup failures
-    # so a misconfigured environment still boots; cache features just
-    # silently disable themselves.
-    default_graph_id: uuid.UUID | None = None
-    try:
-        from sqlalchemy import select as _sa_select
-
-        from kt_db.models import Graph as _GraphModel
-
-        async with session_factory() as _ctrl:
-            _row = (
-                await _ctrl.execute(_sa_select(_GraphModel.id).where(_GraphModel.is_default.is_(True)).limit(1))
-            ).scalar_one_or_none()
-            if _row is not None:
-                default_graph_id = _row
-    except Exception:
-        logger.warning("worker lifespan: failed to resolve default graph id", exc_info=True)
+    default_graph_id = await _resolve_default_graph_id(session_factory)
 
     return WorkerState(
         session_factory=session_factory,
