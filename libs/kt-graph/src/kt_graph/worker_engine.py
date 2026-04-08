@@ -17,6 +17,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
 
+    from kt_graph.public_bridge import (
+        CachedSourceImport,
+        ImportResult,
+        PublicGraphBridge,
+    )
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +50,9 @@ class WorkerGraphEngine:
         write_session: AsyncSession,
         embedding_service: EmbeddingService | None = None,
         qdrant_client: AsyncQdrantClient | None = None,
+        *,
+        public_bridge: PublicGraphBridge | None = None,
+        qdrant_collection_prefix: str = "",
     ) -> None:
         self._write_session = write_session
         self._embedding_service = embedding_service
@@ -63,6 +72,14 @@ class WorkerGraphEngine:
 
             self._qdrant_fact_repo = QdrantFactRepository(qdrant_client)
             self._qdrant_node_repo = QdrantNodeRepository(qdrant_client)
+
+        # Multigraph public-cache bridge. Always None when this engine
+        # targets the default graph itself (the workflow factory in
+        # ``kt_hatchet.lifespan`` enforces that). Workflows call the three
+        # pass-through methods below unconditionally — they no-op when
+        # ``_public_bridge is None``, which is the universal "skip" signal.
+        self._public_bridge = public_bridge
+        self._qdrant_collection_prefix = qdrant_collection_prefix
 
         # In-memory LRU cache for nodes created in this pipeline run.
         # Capped to prevent unbounded growth in long-running pipelines.
@@ -96,6 +113,49 @@ class WorkerGraphEngine:
         """Rollback the write-db session."""
         if self._write_session is not None:
             await self._write_session.rollback()
+
+    # ── Public-cache bridge pass-throughs ─────────────────────────────
+    #
+    # All three methods no-op gracefully when ``_public_bridge is None``
+    # (which is exactly the case when this engine targets the default
+    # graph itself). Workflows call them unconditionally so the engine is
+    # the single plumbing point and there's no self-reference guard
+    # leaking into per-workflow code.
+
+    @property
+    def has_public_bridge(self) -> bool:
+        return self._public_bridge is not None
+
+    async def lookup_public_cache(
+        self,
+        *,
+        canonical_url: str | None,
+        doi: str | None,
+    ) -> CachedSourceImport | None:
+        """Look up a source in the public graph; ``None`` when no hit / no bridge."""
+        if self._public_bridge is None:
+            return None
+        return await self._public_bridge.lookup_cached_source(canonical_url=canonical_url, doi=doi)
+
+    async def import_from_public(self, import_data: CachedSourceImport) -> ImportResult | None:
+        """Import a cached snapshot into this engine's local graph."""
+        if self._public_bridge is None:
+            return None
+        return await self._public_bridge.import_cached_source(
+            import_data,
+            target_write_session=self._write_session,
+            target_qdrant_prefix=self._qdrant_collection_prefix,
+        )
+
+    async def contribute_to_public(self, *, raw_source_id: uuid.UUID) -> None:
+        """Push a freshly-decomposed source upstream to the public graph."""
+        if self._public_bridge is None:
+            return
+        await self._public_bridge.contribute_source_and_facts(
+            raw_source_id=raw_source_id,
+            source_write_session=self._write_session,
+            source_qdrant_prefix=self._qdrant_collection_prefix,
+        )
 
     # ── Helpers ───────────────────────────────────────────────────────
 

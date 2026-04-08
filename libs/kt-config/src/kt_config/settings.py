@@ -352,6 +352,15 @@ _register(
     },
 )
 
+# ---- Multigraph public-cache bridge ----------------------------------------
+_register(
+    "public_bridge",
+    {
+        "public_bridge_concept_match_threshold": "concept_match_threshold",
+        "public_cache_refresh_after_days": "refresh_after_days",
+    },
+)
+
 # ---- Fetch (URL fetcher providers) -----------------------------------------
 _register(
     "fetch",
@@ -597,6 +606,20 @@ class Settings(BaseSettings):
     # its results never reach the shared default graph.  See
     # ``ContentFetcherProvider.is_public`` for the class-level default.
     fetch_provider_public_overrides: dict[str, bool] = {}
+
+    # ---- Multigraph public-cache bridge ------------------------------------
+    # Cosine-similarity threshold used by ``PublicGraphBridge`` when matching
+    # an imported concept/entity node against an existing local node before
+    # creating a new one. Conservative default — false matches collapse
+    # distinct concepts together which is much worse than the cost of
+    # occasionally creating a duplicate that the dedup pipeline later merges.
+    public_bridge_concept_match_threshold: float = 0.93
+    # When the public-cache lookup hits a row whose ``retrieved_at`` is older
+    # than this many days, the bridge still serves the cached import but
+    # asynchronously enqueues a refresh of the upstream source. Set to 0 to
+    # disable refresh entirely (treat all hits as fresh). We expect to lower
+    # this over time as compute budget allows more frequent refreshes.
+    public_cache_refresh_after_days: int = 365
 
     # Crossref + Unpaywall contact emails (used by the DOI fetcher).
     # Crossref's "polite pool" gives configured users better rate limits;
