@@ -91,6 +91,16 @@ def test_canonicalize_url_idempotent():
     assert once == twice
 
 
+def test_canonicalize_url_preserves_userinfo_case():
+    """Userinfo (User:Pass@) is case-sensitive in some auth schemes — only
+    the host portion of the netloc may be lowercased."""
+    assert canonicalize_url("https://User:Pass@Example.com/x") == "https://User:Pass@example.com/x"
+
+
+def test_canonicalize_url_preserves_userinfo_with_port():
+    assert canonicalize_url("http://Admin@Example.COM:8080/x") == "http://Admin@example.com:8080/x"
+
+
 # ---------------------------------------------------------------------------
 # DOI_REGEX
 # ---------------------------------------------------------------------------
@@ -160,3 +170,20 @@ def test_extract_doi_handles_empty_metadata_doi():
     tags and we should treat that as "no metadata DOI"."""
     metadata = {"doi": "", "title": "T"}
     assert extract_doi("https://doi.org/10.1038/y", metadata) == "10.1038/y"
+
+
+def test_extract_doi_rejects_non_doi_paths_under_doi_org():
+    """The doi.org branch must validate that the path actually looks like
+    a DOI — otherwise ``https://doi.org/about`` would return ``"about"``
+    as if it were an identifier."""
+    assert extract_doi("https://doi.org/about") is None
+    assert extract_doi("https://doi.org/help/faq") is None
+    assert extract_doi("https://www.doi.org/services") is None
+
+
+def test_extract_doi_strips_trailing_punctuation_from_doi_org_path():
+    """``https://doi.org/10.1038/x.`` (sentence-end period after the URL
+    in prose) must yield a clean identifier — the doi.org branch and the
+    regex branch both apply the same cleanup."""
+    assert extract_doi("https://doi.org/10.1038/x.") == "10.1038/x"
+    assert extract_doi("https://doi.org/10.1038/y)") == "10.1038/y"

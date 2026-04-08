@@ -104,13 +104,21 @@ def canonicalize_url(uri: str) -> str:
 
     scheme = parts.scheme.lower()
 
-    netloc = parts.netloc.lower()
-    # Strip default ports.  ``urlsplit`` keeps the userinfo bundled into
-    # ``netloc`` so we operate on the raw string rather than ``hostname``.
-    if scheme == "http" and netloc.endswith(":80"):
-        netloc = netloc[: -len(":80")]
-    elif scheme == "https" and netloc.endswith(":443"):
-        netloc = netloc[: -len(":443")]
+    # Lowercase only the host portion of the netloc — userinfo (User:Pass@)
+    # is case-sensitive in some auth schemes and must be preserved verbatim.
+    # ``parts.hostname`` already returns the lowercased host; ``parts.username``
+    # / ``parts.password`` / ``parts.port`` give us the rest.
+    host = parts.hostname or ""
+    netloc = host
+    if parts.port is not None:
+        # Strip default ports for the well-known schemes.
+        if not ((scheme == "http" and parts.port == 80) or (scheme == "https" and parts.port == 443)):
+            netloc = f"{netloc}:{parts.port}"
+    if parts.username is not None:
+        userinfo = parts.username
+        if parts.password is not None:
+            userinfo = f"{userinfo}:{parts.password}"
+        netloc = f"{userinfo}@{netloc}"
 
     # Collapse runs of slashes in the path.  Preserves a leading single
     # slash but turns ``//foo///bar`` into ``/foo/bar``.
@@ -131,18 +139,27 @@ def _doi_from_url(uri: str) -> str | None:
 
     Two strategies, in order:
 
-    1. ``doi.org`` / ``dx.doi.org`` URLs — the DOI is the path.
+    1. ``doi.org`` / ``dx.doi.org`` URLs — the DOI is the path. The
+       extracted candidate is validated against :data:`DOI_REGEX` so that
+       non-DOI paths under doi.org (``/about``, ``/help``, etc.) return
+       ``None`` instead of a bogus identifier.
     2. Any URL containing a DOI substring — match via :data:`DOI_REGEX`.
+
+    Both branches strip trailing ``.`` and ``)`` so a DOI grabbed from
+    prose ("see 10.1038/x.") or a URL with a stray sentence-end period
+    yields a clean identifier.
     """
     if not uri:
         return None
 
     parts = urlsplit(uri)
-    host = parts.netloc.lower()
+    host = (parts.hostname or "").lower()
     if host in ("doi.org", "dx.doi.org", "www.doi.org"):
-        candidate = parts.path.lstrip("/")
-        if candidate:
+        candidate = parts.path.lstrip("/").rstrip(".)")
+        if candidate and DOI_REGEX.fullmatch(candidate):
             return candidate
+        # Fall through to the substring search below — the path didn't
+        # look like a DOI but the rest of the URL might still contain one.
 
     m = DOI_REGEX.search(uri)
     if m:

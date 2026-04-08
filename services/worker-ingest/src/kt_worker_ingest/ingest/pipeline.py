@@ -21,6 +21,7 @@ from kt_providers.fetch import (
     FileDataStore,
     build_fetch_registry,
 )
+from kt_providers.fetch.canonical import canonicalize_url, extract_doi
 from kt_worker_ingest.ingest.processing import process_uploaded_file
 from kt_worker_ingest.ingest.section_index import SectionMeta, build_section_index
 
@@ -1154,8 +1155,6 @@ async def _process_link_source(
     # machinery (PR2 plumbs them through ProcessedSource; PR3 persists
     # them on RawSource.canonical_url / .doi).  Computed even on partial
     # successes — the helpers are pure and cheap.
-    from kt_providers.fetch.canonical import canonicalize_url, extract_doi
-
     canonical = canonicalize_url(uri)
     doi = extract_doi(uri, fetch_result.html_metadata)
 
