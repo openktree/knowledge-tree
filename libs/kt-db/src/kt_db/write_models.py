@@ -37,6 +37,12 @@ class WriteRawSource(WriteBase):
         Index("ix_write_raw_sources_updated_at", "updated_at"),
         Index("ix_write_raw_sources_content_hash", "content_hash", unique=True),
         Index("ix_write_raw_sources_uri", "uri"),
+        # Public-cache lookup keys for the PublicGraphBridge. Non-unique
+        # because the same URL/DOI can legitimately appear in multiple
+        # graph schemas (write-db is shared across graphs via schemas, and
+        # the bridge filters by schema at query time).
+        Index("ix_write_raw_sources_canonical_url", "canonical_url"),
+        Index("ix_write_raw_sources_doi", "doi"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -53,6 +59,12 @@ class WriteRawSource(WriteBase):
     is_super_source: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_attempted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     fetch_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Multigraph public-cache identity. Populated at fetch time from
+    # ``kt_providers.fetch.canonical.canonicalize_url`` and ``extract_doi``.
+    # Indexed (non-unique) for PublicGraphBridge lookups; this is the table
+    # the bridge actually queries because workers never touch graph-db.
+    canonical_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    doi: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
