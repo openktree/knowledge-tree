@@ -286,6 +286,12 @@ class RawSource(Base):
     # Source-level access control: list of graph-local group names.
     # NULL or empty = public (open access). Non-empty = restricted to members of listed groups.
     access_groups: Mapped[list[str] | None] = mapped_column(ARRAY(String(500)), nullable=True, default=None)
+    # Multigraph public-cache identity. ``canonical_url`` is the normalized
+    # form of ``uri`` (see :func:`kt_providers.fetch.canonical.canonicalize_url`)
+    # and ``doi`` is set when the source has a DOI. Both are non-unique
+    # indexes used by the PublicGraphBridge to find cache hits across graphs.
+    canonical_url: Mapped[str | None] = mapped_column(String(2000), nullable=True, index=True)
+    doi: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
 
     # Relationships
     fact_sources: Mapped[list["FactSource"]] = relationship(back_populates="raw_source", cascade="all, delete-orphan")
@@ -830,6 +836,11 @@ class Graph(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Multigraph public-cache toggles. Both default ON for non-default graphs;
+    # the default graph itself ignores them (enforced in code) since it has no
+    # upstream to share with or pull from.
+    contribute_to_public: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    use_public_cache: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     graph_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="v1", server_default="v1"
     )  # Versioned graph type for backward compat ("v1", "v2", ...)
