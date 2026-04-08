@@ -127,13 +127,20 @@ class WriteSourceRepository:
     ) -> bool:
         """Replace raw_content with full-text content and update content_hash.
 
-        Returns True if updated, False if another record already has this hash.
+        Returns True if updated, False if the new content would collide with
+        another row's hash. Note: only the content (and is_full_text /
+        content_type) are updated — content_hash itself is now immutable for
+        already-existing rows. Mutating the hash on a synced row used to be
+        the cross-DB drift vector that wedged worker-sync; we keep the
+        original hash and just refresh the body. Callers that genuinely want
+        a new hash should create a fresh source under a new URI instead.
         """
         new_hash = self.compute_hash(new_content)
 
-        # Check for hash collision with a different record
+        # Refuse if another row already owns the new hash (would create a
+        # write-db duplicate, and the body refresh would be wrong anyway).
         existing = await self._session.execute(
-            select(WriteRawSource).where(
+            select(WriteRawSource.id).where(
                 WriteRawSource.content_hash == new_hash,
                 WriteRawSource.id != source_id,
             )
@@ -141,9 +148,11 @@ class WriteSourceRepository:
         if existing.scalar_one_or_none() is not None:
             return False
 
+        # Refresh body only; content_hash stays at whatever it was when the
+        # source was first created so worker-sync can never observe a hash
+        # change for a row id it has already propagated.
         values: dict[str, object] = {
             "raw_content": new_content,
-            "content_hash": new_hash,
             "is_full_text": is_full_text,
         }
         if content_type is not None:

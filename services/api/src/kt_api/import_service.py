@@ -525,7 +525,14 @@ async def _create_or_get_source(
     session: AsyncSession,
     write_session: AsyncSession | None = None,
 ) -> uuid.UUID:
-    """Create or find a RawSource, using real content_hash when available (v1.1)."""
+    """Create or find a RawSource, dual-writing to graph-db and write-db.
+
+    Synchronous import flow: graph-db must hold the row immediately so the
+    FactSource junction insert in the same transaction can satisfy its FK.
+    The deterministic id (from URI) means both writes land on the same pk,
+    so worker-sync's later id-keyed upsert is a no-op.
+    """
+    from kt_db.keys import uri_to_source_id
     from kt_db.models import RawSource
 
     source_repo = SourceRepository(session)
@@ -535,15 +542,14 @@ async def _create_or_get_source(
     if not content_hash:
         content_hash = hashlib.sha256(f"import:{source_info.uri}".encode()).hexdigest()
 
-    # Check if already exists by hash
-    existing = await source_repo.get_by_hash(content_hash)
-    if existing:
+    # Check if already exists by id (deterministic from URI)
+    deterministic_id = uri_to_source_id(source_info.uri)
+    existing = await source_repo.get_by_id(deterministic_id)
+    if existing is not None:
         source_id = existing.id
     else:
-        from kt_db.keys import uri_to_source_id
-
         source = RawSource(
-            id=uri_to_source_id(source_info.uri),
+            id=deterministic_id,
             uri=source_info.uri,
             title=source_info.title,
             raw_content=source_info.raw_content or "",
@@ -558,14 +564,16 @@ async def _create_or_get_source(
                 session.add(source)
                 await session.flush()
         except IntegrityError:
-            existing = await source_repo.get_by_hash(content_hash)
+            # Concurrent insert won the race; re-fetch by id.
+            existing = await source_repo.get_by_id(deterministic_id)
             if existing is None:
                 raise
             source_id = existing.id
         else:
             source_id = source.id
 
-    # Also create in write-db for sync worker
+    # Mirror into write-db so worker-sync's watermark advances and the
+    # row is observable through the canonical store.
     if write_session is not None:
         from kt_db.repositories.write_sources import WriteSourceRepository
 
