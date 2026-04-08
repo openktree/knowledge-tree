@@ -33,6 +33,12 @@ class GraphInfo:
     is_default: bool
     database_connection_id: uuid.UUID | None
     status: str
+    # Multigraph public-cache toggles (PR3). Snapshotted at resolve() time and
+    # cached for the lifetime of the GraphSessions row — the API
+    # invalidates the resolver cache after a Graph PATCH so toggle flips
+    # take effect on the next resolution rather than mid-workflow.
+    contribute_to_public: bool = True
+    use_public_cache: bool = True
 
     @staticmethod
     def from_orm(graph: Graph) -> GraphInfo:
@@ -45,6 +51,8 @@ class GraphInfo:
             is_default=graph.is_default,
             database_connection_id=graph.database_connection_id,
             status=graph.status,
+            contribute_to_public=graph.contribute_to_public,
+            use_public_cache=graph.use_public_cache,
         )
 
 

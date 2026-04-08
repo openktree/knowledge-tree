@@ -385,6 +385,11 @@ class IngestConfirmInput(GraphAwareMixin):
     conversation_id: str
     message_id: str
     user_id: str | None = None
+    # Per-ingest opt-out for the multigraph public-cache contribute hook.
+    # Defaults to True so the public graph keeps growing with normal use.
+    # API forces this to False server-side for file-only ingests regardless
+    # of client value (file uploads are always private).
+    share_with_public_graph: bool = True
 
 
 class IngestDecomposeInput(GraphAwareMixin):
@@ -394,6 +399,9 @@ class IngestDecomposeInput(GraphAwareMixin):
     message_id: str
     selected_chunks: list[int] | None = None
     user_id: str | None = None
+    # Per-ingest opt-out for the multigraph public-cache contribute hook.
+    # See ``IngestConfirmInput.share_with_public_graph``.
+    share_with_public_graph: bool = True
 
 
 class IngestDecomposeOutput(BaseModel):

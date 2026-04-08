@@ -58,6 +58,14 @@ class ProcessedSource:
     canonical_url: str | None = None
     doi: str | None = None
 
+    # Public-cache eligibility (PR1/PR5). Mirrors ``FetchResult.is_public``,
+    # which the fetch registry stamps from the winning provider's
+    # ``is_public`` class flag (with optional operator overrides). Drives
+    # both the public-graph cache lookup BEFORE decomposition and the
+    # contribute-back hook AFTER it. ``None`` for file uploads — they are
+    # always private and never participate in the public graph.
+    is_public: bool | None = None
+
 
 @dataclass
 class ChunkInfo:
@@ -1210,6 +1218,7 @@ async def _process_link_source(
             content_type=fetch_result.content_type,
             canonical_url=canonical,
             doi=doi,
+            is_public=fetch_result.is_public,
         )
 
     # Text/HTML/PDF content
@@ -1249,4 +1258,5 @@ async def _process_link_source(
         full_text=text if is_short else None,
         canonical_url=canonical,
         doi=doi,
+        is_public=fetch_result.is_public,
     )

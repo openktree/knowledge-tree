@@ -83,7 +83,6 @@ async def _build_agent_context(
     instances are created instead of using the shared ones from ``WorkerState``.
     """
     from kt_agents_core.state import AgentContext
-    from kt_graph.worker_engine import WorkerGraphEngine
     from kt_hatchet.keys import resolve_user_api_key_cached
 
     api_key = await resolve_user_api_key_cached(state, user_id)
@@ -99,10 +98,26 @@ async def _build_agent_context(
 
     resolved_sf, resolved_write_sf = await state.resolve_sessions(graph_id)
 
-    graph_engine = WorkerGraphEngine(
+    # Resolve graph metadata + qdrant prefix so the engine factory can wire
+    # a public-cache bridge for non-default graphs. The factory handles the
+    # default-graph case (returns a bridge-less engine) on its own.
+    graph_uuid: uuid.UUID | None = None
+    qdrant_prefix = ""
+    if graph_id and state.graph_resolver is not None:
+        try:
+            graph_uuid = uuid.UUID(graph_id)
+            gs = await state.graph_resolver.resolve(graph_uuid)
+            qdrant_prefix = gs.qdrant_collection_prefix
+        except Exception:
+            logger.warning("Failed to resolve graph %s for engine factory", graph_id, exc_info=True)
+            graph_uuid = None
+            qdrant_prefix = ""
+
+    graph_engine = state.make_worker_engine(
         write_session,
-        embedding_service,
-        qdrant_client=state.qdrant_client,
+        graph_id=graph_uuid,
+        qdrant_collection_prefix=qdrant_prefix,
+        embedding_service=embedding_service,
     )
     return AgentContext(
         graph_engine=graph_engine,
@@ -116,6 +131,34 @@ async def _build_agent_context(
         write_session_factory=resolved_write_sf,
         qdrant_client=state.qdrant_client,
     )
+
+
+async def _resolve_graph_meta(
+    state: WorkerState,
+    graph_id: str | None,
+) -> tuple[uuid.UUID | None, bool, bool]:
+    """Return ``(graph_uuid, use_public_cache, contribute_to_public)``.
+
+    For the default graph (or no resolver / unresolved graph), both
+    toggles are False so the public-cache helpers no-op naturally — the
+    default graph never participates as either source or target of the
+    bridge.
+    """
+    if not graph_id or state.graph_resolver is None:
+        return None, False, False
+    try:
+        graph_uuid = uuid.UUID(graph_id)
+    except (TypeError, ValueError):
+        logger.warning("Invalid graph_id %r in workflow input", graph_id)
+        return None, False, False
+    if state.default_graph_id is not None and graph_uuid == state.default_graph_id:
+        return graph_uuid, False, False
+    try:
+        gs = await state.graph_resolver.resolve(graph_uuid)
+    except Exception:
+        logger.warning("Failed to resolve graph %s for public-cache hooks", graph_id, exc_info=True)
+        return graph_uuid, False, False
+    return graph_uuid, gs.graph.use_public_cache, gs.graph.contribute_to_public
 
 
 def _make_emit_callback(emit: Any) -> Any:
@@ -173,8 +216,20 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
         decompose_all_sources,
         process_ingest_sources,
     )
+    from kt_worker_ingest.ingest.public_cache import (
+        apply_public_cache_lookups,
+        contribute_processed_to_public,
+    )
 
     ctx.log(f"Ingest confirm starting: conv={input.conversation_id}")
+
+    # Resolve public-cache toggles ONCE per workflow run.  Both default to
+    # False for the default graph itself / unresolved graph_id, so the
+    # bridge helpers no-op without any extra guards in the body below.
+    _pcache_graph_uuid, _use_public_cache, _contribute_to_public = await _resolve_graph_meta(
+        worker_state, input.graph_id
+    )
+    cache_hit_source_ids: set[str] = set()
 
     msg_uuid = uuid.UUID(input.message_id)
     conv_uuid = uuid.UUID(input.conversation_id)
@@ -319,13 +374,35 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             },
         )
 
-        async with _open_sessions(worker_state) as (_, write_session):
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
+                graph_id=input.graph_id,
             )
+
+            # ── Public-cache lookups ──────────────────────────────
+            # Before spending LLM cost on decomposition, check whether
+            # the public default graph already has each link source. On
+            # hit, import facts/sources/concept-entity nodes into this
+            # graph and stamp the source as "skip" in chunk_selection so
+            # decompose_all_sources leaves it alone.
+            try:
+                chunk_selection, cache_hit_source_ids, _hit_summaries = await apply_public_cache_lookups(
+                    agent_ctx.graph_engine,
+                    processed,
+                    use_public_cache=_use_public_cache,
+                    chunk_selection=chunk_selection,
+                    emit=emit_cb,
+                )
+            except Exception:
+                logger.warning("public cache lookup phase failed", exc_info=True)
+                cache_hit_source_ids = set()
+
+            if cache_hit_source_ids:
+                ctx.log(f"Public cache: {len(cache_hit_source_ids)} hit(s)")
 
             decomp_summary = await decompose_all_sources(
                 processed,
@@ -333,6 +410,25 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 emit=emit_cb,
                 chunk_selection=chunk_selection,
             )
+
+            # ── Contribute newly-decomposed sources upstream ──────
+            # Done inside the same session so the bridge can read the
+            # freshly-written facts without a second open. Wrapped in
+            # a broad try so contribute failures never abort ingest —
+            # the cache is an optimisation, not a load-bearing path.
+            try:
+                contributed = await contribute_processed_to_public(
+                    agent_ctx.graph_engine,
+                    processed,
+                    contribute_to_public=_contribute_to_public,
+                    share_with_public_graph=input.share_with_public_graph,
+                    cache_hit_source_ids=cache_hit_source_ids,
+                )
+                if contributed:
+                    ctx.log(f"Public contribute: pushed {contributed} source(s) upstream")
+            except Exception:
+                logger.warning("public contribute phase failed", exc_info=True)
+
             await write_session.commit()
 
         await emit(
@@ -739,8 +835,17 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         decompose_all_sources,
         process_ingest_sources,
     )
+    from kt_worker_ingest.ingest.public_cache import (
+        apply_public_cache_lookups,
+        contribute_processed_to_public,
+    )
 
     ctx.log(f"Ingest decompose starting: conv={input.conversation_id}")
+
+    # Resolve public-cache toggles ONCE per workflow run.
+    _pcache_graph_uuid, _use_public_cache, _contribute_to_public = await _resolve_graph_meta(
+        worker_state, input.graph_id
+    )
 
     msg_uuid = uuid.UUID(input.message_id)
     conv_uuid = uuid.UUID(input.conversation_id)
@@ -820,19 +925,52 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         )
         await emit("phase_change", {"phase": "decomposing"})
 
-        async with _open_sessions(worker_state) as (_, write_session):
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
+                graph_id=input.graph_id,
             )
+
+            # ── Public-cache lookups (see ingest_confirm_wf for details) ──
+            cache_hit_source_ids: set[str] = set()
+            try:
+                chunk_selection, cache_hit_source_ids, _hit_summaries = await apply_public_cache_lookups(
+                    agent_ctx.graph_engine,
+                    processed,
+                    use_public_cache=_use_public_cache,
+                    chunk_selection=chunk_selection,
+                    emit=emit_cb,
+                )
+            except Exception:
+                logger.warning("public cache lookup phase failed", exc_info=True)
+
+            if cache_hit_source_ids:
+                ctx.log(f"Public cache: {len(cache_hit_source_ids)} hit(s)")
+
             decomp_summary = await decompose_all_sources(
                 processed,
                 agent_ctx,
                 emit=emit_cb,
                 chunk_selection=chunk_selection,
             )
+
+            # ── Contribute upstream ─────────────────────────────────
+            try:
+                contributed = await contribute_processed_to_public(
+                    agent_ctx.graph_engine,
+                    processed,
+                    contribute_to_public=_contribute_to_public,
+                    share_with_public_graph=input.share_with_public_graph,
+                    cache_hit_source_ids=cache_hit_source_ids,
+                )
+                if contributed:
+                    ctx.log(f"Public contribute: pushed {contributed} source(s) upstream")
+            except Exception:
+                logger.warning("public contribute phase failed", exc_info=True)
+
             await write_session.commit()
 
         await emit("pipeline_scope_end", {"scope_id": "ingest-decomposition"})

@@ -74,6 +74,7 @@ class WorkerState:
         *,
         graph_id: uuid.UUID | None,
         qdrant_collection_prefix: str = "",
+        embedding_service: "EmbeddingService | None" = None,
     ) -> WorkerGraphEngine:
         """Build a ``WorkerGraphEngine`` wired with the public-cache bridge.
 
@@ -117,7 +118,7 @@ class WorkerState:
 
         return WorkerGraphEngine(
             write_session,
-            embedding_service=self.embedding_service,
+            embedding_service=embedding_service or self.embedding_service,
             qdrant_client=self.qdrant_client,
             public_bridge=bridge,
             qdrant_collection_prefix=qdrant_collection_prefix,
