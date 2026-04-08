@@ -431,6 +431,12 @@ class SyncEngine:
             max_ts = watermark
             count = 0
             first_failure_ts: datetime | None = None
+            # Distinct from first_failure_ts: deferrals are NOT recorded in
+            # sync_failures and so MUST be re-fetched on the next tick. The
+            # final watermark is pinned one microsecond behind the earliest
+            # deferred row's updated_at so the SQL filter `> watermark`
+            # re-includes it.
+            first_deferral_ts: datetime | None = None
             for wpc in rows:
                 try:
                     # Resolve content_hash → raw_source_id via write-db.
@@ -460,8 +466,8 @@ class SyncEngine:
                             raw_source_id,
                             wpc.id,
                         )
-                        if first_failure_ts is None:
-                            first_failure_ts = wpc.updated_at
+                        if first_deferral_ts is None:
+                            first_deferral_ts = wpc.updated_at
                         continue
 
                     async with gs.begin_nested():
@@ -494,6 +500,12 @@ class SyncEngine:
                     await self._record_failure(ws, "write_prohibited_chunks", str(wpc.id), exc)
 
             safe_ts = first_failure_ts if first_failure_ts is not None else max_ts
+            if first_deferral_ts is not None:
+                # Pin one microsecond behind the earliest deferred row so
+                # the next tick's `updated_at > watermark` filter re-fetches
+                # it. This is the only way deferred rows get retried —
+                # they are NOT in sync_failures.
+                safe_ts = min(safe_ts, first_deferral_ts - timedelta(microseconds=1))
             if safe_ts > watermark:
                 await self._set_watermark(ws, "write_prohibited_chunks", safe_ts)
             await ws.commit()
