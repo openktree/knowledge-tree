@@ -3,6 +3,7 @@
 from kt_providers.fetch.extract import (
     classify_content_type,
     extract_html,
+    extract_html_metadata,
     extract_image,
     extract_text,
 )
@@ -67,3 +68,48 @@ def test_extract_image_returns_raw_bytes():
     r = extract_image("https://x.com/img.png", b"\x89PNG fake", "image/png")
     assert r.is_image is True
     assert r.raw_bytes == b"\x89PNG fake"
+
+
+# ---------------------------------------------------------------------------
+# extract_html_metadata + citation_doi scraping
+# ---------------------------------------------------------------------------
+
+
+def test_extract_html_metadata_pulls_citation_doi():
+    """Most academic publishers expose the DOI via a citation_doi meta
+    tag. Capturing it here means every fetcher (not just the dedicated
+    DOI provider) surfaces a DOI for the multigraph public-cache lookup."""
+    html = (
+        "<html><head>"
+        '<meta name="citation_doi" content="10.1038/nature12373">'
+        "<title>Test</title>"
+        "</head><body><article><p>" + "x" * 200 + "</p></article></body></html>"
+    )
+    meta = extract_html_metadata(html)
+    assert meta is not None
+    assert meta.get("doi") == "10.1038/nature12373"
+
+
+def test_extract_html_metadata_handles_reversed_attribute_order():
+    """Some publishers emit ``content="..." name="citation_doi"`` instead
+    of ``name="citation_doi" content="..."``. The regex must tolerate both."""
+    html = '<html><head><meta content="10.1038/x" name="citation_doi" /></head><body>' + "x" * 200 + "</body></html>"
+    meta = extract_html_metadata(html)
+    assert meta is not None
+    assert meta.get("doi") == "10.1038/x"
+
+
+def test_extract_html_metadata_handles_single_quoted_attrs():
+    html = "<html><head><meta name='citation_doi' content='10.1038/y' /></head><body>" + "x" * 200 + "</body></html>"
+    meta = extract_html_metadata(html)
+    assert meta is not None
+    assert meta.get("doi") == "10.1038/y"
+
+
+def test_extract_html_metadata_no_doi_when_meta_absent():
+    html = "<html><head><title>Plain</title></head><body><article><p>" + "x" * 200 + "</p></article></body></html>"
+    meta = extract_html_metadata(html)
+    # ``doi`` key may simply be absent — we just want it to NOT be present
+    # or to be falsy.  Other trafilatura keys may or may not be set.
+    if meta is not None:
+        assert not meta.get("doi")

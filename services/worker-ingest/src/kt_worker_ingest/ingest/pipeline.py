@@ -21,6 +21,7 @@ from kt_providers.fetch import (
     FileDataStore,
     build_fetch_registry,
 )
+from kt_providers.fetch.canonical import canonicalize_url, extract_doi
 from kt_worker_ingest.ingest.processing import process_uploaded_file
 from kt_worker_ingest.ingest.section_index import SectionMeta, build_section_index
 
@@ -48,6 +49,14 @@ class ProcessedSource:
     # Image sources
     is_image: bool = False
     content_type: str | None = None
+
+    # Multigraph public-cache identifiers (PR2/PR3).  Computed at fetch time
+    # for link sources via ``canonicalize_url`` / ``extract_doi``; remain
+    # None for file uploads (which have no canonical URL by design — file
+    # uploads are always private and never participate in the public
+    # graph cache).  Persisted to RawSource.canonical_url / .doi in PR3.
+    canonical_url: str | None = None
+    doi: str | None = None
 
 
 @dataclass
@@ -1142,6 +1151,13 @@ async def _process_link_source(
     fetch_result = await fetch_registry.fetch(uri)
     fetcher_attempts = [a.to_dict() for a in fetch_result.attempts]
 
+    # Stable cross-graph identifiers used by the multigraph public-cache
+    # machinery (PR2 plumbs them through ProcessedSource; PR3 persists
+    # them on RawSource.canonical_url / .doi).  Computed even on partial
+    # successes — the helpers are pure and cheap.
+    canonical = canonicalize_url(uri)
+    doi = extract_doi(uri, fetch_result.html_metadata)
+
     if not fetch_result.success and not fetch_result.is_image:
         # Hard failure across the entire chain.  Best-effort: persist the
         # audit trail on the existing source row if one exists, so users
@@ -1192,6 +1208,8 @@ async def _process_link_source(
             raw_source_id=str(raw_source.id),
             is_image=True,
             content_type=fetch_result.content_type,
+            canonical_url=canonical,
+            doi=doi,
         )
 
     # Text/HTML/PDF content
@@ -1229,4 +1247,6 @@ async def _process_link_source(
         section_metas=metas,
         is_short=is_short,
         full_text=text if is_short else None,
+        canonical_url=canonical,
+        doi=doi,
     )

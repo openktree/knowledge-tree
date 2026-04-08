@@ -33,6 +33,8 @@ import httpx
 
 from kt_config.settings import get_settings
 from kt_providers.fetch.base import ContentFetcherProvider
+from kt_providers.fetch.canonical import DOI_REGEX
+from kt_providers.fetch.extract import extract_html_metadata
 from kt_providers.fetch.types import MIN_EXTRACTED_LENGTH, FetchResult
 from kt_providers.fetch.url_safety import UnsafeUrlError, validate_fetch_url
 
@@ -74,12 +76,12 @@ PUBLISHER_HOSTS: frozenset[str] = frozenset(
     }
 )
 
-# Conservative DOI regex — matches the canonical 10.NNNN/anything pattern.
-_DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>]+)", re.IGNORECASE)
-_DOI_META_RE = re.compile(
-    r"<meta[^>]+name=[\"']citation_doi[\"'][^>]+content=[\"']([^\"']+)[\"']",
-    re.IGNORECASE,
-)
+# DOI regex is shared with the canonicalization helpers in
+# ``kt_providers.fetch.canonical`` so the pattern can never drift.  The
+# citation_doi meta-tag scrape now lives in ``extract_html_metadata``
+# (used by every fetcher), so the landing-page fallback below routes
+# through it instead of carrying its own copy of the regex.
+_DOI_RE = DOI_REGEX
 
 CROSSREF_API = "https://api.crossref.org/works/{doi}"
 UNPAYWALL_API = "https://api.unpaywall.org/v2/{doi}"
@@ -176,7 +178,11 @@ class DoiContentFetcher(ContentFetcherProvider):
         if m:
             return m.group(1).rstrip(".)")
 
-        # 3. Fall back to fetching the landing page and grepping the meta tag.
+        # 3. Fall back to fetching the landing page.  We share
+        # ``extract_html_metadata`` with every other HTML fetcher so the
+        # citation_doi scrape lives in exactly one place; if no meta tag
+        # is present, scan the body for a bare DOI substring as a final
+        # safety net.
         try:
             client = await self._client_()
             response = await client.get(uri)
@@ -188,9 +194,9 @@ class DoiContentFetcher(ContentFetcherProvider):
             return None
 
         body = response.text or ""
-        m = _DOI_META_RE.search(body)
-        if m:
-            return m.group(1).strip()
+        meta = extract_html_metadata(body)
+        if meta and meta.get("doi"):
+            return meta["doi"]
 
         m = _DOI_RE.search(body)
         if m:

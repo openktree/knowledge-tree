@@ -18,12 +18,27 @@ Public surface:
 from __future__ import annotations
 
 import logging
+import re
 
 import trafilatura  # type: ignore[import-untyped]
 
 from kt_providers.fetch.types import MIN_EXTRACTED_LENGTH, FetchResult
 
 logger = logging.getLogger(__name__)
+
+# ``<meta name="citation_doi" content="10.xxx/yyy">`` — the Highwire/COinS
+# convention used by virtually every academic publisher.  Scraping it here
+# (rather than only inside the DOI provider) means any HTML page fetched by
+# any provider surfaces a DOI in ``html_metadata`` for free, which the
+# multigraph cache lookup uses to identify sources across graphs.  Quote
+# style and attribute order vary across publishers, so the regex tolerates
+# both single/double quotes and either attribute ordering.
+_CITATION_DOI_META_RE = re.compile(
+    r"<meta\b[^>]*\bname=[\"']citation_doi[\"'][^>]*\bcontent=[\"']([^\"']+)[\"']"
+    r"|"
+    r"<meta\b[^>]*\bcontent=[\"']([^\"']+)[\"'][^>]*\bname=[\"']citation_doi[\"']",
+    re.IGNORECASE,
+)
 
 
 def classify_content_type(content_type: str) -> str:
@@ -124,19 +139,35 @@ def extract_image(uri: str, image_bytes: bytes, content_type: str) -> FetchResul
 
 
 def extract_html_metadata(raw_html: str) -> dict[str, str | None] | None:
-    """Pull author/sitename/date/title from HTML via trafilatura.metadata."""
+    """Pull author/sitename/date/title/doi from HTML via trafilatura + a
+    targeted ``citation_doi`` meta-tag scrape.
+
+    Trafilatura does not surface the DOI on its own, but most academic
+    publishers expose it via ``<meta name="citation_doi" content="...">``.
+    Capturing it here means the multigraph public-graph cache can identify
+    a fetched source by DOI even when it was retrieved by a generic HTML
+    fetcher (httpx, curl_cffi, flaresolverr) rather than the dedicated
+    DOI provider.
+    """
+    result: dict[str, str | None] = {}
+
     try:
         meta = trafilatura.metadata.extract_metadata(raw_html)
-        if meta is None:
-            return None
-
-        result: dict[str, str | None] = {}
-        for key in ("author", "sitename", "date", "title", "categories", "tags"):
-            value = getattr(meta, key, None)
-            if value:
-                result[key] = str(value)
-
-        return result if result else None
+        if meta is not None:
+            for key in ("author", "sitename", "date", "title", "categories", "tags"):
+                value = getattr(meta, key, None)
+                if value:
+                    result[key] = str(value)
     except Exception:
-        logger.debug("Failed to extract HTML metadata", exc_info=True)
-        return None
+        logger.debug("Failed to extract HTML metadata via trafilatura", exc_info=True)
+
+    try:
+        m = _CITATION_DOI_META_RE.search(raw_html)
+        if m:
+            doi = (m.group(1) or m.group(2) or "").strip()
+            if doi:
+                result["doi"] = doi
+    except Exception:
+        logger.debug("Failed to scan for citation_doi meta tag", exc_info=True)
+
+    return result if result else None
