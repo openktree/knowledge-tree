@@ -55,10 +55,12 @@ class SourceRepository:
         return result.scalar_one_or_none()
 
     async def create_or_get(self, search_result: RawSearchResult) -> tuple[RawSource, bool]:
-        """Create a new RawSource or return existing one if content hash matches.
+        """Create a new RawSource or return existing one if id matches.
 
-        Uses INSERT ... ON CONFLICT DO NOTHING on the unique content_hash
-        index, then fetches by hash to determine whether a new row was created.
+        The id is derived deterministically from the URI via
+        ``uri_to_source_id`` so two callers for the same URI will collide on
+        the primary key. graph-db.raw_sources.content_hash is no longer
+        UNIQUE — write-db owns dedup — so the conflict target is the id.
 
         Returns:
             Tuple of (source, created) where created is True if a new record was inserted.
@@ -77,13 +79,10 @@ class SourceRepository:
             provider_id=search_result.provider_id,
             provider_metadata=search_result.provider_metadata,
         )
-        # Use DO UPDATE (no-op) instead of DO NOTHING to avoid deadlocks
-        # when concurrent transactions insert rows with the same content_hash.
-        # DO NOTHING takes a ShareLock that can deadlock; DO UPDATE takes an
-        # exclusive lock that serializes properly.
+        # No-op DO UPDATE on the primary key avoids deadlocks vs DO NOTHING.
         stmt = stmt.on_conflict_do_update(
-            index_elements=["content_hash"],
-            set_={"content_hash": stmt.excluded.content_hash},
+            index_elements=["id"],
+            set_={"id": stmt.excluded.id},
         ).returning(RawSource.id, text("xmax"))
         result = await self._session.execute(stmt)
         row = result.one()

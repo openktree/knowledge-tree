@@ -431,21 +431,43 @@ class SyncEngine:
             max_ts = watermark
             count = 0
             first_failure_ts: datetime | None = None
+            # Distinct from first_failure_ts: deferrals are NOT recorded in
+            # sync_failures and so MUST be re-fetched on the next tick. The
+            # final watermark is pinned one microsecond behind the earliest
+            # deferred row's updated_at so the SQL filter `> watermark`
+            # re-includes it.
+            first_deferral_ts: datetime | None = None
             for wpc in rows:
                 try:
-                    # Resolve content_hash → raw_source_id
-                    result = await gs.execute(
-                        select(RawSource.id).where(RawSource.content_hash == wpc.source_content_hash)
+                    # Resolve content_hash → raw_source_id via write-db.
+                    # write-db ids and graph-db ids are equal by construction
+                    # (deterministic from URI), so the write-db id IS the
+                    # graph-db id. This avoids ambiguity if graph-db ever
+                    # holds duplicate rows with the same hash.
+                    wrs_id_row = await ws.execute(
+                        select(WriteRawSource.id).where(WriteRawSource.content_hash == wpc.source_content_hash).limit(1)
                     )
-                    raw_source_id = result.scalar_one_or_none()
+                    raw_source_id = wrs_id_row.scalar_one_or_none()
                     if raw_source_id is None:
                         logger.warning(
-                            "No RawSource for content_hash %s, skipping prohibited chunk %s",
+                            "No WriteRawSource for content_hash %s, skipping prohibited chunk %s",
                             wpc.source_content_hash,
                             wpc.id,
                         )
                         if wpc.updated_at > max_ts:
                             max_ts = wpc.updated_at
+                        continue
+                    # Confirm the graph-db row exists; if not, the
+                    # raw_sources sync hasn't caught up yet — defer.
+                    gs_row = await gs.execute(select(RawSource.id).where(RawSource.id == raw_source_id))
+                    if gs_row.scalar_one_or_none() is None:
+                        logger.info(
+                            "graph-db RawSource %s not yet synced, deferring prohibited_chunk %s",
+                            raw_source_id,
+                            wpc.id,
+                        )
+                        if first_deferral_ts is None:
+                            first_deferral_ts = wpc.updated_at
                         continue
 
                     async with gs.begin_nested():
@@ -478,6 +500,12 @@ class SyncEngine:
                     await self._record_failure(ws, "write_prohibited_chunks", str(wpc.id), exc)
 
             safe_ts = first_failure_ts if first_failure_ts is not None else max_ts
+            if first_deferral_ts is not None:
+                # Pin one microsecond behind the earliest deferred row so
+                # the next tick's `updated_at > watermark` filter re-fetches
+                # it. This is the only way deferred rows get retried —
+                # they are NOT in sync_failures.
+                safe_ts = min(safe_ts, first_deferral_ts - timedelta(microseconds=1))
             if safe_ts > watermark:
                 await self._set_watermark(ws, "write_prohibited_chunks", safe_ts)
             await ws.commit()
@@ -593,29 +621,32 @@ class SyncEngine:
     ) -> None:
         """Sync a single WriteFactSource to graph-db.
 
-        Finds or creates the RawSource by content_hash, then creates the
-        FactSource junction row.  When creating a new RawSource, looks up the
-        real source in write-db first to avoid creating content-less phantoms.
+        Resolves the graph-db RawSource by **id** (not content_hash):
+        write-db is the source of truth, and write-db ids equal graph-db ids
+        by construction (deterministic from URI). The hash is metadata, not
+        a join key — resolving by hash is ambiguous if graph-db ever holds
+        more than one row with the same hash.
         """
-        # Find existing RawSource by content_hash
+        # Resolve via write-db: WriteRawSource.id IS the canonical graph-db id.
+        # Prefer hash lookup since that's what WriteFactSource carries, then
+        # confirm the graph-db row exists. If it doesn't, upsert it from the
+        # write-db row (the raw_sources sync hasn't caught up yet for this row).
         raw_source_id: uuid.UUID | None = None
+        from kt_db.repositories.write_sources import WriteSourceRepository
+
+        write_repo = WriteSourceRepository(ws)
+        real_source: WriteRawSource | None = None
         if wfs.raw_source_content_hash:
-            result = await gs.execute(
-                select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
-            )
-            row = result.scalar_one_or_none()
-            if row is not None:
-                raw_source_id = row
+            real_source = await write_repo.get_by_content_hash(wfs.raw_source_content_hash)
 
-        # If not found, look up the real source in write-db before creating
-        if raw_source_id is None:
-            from kt_db.repositories.write_sources import WriteSourceRepository
-
-            write_repo = WriteSourceRepository(ws)
-            real_source = await write_repo.get_by_content_hash(wfs.raw_source_content_hash or "")
-
-            if real_source is not None:
-                # Upsert with full content from write-db (no phantom)
+        if real_source is not None:
+            existing = await gs.execute(select(RawSource.id).where(RawSource.id == real_source.id))
+            if existing.scalar_one_or_none() is not None:
+                raw_source_id = real_source.id
+            else:
+                # graph-db row not yet present — upsert from write-db so this
+                # fact source can be linked immediately. Catches the case
+                # where _sync_one_fact_source races ahead of _sync_raw_sources.
                 stmt = (
                     pg_insert(RawSource.__table__)
                     .values(
@@ -632,75 +663,48 @@ class SyncEngine:
                         fetch_attempted=real_source.fetch_attempted,
                         fetch_error=real_source.fetch_error,
                     )
-                    .on_conflict_do_update(
-                        index_elements=["id"],
-                        set_={
-                            "uri": real_source.uri,
-                            "title": real_source.title,
-                            "raw_content": real_source.raw_content,
-                            "content_hash": real_source.content_hash,
-                            "is_full_text": real_source.is_full_text,
-                            "is_super_source": real_source.is_super_source,
-                            "content_type": real_source.content_type,
-                            "provider_metadata": real_source.provider_metadata,
-                            "fetch_attempted": real_source.fetch_attempted,
-                            "fetch_error": real_source.fetch_error,
-                        },
-                    )
-                    .returning(RawSource.__table__.c.id)
+                    .on_conflict_do_nothing(index_elements=["id"])
                 )
-                result = await gs.execute(stmt)
-                raw_source_id = result.scalar_one_or_none()
-                if raw_source_id is None:
-                    # content_hash conflict with different ID — re-query
-                    result2 = await gs.execute(
-                        select(RawSource.id).where(RawSource.content_hash == real_source.content_hash).limit(1)
-                    )
-                    raw_source_id = result2.scalar_one_or_none()
-            else:
-                # Fallback: create minimal record without content (source not in write-db).
-                # This can still produce phantom sources — monitor for occurrences.
-                logger.warning(
-                    "Creating minimal RawSource for hash %s (not found in write-db) — potential phantom",
-                    wfs.raw_source_content_hash,
-                )
-                from kt_db.keys import uri_to_source_id as _uri_to_source_id
-
-                if not wfs.raw_source_uri:
-                    logger.error(
-                        "WriteFactSource %s has no URI — cannot derive deterministic source ID, skipping",
-                        wfs.id,
-                    )
-                    return
-                raw_source_id = _uri_to_source_id(wfs.raw_source_uri)
-                stmt = (
-                    pg_insert(RawSource.__table__)
-                    .values(
-                        id=raw_source_id,
-                        uri=wfs.raw_source_uri,
-                        title=wfs.raw_source_title,
-                        provider_id=wfs.raw_source_provider_id,
-                        content_hash=wfs.raw_source_content_hash or "",
-                    )
-                    .on_conflict_do_nothing()
-                    .returning(RawSource.__table__.c.id)
-                )
-                result = await gs.execute(stmt)
-                returned = result.scalar_one_or_none()
-                if returned is None:
-                    result2 = await gs.execute(
-                        select(RawSource.id).where(RawSource.content_hash == wfs.raw_source_content_hash).limit(1)
-                    )
-                    raw_source_id = result2.scalar_one_or_none()
-                else:
-                    raw_source_id = returned
-
-            if raw_source_id is None:
-                logger.debug(
-                    "Failed to find or create RawSource for hash %s",
-                    wfs.raw_source_content_hash,
+                await gs.execute(stmt)
+                raw_source_id = real_source.id
+        else:
+            # No matching WriteRawSource — fall back to deriving the id from
+            # the URI on the WriteFactSource itself, and stub the graph-db row.
+            # This is the only path that can still produce a phantom (no
+            # raw_content), but it preserves the deterministic id invariant.
+            if not wfs.raw_source_uri:
+                logger.error(
+                    "WriteFactSource %s has no URI and no matching WriteRawSource — skipping",
+                    wfs.id,
                 )
                 return
+            from kt_db.keys import uri_to_source_id as _uri_to_source_id
+
+            raw_source_id = _uri_to_source_id(wfs.raw_source_uri)
+            logger.warning(
+                "Stubbing minimal RawSource %s for hash %s (WriteRawSource missing) — potential phantom",
+                raw_source_id,
+                wfs.raw_source_content_hash,
+            )
+            stmt = (
+                pg_insert(RawSource.__table__)
+                .values(
+                    id=raw_source_id,
+                    uri=wfs.raw_source_uri,
+                    title=wfs.raw_source_title,
+                    provider_id=wfs.raw_source_provider_id,
+                    content_hash=wfs.raw_source_content_hash or "",
+                )
+                .on_conflict_do_nothing(index_elements=["id"])
+            )
+            await gs.execute(stmt)
+
+        if raw_source_id is None:
+            logger.debug(
+                "Failed to resolve RawSource for hash %s",
+                wfs.raw_source_content_hash,
+            )
+            return
 
         # Create FactSource junction (inner savepoint protects enclosing txn)
         try:

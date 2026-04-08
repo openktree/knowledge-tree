@@ -125,25 +125,26 @@ class WriteSourceRepository:
         is_full_text: bool = True,
         content_type: str | None = None,
     ) -> bool:
-        """Replace raw_content with full-text content and update content_hash.
+        """Refresh ``raw_content`` (and optionally ``is_full_text`` /
+        ``content_type``) on an existing source. Always returns True.
 
-        Returns True if updated, False if another record already has this hash.
+        ``content_hash`` is intentionally **not** updated. The hash is the
+        ingestion-time fingerprint of the original snippet — it stays frozen
+        once worker-sync has propagated the row, so the cross-DB sync can
+        never observe a hash change for an id it has already mirrored. As a
+        consequence, after this call ``content_hash != sha256(raw_content)``;
+        readers should treat the hash as a stable identity token, not as a
+        live checksum of the body.
+
+        Callers that genuinely want a new hash must create a fresh source
+        under a new URI (which produces a new deterministic id).
+
+        The ``bool`` return is preserved for caller compatibility but no
+        longer signals collision — there is nothing for the new content to
+        collide with.
         """
-        new_hash = self.compute_hash(new_content)
-
-        # Check for hash collision with a different record
-        existing = await self._session.execute(
-            select(WriteRawSource).where(
-                WriteRawSource.content_hash == new_hash,
-                WriteRawSource.id != source_id,
-            )
-        )
-        if existing.scalar_one_or_none() is not None:
-            return False
-
         values: dict[str, object] = {
             "raw_content": new_content,
-            "content_hash": new_hash,
             "is_full_text": is_full_text,
         }
         if content_type is not None:

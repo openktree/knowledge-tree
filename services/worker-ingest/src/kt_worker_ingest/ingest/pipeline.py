@@ -829,43 +829,36 @@ async def _find_or_create_raw_source(
     provider_id: str,
     write_session: AsyncSession | None = None,
 ) -> RawSource:
-    """Find an existing RawSource by content_hash, or create a new one.
+    """Find an existing RawSource by id (deterministic from URI), or create one.
 
-    When write_session is provided, creates via WriteSourceRepository on
-    write-db instead of writing to graph-db directly.
+    Dual-writes to graph-db and write-db when ``write_session`` is provided.
+    The synchronous ingest path needs the graph-db row immediately so the
+    same-transaction FactSource FK can resolve; the write-db mirror keeps
+    worker-sync's watermark in lockstep so it never re-emits the row.
     """
+    from kt_db.keys import uri_to_source_id
+
+    deterministic_id = uri_to_source_id(uri)
+
     if write_session is not None:
         from kt_db.repositories.write_sources import WriteSourceRepository
 
         write_repo = WriteSourceRepository(write_session)
-        ws = await write_repo.create_or_get(
+        await write_repo.create_or_get(
             uri=uri,
             title=title,
             raw_content=raw_content,
             content_hash=content_hash,
             provider_id=provider_id,
-        )
-        # Return a RawSource-shaped object with matching id for callers
-        return RawSource(
-            id=ws.id,
-            uri=uri,
-            title=title,
-            raw_content=raw_content,
-            content_hash=content_hash,
-            content_type=content_type,
-            provider_id=provider_id,
-            is_full_text=True,
         )
 
-    result = await session.execute(select(RawSource).where(RawSource.content_hash == content_hash))
+    result = await session.execute(select(RawSource).where(RawSource.id == deterministic_id))
     existing = result.scalar_one_or_none()
     if existing is not None:
         return existing
 
-    from kt_db.keys import uri_to_source_id
-
     raw_source = RawSource(
-        id=uri_to_source_id(uri),
+        id=deterministic_id,
         uri=uri,
         title=title,
         raw_content=raw_content,

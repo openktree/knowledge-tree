@@ -268,11 +268,11 @@ class FactSource(Base):
 class RawSource(Base):
     __tablename__ = "raw_sources"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     uri: Mapped[str] = mapped_column(String(2000), nullable=False)
     title: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     is_full_text: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     provider_id: Mapped[str] = mapped_column(String(100), nullable=False)
