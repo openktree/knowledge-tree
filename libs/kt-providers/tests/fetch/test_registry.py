@@ -8,6 +8,7 @@ from kt_providers.fetch.base import ContentFetcherProvider
 from kt_providers.fetch.host_pref import InMemoryHostPreferenceStore
 from kt_providers.fetch.registry import FetchProviderRegistry
 from kt_providers.fetch.types import FetchResult
+from kt_providers.fetch.url_safety import UnsafeUrlError
 
 
 class FakeProvider(ContentFetcherProvider):
@@ -205,6 +206,75 @@ async def test_default_winner_is_not_recorded_to_avoid_noise():
     # The default first-tier winning is the natural baseline; don't pollute
     # the cache with it.
     assert await store.get("example.com") is None
+
+
+@pytest.mark.asyncio
+async def test_url_validator_short_circuits_chain_with_synthetic_attempt():
+    """An UnsafeUrlError from the validator must be returned as a normal
+    failed FetchResult — never raised — and no provider must be touched."""
+    p1 = FakeProvider("a", return_value=_success("a"))
+
+    async def reject(uri: str) -> None:
+        raise UnsafeUrlError("nope")
+
+    reg = FetchProviderRegistry([p1], chain=["a"], url_validator=reject)
+    result = await reg.fetch("http://127.0.0.1/")
+
+    assert result.success is False
+    assert "unsafe URL" in (result.error or "")
+    assert p1.calls == []  # provider never invoked
+    assert len(result.attempts) == 1
+    assert result.attempts[0].provider_id == "url_safety"
+    assert result.attempts[0].success is False
+
+
+@pytest.mark.asyncio
+async def test_url_validator_passes_through_to_chain_when_url_is_safe():
+    p1 = FakeProvider("a", return_value=_success("a"))
+
+    async def allow(uri: str) -> None:
+        return None
+
+    reg = FetchProviderRegistry([p1], chain=["a"], url_validator=allow)
+    result = await reg.fetch("https://example.com/")
+    assert result.success is True
+    assert p1.calls == ["https://example.com/"]
+
+
+@pytest.mark.asyncio
+async def test_is_available_exception_logged_with_traceback(caplog):
+    """When a provider's is_available() raises, the error must surface in
+    the attempts log AND the underlying traceback must hit the logger so
+    operators have a chance to debug it."""
+    import logging
+
+    class BrokenAvailable(ContentFetcherProvider):
+        @property
+        def provider_id(self) -> str:
+            return "broken"
+
+        async def is_available(self) -> bool:
+            raise RuntimeError("availability check exploded")
+
+        async def fetch(self, uri: str) -> FetchResult:
+            raise AssertionError("should never be called")
+
+    p_good = FakeProvider("good", return_value=_success("good"))
+    reg = FetchProviderRegistry([BrokenAvailable(), p_good], chain=["broken", "good"])
+
+    with caplog.at_level(logging.WARNING, logger="kt_providers.fetch.registry"):
+        result = await reg.fetch("https://example.com/")
+
+    assert result.success is True
+    assert result.provider_id == "good"
+    # First attempt records the is_available failure with the underlying message.
+    first = result.attempts[0]
+    assert first.provider_id == "broken"
+    assert first.success is False
+    assert "availability check exploded" in (first.error or "")
+    # And the traceback was actually emitted to the logger so an operator
+    # can find the call site.
+    assert any("is_available()" in record.getMessage() and record.exc_info is not None for record in caplog.records)
 
 
 @pytest.mark.asyncio

@@ -833,7 +833,9 @@ async def _persist_fetcher_audit(
 
     Failures here must not block the ingest pipeline — the user already
     has their content; persistence of the strategy log is purely
-    diagnostic.
+    diagnostic.  Logged at warning so an outage of the write-db (or any
+    other persistent failure mode) doesn't silently swallow the only
+    breadcrumb explaining why a fetch took the path it did.
     """
     if write_session is None:
         return
@@ -848,7 +850,7 @@ async def _persist_fetcher_audit(
             fetcher_attempts=attempts,
         )
     except Exception:
-        logger.debug("failed to persist fetcher audit for %s", source_id, exc_info=True)
+        logger.warning("failed to persist fetcher audit for %s", source_id, exc_info=True)
 
 
 async def _find_or_create_raw_source(
@@ -1167,7 +1169,7 @@ async def _process_link_source(
                         fetcher_attempts=fetcher_attempts,
                     )
             except Exception:
-                logger.debug("failed to persist fetch attempts for %s", uri, exc_info=True)
+                logger.warning("failed to persist fetch attempts for %s", uri, exc_info=True)
         return None
 
     # Handle image URLs

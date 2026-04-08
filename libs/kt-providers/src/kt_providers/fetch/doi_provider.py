@@ -34,6 +34,7 @@ import httpx
 from kt_config.settings import get_settings
 from kt_providers.fetch.base import ContentFetcherProvider
 from kt_providers.fetch.types import MIN_EXTRACTED_LENGTH, FetchResult
+from kt_providers.fetch.url_safety import UnsafeUrlError, validate_fetch_url
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +225,25 @@ class DoiContentFetcher(ContentFetcherProvider):
         data = response.json()
         best = data.get("best_oa_location") or {}
         url = best.get("url_for_pdf") or best.get("url")
-        return str(url) if url else None
+        if not url:
+            return None
+        url_str = str(url)
+        # Defense-in-depth: Unpaywall is third-party JSON.  We hand the
+        # resulting URL back to the registry / pipeline, and a future
+        # consumer might fetch it without re-checking.  Run it through
+        # the same SSRF guard so a poisoned Unpaywall response cannot
+        # smuggle a private/loopback URL into our system.
+        try:
+            await validate_fetch_url(url_str)
+        except UnsafeUrlError as e:
+            logger.warning(
+                "rejecting unsafe Unpaywall PDF url for DOI %s: %s (%s)",
+                doi,
+                url_str,
+                e,
+            )
+            return None
+        return url_str
 
     async def close(self) -> None:
         if self._client is not None and not self._client.is_closed:

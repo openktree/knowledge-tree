@@ -19,6 +19,7 @@ from kt_providers.fetch.host_pref import (
     RedisHostPreferenceStore,
 )
 from kt_providers.fetch.registry import FetchProviderRegistry
+from kt_providers.fetch.url_safety import validate_fetch_url
 
 if TYPE_CHECKING:
     pass
@@ -117,4 +118,5 @@ def build_fetch_registry(
         chain=chain,
         host_overrides=host_overrides,
         host_pref_store=pref_store,
+        url_validator=validate_fetch_url,
     )

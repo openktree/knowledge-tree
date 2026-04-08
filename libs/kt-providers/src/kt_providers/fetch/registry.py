@@ -25,12 +25,17 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Awaitable, Callable
 
 from kt_providers.fetch.base import ContentFetcherProvider
 from kt_providers.fetch.host_pref import HostPreferenceStore, host_of
 from kt_providers.fetch.types import FetchAttempt, FetchResult
+from kt_providers.fetch.url_safety import UnsafeUrlError
 
 logger = logging.getLogger(__name__)
+
+#: Type of the SSRF validator hook.  See ``kt_providers.fetch.url_safety``.
+UrlValidator = Callable[[str], Awaitable[None]]
 
 
 class FetchProviderRegistry:
@@ -43,11 +48,21 @@ class FetchProviderRegistry:
         *,
         host_overrides: dict[str, str] | None = None,
         host_pref_store: HostPreferenceStore | None = None,
+        url_validator: UrlValidator | None = None,
     ) -> None:
+        """
+        Args:
+            url_validator: Optional async hook called for every URL before
+                any provider is invoked.  When None, no validation is done
+                — this is the test default; ``build_fetch_registry`` always
+                injects the real SSRF guard for production code paths.
+                A validator should raise ``UnsafeUrlError`` to reject a URL.
+        """
         self._providers: dict[str, ContentFetcherProvider] = {p.provider_id: p for p in providers}
         self._chain: list[str] = list(chain)
         self._host_overrides: dict[str, str] = {k.lower(): v for k, v in (host_overrides or {}).items()}
         self._host_pref_store = host_pref_store
+        self._url_validator = url_validator
 
     @property
     def chain(self) -> list[str]:
@@ -78,7 +93,33 @@ class FetchProviderRegistry:
             `FetchResult` with `provider_id` and `attempts` populated.  When
             every provider fails, returns a result with `error="all fetchers
             failed"` and the full `attempts` log.
+
+        Raises:
+            Nothing.  SSRF rejections are returned as a non-success
+            FetchResult with `error="unsafe URL: <reason>"` and a single
+            synthetic attempt entry, so callers see them on the same code
+            path as ordinary failures.
         """
+        # SSRF gate: scheme + DNS-resolved-IP check.  Fails closed and
+        # short-circuits the chain so no provider ever sees an unsafe URL.
+        if self._url_validator is not None:
+            try:
+                await self._url_validator(uri)
+            except UnsafeUrlError as e:
+                logger.warning("rejecting unsafe URL %s: %s", uri, e)
+                return FetchResult(
+                    uri=uri,
+                    error=f"unsafe URL: {e}",
+                    attempts=[
+                        FetchAttempt(
+                            provider_id="url_safety",
+                            success=False,
+                            error=str(e),
+                            elapsed_ms=0,
+                        )
+                    ],
+                )
+
         host = host_of(uri)
         effective_preferred = await self._resolve_preferred(host, explicit=preferred)
         base_chain = chain if chain is not None else self._chain
@@ -97,6 +138,16 @@ class FetchProviderRegistry:
             try:
                 available = await provider.is_available()
             except Exception as e:
+                # Log with traceback so the underlying cause is recoverable
+                # from the worker logs even though the registry itself
+                # swallows the exception to keep the chain marching.
+                logger.warning(
+                    "fetch provider %s.is_available() raised on %s: %s",
+                    pid,
+                    uri,
+                    e,
+                    exc_info=True,
+                )
                 attempts.append(FetchAttempt(pid, success=False, error=f"is_available raised: {e}", elapsed_ms=0))
                 continue
             if not available:

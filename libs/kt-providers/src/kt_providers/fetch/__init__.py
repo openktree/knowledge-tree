@@ -22,8 +22,14 @@ from kt_providers.fetch.types import (
     FetchAttempt,
     FetchResult,
 )
+from kt_providers.fetch.url_safety import (
+    ALLOWED_SCHEMES,
+    UnsafeUrlError,
+    validate_fetch_url,
+)
 
 __all__ = [
+    "ALLOWED_SCHEMES",
     "MIN_EXTRACTED_LENGTH",
     "ContentFetcherProvider",
     "FetchAttempt",
@@ -33,6 +39,8 @@ __all__ = [
     "HostPreferenceStore",
     "InMemoryHostPreferenceStore",
     "RedisHostPreferenceStore",
+    "UnsafeUrlError",
     "build_fetch_registry",
     "host_of",
+    "validate_fetch_url",
 ]

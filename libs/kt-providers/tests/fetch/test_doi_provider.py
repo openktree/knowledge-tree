@@ -72,6 +72,71 @@ def test_format_metadata_strips_jats_xml():
 
 
 @pytest.mark.asyncio
+async def test_unpaywall_url_passed_through_when_safe(monkeypatch: pytest.MonkeyPatch):
+    """A normal public Unpaywall URL is returned unchanged."""
+    p = DoiContentFetcher()
+
+    response = MagicMock()
+    response.status_code = 200
+    response.json = MagicMock(return_value={"best_oa_location": {"url_for_pdf": "https://arxiv.org/pdf/1234.pdf"}})
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+    client.is_closed = False
+
+    async def fake_client(self):  # type: ignore[no-untyped-def]
+        return client
+
+    async def fake_validate(uri: str) -> None:
+        # Pretend the URL safety check passed.
+        return None
+
+    monkeypatch.setattr(DoiContentFetcher, "_client_", fake_client)
+    monkeypatch.setattr("kt_providers.fetch.doi_provider.validate_fetch_url", fake_validate)
+    monkeypatch.setattr(
+        "kt_providers.fetch.doi_provider.get_settings",
+        lambda: MagicMock(unpaywall_email="me@example.com", crossref_email=None, fetch_user_agent="ua"),
+    )
+
+    url = await p._fetch_unpaywall_oa("10.1234/abc")
+    assert url == "https://arxiv.org/pdf/1234.pdf"
+
+
+@pytest.mark.asyncio
+async def test_unpaywall_poisoned_url_is_rejected(monkeypatch: pytest.MonkeyPatch):
+    """A poisoned Unpaywall response that returns a private/loopback URL
+    must be dropped — Unpaywall is third-party JSON and we cannot trust
+    its `url_for_pdf` to be safe to fetch."""
+    from kt_providers.fetch.url_safety import UnsafeUrlError
+
+    p = DoiContentFetcher()
+
+    response = MagicMock()
+    response.status_code = 200
+    response.json = MagicMock(return_value={"best_oa_location": {"url_for_pdf": "http://169.254.169.254/admin"}})
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+    client.is_closed = False
+
+    async def fake_client(self):  # type: ignore[no-untyped-def]
+        return client
+
+    async def fake_validate(uri: str) -> None:
+        if "169.254" in uri:
+            raise UnsafeUrlError("metadata endpoint")
+        return None
+
+    monkeypatch.setattr(DoiContentFetcher, "_client_", fake_client)
+    monkeypatch.setattr("kt_providers.fetch.doi_provider.validate_fetch_url", fake_validate)
+    monkeypatch.setattr(
+        "kt_providers.fetch.doi_provider.get_settings",
+        lambda: MagicMock(unpaywall_email="me@example.com", crossref_email=None, fetch_user_agent="ua"),
+    )
+
+    url = await p._fetch_unpaywall_oa("10.1234/abc")
+    assert url is None  # poisoned URL silently dropped
+
+
+@pytest.mark.asyncio
 async def test_extract_doi_from_meta_tag(monkeypatch: pytest.MonkeyPatch):
     """When the DOI isn't in the URL, fall back to parsing citation_doi meta."""
     p = DoiContentFetcher()
