@@ -52,6 +52,7 @@ def main() -> None:
         ingest_decompose_wf,
         ingest_partition_wf,
     )
+    from kt_worker_ingest.workflows.public_cache_sweeper import public_cache_sweep_wf
     from kt_worker_nodes.workflows.auto_build import auto_build_task
     from kt_worker_nodes.workflows.composite import (
         build_composite_task,
@@ -105,6 +106,7 @@ def main() -> None:
             ingest_confirm_wf,
             ingest_decompose_wf,
             ingest_partition_wf,
+            public_cache_sweep_wf,
             sync_dispatch_wf,
             sync_graph_wf,
             synthesizer_wf,

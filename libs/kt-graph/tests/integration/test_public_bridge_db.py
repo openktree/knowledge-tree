@@ -27,6 +27,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from kt_db.keys import key_to_uuid, make_node_key
@@ -287,6 +288,146 @@ async def test_match_or_create_node_creates_when_key_missing(write_db_session):
 # ---------------------------------------------------------------------------
 # _upsert_fact_source — deterministic id makes re-imports idempotent
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Watermark — contributed_to_public_at must be stamped on success (PR7)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_contribute_stamps_watermark_on_success(write_db_session):
+    """A successful contribute path must stamp ``contributed_to_public_at``.
+
+    The retry sweeper relies on this watermark to know which rows are
+    done — if the bridge forgets to stamp, every successful contribute
+    would be re-pushed every sweep, costing duplicate upstream work.
+
+    This test wires the bridge to a *fake* default-graph target so we
+    can verify only the source-side write (the watermark UPDATE) without
+    needing a real second schema. The target session is a stub that
+    swallows the upserts; the source session is the real
+    ``write_db_session``.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    # ── arrange a row that needs contributing ─────────────────────────
+    rid, content_hash = await _insert_raw_source(write_db_session)
+    fact_a = await _insert_fact(write_db_session, content="A")
+    await _link_fact_to_source(write_db_session, fact_id=fact_a, content_hash=content_hash)
+    await write_db_session.flush()
+
+    # Sanity: watermark must be NULL pre-contribute.
+    pre = (
+        await write_db_session.execute(
+            sa.select(WriteRawSource.contributed_to_public_at).where(WriteRawSource.id == rid)
+        )
+    ).scalar_one()
+    assert pre is None
+
+    # ── stub the resolver and target write session ─────────────────────
+    target_session = MagicMock()
+    target_session.execute = AsyncMock(
+        side_effect=lambda *_a, **_kw: SimpleNamespace(scalar_one_or_none=lambda: None, scalar_one=lambda: rid)
+    )
+    target_session.commit = AsyncMock()
+
+    class _FakeBeginCtx:
+        async def __aenter__(self):
+            return target_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    target_session.begin = MagicMock(return_value=_FakeBeginCtx())
+
+    class _FakeSessionCtx:
+        async def __aenter__(self):
+            return target_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    write_sf = MagicMock(return_value=_FakeSessionCtx())
+    gs = SimpleNamespace(
+        write_session_factory=write_sf,
+        qdrant_collection_prefix="default__",
+    )
+    resolver = MagicMock()
+    resolver.resolve = AsyncMock(return_value=gs)
+
+    bridge = _make_bridge()
+    bridge._resolver = resolver
+    # Bypass the upstream upsert + dedup machinery — we only care that
+    # the source-side watermark stamp lands. Patch the two helpers the
+    # contribute path calls inside the target session.
+    bridge._upsert_raw_source = AsyncMock(return_value=rid)  # type: ignore[method-assign]
+    bridge._dedup_or_create_fact = AsyncMock(return_value=fact_a)  # type: ignore[method-assign]
+    bridge._upsert_fact_source = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    bridge._fetch_qdrant_vectors = AsyncMock(return_value={})  # type: ignore[method-assign]
+
+    # ── act ───────────────────────────────────────────────────────────
+    await bridge.contribute_source_and_facts(
+        raw_source_id=rid,
+        source_write_session=write_db_session,
+        source_qdrant_prefix="myslug__",
+    )
+
+    # ── assert ─────────────────────────────────────────────────────────
+    post = (
+        await write_db_session.execute(
+            sa.select(WriteRawSource.contributed_to_public_at).where(WriteRawSource.id == rid)
+        )
+    ).scalar_one()
+    assert post is not None, "watermark must be stamped after a successful contribute"
+
+
+@pytest.mark.asyncio
+async def test_contribute_does_not_stamp_watermark_on_upstream_failure(write_db_session):
+    """Upstream failures must NOT stamp the watermark.
+
+    Otherwise the sweeper would never retry and the row would be
+    silently lost. The bridge logs + swallows the error and returns
+    without touching the source-side row.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    rid, content_hash = await _insert_raw_source(write_db_session, content_hash="upstream_fail_hash")
+    fact_a = await _insert_fact(write_db_session, content="A")
+    await _link_fact_to_source(write_db_session, fact_id=fact_a, content_hash=content_hash)
+    await write_db_session.flush()
+
+    # Resolver returns a target session that explodes on entry.
+    class _FailingSessionCtx:
+        async def __aenter__(self):
+            raise RuntimeError("upstream graph unreachable")
+
+        async def __aexit__(self, *args):
+            return False
+
+    write_sf = MagicMock(return_value=_FailingSessionCtx())
+    gs = SimpleNamespace(write_session_factory=write_sf, qdrant_collection_prefix="default__")
+    resolver = MagicMock()
+    resolver.resolve = AsyncMock(return_value=gs)
+
+    bridge = _make_bridge()
+    bridge._resolver = resolver
+    bridge._fetch_qdrant_vectors = AsyncMock(return_value={})  # type: ignore[method-assign]
+
+    await bridge.contribute_source_and_facts(
+        raw_source_id=rid,
+        source_write_session=write_db_session,
+        source_qdrant_prefix="myslug__",
+    )
+
+    post = (
+        await write_db_session.execute(
+            sa.select(WriteRawSource.contributed_to_public_at).where(WriteRawSource.id == rid)
+        )
+    ).scalar_one()
+    assert post is None, "watermark must remain NULL on upstream failure"
 
 
 @pytest.mark.asyncio
