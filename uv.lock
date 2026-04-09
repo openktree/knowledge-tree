@@ -1839,6 +1839,7 @@ dependencies = [
     { name = "kt-db" },
     { name = "kt-models" },
     { name = "kt-providers" },
+    { name = "kt-qdrant" },
     { name = "metaphone" },
     { name = "numpy" },
     { name = "scipy" },
@@ -1849,6 +1850,7 @@ requires-dist = [
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
+    { name = "kt-qdrant", editable = "libs/kt-qdrant" },
     { name = "metaphone", specifier = ">=0.6" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "scipy", specifier = ">=1.17.1" },
@@ -2194,6 +2196,7 @@ source = { editable = "services/worker-sync" }
 dependencies = [
     { name = "kt-config" },
     { name = "kt-db" },
+    { name = "kt-facts" },
     { name = "kt-hatchet" },
     { name = "kt-models" },
     { name = "kt-qdrant" },
@@ -2204,6 +2207,7 @@ dependencies = [
 requires-dist = [
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
+    { name = "kt-facts", editable = "libs/kt-facts" },
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },

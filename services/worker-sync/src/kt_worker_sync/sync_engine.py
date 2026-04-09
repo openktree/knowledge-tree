@@ -23,7 +23,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select, update  # noqa: I001
+from sqlalchemy import delete, func, select, update  # noqa: I001
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -528,11 +528,18 @@ class SyncEngine:
         """
         async with self._write_sf() as ws, self._graph_sf() as gs:
             watermark = await self._get_watermark(ws, "write_facts")
+            # Gate on ``dedup_status='ready'`` — pending / in_progress rows
+            # belong to a dedup workflow that is still running, and must
+            # NOT be pushed to graph-db where their references may later
+            # be collapsed by :func:`merge_into_fast`.
             rows = (
                 (
                     await ws.execute(
                         select(WriteFact)
-                        .where(WriteFact.updated_at > watermark)
+                        .where(
+                            WriteFact.updated_at > watermark,
+                            WriteFact.dedup_status == "ready",
+                        )
                         .order_by(WriteFact.updated_at.asc())
                         .limit(self._batch_size)
                     )
@@ -596,8 +603,23 @@ class SyncEngine:
                     max_ts = wf.updated_at
                 count += 1
 
-            # Safe watermark: freeze at first failure so failed records are retried
+            # Safe watermark: freeze at first failure so failed records are retried.
             safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
+
+            # Additionally, clamp the watermark so it cannot advance past
+            # the earliest ``pending`` / ``in_progress`` row. Otherwise a
+            # fact that later flips to ``ready`` but has an older
+            # ``updated_at`` would be permanently skipped.
+            pending_min_ts = (
+                await ws.execute(
+                    select(func.min(WriteFact.updated_at)).where(WriteFact.dedup_status.in_(("pending", "in_progress")))
+                )
+            ).scalar_one_or_none()
+            if pending_min_ts is not None:
+                clamp_ts = pending_min_ts - timedelta(milliseconds=1)
+                if clamp_ts < safe_ts:
+                    safe_ts = clamp_ts
+
             if first_failure_ts is not None:
                 failed = len(rows) - count
                 logger.warning(
