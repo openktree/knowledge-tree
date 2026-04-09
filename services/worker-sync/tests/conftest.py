@@ -13,6 +13,15 @@ from collections.abc import AsyncGenerator
 
 os.environ.setdefault("USE_HATCHET", "false")
 os.environ.setdefault("SKIP_AUTH", "true")
+# The dedup workflow module imports the Hatchet client at import time,
+# which refuses to initialise without a token. Unit-level tests only
+# touch pure helpers, so any opaque placeholder is sufficient.
+os.environ.setdefault(
+    "HATCHET_CLIENT_TOKEN",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkdW1teSJ9.dummy",
+)
+os.environ.setdefault("HATCHET_CLIENT_HOST_PORT", "localhost:7070")
+os.environ.setdefault("HATCHET_CLIENT_TLS_STRATEGY", "none")
 
 import pytest
 import pytest_asyncio

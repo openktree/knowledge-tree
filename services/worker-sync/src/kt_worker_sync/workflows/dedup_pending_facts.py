@@ -35,7 +35,6 @@ Pipeline shape
 from __future__ import annotations
 
 import logging
-import math
 import uuid
 from datetime import timedelta
 from typing import cast
@@ -48,6 +47,7 @@ from kt_facts.processing.dedup import _threshold_for_type
 from kt_facts.processing.merge import merge_into_fast
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
+from kt_worker_sync.workflows.dedup_partition import cosine, union_find_components
 
 logger = logging.getLogger(__name__)
 
@@ -95,38 +95,10 @@ _IN_PROGRESS_RECOVERY_AGE = timedelta(minutes=30)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    num = sum(x * y for x, y in zip(a, b))
-    da = math.sqrt(sum(x * x for x in a))
-    db = math.sqrt(sum(y * y for y in b))
-    if da == 0.0 or db == 0.0:
-        return 0.0
-    return num / (da * db)
-
-
-def _union_find_components(n: int, edges: list[tuple[int, int]]) -> list[list[int]]:
-    parent = list(range(n))
-
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(x: int, y: int) -> None:
-        rx, ry = find(x), find(y)
-        if rx != ry:
-            parent[rx] = ry
-
-    for a, b in edges:
-        union(a, b)
-
-    groups: dict[int, list[int]] = {}
-    for i in range(n):
-        groups.setdefault(find(i), []).append(i)
-    return list(groups.values())
+#
+# Pure helpers (``cosine``, ``union_find_components``) live in the
+# sibling ``dedup_partition`` module so they can be unit-tested
+# without importing the Hatchet client.
 
 
 async def _resolve_sessions_and_collection(
@@ -258,9 +230,9 @@ async def dedup_pending_facts(
                 _threshold_for_type(snapshot[i][2]),
                 _threshold_for_type(snapshot[j][2]),
             )
-            if _cosine(embeddings[i], embeddings[j]) >= thr:
+            if cosine(embeddings[i], embeddings[j]) >= thr:
                 edges.append((i, j))
-    components = _union_find_components(n, edges)
+    components = union_find_components(n, edges)
 
     # ── 3. Dedup per component ────────────────────────────────────────
     qdrant_client = state.qdrant_client
