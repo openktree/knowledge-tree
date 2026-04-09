@@ -4,11 +4,12 @@ Revision ID: 3f7a2b289e43
 Revises: 777cdf5ff9e5
 Create Date: 2026-04-08 18:07:22.842810
 
-PR7 of the multigraph public-cache series. Mirrors the graph-db
-``raw_sources.contributed_to_public_at`` watermark on the write-db
-side. The bridge stamps this column after a successful upstream
-contribute, and the sweeper queries it (workers never touch graph-db
-so the write-db column is the load-bearing one).
+PR7 of the multigraph public-cache series. Adds the watermark column
+the contribute-retry sweeper queries. Lives only on write-db because
+both the writer (PublicGraphBridge) and the reader (the sweeper)
+operate exclusively on write-db; propagating to graph-db would
+require a sync_engine column extension and there is currently no
+graph-db consumer for it.
 """
 
 from typing import Sequence, Union

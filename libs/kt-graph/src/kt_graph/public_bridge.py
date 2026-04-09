@@ -444,6 +444,13 @@ class PublicGraphBridge:
         # fails — the sweeper will retry the watermark on the next
         # sweep, but we never want a successful upstream write to
         # appear undone. Logged but never raised.
+        #
+        # Caller-committed: this UPDATE runs against the caller's
+        # ``source_write_session`` and the bridge does NOT commit it.
+        # The two existing callers — the ingest workflow and the
+        # contribute-retry sweeper — both commit the session after the
+        # contribute call returns. New callers must do the same or the
+        # watermark will roll back when the session goes out of scope.
         try:
             await source_write_session.execute(
                 sa.update(WriteRawSource)
@@ -451,7 +458,13 @@ class PublicGraphBridge:
                 .values(contributed_to_public_at=datetime.now(UTC).replace(tzinfo=None))
             )
         except Exception:
-            logger.warning(
+            # ERROR (not WARNING) because a persistent stamp failure is
+            # the silent-data-loss case: every successful upstream
+            # write will then re-fire on every sweep, costing duplicate
+            # work and masking a broken source DB. The "expected
+            # transient" failures (resolver hiccups, single-row
+            # contention) live elsewhere in this file at WARNING.
+            logger.error(
                 "public_cache.watermark_fail raw_source_id=%s — sweeper will retry stamp",
                 raw_source_id,
                 exc_info=True,

@@ -66,42 +66,70 @@ class _FakeRow:
 class _FakeWriteSession:
     """In-memory stand-in for the per-graph write session.
 
-    Holds a tiny "table" of (raw_source_id, contributed_to_public_at)
-    pairs. The sweeper's two queries — candidate fetch and watermark
-    re-read — are routed to ``execute`` which returns shaped result
-    objects. The contribute mock is expected to mutate the table by
-    calling :meth:`stamp_watermark` (the real bridge does this via an
-    UPDATE statement against the same session).
+    Holds a tiny "table" of rows keyed by raw_source_id with a
+    ``created_at`` timestamp and a ``contributed_to_public_at``
+    watermark. The sweeper's two queries — candidate fetch and
+    watermark re-read — are routed to ``execute``:
+
+    * Candidate fetch: filters by ``created_at < cutoff`` (read out of
+      the compiled SQL bound params) AND watermark IS NULL, mirroring
+      what the real ``WriteRawSource`` query does. This is what makes
+      the min-age-cutoff test load-bearing instead of decorative.
+    * Watermark re-read: pulls the row id out of the bound params and
+      returns the current ``contributed_to_public_at`` value.
+
+    The contribute mock is expected to mutate the table by calling
+    :meth:`stamp_watermark` (the real bridge does this via an UPDATE
+    statement against the same session).
     """
 
-    def __init__(self, candidates: list[uuid.UUID]):
-        self._watermarks: dict[uuid.UUID, datetime | None] = {rid: None for rid in candidates}
-        self._candidates = list(candidates)
+    def __init__(
+        self,
+        candidates: list[uuid.UUID] | list[tuple[uuid.UUID, datetime]],
+    ):
+        # Normalise to (rid, created_at) — older candidates default to
+        # the unix epoch so they pass any reasonable cutoff.
+        epoch = datetime(1970, 1, 1)
+        self._rows: dict[uuid.UUID, dict] = {}
+        for entry in candidates:
+            if isinstance(entry, tuple):
+                rid, created_at = entry
+            else:
+                rid, created_at = entry, epoch
+            self._rows[rid] = {"created_at": created_at, "contributed_to_public_at": None}
         self.commit = AsyncMock()
         self.execute = AsyncMock(side_effect=self._execute)
         self._next_query_is_candidate_fetch = True
 
     def stamp_watermark(self, rid: uuid.UUID) -> None:
-        self._watermarks[rid] = datetime.now(UTC).replace(tzinfo=None)
+        self._rows[rid]["contributed_to_public_at"] = datetime.now(UTC).replace(tzinfo=None)
 
     async def _execute(self, stmt):
         # Two query types interleave:
-        #   1. The first call is the candidate-id SELECT (returns all
-        #      pending rows).
+        #   1. The first call is the candidate-id SELECT (returns
+        #      pending rows older than the cutoff).
         #   2. After every successful contribute call, sweep_one_graph
         #      re-reads the watermark for that single row. Failed rows
         #      skip the re-read so we must NOT use a sequential index —
         #      instead extract the bound ``raw_id`` from the WHERE clause.
+        compiled = stmt.compile()
+        params = compiled.params
+
         if self._next_query_is_candidate_fetch:
             self._next_query_is_candidate_fetch = False
-            rows = [_FakeRow((rid,)) for rid in self._candidates if self._watermarks[rid] is None]
+            cutoff = next((p for p in params.values() if isinstance(p, datetime)), None)
+            rows = [
+                _FakeRow((rid,))
+                for rid, row in self._rows.items()
+                if row["contributed_to_public_at"] is None and (cutoff is None or row["created_at"] < cutoff)
+            ]
             return SimpleNamespace(all=lambda: rows)
+
         # Watermark re-read: pull the bound raw_id out of the compiled
         # statement so we always answer for the row the sweeper actually
         # asked about, even when previous candidates errored.
-        compiled = stmt.compile()
-        rid = next((p for p in compiled.params.values() if isinstance(p, uuid.UUID)), None)
-        return SimpleNamespace(scalar_one_or_none=lambda r=rid: self._watermarks[r])
+        rid = next((p for p in params.values() if isinstance(p, uuid.UUID)), None)
+        return SimpleNamespace(scalar_one_or_none=lambda r=rid: self._rows[r]["contributed_to_public_at"])
 
 
 def _session_factory(session: _FakeWriteSession):
@@ -282,18 +310,26 @@ async def test_sweep_one_graph_swallows_query_failure():
 
 
 @pytest.mark.asyncio
-async def test_min_age_cutoff_passed_to_query():
-    """The cutoff datetime must be honoured — sweeper passes a SQL
-    expression that filters ``created_at < cutoff`` so an in-flight
-    ingest's row never gets retried.
+async def test_cutoff_excludes_young_rows():
+    """Rows younger than the cutoff must NOT be returned by the candidate
+    query — that's the guard against racing with an in-flight ingest
+    workflow whose contribute is still in progress.
 
-    We can't easily inspect the bound parameters of the mocked SQL
-    expression, but we can confirm the sweeper passes a valid
-    datetime through to ``session.execute`` and that the call is
-    actually made (i.e. the cutoff doesn't short-circuit the query).
+    The fake session honours ``created_at`` per row and applies the
+    cutoff filter from the bound SQL params, so this test exercises the
+    actual WHERE clause built by ``sweep_one_graph`` rather than just
+    asserting on call counts.
     """
-    candidates = [uuid.uuid4()]
-    session = _FakeWriteSession(candidates)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    cutoff = now - timedelta(minutes=15)
+    young_rid = uuid.uuid4()
+    old_rid = uuid.uuid4()
+    session = _FakeWriteSession(
+        [
+            (young_rid, now - timedelta(minutes=5)),  # too young — must be skipped
+            (old_rid, now - timedelta(hours=1)),  # eligible
+        ]
+    )
     engine = _engine()
 
     async def _stamp(*, raw_source_id):
@@ -302,9 +338,8 @@ async def test_min_age_cutoff_passed_to_query():
     engine.contribute_to_public.side_effect = _stamp
 
     state = _state_with_engine(engine)
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=15)
 
-    await sweep_one_graph(
+    succeeded, failed = await sweep_one_graph(
         state,
         graph_id=uuid.uuid4(),
         graph_slug="alpha",
@@ -314,5 +349,7 @@ async def test_min_age_cutoff_passed_to_query():
         batch_size=200,
     )
 
-    # Two execute calls: one candidate query, one watermark re-read.
-    assert session.execute.await_count == 2
+    # Only the old row should have been retried.
+    assert succeeded == 1
+    assert failed == 0
+    engine.contribute_to_public.assert_awaited_once_with(raw_source_id=old_rid)

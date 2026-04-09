@@ -292,12 +292,6 @@ class RawSource(Base):
     # indexes used by the PublicGraphBridge to find cache hits across graphs.
     canonical_url: Mapped[str | None] = mapped_column(String(2000), nullable=True, index=True)
     doi: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
-    # Watermark stamped by the PublicGraphBridge after a successful
-    # upstream contribute. NULL = never contributed; the contribute-retry
-    # sweeper picks these up after they've aged past
-    # ``Settings.public_contribute_retry_min_age_minutes``. The graph-db
-    # column is the read-side mirror of the load-bearing write-db column.
-    contributed_to_public_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     fact_sources: Mapped[list["FactSource"]] = relationship(back_populates="raw_source", cascade="all, delete-orphan")
