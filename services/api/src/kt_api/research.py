@@ -545,10 +545,14 @@ async def _decompose_ingest_impl(
 
     # File-only ingests can never participate in the public graph cache;
     # mirror the same server-side override used by ``_confirm_ingest_impl``.
-    ingest_repo = IngestSourceRepository(session)
-    sources = await ingest_repo.get_by_conversation(conv_uuid)
-    link_count = sum(1 for s in sources if s.source_type == "link")
-    share_with_public_graph = body.share_with_public_graph and link_count > 0
+    # Skip the lookup entirely when the client already opted out — the
+    # override only ever flips True→False, so False→False needs no query.
+    if body.share_with_public_graph:
+        ingest_repo = IngestSourceRepository(session)
+        sources = await ingest_repo.get_by_conversation(conv_uuid)
+        share_with_public_graph = any(s.source_type == "link" for s in sources)
+    else:
+        share_with_public_graph = False
 
     next_turn = await conv_repo.get_next_turn_number(conv_uuid)
     await conv_repo.add_message(
