@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Loader2, Plus, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -83,6 +84,31 @@ export default function GraphDetailPage() {
       refreshGraphContext();
     } catch (err) {
       console.error("Graph operation failed:", err);
+    }
+  };
+
+  const [togglesSaving, setTogglesSaving] = useState(false);
+  const [togglesError, setTogglesError] = useState<string | null>(null);
+
+  const handleTogglePublicCache = async (
+    field: "contribute_to_public" | "use_public_cache",
+    value: boolean,
+  ) => {
+    if (!graph) return;
+    // Optimistic update so the switch flips immediately; rolled back
+    // on failure. Saves a re-render flicker on the slow API path.
+    const previous = graph;
+    setGraph({ ...graph, [field]: value });
+    setTogglesError(null);
+    setTogglesSaving(true);
+    try {
+      const updated = await updateGraph(slug, { [field]: value });
+      setGraph(updated);
+    } catch (err) {
+      setGraph(previous);
+      setTogglesError(err instanceof Error ? err.message : "Failed to update toggle");
+    } finally {
+      setTogglesSaving(false);
     }
   };
 
@@ -256,6 +282,67 @@ export default function GraphDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Public cache settings — non-default graphs only.
+          The default graph has no upstream so the API rejects toggle
+          edits there with HTTP 400; rendering them on the default graph
+          would just be a misleading affordance. */}
+      {!graph.is_default && (
+        <div className="rounded-xl border border-border bg-card p-4 mb-6">
+          <div className="mb-3">
+            <h2 className="text-base font-medium">Public knowledge sharing</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Connect this graph to the shared public knowledge pool to save
+              decomposition cost on URLs other graphs have already processed,
+              and to grow the public pool with new ones you ingest. File
+              uploads are always private regardless of these settings.
+            </p>
+          </div>
+
+          <div className="space-y-3 divide-y divide-border">
+            <label className="flex items-start gap-3 pt-3 first:pt-0">
+              <Switch
+                checked={graph.use_public_cache}
+                onCheckedChange={(checked) =>
+                  handleTogglePublicCache("use_public_cache", checked)
+                }
+                disabled={!isAdmin || togglesSaving}
+                aria-label="Use public knowledge cache"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Use public cache</p>
+                <p className="text-xs text-muted-foreground">
+                  Before decomposing a fetched URL, check the public graph for
+                  an existing decomposition. On a hit, facts and concept nodes
+                  are imported into this graph and the LLM cost is skipped.
+                </p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 pt-3">
+              <Switch
+                checked={graph.contribute_to_public}
+                onCheckedChange={(checked) =>
+                  handleTogglePublicCache("contribute_to_public", checked)
+                }
+                disabled={!isAdmin || togglesSaving}
+                aria-label="Contribute to public knowledge cache"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Contribute to public graph</p>
+                <p className="text-xs text-muted-foreground">
+                  After decomposing a fetched URL, push the source and
+                  extracted facts upstream so the public pool grows with use.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {togglesError && (
+            <p className="mt-3 text-xs text-destructive">{togglesError}</p>
+          )}
+        </div>
+      )}
 
       {/* Members */}
       <div className="flex items-center justify-between mb-3">

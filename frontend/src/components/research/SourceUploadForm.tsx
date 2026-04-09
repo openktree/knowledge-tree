@@ -90,6 +90,12 @@ export function SourceUploadForm() {
     null,
   );
 
+  // Multigraph public-cache opt-out (PR8). Defaults to "share with public
+  // graph" since that's how the public pool grows. The toggle is hidden
+  // in the file-only case because the API forces False server-side
+  // there anyway — file uploads can never participate.
+  const [shareWithPublicGraph, setShareWithPublicGraph] = useState(true);
+
   // Review state (proposals)
   const [proposals, setProposals] = useState<IngestProposalsResponse | null>(
     null,
@@ -167,6 +173,15 @@ export function SourceUploadForm() {
   }, [prepareResult]);
 
   const selectedChunkCount = selectedChunks.size;
+
+  // Whether the prepared ingest has any link sources at all. Drives the
+  // visibility of the public-cache opt-out toggle — file-only ingests
+  // hide it because the API forces ``share_with_public_graph=false``
+  // server-side regardless of the client value.
+  const hasLinkSources = useMemo(
+    () => prepareResult?.sources.some((s) => s.source_type === "link") ?? false,
+    [prepareResult],
+  );
 
   // Step 1: Analyze sources (prepare)
   const handleAnalyze = async () => {
@@ -276,6 +291,7 @@ export function SourceUploadForm() {
       const result = await api.research.decompose(
         prepareResult.conversation_id,
         allSelected,
+        shareWithPublicGraph,
       );
       setDecomposeMessageId(result.message_id);
     } catch (err) {
@@ -403,6 +419,7 @@ export function SourceUploadForm() {
         prepareResult.conversation_id,
         50, // default nav budget for legacy path
         allSelected,
+        shareWithPublicGraph,
       );
       router.push(`/grow-graph`);
     } catch (err) {
@@ -707,6 +724,25 @@ export function SourceUploadForm() {
               </div>
             </div>
           </div>
+
+          {/* Public-cache opt-out — hidden when only files were uploaded
+              (the API forces share=false server-side in that case so the
+              checkbox would be a misleading affordance). */}
+          {hasLinkSources && (
+            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={!shareWithPublicGraph}
+                onChange={(e) => setShareWithPublicGraph(!e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Do not share with public knowledge graph. The extracted facts
+                will stay private to this graph and won&apos;t help other
+                graphs save decomposition cost on the same URLs.
+              </span>
+            </label>
+          )}
 
           {/* Error display */}
           {error && (
