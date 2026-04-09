@@ -193,12 +193,16 @@ async def merge_into_heavy(
     write_session: AsyncSession,
     graph_session: AsyncSession,
     qdrant_client: "AsyncQdrantClient | None",
-    qdrant_collection: str,
+    graph_slug: str,
     loser_id: uuid.UUID,
     canonical_id: uuid.UUID,
 ) -> None:
     """Collapse ``loser_id`` into ``canonical_id`` across write-db,
     graph-db and Qdrant.
+
+    ``graph_slug`` names the graph whose Qdrant facts collection holds
+    the loser's point. The default graph uses the bare ``facts``
+    collection; non-default graphs use ``{slug}__facts``.
 
     This is the one-shot historical repair variant — slower and touches
     far more tables than :func:`merge_into_fast`. Used by
@@ -422,16 +426,19 @@ async def merge_into_heavy(
 
     # ── 3. Qdrant point ────────────────────────────────────────────────
     if qdrant_client is not None:
+        # Default graph uses the bare "facts" collection; non-default
+        # graphs use "{slug}__facts".
+        collection_name = "facts" if graph_slug == "default" else f"{graph_slug}__facts"
         try:
             from kt_qdrant.repositories.facts import QdrantFactRepository
 
-            repo = QdrantFactRepository(qdrant_client, collection_name=qdrant_collection)
+            repo = QdrantFactRepository(qdrant_client, collection_name=collection_name)
             await repo.delete_batch([loser_id])
         except Exception:  # pragma: no cover — best effort during historical repair
             logger.warning(
                 "merge_into_heavy: failed to delete Qdrant point for loser %s (collection=%s)",
                 loser,
-                qdrant_collection,
+                collection_name,
                 exc_info=True,
             )
 

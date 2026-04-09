@@ -21,6 +21,7 @@ def main() -> None:
 
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
+    from kt_worker_sync.workflows.dedup_pending_facts import dedup_pending_facts_wf
     from kt_worker_sync.workflows.sync import sync_dispatch_wf, sync_graph_wf
 
     hatchet = get_hatchet()
@@ -30,7 +31,7 @@ def main() -> None:
         # per DB. 10 slots × 15 connections × 2 DBs = up to 300 connections max.
         # Adjust if the PG max_connections budget is tight.
         slots=10,
-        workflows=[sync_dispatch_wf, sync_graph_wf],
+        workflows=[sync_dispatch_wf, sync_graph_wf, dedup_pending_facts_wf],
         lifespan=worker_lifespan,
     )
     logging.getLogger(__name__).info("Starting sync worker")

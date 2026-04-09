@@ -73,6 +73,7 @@ def main() -> None:
         search_wf,
     )
     from kt_worker_search.workflows.seed_dedup import seed_dedup_task
+    from kt_worker_sync.workflows.dedup_pending_facts import dedup_pending_facts_wf
     from kt_worker_sync.workflows.sync import sync_dispatch_wf, sync_graph_wf
     from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
@@ -107,6 +108,7 @@ def main() -> None:
             ingest_partition_wf,
             sync_dispatch_wf,
             sync_graph_wf,
+            dedup_pending_facts_wf,
             synthesizer_wf,
             super_synthesizer_wf,
         ],
