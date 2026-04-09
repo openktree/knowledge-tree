@@ -29,7 +29,7 @@ from kt_facts.models import (
     ProhibitedChunk,
     _format_attribution,
 )
-from kt_facts.processing.dedup import deduplicate_facts
+from kt_facts.processing.dedup import insert_facts_pending
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_providers.fetch import FileDataStore
@@ -515,75 +515,53 @@ async def _store_extracted_facts_impl(
             ft = "claim"
         normalized_types.append(ft)
 
-    # Batch dedup: one embed_batch() call for all facts in this source
-    items = [(ef.content, ft) for ef, ft in zip(extracted, normalized_types)]
-    dedup_results = await deduplicate_facts(
-        items,
-        repo,
-        embedding_service,
-        qdrant_client=qdrant_client,
-        write_fact_repo=write_fact_repo,
-    )
-
-    # Resolve source metadata for provenance
-    uri = source_uri or getattr(source, "uri", "")
-    title = source_title
-    content_hash = source_content_hash or getattr(source, "content_hash", "") or ""
-    provider_id = source_provider_id or getattr(source, "provider_id", "") or ""
-
-    # Require write-db for all worker pipelines
+    # Require write-db for all worker pipelines.
     if write_fact_repo is None:
         raise RuntimeError(
             "_store_extracted_facts_impl: write_fact_repo is required but was None. "
             "All worker pipelines must pass a write-db session to GraphEngine."
         )
 
-    # Link each fact to the source via write-db.
-    # Wrapped in try/except for compensating Qdrant delete on failure:
-    # if the post-dedup logic fails, the DB transaction will roll back but
-    # Qdrant already has the points — delete them to prevent orphans.
-    try:
-        facts: list[Fact] = []
-        successful_extracted: list[ExtractedFactWithAttribution] = []
-        for ef, (fact_id, _is_new) in zip(extracted, dedup_results):
-            try:
-                attribution_str = _format_attribution(ef)
+    # Insert facts as 'pending'; dedup is a downstream workflow stage.
+    # No Qdrant writes happen here, so the previous compensating-delete
+    # path on rollback is no longer needed.
+    items = [(ef.content, ft) for ef, ft in zip(extracted, normalized_types)]
+    insert_result = await insert_facts_pending(items, write_fact_repo=write_fact_repo)
 
-                await write_fact_repo.create_fact_source(
-                    fact_id=fact_id,
-                    raw_source_uri=uri,
-                    raw_source_title=title,
-                    raw_source_content_hash=content_hash,
-                    raw_source_provider_id=provider_id,
-                    context_snippet=content[:500],
-                    attribution=attribution_str,
-                    author_person=author_person,
-                    author_org=author_org,
-                )
-                # Return a transient Fact-like object for pipeline compatibility
-                fact = Fact(
+    # Resolve source metadata for provenance.
+    uri = source_uri or getattr(source, "uri", "")
+    title = source_title
+    content_hash = source_content_hash or getattr(source, "content_hash", "") or ""
+    provider_id = source_provider_id or getattr(source, "provider_id", "") or ""
+
+    # Silence unused-argument warnings for parameters that are still part
+    # of the public signature but no longer consulted at insert time.
+    del repo, embedding_service, qdrant_client
+
+    facts: list[Fact] = []
+    for ef, fact_id in zip(extracted, insert_result.fact_ids):
+        try:
+            attribution_str = _format_attribution(ef)
+            await write_fact_repo.create_fact_source(
+                fact_id=fact_id,
+                raw_source_uri=uri,
+                raw_source_title=title,
+                raw_source_content_hash=content_hash,
+                raw_source_provider_id=provider_id,
+                context_snippet=content[:500],
+                attribution=attribution_str,
+                author_person=author_person,
+                author_org=author_org,
+            )
+            facts.append(
+                Fact(
                     id=fact_id,
                     content=ef.content,
                     fact_type=ef.fact_type,
                 )
-                facts.append(fact)
-                successful_extracted.append(ef)
+            )
+        except Exception:
+            logger.exception("Error storing extracted fact: %s", ef.content[:100])
+            continue
 
-            except Exception:
-                logger.exception("Error storing extracted fact: %s", ef.content[:100])
-                continue
-
-        return facts
-    except Exception:
-        # Compensating delete: remove newly-created Qdrant points to prevent
-        # orphans when the DB transaction rolls back.
-        _new_ids = getattr(dedup_results, "new_qdrant_ids", [])
-        if _new_ids and qdrant_client is not None:
-            try:
-                from kt_qdrant.repositories.facts import QdrantFactRepository
-
-                await QdrantFactRepository(qdrant_client).delete_batch(_new_ids)
-                logger.info("Compensating delete: removed %d Qdrant points", len(_new_ids))
-            except Exception:
-                logger.warning("Failed compensating Qdrant delete for %d points", len(_new_ids), exc_info=True)
-        raise
+    return facts

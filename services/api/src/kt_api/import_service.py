@@ -30,7 +30,7 @@ from kt_db.repositories.facts import FactRepository
 from kt_db.repositories.nodes import NodeRepository
 from kt_db.repositories.sources import SourceRepository
 from kt_facts.processing.cleanup import cleanup_facts
-from kt_facts.processing.dedup import deduplicate_facts
+from kt_facts.processing.dedup import insert_facts_pending
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 
@@ -84,23 +84,18 @@ async def import_facts(
 
         write_fact_repo = WriteFactRepository(write_session)
 
-    # Build pre-computed embeddings if available from export
-    pre_embeddings: list[list[float] | None] | None = None
-    if any(f.embedding is not None for f in facts):
-        pre_embeddings = [f.embedding for f in facts]
+    # Silence unused-argument warnings for arguments that the
+    # post-job dedup design no longer consults at insert time.
+    del embedding_service, qdrant_client
 
-    # Batch dedup: one embed_batch() call for all facts (or use pre-computed)
+    # Insert facts as 'pending'; the dedup workflow will handle
+    # cross-run deduplication. ``is_new`` is always True here since
+    # we always allocate a fresh UUID.
     items = [(f.content, f.fact_type) for f in facts]
-    dedup_results = await deduplicate_facts(
-        items,
-        fact_repo,
-        embedding_service,
-        qdrant_client=qdrant_client,
-        write_fact_repo=write_fact_repo,
-        pre_embeddings=pre_embeddings,
-    )
+    insert_result = await insert_facts_pending(items, write_fact_repo=write_fact_repo)
 
-    for i, (fact_data, (new_fact_id, is_new)) in enumerate(zip(facts, dedup_results)):
+    for i, (fact_data, new_fact_id) in enumerate(zip(facts, insert_result.fact_ids)):
+        is_new = True
         try:
             id_map[fact_data.id] = str(new_fact_id)
             results.append(
