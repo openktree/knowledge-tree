@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -218,6 +219,11 @@ class PublicGraphBridge:
             async with gs.write_session_factory() as session:
                 row = await self._find_raw_source(session, canonical_url, doi)
                 if row is None:
+                    logger.info(
+                        "public_cache.miss canonical_url=%s doi=%s",
+                        canonical_url,
+                        doi,
+                    )
                     return None
                 snapshot = _snapshot_raw_source(row)
 
@@ -226,7 +232,7 @@ class PublicGraphBridge:
                 node_rows = await self._load_linked_nodes(session, [f.id for f in fact_rows])
         except Exception:
             logger.warning(
-                "PublicGraphBridge: lookup failed for canonical_url=%s doi=%s",
+                "public_cache.lookup_fail canonical_url=%s doi=%s",
                 canonical_url,
                 doi,
                 exc_info=True,
@@ -249,6 +255,14 @@ class PublicGraphBridge:
         nodes = [_snapshot_node(n, node_embeddings.get(n.node_uuid)) for n in node_rows]
 
         is_stale = self._is_stale(snapshot.retrieved_at)
+        logger.info(
+            "public_cache.hit canonical_url=%s doi=%s facts=%d nodes=%d stale=%s",
+            canonical_url,
+            doi,
+            len(facts),
+            len(nodes),
+            is_stale,
+        )
         return CachedSourceImport(
             raw_source=snapshot,
             facts=facts,
@@ -416,7 +430,51 @@ class PublicGraphBridge:
                             continue
                         await self._upsert_fact_source(target_session, fs, local_fact_id)
         except Exception:
-            logger.warning("contribute: write phase failed for %s", raw_source_id, exc_info=True)
+            logger.warning(
+                "public_cache.contribute_fail raw_source_id=%s facts=%d",
+                raw_source_id,
+                len(fact_snapshots),
+                exc_info=True,
+            )
+            return
+
+        # ── Stamp the watermark on the source side ──────────────────
+        # Done in its own statement (and its own transaction context)
+        # so the upstream write succeeds even if the source-side stamp
+        # fails — the sweeper will retry the watermark on the next
+        # sweep, but we never want a successful upstream write to
+        # appear undone. Logged but never raised.
+        #
+        # Caller-committed: this UPDATE runs against the caller's
+        # ``source_write_session`` and the bridge does NOT commit it.
+        # The two existing callers — the ingest workflow and the
+        # contribute-retry sweeper — both commit the session after the
+        # contribute call returns. New callers must do the same or the
+        # watermark will roll back when the session goes out of scope.
+        try:
+            await source_write_session.execute(
+                sa.update(WriteRawSource)
+                .where(WriteRawSource.id == raw_source_id)
+                .values(contributed_to_public_at=datetime.now(UTC).replace(tzinfo=None))
+            )
+        except Exception:
+            # ERROR (not WARNING) because a persistent stamp failure is
+            # the silent-data-loss case: every successful upstream
+            # write will then re-fire on every sweep, costing duplicate
+            # work and masking a broken source DB. The "expected
+            # transient" failures (resolver hiccups, single-row
+            # contention) live elsewhere in this file at WARNING.
+            logger.error(
+                "public_cache.watermark_fail raw_source_id=%s — sweeper will retry stamp",
+                raw_source_id,
+                exc_info=True,
+            )
+
+        logger.info(
+            "public_cache.contribute_ok raw_source_id=%s facts=%d",
+            raw_source_id,
+            len(fact_snapshots),
+        )
 
     # ── Internal: SQL helpers ─────────────────────────────────────────
 

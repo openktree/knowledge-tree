@@ -65,6 +65,11 @@ class WriteRawSource(WriteBase):
     # the bridge actually queries because workers never touch graph-db.
     canonical_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     doi: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Watermark stamped by the PublicGraphBridge after a successful
+    # upstream contribute. The contribute-retry sweeper queries
+    # ``WHERE contributed_to_public_at IS NULL AND canonical_url IS NOT NULL``
+    # against the partial index in PR7's write-db migration.
+    contributed_to_public_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
