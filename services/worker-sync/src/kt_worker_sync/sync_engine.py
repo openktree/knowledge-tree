@@ -352,6 +352,13 @@ class SyncEngine:
                                 prohibited_chunk_count=wrs.prohibited_chunk_count,
                                 fetch_attempted=wrs.fetch_attempted,
                                 fetch_error=wrs.fetch_error,
+                                # Multigraph public-cache identity columns. The
+                                # bridge already queries write-db so the
+                                # graph-db copies are read-side only — but the
+                                # API + analytics code reads from graph-db, so
+                                # propagating keeps the two stores consistent.
+                                canonical_url=wrs.canonical_url,
+                                doi=wrs.doi,
                             )
                             .on_conflict_do_update(
                                 index_elements=["id"],
@@ -371,6 +378,8 @@ class SyncEngine:
                                     "prohibited_chunk_count": wrs.prohibited_chunk_count,
                                     "fetch_attempted": wrs.fetch_attempted,
                                     "fetch_error": wrs.fetch_error,
+                                    "canonical_url": wrs.canonical_url,
+                                    "doi": wrs.doi,
                                 },
                             )
                         )
