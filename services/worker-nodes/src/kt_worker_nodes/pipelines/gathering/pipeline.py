@@ -450,6 +450,9 @@ class GatherFactsPipeline:
             "explore_remaining": state.explore_remaining,
             "source_titles_by_query": source_titles_by_query,
             "source_urls": all_source_urls,
+            # Forward the just-inserted fact UUIDs so the caller can
+            # dispatch the post-job dedup workflow before autograph runs.
+            "inserted_fact_ids": [str(f.id) for f in all_gathered_facts if f.id is not None],
         }
 
         if all_super_sources:

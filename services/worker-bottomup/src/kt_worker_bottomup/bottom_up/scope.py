@@ -90,10 +90,13 @@ async def run_bottom_up_scope_pipeline(
     content_summary = result.get("content_summary", "")
     source_urls = result.get("source_urls", [])
     super_sources = result.get("super_sources", [])
+    inserted_fact_ids = result.get("inserted_fact_ids", [])
     if not isinstance(extracted_nodes, list):
         extracted_nodes = []
     if not isinstance(source_urls, list):
         source_urls = []
+    if not isinstance(inserted_fact_ids, list):
+        inserted_fact_ids = []
 
     logger.info(
         "Bottom-up scope %r: gathered %d facts, extracted %d nodes, %d sources",
@@ -130,6 +133,7 @@ async def run_bottom_up_scope_pipeline(
         content_summary=content_summary,
         source_urls=source_urls,
         super_sources=super_sources,  # type: ignore[arg-type]
+        inserted_fact_ids=[str(fid) for fid in inserted_fact_ids],
     )
 
 

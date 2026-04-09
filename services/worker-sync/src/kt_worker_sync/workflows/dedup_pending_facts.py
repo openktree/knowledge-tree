@@ -60,13 +60,15 @@ hatchet = get_hatchet()
 class DedupPendingFactsInput(BaseModel):
     """Input for the dedup workflow.
 
-    ``graph_slug`` selects the write-db / graph-db / Qdrant collection
-    triple. ``fact_ids`` is the explicit list of just-inserted facts to
-    snapshot — restricting to this list keeps latency predictable
+    One of ``graph_slug`` or ``graph_id`` selects the write-db / graph-db
+    / Qdrant collection triple — ``graph_id`` wins when both are set.
+    ``fact_ids`` is the explicit list of just-inserted facts to
+    snapshot; restricting to this list keeps latency predictable
     regardless of any pre-existing pending backlog.
     """
 
     graph_slug: str = "default"
+    graph_id: str | None = None
     fact_ids: list[uuid.UUID]
 
 
@@ -130,15 +132,26 @@ def _union_find_components(n: int, edges: list[tuple[int, int]]) -> list[list[in
 async def _resolve_sessions_and_collection(
     state: WorkerState,
     graph_slug: str,
+    graph_id: str | None,
 ) -> tuple[object, object, str]:
     """Return ``(write_session_factory, graph_session_factory, qdrant_collection)``
-    for the given ``graph_slug``.
+    for the given graph.
 
     For the ``default`` graph we use the worker's system-level factories
     and the ``"facts"`` collection. For non-default graphs we resolve via
-    the graph resolver to get the per-graph factories and collection
-    prefix.
+    the graph resolver (by id when provided, otherwise by slug) to get
+    the per-graph factories and collection prefix.
     """
+    if graph_id is not None:
+        resolver = state.graph_resolver
+        if resolver is None:
+            raise RuntimeError(
+                f"dedup_pending_facts_wf: graph_resolver unavailable — cannot dedup graph_id '{graph_id}'"
+            )
+        gs = await resolver.resolve(uuid.UUID(graph_id))
+        collection = f"{gs.qdrant_collection_prefix}facts" if gs.qdrant_collection_prefix else "facts"
+        return gs.write_session_factory, gs.graph_session_factory, collection
+
     if graph_slug == "default":
         return state.write_session_factory, state.session_factory, "facts"
 
@@ -185,7 +198,7 @@ async def dedup_pending_facts(
         write_session_factory,
         graph_session_factory,
         qdrant_collection,
-    ) = await _resolve_sessions_and_collection(state, graph_slug)
+    ) = await _resolve_sessions_and_collection(state, graph_slug, input.graph_id)
 
     # ── 0. Recovery: reclaim abandoned in_progress rows ───────────────
     async with write_session_factory() as recovery_session:  # type: ignore[misc]
