@@ -775,6 +775,11 @@ class IngestConfirmRequest(BaseModel):
 
     nav_budget: int = 50  # max nodes to create
     selected_chunks: list[int] | None = None  # chunk indices to process; None = all
+    # Per-ingest opt-out for the multigraph public-cache contribute hook.
+    # Defaults to True so the public graph keeps growing with normal use.
+    # The API forces this to ``False`` server-side for file-only ingests
+    # regardless of the client value — file uploads are always private.
+    share_with_public_graph: bool = True
 
 
 # ── Quick action schemas ────────────────────────────────────────────────
@@ -950,6 +955,8 @@ class IngestDecomposeRequest(BaseModel):
     """Request for phased ingest Phase 1 — decompose + extract + prioritize."""
 
     selected_chunks: list[int] | None = None
+    # See ``IngestConfirmRequest.share_with_public_graph``.
+    share_with_public_graph: bool = True
 
 
 class IngestDecomposeResponse(BaseModel):

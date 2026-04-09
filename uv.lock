@@ -1663,7 +1663,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.44.0"
+version = "0.45.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

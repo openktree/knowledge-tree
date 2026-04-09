@@ -430,12 +430,17 @@ async def _confirm_ingest_impl(
     from kt_api.dispatch import dispatch_with_graph
 
     require_api_key(user)
+    # File-only ingests can never participate in the public graph cache —
+    # uploaded files are always private regardless of what the client
+    # sends. Force-suppress the contribute hook server-side.
+    share_with_public_graph = body.share_with_public_graph and link_count > 0
     payload: dict[str, Any] = {
         "nav_budget": body.nav_budget,
         "selected_chunks": body.selected_chunks,
         "conversation_id": conversation_id,
         "message_id": str(assistant_msg.id),
         "user_id": str(user.id),
+        "share_with_public_graph": share_with_public_graph,
     }
 
     run_id = await dispatch_with_graph(
@@ -538,6 +543,17 @@ async def _decompose_ingest_impl(
     if conv.mode != "ingest":
         raise HTTPException(status_code=400, detail="Conversation is not an ingest")
 
+    # File-only ingests can never participate in the public graph cache;
+    # mirror the same server-side override used by ``_confirm_ingest_impl``.
+    # Skip the lookup entirely when the client already opted out — the
+    # override only ever flips True→False, so False→False needs no query.
+    if body.share_with_public_graph:
+        ingest_repo = IngestSourceRepository(session)
+        sources = await ingest_repo.get_by_conversation(conv_uuid)
+        share_with_public_graph = any(s.source_type == "link" for s in sources)
+    else:
+        share_with_public_graph = False
+
     next_turn = await conv_repo.get_next_turn_number(conv_uuid)
     await conv_repo.add_message(
         conversation_id=conv_uuid, turn_number=next_turn, role="user", content="Decompose selected chunks"
@@ -555,6 +571,7 @@ async def _decompose_ingest_impl(
         "message_id": str(assistant_msg.id),
         "selected_chunks": body.selected_chunks,
         "user_id": str(user.id),
+        "share_with_public_graph": share_with_public_graph,
     }
 
     run_id = await dispatch_with_graph(
