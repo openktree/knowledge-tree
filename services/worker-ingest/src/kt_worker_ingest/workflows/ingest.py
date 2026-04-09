@@ -979,6 +979,30 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             f"from {decomp_summary.total_chunks_processed} chunks"
         )
 
+        # ── Post-job fact dedup ──────────────────────────────────
+        # All just-inserted facts have dedup_status='pending'. Run the
+        # dedup workflow synchronously here so that by the time the
+        # user confirms and ingest_build_wf fans out node pipelines,
+        # every surviving fact is 'ready' and no junction row will
+        # reference a loser UUID.
+        if decomp_summary.inserted_fact_ids:
+            try:
+                from kt_hatchet.client import run_workflow
+
+                dedup_input: dict[str, object] = {
+                    "fact_ids": decomp_summary.inserted_fact_ids,
+                }
+                graph_id_attr = getattr(input, "graph_id", None)
+                if graph_id_attr:
+                    dedup_input["graph_id"] = graph_id_attr
+                await run_workflow("dedup_pending_facts_wf", dedup_input)
+                ctx.log(f"Dedup complete for {len(decomp_summary.inserted_fact_ids)} facts")
+            except Exception:
+                logger.warning(
+                    "Failed to run dedup_pending_facts_wf during ingest decompose",
+                    exc_info=True,
+                )
+
         ctx.refresh_timeout("2h")
 
         # ── Build proposals directly from seeds ───────────────────

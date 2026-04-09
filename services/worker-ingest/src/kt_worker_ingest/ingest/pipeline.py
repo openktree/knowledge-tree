@@ -91,6 +91,13 @@ class DecompositionSummary:
     key_topics: list[str] = field(default_factory=list)
     total_chunks_processed: int = 0
     total_sources: int = 0
+    inserted_fact_ids: list[str] = field(default_factory=list)
+    """UUIDs (as str) of facts inserted during decomposition.
+
+    Forwarded to ``dedup_pending_facts_wf`` by the ingest decompose
+    workflow so that the dedup workflow can collapse duplicates before
+    ``ingest_build_wf`` consumes them.
+    """
 
 
 async def reconstruct_decomp_summary(
@@ -782,6 +789,7 @@ async def decompose_all_sources(
         key_topics=key_topics[:20],
         total_chunks_processed=len(tasks),
         total_sources=len(processed_sources),
+        inserted_fact_ids=[str(f.id) for f in all_facts if f.id is not None],
     )
 
 
