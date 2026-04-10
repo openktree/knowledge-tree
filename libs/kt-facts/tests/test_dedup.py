@@ -16,8 +16,8 @@ import pytest
 
 from kt_facts.processing.dedup import (
     InsertFactsPendingResult,
-    _threshold_for_type,
     insert_facts_pending,
+    threshold_for_type,
 )
 
 
@@ -89,9 +89,8 @@ async def test_insert_pending_requires_write_fact_repo() -> None:
         )
 
 
-def test_threshold_for_type_atomic_vs_compound() -> None:
-    # Compound (quote/procedure/reference/code/account) → 0.85
-    assert _threshold_for_type("quote") == 0.85
-    # Atomic default → 0.92
-    assert _threshold_for_type("measurement") == 0.92
-    assert _threshold_for_type("claim") == 0.92
+def testthreshold_for_type_atomic_vs_compound() -> None:
+    # Both default to 0.95 (configurable via Settings)
+    assert threshold_for_type("quote") == 0.95  # compound
+    assert threshold_for_type("measurement") == 0.95  # atomic
+    assert threshold_for_type("claim") == 0.95  # atomic

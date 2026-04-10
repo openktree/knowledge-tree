@@ -44,7 +44,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from kt_config.settings import get_settings
-from kt_facts.processing.dedup import _threshold_for_type
+from kt_facts.processing.dedup import threshold_for_type
 from kt_facts.processing.merge import merge_into_heavy
 from kt_qdrant.repositories.facts import FACTS_COLLECTION, QdrantFactRepository
 
@@ -187,7 +187,7 @@ async def repair_near_pass(
             try:
                 hit = await qdrant_repo.find_most_similar(
                     vec,  # type: ignore[arg-type]
-                    score_threshold=_threshold_for_type(fact_type),
+                    score_threshold=threshold_for_type(fact_type),
                 )
             except Exception:
                 logger.debug("find_most_similar failed for %s", fact_id_str, exc_info=True)

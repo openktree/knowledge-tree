@@ -25,6 +25,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from kt_config.settings import get_settings
 from kt_config.types import COMPOUND_FACT_TYPES
 
 if TYPE_CHECKING:
@@ -35,18 +36,21 @@ logger = logging.getLogger(__name__)
 
 # ── Thresholds (still used by the dedup workflow) ─────────────────────
 
-_ATOMIC_THRESHOLD = 0.92
-_COMPOUND_THRESHOLD = 0.85
 
-
-def _threshold_for_type(fact_type: str) -> float:
+def threshold_for_type(fact_type: str) -> float:
     """Return the cosine-similarity threshold for a given fact type.
 
-    Compound types (quote, procedure, reference, code, account) use a
-    lower threshold (0.85) because longer content has more natural
-    variance. Atomic types use 0.92.
+    Reads from ``Settings.fact_dedup_atomic_threshold`` /
+    ``Settings.fact_dedup_compound_threshold`` (default 0.95 each).
+    Tight enough to avoid merging facts that share the same subject but
+    differ in specific details (dates, counts, citation metadata), while
+    still collapsing genuinely duplicated statements with minor wording
+    differences.
     """
-    return _COMPOUND_THRESHOLD if fact_type in COMPOUND_FACT_TYPES else _ATOMIC_THRESHOLD
+    settings = get_settings()
+    if fact_type in COMPOUND_FACT_TYPES:
+        return settings.fact_dedup_compound_threshold
+    return settings.fact_dedup_atomic_threshold
 
 
 # ── Result container ─────────────────────────────────────────────────

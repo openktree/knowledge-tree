@@ -267,19 +267,16 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             },
         )
 
-        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
+        async with _open_sessions(worker_state) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
-                graph_id=input.graph_id,
             )
 
             # process_ingest_sources needs graph-db for IngestSource table;
-            # open a short-lived session just for that. IngestSource is a
-            # control-plane table living in the public schema, so it stays
-            # on the system session factory regardless of graph_id.
+            # open a short-lived session just for that.
             async with worker_state.session_factory() as graph_session:
                 processed = await process_ingest_sources(
                     conv_uuid,
@@ -543,7 +540,6 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                             fact_type_counts=decomp_summary.fact_type_counts,
                             all_titles=all_titles,
                             partition_facts=partition.total_facts_in_partition,
-                            graph_id=input.graph_id,
                         ),
                         options=child_meta,
                     )
@@ -583,13 +579,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             # Build subgraph from merged results
             from kt_agents_core.results import build_ingest_subgraph
 
-            async with _open_sessions(worker_state, input.graph_id) as (_, merge_ws):
+            async with _open_sessions(worker_state) as (_, merge_ws):
                 merge_ctx = await _build_agent_context(
-                    worker_state,
-                    emit_event=emit_cb,
-                    write_session=merge_ws,
-                    user_id=input.user_id,
-                    graph_id=input.graph_id,
+                    worker_state, emit_event=emit_cb, write_session=merge_ws, user_id=input.user_id
                 )
                 subgraph = await build_ingest_subgraph(all_created_nodes, all_created_edges, merge_ctx)
 
@@ -616,13 +608,12 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         else:
             # Small document or no index — single agent (existing path)
-            async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
+            async with _open_sessions(worker_state) as (_, write_session):
                 agent_ctx = await _build_agent_context(
                     worker_state,
                     emit_event=emit_cb,
                     write_session=write_session,
                     user_id=input.user_id,
-                    graph_id=input.graph_id,
                 )
 
                 result = await IngestWorker(agent_ctx).run(
@@ -781,12 +772,11 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
         processed_sources = await reconstruct_processed_sources(conv_uuid, session)
 
     # Run the ingest agent scoped to this partition
-    async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
+    async with _open_sessions(worker_state) as (_, write_session):
         agent_ctx = await _build_agent_context(
             worker_state,
             emit_event=emit_cb,
             write_session=write_session,
-            graph_id=input.graph_id,
         )
 
         result = await IngestWorker(agent_ctx).run(
@@ -878,17 +868,16 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             },
         )
 
-        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
+        async with _open_sessions(worker_state) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
                 emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
-                graph_id=input.graph_id,
             )
 
-            # IngestSource is a control-plane table — stays on the
-            # system session factory regardless of graph_id.
+            # process_ingest_sources needs graph-db for IngestSource table;
+            # open a short-lived session just for that.
             async with worker_state.session_factory() as graph_session:
                 processed = await process_ingest_sources(
                     conv_uuid,
@@ -1026,7 +1015,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
         proposed_nodes: list[ProposedNode] = []
         try:
-            async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
+            async with _open_sessions(worker_state) as (_, write_session):
                 if write_session is not None:
                     seed_repo = WriteSeedRepository(write_session)
                     seeds = await seed_repo.list_seeds(
@@ -1191,7 +1180,6 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
                         existing_node_id=node.existing_node_id,
                         message_id=input.message_id,
                         conversation_id=input.conversation_id,
-                        graph_id=input.graph_id,
                     ),
                     options=node_meta,
                 )
