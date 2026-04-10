@@ -17,6 +17,7 @@ import pytest
 from kt_facts.processing.dedup import (
     InsertFactsPendingResult,
     insert_facts_pending,
+    search_threshold_for_type,
     threshold_for_type,
 )
 
@@ -90,7 +91,9 @@ async def test_insert_pending_requires_write_fact_repo() -> None:
 
 
 def testthreshold_for_type_atomic_vs_compound() -> None:
-    # Both default to 0.945 (configurable via Settings, widened for quantization margin)
-    assert threshold_for_type("quote") == 0.945  # compound
-    assert threshold_for_type("measurement") == 0.945  # atomic
-    assert threshold_for_type("claim") == 0.945  # atomic
+    # Both default to 0.95 (configurable via Settings)
+    assert threshold_for_type("quote") == 0.95  # compound
+    assert threshold_for_type("measurement") == 0.95  # atomic
+    assert threshold_for_type("claim") == 0.95  # atomic
+    # Search threshold is 0.01 lower to compensate for quantization
+    assert search_threshold_for_type("claim") == 0.94

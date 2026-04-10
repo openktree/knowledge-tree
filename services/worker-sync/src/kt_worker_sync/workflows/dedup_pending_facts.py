@@ -43,7 +43,7 @@ from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from kt_facts.processing.dedup import threshold_for_type
+from kt_facts.processing.dedup import search_threshold_for_type, threshold_for_type
 from kt_facts.processing.merge import merge_into_fast
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
@@ -262,9 +262,13 @@ async def dedup_pending_facts(
             try:
                 hit = await qdrant_fact_repo.find_most_similar(
                     rep_embedding,
-                    score_threshold=threshold_for_type(rep_fact_type),
+                    score_threshold=search_threshold_for_type(rep_fact_type),
                 )
-                if hit is not None and hit.fact_id not in snapshot_ids_set:
+                if (
+                    hit is not None
+                    and hit.fact_id not in snapshot_ids_set
+                    and hit.score >= threshold_for_type(rep_fact_type)
+                ):
                     canonical = hit.fact_id
             except Exception:
                 logger.warning(
