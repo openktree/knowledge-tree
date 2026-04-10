@@ -683,8 +683,8 @@ class Settings(BaseSettings):
     enrichment_edge_justification_sample_size: int = 50
 
     # Facts
-    fact_dedup_atomic_threshold: float = 0.95
-    fact_dedup_compound_threshold: float = 0.95
+    fact_dedup_atomic_threshold: float = 0.945
+    fact_dedup_compound_threshold: float = 0.945
 
     # Seeds
     seed_dedup_embedding_threshold: float = 0.82

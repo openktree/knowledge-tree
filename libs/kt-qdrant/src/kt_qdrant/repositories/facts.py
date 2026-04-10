@@ -23,6 +23,9 @@ from qdrant_client.models import (
     MatchValue,
     PointStruct,
     Prefetch,
+    ScalarQuantization,
+    ScalarQuantizationConfig,
+    ScalarType,
     TextIndexParams,
     TextIndexType,
     TokenizerType,
@@ -60,7 +63,12 @@ class QdrantFactRepository:
         self._collection_name = collection_name
 
     async def ensure_collection(self) -> None:
-        """Create the facts collection if it doesn't exist."""
+        """Create the facts collection if it doesn't exist.
+
+        New collections are created with scalar int8 quantization
+        (``always_ram=True``) for faster search. Existing collections
+        get quantization applied via :meth:`ensure_quantization`.
+        """
         settings = get_settings()
         collections = await self._client.get_collections()
         existing = {c.name for c in collections.collections}
@@ -71,8 +79,39 @@ class QdrantFactRepository:
                     size=settings.embedding_dimensions,
                     distance=Distance.COSINE,
                 ),
+                quantization_config=ScalarQuantization(
+                    scalar=ScalarQuantizationConfig(
+                        type=ScalarType.INT8,
+                        always_ram=True,
+                    ),
+                ),
             )
-            logger.info("Created Qdrant collection '%s' (dim=%d)", self._collection_name, settings.embedding_dimensions)
+            logger.info(
+                "Created Qdrant collection '%s' (dim=%d, quantization=int8)",
+                self._collection_name,
+                settings.embedding_dimensions,
+            )
+        else:
+            await self.ensure_quantization()
+
+    async def ensure_quantization(self) -> None:
+        """Enable scalar int8 quantization on an existing collection if not already set."""
+        try:
+            info = await self._client.get_collection(self._collection_name)
+            if info.config.quantization_config is not None:
+                return  # already configured
+            await self._client.update_collection(
+                collection_name=self._collection_name,
+                quantization_config=ScalarQuantization(
+                    scalar=ScalarQuantizationConfig(
+                        type=ScalarType.INT8,
+                        always_ram=True,
+                    ),
+                ),
+            )
+            logger.info("Enabled scalar int8 quantization on '%s'", self._collection_name)
+        except Exception:
+            logger.warning("Failed to enable quantization on '%s'", self._collection_name, exc_info=True)
 
     async def ensure_text_index(self) -> None:
         """Create a full-text index on the 'content' payload field if not present."""
