@@ -445,8 +445,8 @@ configYaml:
     model: "openrouter/minimax/minimax-m2.5:nitro"
 
   facts:
-    dedup_atomic_threshold: 0.95
-    dedup_compound_threshold: 0.95
+    dedup_atomic_threshold: 0.945
+    dedup_compound_threshold: 0.945
 
   edges:
     resolution_model: "openrouter/x-ai/grok-4.1-fast"
