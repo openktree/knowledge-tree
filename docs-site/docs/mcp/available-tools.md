@@ -21,7 +21,7 @@ Each result includes `fact_count` — higher counts indicate richer, better-evid
 |------|------|----------|---------|-------------|
 | `query` | string | yes | — | Search term for concept names |
 | `limit` | int | no | 20 | Max results (1-100) |
-| `node_type` | string | no | — | Filter: `concept`, `entity`, `perspective`, `event` |
+| `node_type` | string | no | — | Filter: `concept`, `entity`, `event` |
 
 **Returns:** List of matching nodes with `node_id`, `concept`, `node_type`, `fact_count`, and `also_known_as` aliases.
 

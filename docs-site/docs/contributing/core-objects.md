@@ -18,8 +18,8 @@ The atomic unit of the knowledge graph. All nodes are flat peers — structure c
 Node:
   id:                 UUID          # Primary key (= key_to_uuid(write_key))
   concept:            str           # Human-readable label
-  node_type:          str           # concept | entity | perspective | event | synthesis
-  parent_id:          UUID | None   # FK to parent (for perspectives → concepts)
+  node_type:          str           # concept | entity | event | synthesis
+  parent_id:          UUID | None   # FK to parent node
   definition:         str | None    # Synthesized from dimensions
   embedding:          float[]       # Averaged across dimension embeddings
   entity_subtype:     str | None    # For entities: person, org, location, publication
@@ -47,7 +47,6 @@ WriteNode:
 |------|-------------|
 | `concept` | Abstract topic, idea, technique, phenomenon |
 | `entity` | Named real-world thing (person, organization, location) |
-| `perspective` | Debatable claim with parent concept and stance-classified facts |
 | `event` | Temporal occurrence (historical, scientific, ongoing) |
 | `synthesis` | Composite document synthesizing multiple nodes |
 | `supersynthesis` | Meta-synthesis combining multiple synthesis documents |
@@ -75,7 +74,7 @@ Edge:
   id:                 UUID
   source_node_id:     UUID          # Smaller UUID (canonical ordering)
   target_node_id:     UUID          # Larger UUID
-  relationship_type:  str           # related | cross_type | contradicts
+  relationship_type:  str           # related | cross_type
   weight:             float         # Shared fact count
   justification:      str | None    # LLM reasoning with fact citations
   metadata_:          JSONB

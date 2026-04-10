@@ -46,10 +46,8 @@ interface Neighbor {
   edges: EdgeResponse[];
 }
 
-const perspectives: Neighbor[] = [];
 const entities: Neighbor[] = [];
 const related: Neighbor[] = [];  // concept + event
-let antithesis: NodeResponse | null = null;
 
 // Use the node's actual UUID for edge matching (id param may be a URL key)
 const nodeUuid: string = node?.id ?? id;
@@ -76,17 +74,7 @@ if (node && subgraph) {
   for (const [neighborId, edges] of neighborEdges) {
     const neighbor = nodeMap.get(neighborId)!;
     const entry: Neighbor = { node: neighbor, edges };
-    // Track antithesis via dialectic_pair_id metadata or negative-weight related edge
-    const pairId = node.metadata?.dialectic_pair_id as string | undefined;
-    if (
-      (pairId && neighborId === pairId) ||
-      (neighbor.node_type === "perspective" && edges.some((e) => e.relationship_type === "related" && e.weight < 0))
-    ) {
-      antithesis = neighbor;
-    }
-    if (neighbor.node_type === "perspective") {
-      perspectives.push(entry);
-    } else if (neighbor.node_type === "entity") {
+    if (neighbor.node_type === "entity") {
       entities.push(entry);
     } else {
       related.push(entry);
@@ -122,7 +110,6 @@ function sortByTypeAndFacts(list: Neighbor[]): void {
   });
 }
 
-sortByTypeAndFacts(perspectives);
 sortByTypeAndFacts(entities);
 
 // Fact lookup map for showing supporting facts when no justification exists
@@ -142,10 +129,6 @@ const uniqueRelNodeTypes = Array.from(relNodeTypeCount.entries())
   .sort((a, b) => b[1] - a[1])
   .map(([type]) => type);
 
-function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: string; cls: string } {
-  if (neighborType !== "perspective") return { label: "", cls: "" };
-  return { label: "perspective of", cls: "stance-supports" };
-}
 ---
 
 <WikiLayout title={node?.concept ?? "Node not found"}>
@@ -213,43 +196,23 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                 <span class={`definition-source-tag ${node.definition_source === "crystallized" ? "crystallized" : "synthesized"}`}>
                   {node.definition_source === "crystallized"
                     ? `crystallized from ${children.length} sub-concept${children.length !== 1 ? "s" : ""}`
-                    : node.node_type === "perspective"
-                      ? "synthesized from nodes"
-                      : "synthesized from dimensions"}
+                    : "synthesized from dimensions"}
                 </span>
-                {node.node_type === "perspective" ? (
-                  <div class="perspective-definition">
-                    {parseMarkdownBlocks(node.definition).map((block) =>
-                      block.kind === "heading" ? (
-                        block.level === 1 ? <h2 class="perspective-h1"><RichSegments segments={block.segments} /></h2> :
-                        block.level === 2 ? <h3 class="perspective-h2"><RichSegments segments={block.segments} /></h3> :
-                        <h4 class="perspective-h3"><RichSegments segments={block.segments} /></h4>
-                      ) : block.kind === "table" ? (
-                        <Fragment set:html={block.rawHtml} />
-                      ) : block.kind === "list-item" ? (
-                        <li class="perspective-paragraph"><RichSegments segments={block.segments} /></li>
-                      ) : (
-                        <p class="perspective-paragraph"><RichSegments segments={block.segments} /></p>
-                      )
-                    )}
-                  </div>
-                ) : (
-                  <div class="node-definition">
-                    {parseMarkdownBlocks(node.definition).map((block) =>
-                      block.kind === "heading" ? (
-                        block.level === 1 ? <h2><RichSegments segments={block.segments} /></h2> :
-                        block.level === 2 ? <h3><RichSegments segments={block.segments} /></h3> :
-                        <h4><RichSegments segments={block.segments} /></h4>
-                      ) : block.kind === "table" ? (
-                        <Fragment set:html={block.rawHtml} />
-                      ) : block.kind === "list-item" ? (
-                        <li><RichSegments segments={block.segments} /></li>
-                      ) : (
-                        <p><RichSegments segments={block.segments} /></p>
-                      )
-                    )}
-                  </div>
-                )}
+                <div class="node-definition">
+                  {parseMarkdownBlocks(node.definition).map((block) =>
+                    block.kind === "heading" ? (
+                      block.level === 1 ? <h2><RichSegments segments={block.segments} /></h2> :
+                      block.level === 2 ? <h3><RichSegments segments={block.segments} /></h3> :
+                      <h4><RichSegments segments={block.segments} /></h4>
+                    ) : block.kind === "table" ? (
+                      <Fragment set:html={block.rawHtml} />
+                    ) : block.kind === "list-item" ? (
+                      <li><RichSegments segments={block.segments} /></li>
+                    ) : (
+                      <p><RichSegments segments={block.segments} /></p>
+                    )
+                  )}
+                </div>
               </>
             ) : dimensions.length > 0 ? (
               <>
@@ -304,85 +267,6 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
                   <li class="relation-row">
                     <a href={`/nodes/${node.parent_key}`} class="relation-row-main" title={node.parent_concept}>{node.parent_concept}</a>
                   </li>
-                </ul>
-              </div>
-            )}
-
-            {antithesis && (
-              <div class="sidebar-box">
-                <div class="sidebar-box-header sidebar-box-header--antithesis sidebar-box-toggle">Antithesis <span class="sidebar-toggle-icon">▾</span></div>
-                <ul class="sidebar-box-list">
-                  <li class="relation-row">
-                    <a href={nodeHref(antithesis)} class="relation-row-main" title={antithesis.concept}>{antithesis.concept}</a>
-                  </li>
-                </ul>
-              </div>
-            )}
-
-            {perspectives.length > 0 && (
-              <div class="sidebar-box">
-                <div class="sidebar-box-header sidebar-box-toggle">
-                  Perspectives ({perspectives.length}) <span class="sidebar-toggle-icon">▾</span>
-                </div>
-                {perspectives.length > 5 && (
-                  <input type="search" class="sidebar-search" data-sidebar-search placeholder="Filter perspectives..." autocomplete="off" />
-                )}
-                <ul class="sidebar-box-list">
-                  {perspectives.map(({ node: n, edges }) => {
-                    const { label, cls } = stanceLabel(edges, n.node_type);
-                    const justifications = edges.filter(e => e.justification);
-                    const factCount = neighborFactCount(edges);
-                    const supportingFacts = edgeSupportingFacts(edges);
-                    const dialogId = `rel-${n.id}`;
-                    return (
-                      <li class="relation-row" data-search-text={n.concept.toLowerCase()}>
-                        <div class="relation-row-main" title={n.concept}>
-                          {label && <span class={`stance-label ${cls}`}>{label}</span>}
-                          <a href={nodeHref(n)}>{n.concept}</a>
-                        </div>
-                        {(justifications.length > 0 || supportingFacts.length > 0) && (
-                          <>
-                            <button class="relation-btn" data-dialog={dialogId}>
-                              relation{factCount > 0 && <span class="relation-btn-count">{factCount}</span>}
-                            </button>
-                            <dialog id={dialogId} class="relation-dialog">
-                              <div class="relation-dialog-inner">
-                                <h3 class="relation-dialog-title">{n.concept}</h3>
-                                {justifications.length > 0 ? (
-                                  justifications.map((e, i) => {
-                                    const edgeFactCount = e.supporting_fact_ids?.length ?? 0;
-                                    const segs = parseJustification(e.justification);
-                                    return (
-                                      <p class="relation-dialog-text">
-                                        {justifications.length > 1 && <strong>[{i + 1}] </strong>}
-                                        {segs.map((s) => s.kind === "text" ? s.text : <a class="citation" href={`/facts/${s.factId}`}>[{s.num}]</a>)}
-                                        {edgeFactCount > 0 && <span class="relation-dialog-fact-count"> — {edgeFactCount} supporting fact{edgeFactCount !== 1 ? "s" : ""}</span>}
-                                      </p>
-                                    );
-                                  })
-                                ) : (
-                                  <>
-                                    <p class="relation-dialog-pending">Justification not yet generated — showing supporting facts</p>
-                                    <ul class="relation-dialog-facts">
-                                      {supportingFacts.map((f) => (
-                                        <li class="relation-dialog-fact-item">
-                                          <a href={`/facts/${f.id}`}>{f.content}</a>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </>
-                                )}
-                                <div class="relation-dialog-footer">
-                                  <a class="relation-dialog-detail-link" href={`/edges?source=${nodeUuid}&target=${n.id}`}>view all edge details</a>
-                                  <button class="relation-dialog-close" data-close>Close</button>
-                                </div>
-                              </div>
-                            </dialog>
-                          </>
-                        )}
-                      </li>
-                    );
-                  })}
                 </ul>
               </div>
             )}
@@ -607,7 +491,7 @@ function stanceLabel(_edges: EdgeResponse[], neighborType: string): { label: str
       });
     }
 
-    // ── Sidebar list search (perspectives, entities) ──
+    // ── Sidebar list search (entities) ──
     document.querySelectorAll<HTMLInputElement>("[data-sidebar-search]").forEach((input) => {
       const box = input.closest(".sidebar-box");
       if (!box) return;

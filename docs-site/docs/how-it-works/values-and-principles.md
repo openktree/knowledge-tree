@@ -32,7 +32,7 @@ Models analyze, compare, and synthesize facts. They are discouraged from injecti
 
 ### 2. Integration, not ignoring
 
-The system **never discards coherent information**. When sources disagree, contradictory facts don't get suppressed — they produce [perspective nodes](/how-it-works/dimensions) that represent each viewpoint with its supporting evidence.
+The system **never discards coherent information**. When sources disagree, contradictory facts don't get suppressed — they coexist within nodes, and [multi-model dimensional analysis](/how-it-works/dimensions) surfaces where models converge or diverge on the evidence.
 
 This principle means:
 - Minority viewpoints are preserved alongside mainstream ones

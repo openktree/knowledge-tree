@@ -29,7 +29,7 @@ A knowledge integration system that builds understanding exclusively from raw ex
 **Key design drivers (priority order):**
 
 1. **Knowledge from data, not from models.** Models are reasoning engines, not knowledge sources. All knowledge must trace back to external raw data.
-2. **Integration, not ignoring.** The system never discards coherent information. Contradictory facts produce node splits with alternate perspectives, not suppression.
+2. **Integration, not ignoring.** The system never discards coherent information. Contradictory facts coexist within nodes, surfaced transparently rather than suppressed.
 3. **Extensibility.** Clean interfaces allow new knowledge providers (search engines, databases, APIs), new AI models, and new decomposition strategies without architectural changes.
 4. **Accumulation.** The graph improves with every query. Nodes visited frequently become deeply supported. Budget=0 queries leverage all prior work.
 5. **Transparency.** Users see the graph, the nodes, the facts, the sources, the convergence scores, and the divergences. Nothing is hidden.
@@ -41,12 +41,12 @@ A knowledge integration system that builds understanding exclusively from raw ex
 ### 2.1 Functional Requirements
 
 #### FR-1: Knowledge Graph Management
-- **FR-1.1:** The system SHALL maintain a persistent knowledge graph where nodes represent concepts, perspectives, entities, events, locations, syntheses, or supersyntheses. Nodes have a `node_type` field: `concept` (abstract topics), `entity` (subjects capable of intent — person, organization), `perspective` (debatable claims with a parent concept), `event` (temporal occurrences), `location` (geographic places), `synthesis` (composite document synthesizing multiple source nodes), or `supersynthesis` (meta-synthesis combining multiple synthesis nodes).
-- **FR-1.2:** Nodes SHALL be linked to other nodes via typed, weighted edges. The graph is flat — all nodes are peers. Perspective nodes link to their parent concept via the `parent_id` FK. Circular references are valid and expected.
+- **FR-1.1:** The system SHALL maintain a persistent knowledge graph where nodes represent concepts, entities, events, locations, syntheses, or supersyntheses. Nodes have a `node_type` field: `concept` (abstract topics), `entity` (subjects capable of intent — person, organization), `event` (temporal occurrences), `location` (geographic places), `synthesis` (composite document synthesizing multiple source nodes), or `supersynthesis` (meta-synthesis combining multiple synthesis nodes).
+- **FR-1.2:** Nodes SHALL be linked to other nodes via typed, weighted edges. The graph is flat — all nodes are peers. Circular references are valid and expected.
 - **FR-1.3:** Edges SHALL only be created from shared factual evidence (seed co-occurrence candidates) — semantic proximity alone does NOT create edges. Embedding similarity is a search tool, not a structural mechanism.
 - **FR-1.4:** Nodes SHALL reference facts, and facts SHALL reference their original raw sources with stored links.
 - **FR-1.5:** Node content size SHALL be configurable (default: 500 tokens per dimension).
-- **FR-1.6:** The system SHALL support node splitting when divergent facts form coherent alternate perspectives.
+- **FR-1.6:** The system SHALL support node splitting when divergent facts form coherent, internally consistent clusters.
 - **FR-1.7:** The system SHALL support node merging when independently created nodes describe the same concept.
 
 #### FR-2: Query & Budget System
@@ -81,7 +81,7 @@ A knowledge integration system that builds understanding exclusively from raw ex
 - **FR-6.3:** A super-synthesizer agent SHALL combine multiple synthesis documents into a comprehensive meta-synthesis.
 - **FR-6.4:** Fact gathering (via ingestion/bottom-up workflows) SHALL be separated from synthesis (document creation from existing graph). The graph grows through ingestion; synthesis reads from it.
 - **FR-6.5:** The ingest agent SHALL build nodes from a pre-filled fact pool extracted from uploaded documents, links, and search results.
-- **FR-6.6:** Bottom-up workflows SHALL orchestrate scope-based research: planning scopes, extracting facts, promoting seeds to nodes, and building perspectives.
+- **FR-6.6:** Bottom-up workflows SHALL orchestrate scope-based research: planning scopes, extracting facts, and promoting seeds to nodes.
 
 #### FR-7: Source Tracking
 - **FR-7.1:** All data added to nodes SHALL have stored links to their original sources.
@@ -511,21 +511,18 @@ The atomic unit of the knowledge graph. All nodes are flat peers — structure c
 |-----------|----------|-------------|---------|
 | `concept` | Base | Abstract topic, idea, technique, phenomenon, or subject | "moon", "photosynthesis", "pyramid construction techniques" |
 | `entity` | Base | A subject capable of intent (person, organization) | "NASA" (organization), "Albert Einstein" (person) |
-| `perspective` | Composite | A debatable claim with a parent concept and stance-classified facts | "the moon is an artificial structure placed in orbit" |
 | `event` | Base | A temporal occurrence (historical, scientific, ongoing) | "Apollo 11 Moon Landing", "2024 Solar Eclipse" |
 | `location` | Base | A geographic place (country, city, region, landmark) | "Tokyo", "Amazon Rainforest", "Mediterranean Sea" |
 | `synthesis` | Composite | Composite document synthesizing multiple source nodes | A synthesis combining "solar power", "wind power", and "energy storage" |
 | `supersynthesis` | Composite | Meta-synthesis combining multiple synthesis documents | A supersynthesis combining three synthesis documents on renewable energy |
 
-**Base node types** (`concept`, `entity`, `event`, `location`) are built from raw facts. **Composite node types** (`synthesis`, `supersynthesis`, `perspective`) are built from other nodes and linked via `draws_from` edges.
-
-Perspective nodes have a `parent_id` FK linking them to their parent concept node. Parent-child structure uses this FK, not edges.
+**Base node types** (`concept`, `entity`, `event`, `location`) are built from raw facts. **Composite node types** (`synthesis`, `supersynthesis`) are built from other nodes and linked via `draws_from` edges.
 
 ```
 Node:
   id:                 uuid                # primary key (deterministic via key_to_uuid)
   concept:            string              # human-readable concept label
-  node_type:          string              # "concept" | "perspective" | "entity" | "event" | "location" | "synthesis" | "supersynthesis"
+  node_type:          string              # "concept" | "entity" | "event" | "location" | "synthesis" | "supersynthesis"
   parent_id:          uuid | null         # FK to parent node
   definition:         text | null         # synthesized definition from dimensions
   embedding:          float[]             # averaged across dimension embeddings
@@ -616,7 +613,7 @@ Edge types are limited to 3 well-separated values. The `weight` field is a **sha
 |------|-----------|---------|---------|
 | `related` | Undirected | Connects nodes of the same `node_type`. Created from seed co-occurrence candidates. Canonical UUID ordering enforced (smaller UUID = source). | "solar power" ↔ "wind power" (both concepts) |
 | `cross_type` | Undirected | Connects nodes of different `node_type`s (e.g., entity↔event, concept↔location). Canonical UUID ordering enforced. | "NASA" (entity) ↔ "Apollo 11" (event) |
-| `draws_from` | Directed | Links composite nodes (synthesis, supersynthesis, perspective) to their source nodes. Programmatic — not LLM-created. | synthesis → concept (source material) |
+| `draws_from` | Directed | Links composite nodes (synthesis, supersynthesis) to their source nodes. Programmatic — not LLM-created. | synthesis → concept (source material) |
 
 Edge `weight` = number of shared facts between the two nodes' seeds. The `justification` field contains LLM-generated reasoning with `{fact:uuid}` citation tokens for provenance.
 
@@ -626,7 +623,7 @@ Edge `weight` = number of shared facts between the two nodes' seeds. The `justif
 
 | | Edges | Embedding Similarity |
 |---|-------|---------------------|
-| **Created by** | Seed co-occurrence candidates + LLM justification (edge pipeline), or perspective builder | Computed automatically from content |
+| **Created by** | Seed co-occurrence candidates + LLM justification (edge pipeline) | Computed automatically from content |
 | **Meaning** | "These concepts are meaningfully related — I explored them together" | "These concepts have similar semantic content" |
 | **Used for** | Graph traversal, answer synthesis, UI visualization | Node search, dedup candidate detection, merge candidate detection |
 | **Circular?** | Yes — A→B and B→A are both valid | N/A (similarity is symmetric) |
@@ -774,7 +771,6 @@ Input:  raw_sources: RawSource[], concept: string
 | `get_summary(idx)` | Read the full summary for a section | Free |
 | `browse_facts(query, fact_type, unlinked_only, limit)` | Search the fact pool by topic or browse all | Free |
 | `build_nodes(nodes)` | Batch build up to 10 nodes in one call | 1 per node |
-| `build_perspectives(claims)` | Batch build perspective nodes with stance classification | Free |
 | `read_node(node_id)` | Read an existing node's dimensions and edges | 1 per read |
 | `get_budget()` | Check remaining budget | Free |
 | `finish_ingest(summary)` | End construction and submit summary | Free |
@@ -1229,7 +1225,7 @@ All heavy processing runs as **durable Hatchet workflows**:
 | Workflow | Worker | Purpose |
 |----------|--------|---------|
 | `bottom_up_wf` | worker-bottomup | Top-level research orchestrator: plans scopes, dispatches node building |
-| `bottom_up_scope_wf` | worker-bottomup | Single scope: gather facts, filter, fan-out node pipelines, build perspectives |
+| `bottom_up_scope_wf` | worker-bottomup | Single scope: gather facts, filter, fan-out node pipelines |
 | `node_pipeline_wf` | worker-nodes | Node creation DAG: create → dimensions → definition → parent |
 | `composite_wf` | worker-nodes | Composite node generation (synthesis/supersynthesis node types) |
 | `auto_build_wf` | worker-nodes | Automatic node building from accumulated seeds |
@@ -1303,28 +1299,28 @@ function evaluateSplit(node):
   return NO_SPLIT
 
 function executeSplit(node, clusters):
-  # Create perspective nodes as peers (not children)
-  perspectiveNodes = []
+  # Create child nodes for each coherent cluster
+  childNodes = []
   for cluster in clusters:
-    label = generatePerspectiveLabel(cluster)  # e.g., "Politician X: Governance Record"
-    perspective = createNode(label)
+    label = generateClusterLabel(cluster)  # e.g., "Politician X: Governance Record"
+    child = createNode(label)
     for fact in cluster.facts:
-      linkFactToNode(perspective.id, fact.id)
-    generateDimensions(perspective)
-    perspectiveNodes.append(perspective)
+      linkFactToNode(child.id, fact.id)
+    generateDimensions(child)
+    childNodes.append(child)
 
-  # Link perspective nodes to the original node via parent_id FK
-  for perspective in perspectiveNodes:
-    setParent(perspective.id, node.id)
+  # Link child nodes to the original node via parent_id FK
+  for child in childNodes:
+    setParent(child.id, node.id)
 
-  # Link perspective nodes to each other via related edges
-  for pair in combinations(perspectiveNodes, 2):
+  # Link child nodes to each other via related edges
+  for pair in combinations(childNodes, 2):
     createEdge(pair[0].id, pair[1].id, "related", weight=1.0)
 
   # Update original node to note the split
   updateNodeContent(node, """
-    This topic has divergent perspectives supported by coherent evidence.
-    See linked perspective nodes for each viewpoint.
+    This topic has divergent viewpoints supported by coherent evidence.
+    See linked child nodes for each cluster.
   """)
 ```
 
@@ -1350,7 +1346,7 @@ graph TD
     style B fill:#1a2235,stroke:#f87171,color:#e2e8f0
 ```
 
-All three nodes are peers in the flat graph. The `parent_id` FK indicates that A and B are facets of the original concept. The `related` edge between A and B captures their shared conceptual domain. Other nodes in the graph can link to any of the three independently.
+All three nodes are peers in the flat graph. The `parent_id` FK indicates that A and B are facets of the original concept. The `related` edge between A and B captures their shared domain. Other nodes in the graph can link to any of the three independently.
 
 ---
 
@@ -1846,7 +1842,7 @@ graph TB
 | **SSE Streaming** | Replaced WebSocket with Server-Sent Events for real-time pipeline progress. |
 | **Conversation Model** | Chat-based interaction replacing single-query model. Conversations with multi-turn support. |
 | **Authentication** | fastapi-users with JWT + Google OAuth + API tokens. All routes auth-protected. |
-| **Ontology System** | Wikidata integration, ancestry calculation, crystallization. Redis-cached. |
+| **Ontology System** | Wikidata integration *(deprecated — scheduled for removal)*. |
 | **File/Link Ingestion** | Upload files (PDF, DOCX, etc.) or submit links for decomposition into the knowledge graph. |
 | **Research Reports** | Persisted outcome summaries per orchestrator run (nodes, edges, budgets, scope summaries). |
 | **Wave-Based Exploration** | Multi-wave exploration with LLM-planned scopes and fan-out sub-explorers. |
@@ -1860,7 +1856,7 @@ graph TB
 | **Qdrant Vector Search** | Added Qdrant as dedicated vector database for semantic search, replacing pgvector for primary search workloads. |
 | **MCP Server** | Model Context Protocol server (`services/mcp`) with OAuth 2.1 authentication, exposing read-only graph navigation tools for external AI clients. |
 | **Synthesizer/SuperSynthesizer Agents** | Replaced Orchestrator/Navigation agents with document-focused Synthesizer Agent (graph navigation + synthesis) and SuperSynthesizer Agent (multi-scope meta-synthesis). |
-| **Bottom-up Research Workflows** | Scope-based research: plan scopes → extract facts → promote seeds to nodes → build perspectives. Replaced chat-based exploration model. |
+| **Bottom-up Research Workflows** | Scope-based research: plan scopes → extract facts → promote seeds to nodes. Replaced chat-based exploration model. |
 | **kt-auth Library** | Shared authentication utilities (API token verification, Redis-cached lookup) for API and MCP services. |
 | **kt-qdrant Library** | Qdrant vector search repositories for nodes and facts. |
 | **PgBouncer Connection Pooling** | Connection pools for both graph-db and write-db via PgBouncer. |
@@ -1877,19 +1873,18 @@ graph TB
 
 | Term | Definition |
 |------|------------|
-| **Node** | Atomic unit of the knowledge graph. Typed as `concept`, `entity`, `perspective`, `event`, `location`, `synthesis`, or `supersynthesis`. All nodes are flat peers. |
+| **Node** | Atomic unit of the knowledge graph. Typed as `concept`, `entity`, `event`, `location`, `synthesis`, or `supersynthesis`. All nodes are flat peers. |
 | **Edge** | A typed, weighted relationship between two nodes. Three types: `related` (same-type, undirected), `cross_type` (different-type, undirected), `draws_from` (composite→source, directed). Weight = shared fact count. Created from seed co-occurrence candidates, not automatically from embedding similarity. |
 | **Fact Pool** | The collection of gathered facts extracted from sources. Facts are extracted during ingestion/bottom-up workflows and later linked to nodes during node pipeline execution. |
 | **Seed** | An entity or concept extracted during fact decomposition. Seeds accumulate facts and are promoted to full nodes when they reach a configurable minimum fact count. |
-| **Stance** | Classification of a fact relative to a perspective's claim: `supports`, `challenges`, or `neutral`. |
 | **Synthesizer Agent** | LangGraph agent that navigates the knowledge graph with an exploration budget and produces a standalone synthesis document. Has 8 navigation tools + `finish_synthesis`. |
 | **SuperSynthesizer Agent** | Agent that reads multiple sub-synthesis documents and produces a comprehensive meta-synthesis. |
 | **Ingest Agent** | Agent that builds nodes from a pre-filled fact pool extracted from uploaded documents, links, and search results. |
-| **Dimension** | A single model's perspective on a node's concept, generated from facts. |
+| **Dimension** | A single model's independent analysis of a node's concept, generated from facts. |
 | **Fact** | A typed, attributed piece of information extracted from raw sources. Types: claim, account, measurement, formula, quote, procedure, reference, code, image, perspective. |
 | **Raw Source** | Original data fetched from a knowledge provider, stored append-only. |
 | **Convergence** | Degree of agreement across dimensions (models) within a node. |
-| **Node Split** | When a node's facts form contradictory but internally coherent clusters, creating perspective nodes linked via `parent_id` FK. |
+| **Node Split** | When a node's facts form contradictory but internally coherent clusters, creating child nodes linked via `parent_id` FK. |
 | **Exploration Budget** | Maximum number of nodes the synthesizer agent can visit during graph navigation. Controls investigation depth without limiting free operations like search. |
 | **graph-db** | Read-optimized PostgreSQL database with pgvector and FK constraints. API and synthesis agent read from here. |
 | **write-db** | Write-optimized PostgreSQL database with no FKs and deterministic TEXT keys. Workers write here during pipelines. |
@@ -1929,7 +1924,7 @@ Raw sources may be reprocessed with improved decomposition agents. Today's fact 
 
 ### B.5: Why node splitting instead of just tagging divergence?
 
-Splitting creates navigable structure. A user exploring "Politician X" sees at a glance that there are two coherent perspectives, each with its own evidence base. This is more useful than a single node with a "divergence warning." Split nodes can themselves accumulate facts, develop edges, and participate in the graph as first-class entities.
+Splitting creates navigable structure. A user exploring "Politician X" sees at a glance that there are two coherent viewpoints, each with its own evidence base. This is more useful than a single node with a "divergence warning." Split nodes can themselves accumulate facts, develop edges, and participate in the graph as first-class entities.
 
 ### B.6: Why a flat graph instead of a tree (parent-child)?
 
@@ -1954,7 +1949,7 @@ If edges were created automatically from embedding similarity, the graph would b
 The original design had 16, then 8 edge types with increasingly overlapping semantics that LLMs couldn't reliably distinguish. The current 3-type system (`related`, `cross_type`, `draws_from`) maximizes simplicity:
 - `related` covers all same-type relationships — the weight (shared fact count) captures evidence strength, and the LLM justification explains the nature of the relationship.
 - `cross_type` covers all cross-type relationships (e.g., entity↔event), with eligible pairings defined explicitly. Same weight semantics.
-- `draws_from` is a directed, programmatic edge from composite nodes (synthesis, supersynthesis, perspective) to their source nodes. Not LLM-created — it records structural provenance.
+- `draws_from` is a directed, programmatic edge from composite nodes (synthesis, supersynthesis) to their source nodes. Not LLM-created — it records structural provenance.
 
 The `justification` field with `{fact:uuid}` citation tokens provides the semantic richness that previously required fine-grained type distinctions.
 
@@ -1967,14 +1962,5 @@ In the original agent design, every `explore_concept()` call triggered both an e
 
 The fact pool pattern separates these concerns:
 - `gather_facts()` handles the expensive part (external API calls) and stores facts in a shared pool
-- `build_concept()` and `build_perspective()` handle the cheap part (organizing existing facts into nodes)
+- `build_concept()` handles the cheap part (organizing existing facts into nodes)
 - Facts gathered for one concept can be discovered and linked to other nodes
-- Perspective nodes can share facts with their parent concepts
-
-### B.10: Why stance classification on facts?
-
-When a fact links to a perspective node, classifying its stance (`supports`, `challenges`, `neutral`) enables:
-- Quantitative comparison of evidence for competing perspectives
-- Transparent reporting: "6 facts support this claim, 12 challenge it"
-- Detection of evidence asymmetry (one perspective has much more/less support)
-- The synthesis agent can present each perspective with its strongest supporting evidence

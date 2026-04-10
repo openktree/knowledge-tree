@@ -182,7 +182,6 @@ Agents (LangGraph-based) are used **within** Hatchet tasks for LLM reasoning:
 ### Node Types
 - `concept` — Abstract topic, idea, technique, phenomenon
 - `entity` — Subject capable of intent (person, organization)
-- `perspective` — A debatable claim with a parent concept and stance-classified facts
 - `event` — Temporal occurrence (historical, scientific, ongoing)
 - `synthesis` — Composite document synthesizing multiple nodes (has sentences, fact links)
 - `supersynthesis` — Meta-synthesis combining multiple synthesis documents
@@ -190,11 +189,11 @@ Agents (LangGraph-based) are used **within** Hatchet tasks for LLM reasoning:
 ### Edge Types (2 active types)
 All edges are undirected with canonical UUID ordering enforced (smaller UUID always stored as source). One edge per type per node pair is enforced via DB unique constraint.
 - `related` — Connects nodes of the same type. Weight = shared fact count (positive float). Created from seed co-occurrence candidates with LLM-generated justification.
-- `cross_type` — Connects nodes of different types (e.g., entity<->event, perspective<->concept). Same weight semantics.
+- `cross_type` — Connects nodes of different types (e.g., entity<->event, concept<->entity). Same weight semantics.
 
 Weight is a **fact count** (always positive) — higher values mean stronger evidence. Edges are created from `write_edge_candidates` accumulated during seed extraction. The LLM generates a justification only (no weight decision). Relationship type is determined by node types: same type = `related`, different = `cross_type`.
 
-Parent-child structure (e.g., perspective -> parent concept) uses the `parent_id` FK on the Node model, not edges.
+Parent-child structure uses the `parent_id` FK on the Node model, not edges.
 
 ### Facts Layer
 Facts are independent of nodes. A fact can be linked to many nodes. Facts accumulate sources over time (deduplication by embedding similarity). Provenance chain: Node -> Fact -> RawSource.
