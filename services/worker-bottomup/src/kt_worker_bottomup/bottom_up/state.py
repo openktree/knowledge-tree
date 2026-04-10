@@ -118,3 +118,11 @@ class BottomUpScopePlan:
 
     super_sources: list[dict[str, Any]] = field(default_factory=list)
     """Super sources detected during gathering (deferred to user ingestion)."""
+
+    inserted_fact_ids: list[str] = field(default_factory=list)
+    """UUIDs (as str) of facts inserted during this scope's gather phase.
+
+    Forwarded to ``dedup_pending_facts_wf`` by ``bottom_up_scope_wf`` so
+    that the dedup workflow can collapse any duplicates before the node
+    pipeline (autograph) consumes them.
+    """

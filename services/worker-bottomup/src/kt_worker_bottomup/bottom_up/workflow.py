@@ -171,6 +171,35 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         f"{[e['name'] for e in plan.node_plans[:10]]}"
     )
 
+    # ── Phase 1.5: Post-job fact dedup ─────────────────────────────────────
+    #
+    # Insert-time dedup is gone (see kt_facts.processing.dedup) — all
+    # just-gathered facts land in write_facts with dedup_status='pending'.
+    # Dispatch the dedup workflow synchronously before fanning out node
+    # pipelines so that autograph never sees a duplicate fact.
+
+    if plan.inserted_fact_ids:
+        try:
+            from kt_hatchet.client import run_workflow
+
+            dedup_input: dict[str, object] = {
+                "fact_ids": plan.inserted_fact_ids,
+            }
+            if input.graph_id:
+                dedup_input["graph_id"] = input.graph_id
+            await run_workflow("dedup_pending_facts_wf", dedup_input)
+            ctx.log(f"Dedup complete for {len(plan.inserted_fact_ids)} facts")
+        except Exception:
+            # If dedup fails we deliberately do NOT raise — the sync
+            # worker's dedup_status='ready' gate means unresolved pending
+            # rows just sit out of graph-db until a later run reclaims
+            # them via the in_progress recovery path.
+            logger.warning(
+                "Failed to run dedup_pending_facts_wf for scope %s",
+                input.scope_id,
+                exc_info=True,
+            )
+
     # ── Phase 2: Fan out node pipeline workflows ──────────────────────────
 
     from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf

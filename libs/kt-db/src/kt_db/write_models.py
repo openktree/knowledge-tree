@@ -9,7 +9,7 @@ sync worker when it copies data to the graph-db.
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -243,12 +243,25 @@ class WriteFact(WriteBase):
     __table_args__ = (
         Index("ix_write_facts_updated_at", "updated_at"),
         Index("ix_write_facts_fact_type", "fact_type"),
+        Index(
+            "ix_write_facts_dedup_pending",
+            "created_at",
+            postgresql_where=text("dedup_status IN ('pending', 'in_progress')"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     fact_type: Mapped[str] = mapped_column(String(50), nullable=False)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    # dedup state machine: 'pending' (fresh insert) -> 'in_progress' (claimed by
+    # a dedup run) -> 'ready' (safe to consume from autograph / sync).
+    dedup_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 

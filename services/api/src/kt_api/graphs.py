@@ -256,10 +256,11 @@ async def list_graphs(
             return_exceptions=True,
         )
         for i, r in enumerate(results):
-            if isinstance(r, Exception):
+            if isinstance(r, BaseException):
                 logger.debug("Failed to count nodes for graph %s", active_graphs[i].slug, exc_info=True)
             else:
-                node_counts[r[0]] = r[1]
+                graph_id, count = r
+                node_counts[graph_id] = count
 
     return [
         _graph_response(

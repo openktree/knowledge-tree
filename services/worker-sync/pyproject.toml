@@ -9,6 +9,7 @@ dependencies = [
     "kt-models",
     "kt-config",
     "kt-qdrant",
+    "kt-facts",
     "redis>=7.3.0",
 ]
 
@@ -22,6 +23,7 @@ kt-db = { workspace = true }
 kt-models = { workspace = true }
 kt-config = { workspace = true }
 kt-qdrant = { workspace = true }
+kt-facts = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
