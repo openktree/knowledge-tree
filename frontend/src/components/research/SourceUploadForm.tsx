@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,12 @@ export function SourceUploadForm() {
   const [decomposeMessageId, setDecomposeMessageId] = useState<string | null>(
     null,
   );
+
+  // Multigraph public-cache opt-out (PR8). Defaults to "share with public
+  // graph" since that's how the public pool grows. The toggle is hidden
+  // in the file-only case because the API forces False server-side
+  // there anyway — file uploads can never participate.
+  const [shareWithPublicGraph, setShareWithPublicGraph] = useState(true);
 
   // Review state (proposals)
   const [proposals, setProposals] = useState<IngestProposalsResponse | null>(
@@ -167,6 +174,15 @@ export function SourceUploadForm() {
   }, [prepareResult]);
 
   const selectedChunkCount = selectedChunks.size;
+
+  // Whether the prepared ingest has any link sources at all. Drives the
+  // visibility of the public-cache opt-out toggle — file-only ingests
+  // hide it because the API forces ``share_with_public_graph=false``
+  // server-side regardless of the client value.
+  const hasLinkSources = useMemo(
+    () => prepareResult?.sources.some((s) => s.source_type === "link") ?? false,
+    [prepareResult],
+  );
 
   // Step 1: Analyze sources (prepare)
   const handleAnalyze = async () => {
@@ -276,6 +292,7 @@ export function SourceUploadForm() {
       const result = await api.research.decompose(
         prepareResult.conversation_id,
         allSelected,
+        shareWithPublicGraph,
       );
       setDecomposeMessageId(result.message_id);
     } catch (err) {
@@ -403,6 +420,7 @@ export function SourceUploadForm() {
         prepareResult.conversation_id,
         50, // default nav budget for legacy path
         allSelected,
+        shareWithPublicGraph,
       );
       router.push(`/grow-graph`);
     } catch (err) {
@@ -707,6 +725,28 @@ export function SourceUploadForm() {
               </div>
             </div>
           </div>
+
+          {/* Public-cache opt-out — hidden when only files were uploaded
+              (the API forces share=false server-side in that case so the
+              switch would be a misleading affordance). */}
+          {hasLinkSources && (
+            <label className="flex items-start gap-3">
+              <Switch
+                checked={shareWithPublicGraph}
+                onCheckedChange={setShareWithPublicGraph}
+                size="sm"
+                aria-label="Share with public knowledge graph"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Share with public graph</p>
+                <p className="text-xs text-muted-foreground">
+                  Contribute extracted facts to the shared public knowledge
+                  pool so other graphs save decomposition cost on the same
+                  URLs.
+                </p>
+              </div>
+            </label>
+          )}
 
           {/* Error display */}
           {error && (

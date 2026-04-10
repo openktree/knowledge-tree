@@ -1419,6 +1419,10 @@ export interface GraphResponse {
   updated_at: string;
   member_count: number;
   node_count: number;
+  // Multigraph public-cache toggles. Both default to true for new
+  // non-default graphs; the default graph itself ignores them.
+  contribute_to_public: boolean;
+  use_public_cache: boolean;
 }
 
 export interface CreateGraphRequest {
@@ -1430,11 +1434,17 @@ export interface CreateGraphRequest {
   // "default" or omitted = system DB; otherwise a config_key from
   // listDatabaseConnections() (an external DB provisioned in the infra layer).
   database_connection_config_key?: string;
+  contribute_to_public?: boolean;
+  use_public_cache?: boolean;
 }
 
 export interface UpdateGraphRequest {
   name?: string;
   description?: string;
+  // Use ``null``/omit to leave the existing value unchanged. The API
+  // rejects toggle edits on the default graph with HTTP 400.
+  contribute_to_public?: boolean;
+  use_public_cache?: boolean;
 }
 
 export interface GraphMemberResponse {

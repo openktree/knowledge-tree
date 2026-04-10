@@ -842,6 +842,7 @@ export const api = {
       conversationId: string,
       navBudget: number,
       selectedChunks?: number[] | null,
+      shareWithPublicGraph: boolean = true,
     ): Promise<ConversationResponse> {
       return graphRequest<ConversationResponse>(
         `/research/${encodeURIComponent(conversationId)}/confirm`,
@@ -850,6 +851,10 @@ export const api = {
           body: JSON.stringify({
             nav_budget: navBudget,
             selected_chunks: selectedChunks ?? null,
+            // Per-ingest opt-out for the multigraph public-cache
+            // contribute hook. The API forces this to ``false``
+            // server-side for file-only ingests regardless of value.
+            share_with_public_graph: shareWithPublicGraph,
           }),
         },
       );
@@ -868,6 +873,7 @@ export const api = {
     decompose(
       conversationId: string,
       selectedChunks?: number[] | null,
+      shareWithPublicGraph: boolean = true,
     ): Promise<{ conversation_id: string; message_id: string; status: string }> {
       return graphRequest<{ conversation_id: string; message_id: string; status: string }>(
         `/research/${encodeURIComponent(conversationId)}/decompose`,
@@ -875,6 +881,7 @@ export const api = {
           method: "POST",
           body: JSON.stringify({
             selected_chunks: selectedChunks ?? null,
+            share_with_public_graph: shareWithPublicGraph,
           }),
         },
       );
