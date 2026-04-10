@@ -992,9 +992,8 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                 dedup_input: dict[str, object] = {
                     "fact_ids": decomp_summary.inserted_fact_ids,
                 }
-                graph_id_attr = getattr(input, "graph_id", None)
-                if graph_id_attr:
-                    dedup_input["graph_id"] = graph_id_attr
+                if input.graph_id:
+                    dedup_input["graph_id"] = input.graph_id
                 await run_workflow("dedup_pending_facts_wf", dedup_input)
                 ctx.log(f"Dedup complete for {len(decomp_summary.inserted_fact_ids)} facts")
             except Exception:

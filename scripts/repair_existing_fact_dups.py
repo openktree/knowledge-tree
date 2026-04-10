@@ -40,7 +40,7 @@ import uuid
 from typing import Iterable
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from kt_config.settings import get_settings
@@ -139,26 +139,26 @@ async def repair_near_pass(
         total = (await count_session.execute(text("SELECT count(*) FROM write_facts"))).scalar_one()
     logger.info("Near pass: scanning %d facts", total)
 
-    offset = 0
+    last_id: str | None = None
     batch_size = 500
     merged = 0
     scanned = 0
     while True:
         async with write_sf() as read_session:
-            rows = (
-                await read_session.execute(
-                    text(
-                        """
-                        SELECT id, fact_type
-                          FROM write_facts
-                         ORDER BY id
-                         OFFSET :offset
-                         LIMIT :limit
-                        """
-                    ),
-                    {"offset": offset, "limit": batch_size},
-                )
-            ).all()
+            if last_id is None:
+                rows = (
+                    await read_session.execute(
+                        text("SELECT id, fact_type FROM write_facts ORDER BY id LIMIT :limit"),
+                        {"limit": batch_size},
+                    )
+                ).all()
+            else:
+                rows = (
+                    await read_session.execute(
+                        text("SELECT id, fact_type FROM write_facts WHERE id > :last_id ORDER BY id LIMIT :limit"),
+                        {"last_id": last_id, "limit": batch_size},
+                    )
+                ).all()
         if not rows:
             break
 
@@ -220,7 +220,7 @@ async def repair_near_pass(
                 logger.info("Near pass: limit %d reached", limit)
                 return merged
 
-        offset += batch_size
+        last_id = str(rows[-1][0])
         logger.info("Near pass: scanned %d / %d, merged %d", scanned, total, merged)
 
     logger.info("Near pass complete: merged %d rows", merged)
@@ -285,7 +285,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    # Silence unused-import warning on ``select`` / ``func`` — reserved
-    # for inline one-off queries during debugging.
-    _ = (select, func)
     asyncio.run(main())

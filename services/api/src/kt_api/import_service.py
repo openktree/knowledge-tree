@@ -84,9 +84,9 @@ async def import_facts(
 
         write_fact_repo = WriteFactRepository(write_session)
 
-    # Silence unused-argument warnings for arguments that the
-    # post-job dedup design no longer consults at insert time.
-    del embedding_service, qdrant_client
+    # These parameters remain in the signature for backward compatibility
+    # but are no longer consulted at insert time (post-job dedup handles them).
+    _unused = (embedding_service, qdrant_client)  # noqa: F841
 
     # Insert facts as 'pending'; the dedup workflow will handle
     # cross-run deduplication. ``is_new`` is always True here since

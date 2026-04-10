@@ -224,6 +224,9 @@ async def dedup_pending_facts(
 
     n = len(snapshot)
     edges: list[tuple[int, int]] = []
+    # TODO: O(n²) brute-force pairwise cosine. Fine at current snapshot
+    # sizes (a few hundred facts). If snapshots grow past ~2k, switch to
+    # batched numpy dot-product or an ANN index over the snapshot.
     for i in range(n):
         for j in range(i + 1, n):
             thr = max(

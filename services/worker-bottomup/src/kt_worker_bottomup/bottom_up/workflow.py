@@ -185,9 +185,8 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
             dedup_input: dict[str, object] = {
                 "fact_ids": plan.inserted_fact_ids,
             }
-            scope_graph_id = getattr(input, "graph_id", None)
-            if scope_graph_id:
-                dedup_input["graph_id"] = scope_graph_id
+            if input.graph_id:
+                dedup_input["graph_id"] = input.graph_id
             await run_workflow("dedup_pending_facts_wf", dedup_input)
             ctx.log(f"Dedup complete for {len(plan.inserted_fact_ids)} facts")
         except Exception:

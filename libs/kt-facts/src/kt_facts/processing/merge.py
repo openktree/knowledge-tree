@@ -41,33 +41,20 @@ logger = logging.getLogger(__name__)
 # ── Fast mode ─────────────────────────────────────────────────────────
 
 
-async def merge_into_fast(
+async def _remap_scalar_refs(
     write_session: AsyncSession,
-    loser_id: uuid.UUID,
-    canonical_id: uuid.UUID,
+    loser: str,
+    canonical: str,
 ) -> None:
-    """Collapse ``loser_id`` into ``canonical_id`` in the write-db only.
+    """Remap the three scalar fact_id references in write-db.
 
-    Touches (in order):
+    Shared between :func:`merge_into_fast` and :func:`merge_into_heavy`
+    so that any new table added here is automatically handled by both.
 
-    1. ``write_fact_sources.fact_id`` — move rows whose ``(canonical,
-       raw_source_uri)`` pair does not already exist; drop the rest.
-    2. ``write_seed_facts.fact_id`` — move rows whose ``(seed_key,
-       canonical)`` pair does not already exist; drop the rest.
-    3. ``write_edge_candidates.fact_id`` — move rows whose ``(seed_key_a,
-       seed_key_b, canonical)`` triple does not already exist; drop the
-       rest. ``fact_id`` is stored as ``String(36)`` on this table.
-    4. ``write_facts`` — delete the loser row.
-
-    Idempotent when ``loser_id == canonical_id`` (no-op).
+    Does NOT delete the ``write_facts`` row — the caller does that after
+    any additional heavy-mode work.
     """
-    if loser_id == canonical_id:
-        return
-
-    loser = str(loser_id)
-    canonical = str(canonical_id)
-
-    # 1. write_fact_sources
+    # write_fact_sources
     await write_session.execute(
         text(
             """
@@ -88,7 +75,7 @@ async def merge_into_fast(
         {"loser": loser},
     )
 
-    # 2. write_seed_facts
+    # write_seed_facts
     await write_session.execute(
         text(
             """
@@ -109,7 +96,7 @@ async def merge_into_fast(
         {"loser": loser},
     )
 
-    # 3. write_edge_candidates (fact_id stored as TEXT here)
+    # write_edge_candidates (fact_id stored as TEXT)
     await write_session.execute(
         text(
             """
@@ -131,7 +118,28 @@ async def merge_into_fast(
         {"loser": loser},
     )
 
-    # 4. write_facts
+
+async def merge_into_fast(
+    write_session: AsyncSession,
+    loser_id: uuid.UUID,
+    canonical_id: uuid.UUID,
+) -> None:
+    """Collapse ``loser_id`` into ``canonical_id`` in the write-db only.
+
+    Remaps ``write_fact_sources``, ``write_seed_facts``, and
+    ``write_edge_candidates`` via the shared :func:`_remap_scalar_refs`
+    helper, then deletes the loser ``write_facts`` row.
+
+    Idempotent when ``loser_id == canonical_id`` (no-op).
+    """
+    if loser_id == canonical_id:
+        return
+
+    loser = str(loser_id)
+    canonical = str(canonical_id)
+
+    await _remap_scalar_refs(write_session, loser, canonical)
+
     await write_session.execute(
         text("DELETE FROM write_facts WHERE id = :loser"),
         {"loser": loser},
@@ -214,70 +222,10 @@ async def merge_into_heavy(
     loser = str(loser_id)
     canonical = str(canonical_id)
 
-    # ── 1. write-db scalar/fast remap (reuses fast path up to the delete) ──
-    # We intentionally do NOT call ``merge_into_fast`` here because we need
-    # to also handle the array-typed columns and scalar rejection table
-    # before deleting the write_facts row.
-
-    # Fast-mode scalar remaps (same semantics).
-    await write_session.execute(
-        text(
-            """
-            UPDATE write_fact_sources AS wfs
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM write_fact_sources other
-                      WHERE other.fact_id = :canonical
-                        AND other.raw_source_uri = wfs.raw_source_uri
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
-    await write_session.execute(
-        text("DELETE FROM write_fact_sources WHERE fact_id = :loser"),
-        {"loser": loser},
-    )
-    await write_session.execute(
-        text(
-            """
-            UPDATE write_seed_facts AS wsf
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM write_seed_facts other
-                      WHERE other.seed_key = wsf.seed_key
-                        AND other.fact_id = :canonical
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
-    await write_session.execute(
-        text("DELETE FROM write_seed_facts WHERE fact_id = :loser"),
-        {"loser": loser},
-    )
-    await write_session.execute(
-        text(
-            """
-            UPDATE write_edge_candidates AS wec
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM write_edge_candidates other
-                      WHERE other.seed_key_a = wec.seed_key_a
-                        AND other.seed_key_b = wec.seed_key_b
-                        AND other.fact_id = :canonical
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
-    await write_session.execute(
-        text("DELETE FROM write_edge_candidates WHERE fact_id = :loser"),
-        {"loser": loser},
-    )
+    # ── 1. write-db scalar/fast remap ──
+    # Reuse the shared helper that merge_into_fast also calls, but defer
+    # the write_facts DELETE until after the heavy-mode array + graph-db work.
+    await _remap_scalar_refs(write_session, loser, canonical)
 
     # write_node_fact_rejections.fact_id — scalar. Rejections follow
     # canonical; if a rejection already exists we drop the loser's row.

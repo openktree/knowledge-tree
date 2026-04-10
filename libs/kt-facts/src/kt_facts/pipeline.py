@@ -534,9 +534,10 @@ async def _store_extracted_facts_impl(
     content_hash = source_content_hash or getattr(source, "content_hash", "") or ""
     provider_id = source_provider_id or getattr(source, "provider_id", "") or ""
 
-    # Silence unused-argument warnings for parameters that are still part
-    # of the public signature but no longer consulted at insert time.
-    del repo, embedding_service, qdrant_client
+    # These parameters remain in the public signature for backward
+    # compatibility but are no longer consulted at insert time (the
+    # post-job dedup workflow handles embeddings and Qdrant).
+    _unused = (repo, embedding_service, qdrant_client)  # noqa: F841
 
     facts: list[Fact] = []
     for ef, fact_id in zip(extracted, insert_result.fact_ids):

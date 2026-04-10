@@ -57,22 +57,9 @@ class InsertFactsPendingResult:
     """Result of :func:`insert_facts_pending`.
 
     ``fact_ids`` lists the freshly-upserted fact UUIDs in input order.
-    ``new_qdrant_ids`` is retained as an empty list for API symmetry
-    with the old ``DeduplicationOutput`` type (nothing is written to
-    Qdrant at insert time any more).
     """
 
     fact_ids: list[uuid.UUID] = field(default_factory=list)
-    new_qdrant_ids: list[uuid.UUID] = field(default_factory=list)
-
-    def __iter__(self):  # noqa: ANN204
-        return iter(self.fact_ids)
-
-    def __len__(self) -> int:
-        return len(self.fact_ids)
-
-    def __getitem__(self, idx):  # noqa: ANN001, ANN204
-        return self.fact_ids[idx]
 
 
 # ── Insert path ──────────────────────────────────────────────────────

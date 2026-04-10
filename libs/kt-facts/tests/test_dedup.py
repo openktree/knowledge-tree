@@ -41,8 +41,7 @@ async def test_insert_pending_no_qdrant_writes() -> None:
     result = await insert_facts_pending(items, write_fact_repo=mock_write_fact_repo)
 
     assert isinstance(result, InsertFactsPendingResult)
-    assert len(result) == 2
-    assert result.new_qdrant_ids == []
+    assert len(result.fact_ids) == 2
     assert all(isinstance(fid, uuid.UUID) for fid in result.fact_ids)
     assert mock_write_fact_repo.upsert.call_count == 2
 
