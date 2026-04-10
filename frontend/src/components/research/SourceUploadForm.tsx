@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -727,20 +728,23 @@ export function SourceUploadForm() {
 
           {/* Public-cache opt-out — hidden when only files were uploaded
               (the API forces share=false server-side in that case so the
-              checkbox would be a misleading affordance). */}
+              switch would be a misleading affordance). */}
           {hasLinkSources && (
-            <label className="flex items-start gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={!shareWithPublicGraph}
-                onChange={(e) => setShareWithPublicGraph(!e.target.checked)}
-                className="mt-0.5"
+            <label className="flex items-start gap-3">
+              <Switch
+                checked={shareWithPublicGraph}
+                onCheckedChange={setShareWithPublicGraph}
+                size="sm"
+                aria-label="Share with public knowledge graph"
               />
-              <span>
-                Do not share with public knowledge graph. The extracted facts
-                will stay private to this graph and won&apos;t help other
-                graphs save decomposition cost on the same URLs.
-              </span>
+              <div className="flex-1">
+                <p className="text-sm font-medium">Share with public graph</p>
+                <p className="text-xs text-muted-foreground">
+                  Contribute extracted facts to the shared public knowledge
+                  pool so other graphs save decomposition cost on the same
+                  URLs.
+                </p>
+              </div>
             </label>
           )}
 
