@@ -613,6 +613,13 @@ class PublicGraphBridge:
         # Create new write-db fact under the *remote* UUID so the snapshot
         # round-trips cleanly. The remote graph chose this UUID via dedup
         # already, so reusing it just means our local row matches.
+        #
+        # ``dedup_status='ready'`` — the bridge already performed
+        # embedding-based dedup against the target Qdrant collection
+        # above, so these facts are safe to sync immediately. Without
+        # this, the dedup overhaul's sync gate (``WHERE dedup_status =
+        # 'ready'``) would permanently skip bridge-contributed facts
+        # since no ``dedup_pending_facts_wf`` is dispatched for them.
         stmt = (
             pg_insert(WriteFact)
             .values(
@@ -620,6 +627,7 @@ class PublicGraphBridge:
                 content=fact.content,
                 fact_type=fact.fact_type,
                 metadata_=fact.metadata_,
+                dedup_status="ready",
             )
             .on_conflict_do_nothing(index_elements=[WriteFact.id])
         )
