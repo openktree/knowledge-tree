@@ -19,12 +19,8 @@ COPY services/worker-search/pyproject.toml services/worker-search/pyproject.toml
 COPY services/worker-sync/pyproject.toml services/worker-sync/pyproject.toml
 COPY services/worker-synthesis/pyproject.toml services/worker-synthesis/pyproject.toml
 
-# Copy this service's source + worker packages imported by the API
-# (research.py imports kt_worker_ingest; prompt_transparency.py imports kt_worker_synthesis, kt_worker_nodes)
+# Copy this service's source
 COPY services/api/ services/api/
-COPY services/worker-ingest/ services/worker-ingest/
-COPY services/worker-synthesis/ services/worker-synthesis/
-COPY services/worker-nodes/ services/worker-nodes/
 
 # Install dependencies
 RUN uv sync --frozen --no-dev --package kt-api

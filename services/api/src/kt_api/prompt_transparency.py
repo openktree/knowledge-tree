@@ -29,9 +29,9 @@ def _load_prompts() -> list[PromptEntry]:
     """Load all system prompts from across the codebase."""
     entries: list[PromptEntry] = []
 
-    # ── Synthesis ──────────────────────────────────────────────
+    # ── Synthesis (from kt-agents-core) ───────────────────────────
     try:
-        from kt_worker_synthesis.prompts.synthesizer import SYNTHESIZER_SYSTEM_PROMPT
+        from kt_agents_core.prompts.synthesizer import SYNTHESIZER_SYSTEM_PROMPT
 
         entries.append(
             PromptEntry(
@@ -46,7 +46,7 @@ def _load_prompts() -> list[PromptEntry]:
         pass
 
     try:
-        from kt_worker_synthesis.prompts.super_synthesizer import SUPER_SYNTHESIZER_SYSTEM_PROMPT
+        from kt_agents_core.prompts.super_synthesizer import SUPER_SYNTHESIZER_SYSTEM_PROMPT
 
         entries.append(
             PromptEntry(
@@ -106,7 +106,7 @@ def _load_prompts() -> list[PromptEntry]:
     except ImportError:
         pass
 
-    # ── Node Pipeline ──────────────────────────────────────────
+    # ── Node Pipeline (from kt-agents-core) ───────────────────
     try:
         from kt_models.dimensions import DIMENSION_SYSTEM_PROMPT
 
@@ -123,7 +123,7 @@ def _load_prompts() -> list[PromptEntry]:
         pass
 
     try:
-        from kt_worker_nodes.pipelines.definitions.pipeline import _DEFINITION_SYSTEM_PROMPT
+        from kt_agents_core.prompts.definitions import DEFINITION_SYSTEM_PROMPT
 
         entries.append(
             PromptEntry(
@@ -131,14 +131,14 @@ def _load_prompts() -> list[PromptEntry]:
                 name="Definition Synthesis",
                 stage="Node Pipeline",
                 purpose="Synthesizes a node's definition by combining insights from multiple dimension analyses into a single coherent description.",
-                prompt=_DEFINITION_SYSTEM_PROMPT,
+                prompt=DEFINITION_SYSTEM_PROMPT,
             )
         )
     except ImportError:
         pass
 
     try:
-        from kt_worker_nodes.pipelines.edges.classifier import EDGE_RESOLUTION_SYSTEM_PROMPT
+        from kt_agents_core.prompts.edges import EDGE_RESOLUTION_SYSTEM_PROMPT
 
         entries.append(
             PromptEntry(
@@ -152,30 +152,11 @@ def _load_prompts() -> list[PromptEntry]:
     except ImportError:
         pass
 
+    # ── Composite Nodes (from kt-agents-core) ─────────────────
     try:
-        from kt_worker_nodes.pipelines.parent.pipeline import (  # type: ignore[import-not-found]
-            _SYSTEM_PROMPT as PARENT_PROMPT,
-        )
-
-        entries.append(
-            PromptEntry(
-                id="parent_resolution",
-                name="Parent Resolution",
-                stage="Node Pipeline",
-                purpose="Determines the appropriate parent category node for newly created nodes in the knowledge graph hierarchy.",
-                prompt=PARENT_PROMPT,
-            )
-        )
-    except ImportError:
-        pass
-
-    # ── Composite Nodes ────────────────────────────────────────
-    try:
-        from kt_worker_nodes.pipelines.composite.prompts import (
+        from kt_agents_core.prompts.composite import (
+            COMPOSITE_SYNTHESIS_SYSTEM_PROMPT,
             PERSPECTIVE_SYSTEM_PROMPT,
-        )
-        from kt_worker_nodes.pipelines.composite.prompts import (
-            SYNTHESIS_SYSTEM_PROMPT as COMPOSITE_SYNTHESIS_PROMPT,
         )
 
         entries.append(
@@ -184,7 +165,7 @@ def _load_prompts() -> list[PromptEntry]:
                 name="Composite Node Synthesis",
                 stage="Composite Nodes",
                 purpose="Synthesizes multiple source nodes into a single composite node definition, weaving evidence from all sources into a coherent narrative.",
-                prompt=COMPOSITE_SYNTHESIS_PROMPT,
+                prompt=COMPOSITE_SYNTHESIS_SYSTEM_PROMPT,
             )
         )
         entries.append(
