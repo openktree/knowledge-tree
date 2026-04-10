@@ -75,7 +75,7 @@ async def test_insert_pending_empty_input() -> None:
 
     result = await insert_facts_pending([], write_fact_repo=mock_write_fact_repo)
 
-    assert len(result) == 0
+    assert len(result.fact_ids) == 0
     assert isinstance(result, InsertFactsPendingResult)
     mock_write_fact_repo.upsert.assert_not_called()
 
