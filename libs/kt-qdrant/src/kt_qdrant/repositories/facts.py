@@ -23,9 +23,11 @@ from qdrant_client.models import (
     MatchValue,
     PointStruct,
     Prefetch,
+    QuantizationSearchParams,
     ScalarQuantization,
     ScalarQuantizationConfig,
     ScalarType,
+    SearchParams,
     TextIndexParams,
     TextIndexType,
     TokenizerType,
@@ -95,23 +97,24 @@ class QdrantFactRepository:
             await self.ensure_quantization()
 
     async def ensure_quantization(self) -> None:
-        """Enable scalar int8 quantization on an existing collection if not already set."""
-        try:
-            info = await self._client.get_collection(self._collection_name)
-            if info.config.quantization_config is not None:
-                return  # already configured
-            await self._client.update_collection(
-                collection_name=self._collection_name,
-                quantization_config=ScalarQuantization(
-                    scalar=ScalarQuantizationConfig(
-                        type=ScalarType.INT8,
-                        always_ram=True,
-                    ),
+        """Enable scalar int8 quantization on an existing collection if not already set.
+
+        Raises on failure so the caller knows quantization is not active
+        (the search margin in ``search_threshold_for_type`` depends on it).
+        """
+        info = await self._client.get_collection(self._collection_name)
+        if info.config.quantization_config is not None:
+            return  # already configured
+        await self._client.update_collection(
+            collection_name=self._collection_name,
+            quantization_config=ScalarQuantization(
+                scalar=ScalarQuantizationConfig(
+                    type=ScalarType.INT8,
+                    always_ram=True,
                 ),
-            )
-            logger.info("Enabled scalar int8 quantization on '%s'", self._collection_name)
-        except Exception:
-            logger.warning("Failed to enable quantization on '%s'", self._collection_name, exc_info=True)
+            ),
+        )
+        logger.info("Enabled scalar int8 quantization on '%s'", self._collection_name)
 
     async def ensure_text_index(self) -> None:
         """Create a full-text index on the 'content' payload field if not present."""
@@ -243,6 +246,9 @@ class QdrantFactRepository:
                     query=embedding,
                     limit=limit,
                     score_threshold=score_threshold,
+                    search_params=SearchParams(
+                        quantization=QuantizationSearchParams(rescore=True),
+                    ),
                     query_filter=query_filter,
                     with_payload=True,
                 )

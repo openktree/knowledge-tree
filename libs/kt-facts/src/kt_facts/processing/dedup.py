@@ -37,20 +37,33 @@ logger = logging.getLogger(__name__)
 # ── Thresholds (still used by the dedup workflow) ─────────────────────
 
 
-def threshold_for_type(fact_type: str) -> float:
-    """Return the cosine-similarity threshold for a given fact type.
+# Qdrant scalar quantization can shift candidate scores by ~0.005.
+# Search with a wider net, merge only when the exact rescore score
+# (which Qdrant returns with rescore=true) meets the configured bar.
+_SEARCH_MARGIN = 0.01
 
-    Reads from ``Settings.fact_dedup_atomic_threshold`` /
-    ``Settings.fact_dedup_compound_threshold`` (default 0.95 each).
-    Tight enough to avoid merging facts that share the same subject but
-    differ in specific details (dates, counts, citation metadata), while
-    still collapsing genuinely duplicated statements with minor wording
-    differences.
+
+def threshold_for_type(fact_type: str) -> float:
+    """Return the **merge** threshold for a given fact type.
+
+    This is the strict bar — only merge when the exact (rescored)
+    cosine score is at or above this value.
     """
     settings = get_settings()
     if fact_type in COMPOUND_FACT_TYPES:
         return settings.fact_dedup_compound_threshold
     return settings.fact_dedup_atomic_threshold
+
+
+def search_threshold_for_type(fact_type: str) -> float:
+    """Return the **search** threshold — wider by ``_SEARCH_MARGIN``
+    to compensate for scalar quantization's candidate selection noise.
+
+    Qdrant's rescore pass returns exact float32 scores, so the merge
+    decision (checked separately against :func:`threshold_for_type`)
+    is unaffected by quantization.
+    """
+    return threshold_for_type(fact_type) - _SEARCH_MARGIN
 
 
 # ── Result container ─────────────────────────────────────────────────
