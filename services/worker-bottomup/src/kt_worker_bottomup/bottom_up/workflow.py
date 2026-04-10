@@ -190,10 +190,9 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
             await run_workflow("dedup_pending_facts_wf", dedup_input)
             ctx.log(f"Dedup complete for {len(plan.inserted_fact_ids)} facts")
         except Exception:
-            # If dedup fails we deliberately do NOT raise — the sync
-            # worker's dedup_status='ready' gate means unresolved pending
-            # rows just sit out of graph-db until a later run reclaims
-            # them via the in_progress recovery path.
+            # Dedup failure is non-fatal — the sync worker's
+            # dedup_status='ready' gate means pending facts sit out of
+            # graph-db until a later run's recovery path reclaims them.
             logger.warning(
                 "Failed to run dedup_pending_facts_wf for scope %s",
                 input.scope_id,

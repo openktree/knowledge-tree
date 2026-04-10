@@ -43,7 +43,7 @@ from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from kt_facts.processing.dedup import _threshold_for_type
+from kt_facts.processing.dedup import threshold_for_type
 from kt_facts.processing.merge import merge_into_fast
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
@@ -230,8 +230,8 @@ async def dedup_pending_facts(
     for i in range(n):
         for j in range(i + 1, n):
             thr = max(
-                _threshold_for_type(snapshot[i][2]),
-                _threshold_for_type(snapshot[j][2]),
+                threshold_for_type(snapshot[i][2]),
+                threshold_for_type(snapshot[j][2]),
             )
             if cosine(embeddings[i], embeddings[j]) >= thr:
                 edges.append((i, j))
@@ -262,7 +262,7 @@ async def dedup_pending_facts(
             try:
                 hit = await qdrant_fact_repo.find_most_similar(
                     rep_embedding,
-                    score_threshold=_threshold_for_type(rep_fact_type),
+                    score_threshold=threshold_for_type(rep_fact_type),
                 )
                 if hit is not None and hit.fact_id not in snapshot_ids_set:
                     canonical = hit.fact_id

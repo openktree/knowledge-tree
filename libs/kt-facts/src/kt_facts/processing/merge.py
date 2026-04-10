@@ -155,46 +155,51 @@ async def _remap_array_column(
     column: str,
     loser_id: str,
     canonical_id: str,
-    pk_column: str = "id",
+    _pk_column: str = "id",
     *,
     element_type: str = "uuid",
 ) -> None:
     """Replace ``loser_id`` with ``canonical_id`` in a ``UUID[]`` / ``TEXT[]``
     column and then de-duplicate the resulting array per-row.
     """
-    cast = "::uuid" if element_type == "uuid" else ""
-    array_param = f":loser{cast}"
-    canonical_param = f":canonical{cast}"
+    # asyncpg's prepared-statement protocol types bind params as text,
+    # which breaks array_replace(uuid[], uuid, uuid). For UUID arrays,
+    # embed validated UUID literals directly — UUIDs are a fixed hex+dash
+    # format with no injection surface.
+    if element_type == "uuid":
+        # Validate UUID format before embedding
+        loser_uuid = uuid.UUID(loser_id) if isinstance(loser_id, str) else uuid.UUID(str(loser_id))
+        canonical_uuid = uuid.UUID(canonical_id) if isinstance(canonical_id, str) else uuid.UUID(str(canonical_id))
+        loser_lit = f"'{loser_uuid}'::uuid"
+        canonical_lit = f"'{canonical_uuid}'::uuid"
+    else:
+        loser_lit = ":loser"
+        canonical_lit = ":canonical"
 
-    await write_session.execute(
-        text(
-            f"""
-            UPDATE {table}
-               SET {column} = array_replace({column}, {array_param}, {canonical_param})
-             WHERE {array_param} = ANY({column})
-            """
-        ),
-        {"loser": loser_id, "canonical": canonical_id},
-    )
-    # De-duplicate the array in case canonical was already present.
-    await write_session.execute(
-        text(
-            f"""
-            UPDATE {table}
-               SET {column} = ARRAY(
-                     SELECT DISTINCT unnest({column})
-               )
-             WHERE {canonical_param} = ANY({column})
-               AND cardinality({column}) > (
-                     SELECT count(DISTINCT e)
-                       FROM unnest({column}) AS e
-               )
-            """
-        ),
-        {"canonical": canonical_id},
-    )
-    # ``pk_column`` is intentionally unused — the UPDATE targets all rows.
-    del pk_column  # noqa: F841 — kept in signature for future row-scoped variants
+    replace_sql = f"""
+        UPDATE {table}
+           SET {column} = array_replace({column}, {loser_lit}, {canonical_lit})
+         WHERE {loser_lit} = ANY({column})
+    """
+    dedup_sql = f"""
+        UPDATE {table}
+           SET {column} = ARRAY(
+                 SELECT DISTINCT unnest({column})
+           )
+         WHERE {canonical_lit} = ANY({column})
+           AND cardinality({column}) > (
+                 SELECT count(DISTINCT e)
+                   FROM unnest({column}) AS e
+           )
+    """
+
+    if element_type == "uuid":
+        # No bind params needed — UUIDs are embedded as literals
+        await write_session.execute(text(replace_sql))
+        await write_session.execute(text(dedup_sql))
+    else:
+        await write_session.execute(text(replace_sql), {"loser": loser_id, "canonical": canonical_id})
+        await write_session.execute(text(dedup_sql), {"canonical": canonical_id})
 
 
 async def merge_into_heavy(
@@ -249,118 +254,90 @@ async def merge_into_heavy(
         {"loser": loser},
     )
 
-    # Array-typed columns: write_dimensions / write_edges / write_nodes
-    # store ``fact_ids`` as ``UUID[]``; write_seed_merges stores
-    # ``fact_ids_moved`` as ``TEXT[]``.
-    await _remap_array_column(write_session, "write_dimensions", "fact_ids", loser, canonical, element_type="uuid")
-    await _remap_array_column(write_session, "write_edges", "fact_ids", loser, canonical, element_type="uuid")
-    await _remap_array_column(write_session, "write_nodes", "fact_ids", loser, canonical, element_type="uuid")
+    # All four array columns are VARCHAR[] in write-db (not UUID[]).
+    await _remap_array_column(write_session, "write_dimensions", "fact_ids", loser, canonical, element_type="text")
+    await _remap_array_column(write_session, "write_edges", "fact_ids", loser, canonical, element_type="text")
+    await _remap_array_column(write_session, "write_nodes", "fact_ids", loser, canonical, element_type="text")
     await _remap_array_column(
-        write_session,
-        "write_seed_merges",
-        "fact_ids_moved",
-        loser,
-        canonical,
-        element_type="text",
+        write_session, "write_seed_merges", "fact_ids_moved", loser, canonical, element_type="text"
     )
 
     # ── 2. graph-db junction tables ────────────────────────────────────
-    await graph_session.execute(
-        text(
-            """
-            UPDATE node_facts AS nf
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM node_facts other
-                      WHERE other.node_id = nf.node_id
-                        AND other.fact_id = :canonical
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
-    await graph_session.execute(
-        text("DELETE FROM node_facts WHERE fact_id = :loser"),
-        {"loser": loser},
-    )
+    # The canonical may not exist in graph-db yet (sync hasn't run for
+    # it), so only remap junctions if canonical IS in the ``facts``
+    # table. Otherwise just delete the loser's orphaned rows.
+    canonical_in_graphdb = (
+        await graph_session.execute(
+            text("SELECT 1 FROM facts WHERE id = :canonical"),
+            {"canonical": canonical},
+        )
+    ).scalar_one_or_none()
 
-    await graph_session.execute(
-        text(
-            """
-            UPDATE edge_facts AS ef
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM edge_facts other
-                      WHERE other.edge_id = ef.edge_id
-                        AND other.fact_id = :canonical
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
-    await graph_session.execute(
-        text("DELETE FROM edge_facts WHERE fact_id = :loser"),
-        {"loser": loser},
-    )
+    for junction, fk_col in [
+        ("node_facts", "node_id"),
+        ("edge_facts", "edge_id"),
+        ("dimension_facts", "dimension_id"),
+    ]:
+        if canonical_in_graphdb:
+            await graph_session.execute(
+                text(
+                    f"""
+                    UPDATE {junction} AS j
+                       SET fact_id = :canonical
+                     WHERE fact_id = :loser
+                       AND NOT EXISTS (
+                             SELECT 1 FROM {junction} other
+                              WHERE other.{fk_col} = j.{fk_col}
+                                AND other.fact_id = :canonical
+                       )
+                    """
+                ),
+                {"loser": loser, "canonical": canonical},
+            )
+        await graph_session.execute(
+            text(f"DELETE FROM {junction} WHERE fact_id = :loser"),
+            {"loser": loser},
+        )
 
-    await graph_session.execute(
-        text(
-            """
-            UPDATE dimension_facts AS df
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM dimension_facts other
-                      WHERE other.dimension_id = df.dimension_id
-                        AND other.fact_id = :canonical
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
-    await graph_session.execute(
-        text("DELETE FROM dimension_facts WHERE fact_id = :loser"),
-        {"loser": loser},
-    )
-
-    await graph_session.execute(
-        text(
-            """
-            UPDATE fact_sources AS fs
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM fact_sources other
-                      WHERE other.fact_id = :canonical
-                        AND other.raw_source_id = fs.raw_source_id
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
+    # fact_sources
+    if canonical_in_graphdb:
+        await graph_session.execute(
+            text(
+                """
+                UPDATE fact_sources AS fs
+                   SET fact_id = :canonical
+                 WHERE fact_id = :loser
+                   AND NOT EXISTS (
+                         SELECT 1 FROM fact_sources other
+                          WHERE other.fact_id = :canonical
+                            AND other.raw_source_id = fs.raw_source_id
+                   )
+                """
+            ),
+            {"loser": loser, "canonical": canonical},
+        )
     await graph_session.execute(
         text("DELETE FROM fact_sources WHERE fact_id = :loser"),
         {"loser": loser},
     )
 
-    # node_fact_rejections in graph-db (analogous to write-db rejection table).
-    await graph_session.execute(
-        text(
-            """
-            UPDATE node_fact_rejections AS r
-               SET fact_id = :canonical
-             WHERE fact_id = :loser
-               AND NOT EXISTS (
-                     SELECT 1 FROM node_fact_rejections other
-                      WHERE other.node_id = r.node_id
-                        AND other.fact_id = :canonical
-               )
-            """
-        ),
-        {"loser": loser, "canonical": canonical},
-    )
+    # node_fact_rejections
+    if canonical_in_graphdb:
+        await graph_session.execute(
+            text(
+                """
+                UPDATE node_fact_rejections AS r
+                   SET fact_id = :canonical
+                 WHERE fact_id = :loser
+                   AND NOT EXISTS (
+                         SELECT 1 FROM node_fact_rejections other
+                          WHERE other.node_id = r.node_id
+                            AND other.fact_id = :canonical
+                   )
+                """
+            ),
+            {"loser": loser, "canonical": canonical},
+        )
     await graph_session.execute(
         text("DELETE FROM node_fact_rejections WHERE fact_id = :loser"),
         {"loser": loser},

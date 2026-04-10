@@ -352,6 +352,15 @@ _register(
     },
 )
 
+# ---- Facts -----------------------------------------------------------------
+_register(
+    "facts",
+    {
+        "fact_dedup_atomic_threshold": "dedup_atomic_threshold",
+        "fact_dedup_compound_threshold": "dedup_compound_threshold",
+    },
+)
+
 # ---- Multigraph public-cache bridge ----------------------------------------
 _register(
     "public_bridge",
@@ -620,17 +629,6 @@ class Settings(BaseSettings):
     # disable refresh entirely (treat all hits as fresh). We expect to lower
     # this over time as compute budget allows more frequent refreshes.
     public_cache_refresh_after_days: int = 365
-    # Contribute-retry sweeper (PR7). The sweeper picks up
-    # ``WriteRawSource`` rows that have a ``canonical_url`` but no
-    # ``contributed_to_public_at`` watermark — i.e. the bridge tried and
-    # failed (default graph unreachable, mid-flight crash, opted-in
-    # later, etc). To avoid racing with normal ingest the sweeper only
-    # touches rows older than this minimum age.
-    public_contribute_retry_min_age_minutes: int = 15
-    # Hard cap on candidates per sweep so a long-stuck queue doesn't
-    # stall the worker. The sweeper is cron-driven so the next run
-    # picks up the rest.
-    public_contribute_retry_batch_size: int = 200
 
     # Crossref + Unpaywall contact emails (used by the DOI fetcher).
     # Crossref's "polite pool" gives configured users better rate limits;
@@ -683,6 +681,10 @@ class Settings(BaseSettings):
     enrichment_access_count_trigger: int = 5
     enrichment_dimension_sample_size: int = 200
     enrichment_edge_justification_sample_size: int = 50
+
+    # Facts
+    fact_dedup_atomic_threshold: float = 0.95
+    fact_dedup_compound_threshold: float = 0.95
 
     # Seeds
     seed_dedup_embedding_threshold: float = 0.82
