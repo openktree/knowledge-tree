@@ -135,7 +135,9 @@ async function request<T>(
 
   const res = await fetch(url, {
     headers: {
-      "Content-Type": "application/json",
+      ...(!(options.body instanceof FormData) && {
+        "Content-Type": "application/json",
+      }),
       ...getAuthHeader(),
       ...options.headers,
     },
@@ -821,20 +823,9 @@ export const api = {
   // -------------------------------------------------------------------------
   research: {
     prepare(formData: FormData): Promise<IngestPrepareResponse> {
-      const url = `${BASE_URL}${API_PREFIX}/research/prepare`;
-      return fetch(url, {
+      return graphRequest<IngestPrepareResponse>("/research/prepare", {
         method: "POST",
-        headers: { ...getAuthHeader() },
         body: formData,
-        // Do NOT set Content-Type — browser sets multipart boundary automatically
-      }).then(async (res) => {
-        if (!res.ok) {
-          const body = await res.text().catch(() => "");
-          throw new Error(
-            `API error ${res.status} ${res.statusText}: ${body}`.trim(),
-          );
-        }
-        return res.json() as Promise<IngestPrepareResponse>;
       });
     },
 
@@ -867,7 +858,10 @@ export const api = {
     },
 
     getSourceDownloadUrl(conversationId: string, sourceId: string): string {
-      return `${BASE_URL}${API_PREFIX}/research/${encodeURIComponent(conversationId)}/sources/${encodeURIComponent(sourceId)}/download`;
+      const path = graphPath(
+        `/research/${encodeURIComponent(conversationId)}/sources/${encodeURIComponent(sourceId)}/download`,
+      );
+      return `${BASE_URL}${API_PREFIX}${path}`;
     },
 
     decompose(
