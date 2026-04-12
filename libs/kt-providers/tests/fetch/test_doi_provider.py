@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kt_providers.fetch.doi_provider import DoiContentFetcher, _format_metadata
+from kt_providers.fetch.types import FetchResult
 
 
 @pytest.mark.asyncio
@@ -156,3 +157,136 @@ async def test_extract_doi_from_meta_tag(monkeypatch: pytest.MonkeyPatch):
 
     doi = await p._extract_doi("https://www.cell.com/some/page")
     assert doi == "10.5555/found-doi"
+
+
+# ── OA PDF download & extraction tests ──────────────────────────
+
+
+def _crossref_message() -> dict[str, object]:
+    return {
+        "DOI": "10.1234/abcd",
+        "title": ["A great paper"],
+        "author": [{"given": "Ada", "family": "Lovelace"}],
+        "publisher": "Test Press",
+        "abstract": "<jats:p>Abstract text.</jats:p>",
+    }
+
+
+@pytest.mark.asyncio
+async def test_doi_fetcher_downloads_oa_pdf(monkeypatch: pytest.MonkeyPatch):
+    """When Unpaywall provides an OA URL and the PDF downloads successfully,
+    the result should contain both metadata and extracted PDF text."""
+    p = DoiContentFetcher()
+
+    async def fake_crossref(self, doi):  # type: ignore[no-untyped-def]
+        return _crossref_message()
+
+    async def fake_unpaywall(self, doi):  # type: ignore[no-untyped-def]
+        return "https://arxiv.org/pdf/1234.pdf"
+
+    pdf_response = MagicMock()
+    pdf_response.status_code = 200
+    pdf_response.headers = {"content-type": "application/pdf"}
+    pdf_response.content = b"%PDF-fake-bytes"
+
+    client = MagicMock()
+    client.get = AsyncMock(return_value=pdf_response)
+    client.is_closed = False
+
+    async def fake_client(self):  # type: ignore[no-untyped-def]
+        return client
+
+    def fake_extract_pdf(uri: str, pdf_bytes: bytes, ct: str) -> FetchResult:
+        return FetchResult(
+            uri=uri,
+            content="Full paper text extracted from PDF. " * 10,
+            content_type="application/pdf",
+            page_count=12,
+            pdf_metadata={"title": "A great paper"},
+        )
+
+    monkeypatch.setattr(DoiContentFetcher, "_fetch_crossref", fake_crossref)
+    monkeypatch.setattr(DoiContentFetcher, "_fetch_unpaywall_oa", fake_unpaywall)
+    monkeypatch.setattr(DoiContentFetcher, "_client_", fake_client)
+    monkeypatch.setattr("kt_providers.fetch.doi_provider.extract_pdf", fake_extract_pdf)
+
+    result = await p.fetch("https://doi.org/10.1234/abcd")
+    assert result.success is True
+    assert result.content_type == "application/pdf"
+    assert result.page_count == 12
+    assert result.pdf_metadata == {"title": "A great paper"}
+    # Should contain both metadata header and PDF text
+    assert "A great paper" in (result.content or "")
+    assert "Full paper text extracted from PDF." in (result.content or "")
+    assert "---" in (result.content or "")
+    # html_metadata should still have DOI and OA URL
+    assert result.html_metadata is not None
+    assert result.html_metadata["doi"] == "10.1234/abcd"
+    assert result.html_metadata["oa_pdf_url"] == "https://arxiv.org/pdf/1234.pdf"
+
+
+@pytest.mark.asyncio
+async def test_doi_fetcher_falls_back_on_pdf_download_failure(monkeypatch: pytest.MonkeyPatch):
+    """When OA PDF download fails, fall back to metadata-only result."""
+    p = DoiContentFetcher()
+
+    async def fake_crossref(self, doi):  # type: ignore[no-untyped-def]
+        return _crossref_message()
+
+    async def fake_unpaywall(self, doi):  # type: ignore[no-untyped-def]
+        return "https://arxiv.org/pdf/1234.pdf"
+
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=Exception("connection refused"))
+    client.is_closed = False
+
+    async def fake_client(self):  # type: ignore[no-untyped-def]
+        return client
+
+    monkeypatch.setattr(DoiContentFetcher, "_fetch_crossref", fake_crossref)
+    monkeypatch.setattr(DoiContentFetcher, "_fetch_unpaywall_oa", fake_unpaywall)
+    monkeypatch.setattr(DoiContentFetcher, "_client_", fake_client)
+
+    result = await p.fetch("https://doi.org/10.1234/abcd")
+    assert result.success is True
+    assert result.content_type == "text/plain"
+    assert "A great paper" in (result.content or "")
+    assert result.html_metadata is not None
+    assert result.html_metadata["oa_pdf_url"] == "https://arxiv.org/pdf/1234.pdf"
+
+
+@pytest.mark.asyncio
+async def test_doi_fetcher_falls_back_when_pdf_extraction_fails(monkeypatch: pytest.MonkeyPatch):
+    """When PDF downloads but extraction fails, fall back to metadata-only."""
+    p = DoiContentFetcher()
+
+    async def fake_crossref(self, doi):  # type: ignore[no-untyped-def]
+        return _crossref_message()
+
+    async def fake_unpaywall(self, doi):  # type: ignore[no-untyped-def]
+        return "https://arxiv.org/pdf/1234.pdf"
+
+    pdf_response = MagicMock()
+    pdf_response.status_code = 200
+    pdf_response.headers = {"content-type": "application/pdf"}
+    pdf_response.content = b"not-a-real-pdf"
+
+    client = MagicMock()
+    client.get = AsyncMock(return_value=pdf_response)
+    client.is_closed = False
+
+    async def fake_client(self):  # type: ignore[no-untyped-def]
+        return client
+
+    def fake_extract_pdf(uri: str, pdf_bytes: bytes, ct: str) -> FetchResult:
+        return FetchResult(uri=uri, error="corrupt PDF")
+
+    monkeypatch.setattr(DoiContentFetcher, "_fetch_crossref", fake_crossref)
+    monkeypatch.setattr(DoiContentFetcher, "_fetch_unpaywall_oa", fake_unpaywall)
+    monkeypatch.setattr(DoiContentFetcher, "_client_", fake_client)
+    monkeypatch.setattr("kt_providers.fetch.doi_provider.extract_pdf", fake_extract_pdf)
+
+    result = await p.fetch("https://doi.org/10.1234/abcd")
+    assert result.success is True
+    assert result.content_type == "text/plain"
+    assert "A great paper" in (result.content or "")

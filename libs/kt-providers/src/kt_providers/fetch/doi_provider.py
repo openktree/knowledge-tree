@@ -34,7 +34,11 @@ import httpx
 from kt_config.settings import get_settings
 from kt_providers.fetch.base import ContentFetcherProvider
 from kt_providers.fetch.canonical import DOI_REGEX
-from kt_providers.fetch.extract import extract_html_metadata
+from kt_providers.fetch.extract import (
+    classify_content_type,
+    extract_html_metadata,
+    extract_pdf,
+)
 from kt_providers.fetch.types import MIN_EXTRACTED_LENGTH, FetchResult
 from kt_providers.fetch.url_safety import UnsafeUrlError, validate_fetch_url
 
@@ -140,15 +144,12 @@ class DoiContentFetcher(ContentFetcherProvider):
                 content_type="application/json",
             )
 
-        # Best-effort: try to enrich with an Unpaywall OA PDF link.
+        # Best-effort: try to enrich with full-text from an Unpaywall OA PDF.
         oa_url = None
         try:
             oa_url = await self._fetch_unpaywall_oa(doi)
         except Exception:
             logger.debug("Unpaywall lookup failed for %s", doi, exc_info=True)
-
-        if oa_url:
-            body = f"{body}\n\nOpen-access PDF: {oa_url}"
 
         meta_out: dict[str, str | None] = {"doi": doi, "oa_pdf_url": oa_url}
         title_value = metadata.get("title")
@@ -160,10 +161,56 @@ class DoiContentFetcher(ContentFetcherProvider):
         if isinstance(publisher, str):
             meta_out["publisher"] = publisher
 
+        # If we have an OA PDF URL, download and extract full text.
+        if oa_url:
+            pdf_result = await self._try_fetch_pdf(uri, oa_url, body, meta_out)
+            if pdf_result is not None:
+                return pdf_result
+
         return FetchResult(
             uri=uri,
             content=body,
             content_type="text/plain",
+            html_metadata=meta_out,
+        )
+
+    async def _try_fetch_pdf(
+        self,
+        uri: str,
+        oa_url: str,
+        metadata_body: str,
+        meta_out: dict[str, str | None],
+    ) -> FetchResult | None:
+        """Download an OA PDF and extract full text, returning None on failure."""
+        try:
+            client = await self._client_()
+            response = await client.get(oa_url, headers={"Accept": "application/pdf, */*"})
+        except Exception:
+            logger.debug("OA PDF download failed for %s", oa_url, exc_info=True)
+            return None
+
+        if response.status_code >= 400:
+            logger.debug("OA PDF returned %s for %s", response.status_code, oa_url)
+            return None
+
+        ct = response.headers.get("content-type", "")
+        if classify_content_type(ct) != "pdf":
+            logger.debug("OA URL returned non-PDF content-type %s for %s", ct, oa_url)
+            return None
+
+        pdf_result = extract_pdf(uri, response.content, ct)
+        if not pdf_result.success:
+            logger.debug("PDF extraction failed for %s: %s", oa_url, pdf_result.error)
+            return None
+
+        # Combine Crossref metadata header with extracted PDF text.
+        combined = f"{metadata_body}\n\n---\n\n{pdf_result.content}"
+        return FetchResult(
+            uri=uri,
+            content=combined,
+            content_type="application/pdf",
+            page_count=pdf_result.page_count,
+            pdf_metadata=pdf_result.pdf_metadata,
             html_metadata=meta_out,
         )
 
