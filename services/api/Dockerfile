@@ -20,11 +20,11 @@ COPY services/worker-sync/pyproject.toml services/worker-sync/pyproject.toml
 COPY services/worker-synthesis/pyproject.toml services/worker-synthesis/pyproject.toml
 
 # Copy this service's source + worker packages imported by the API
-# (research.py imports kt_worker_ingest; prompt_transparency.py imports kt_worker_synthesis, kt_worker_nodes)
+# (research.py imports kt_worker_ingest for the synchronous prepare endpoint;
+# the prepare-stage functions live in the worker because they're tightly
+# coupled with worker-internal helpers — extracting them is tracked separately)
 COPY services/api/ services/api/
 COPY services/worker-ingest/ services/worker-ingest/
-COPY services/worker-synthesis/ services/worker-synthesis/
-COPY services/worker-nodes/ services/worker-nodes/
 
 # Install dependencies
 RUN uv sync --frozen --no-dev --package kt-api

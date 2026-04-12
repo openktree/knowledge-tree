@@ -1663,7 +1663,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.46.1"
+version = "0.50.1"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1737,8 +1737,6 @@ dependencies = [
     { name = "kt-providers" },
     { name = "kt-rbac" },
     { name = "kt-worker-ingest" },
-    { name = "kt-worker-nodes" },
-    { name = "kt-worker-synthesis" },
     { name = "python-multipart" },
     { name = "sse-starlette" },
     { name = "structlog" },
@@ -1762,8 +1760,6 @@ requires-dist = [
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-rbac", editable = "libs/kt-rbac" },
     { name = "kt-worker-ingest", editable = "services/worker-ingest" },
-    { name = "kt-worker-nodes", editable = "services/worker-nodes" },
-    { name = "kt-worker-synthesis", editable = "services/worker-synthesis" },
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "sse-starlette", specifier = ">=3.3.2" },
     { name = "structlog", specifier = ">=25.5.0" },

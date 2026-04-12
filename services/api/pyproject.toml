@@ -13,8 +13,6 @@ dependencies = [
     "kt-facts",
     "kt-agents-core",
     "kt-worker-ingest",
-    "kt-worker-synthesis",
-    "kt-worker-nodes",
     "fastapi>=0.129.0",
     "uvicorn>=0.40.0",
     "sse-starlette>=3.3.2",
@@ -41,8 +39,6 @@ kt-providers = { workspace = true }
 kt-facts = { workspace = true }
 kt-agents-core = { workspace = true }
 kt-worker-ingest = { workspace = true }
-kt-worker-synthesis = { workspace = true }
-kt-worker-nodes = { workspace = true }
 kt-auth = { workspace = true }
 kt-rbac = { workspace = true }
 
