@@ -19,8 +19,12 @@ COPY services/worker-search/pyproject.toml services/worker-search/pyproject.toml
 COPY services/worker-sync/pyproject.toml services/worker-sync/pyproject.toml
 COPY services/worker-synthesis/pyproject.toml services/worker-synthesis/pyproject.toml
 
-# Copy this service's source
+# Copy this service's source + worker packages imported by the API
+# (research.py imports kt_worker_ingest for the synchronous prepare endpoint;
+# the prepare-stage functions live in the worker because they're tightly
+# coupled with worker-internal helpers — extracting them is tracked separately)
 COPY services/api/ services/api/
+COPY services/worker-ingest/ services/worker-ingest/
 
 # Install dependencies
 RUN uv sync --frozen --no-dev --package kt-api

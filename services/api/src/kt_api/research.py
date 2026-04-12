@@ -313,13 +313,13 @@ async def _prepare_ingest_impl(
     from kt_providers.fetch import FileDataStore
 
     file_data_store = FileDataStore()
-    from kt_providers.ingest.pipeline import process_ingest_sources
+    from kt_worker_ingest.ingest.pipeline import process_ingest_sources
 
     processed = await process_ingest_sources(conv_id, session, file_data_store)
     await session.commit()
 
     from kt_models.gateway import ModelGateway
-    from kt_providers.ingest.pipeline import build_chunk_list, review_chunks
+    from kt_worker_ingest.ingest.pipeline import build_chunk_list, review_chunks
 
     chunk_list = build_chunk_list(processed)
 

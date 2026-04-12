@@ -12,6 +12,7 @@ dependencies = [
     "kt-providers",
     "kt-facts",
     "kt-agents-core",
+    "kt-worker-ingest",
     "fastapi>=0.129.0",
     "uvicorn>=0.40.0",
     "sse-starlette>=3.3.2",
@@ -37,6 +38,7 @@ kt-models = { workspace = true }
 kt-providers = { workspace = true }
 kt-facts = { workspace = true }
 kt-agents-core = { workspace = true }
+kt-worker-ingest = { workspace = true }
 kt-auth = { workspace = true }
 kt-rbac = { workspace = true }
 
