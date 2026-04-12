@@ -888,6 +888,7 @@ async def _find_or_create_raw_source(
     content_type: str,
     provider_id: str,
     write_session: AsyncSession | None = None,
+    is_full_text: bool = True,
 ) -> RawSource:
     """Find an existing RawSource by id (deterministic from URI), or create one.
 
@@ -925,7 +926,7 @@ async def _find_or_create_raw_source(
         content_hash=content_hash,
         content_type=content_type,
         provider_id=provider_id,
-        is_full_text=True,
+        is_full_text=is_full_text,
     )
     session.add(raw_source)
     await session.flush()
@@ -1235,15 +1236,21 @@ async def _process_link_source(
         return None
 
     content_hash = hashlib.sha256(text.encode()).hexdigest()
+    # The DOI provider returns content_type="text/plain" when it only has
+    # Crossref metadata (title/abstract), not the actual paper.  All other
+    # providers (httpx, curl_cffi, flaresolverr) return full page content.
+    fetcher_ct = fetch_result.content_type or "text/html"
+    is_full = not (fetch_result.provider_id == "doi" and fetcher_ct == "text/plain")
     raw_source = await _find_or_create_raw_source(
         session,
         uri=uri,
         title=uri,
         raw_content=text[:50000],
         content_hash=content_hash,
-        content_type=fetch_result.content_type or "text/html",
+        content_type=fetcher_ct,
         provider_id="ingest_link",
         write_session=write_session,
+        is_full_text=is_full,
     )
     await _persist_fetcher_audit(
         write_session,
