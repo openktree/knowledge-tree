@@ -80,7 +80,7 @@ def _run_alembic(
     graph_slug: str,
     db_label: str,
 ) -> None:
-    """Run alembic upgrade head for a specific config."""
+    """Run alembic upgrade heads for a specific config."""
     cmd = [
         sys.executable,
         "-m",
@@ -88,7 +88,7 @@ def _run_alembic(
         "-c",
         str(_KT_DB_ROOT / ini_file),
         "upgrade",
-        "head",
+        "heads",
     ]
     logger.info("  [%s/%s] %s", graph_slug, db_label, " ".join(cmd[-3:]))
     result = subprocess.run(cmd, env=env, capture_output=True, text=True, cwd=str(_KT_DB_ROOT))

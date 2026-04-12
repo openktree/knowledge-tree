@@ -69,7 +69,11 @@ spec:
               echo "Running write-db migrations..."
               uv run alembic -c alembic_write.ini upgrade heads
 
-              echo "Migrations complete"
+              echo "Running per-graph schema migrations..."
+              cd /app
+              uv run --project libs/kt-db python -m kt_db.migrate
+
+              echo "All migrations complete"
           env:
             - name: GRAPH_DB_PASSWORD
               valueFrom:
