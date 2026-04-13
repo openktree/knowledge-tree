@@ -28,7 +28,7 @@ class TestWriteDimensionRepository:
 
     async def test_delete_drafts_keeps_definitive(self, write_db_session: AsyncSession) -> None:
         repo = WriteDimensionRepository(write_db_session)
-        node_key = "concept:test-delete-drafts"
+        node_key = "test-delete-drafts"
 
         # Create a mix of definitive and draft dimensions
         await self._create_dim(repo, node_key, batch_index=0, is_definitive=True)
@@ -49,7 +49,7 @@ class TestWriteDimensionRepository:
 
     async def test_delete_drafts_no_drafts(self, write_db_session: AsyncSession) -> None:
         repo = WriteDimensionRepository(write_db_session)
-        node_key = "concept:test-no-drafts"
+        node_key = "test-no-drafts"
 
         await self._create_dim(repo, node_key, batch_index=0, is_definitive=True)
         await write_db_session.flush()
@@ -62,7 +62,7 @@ class TestWriteDimensionRepository:
 
     async def test_delete_drafts_all_drafts(self, write_db_session: AsyncSession) -> None:
         repo = WriteDimensionRepository(write_db_session)
-        node_key = "concept:test-all-drafts"
+        node_key = "test-all-drafts"
 
         await self._create_dim(repo, node_key, batch_index=0, is_definitive=False)
         await self._create_dim(repo, node_key, batch_index=1, is_definitive=False)
@@ -77,8 +77,8 @@ class TestWriteDimensionRepository:
 
     async def test_delete_drafts_does_not_affect_other_nodes(self, write_db_session: AsyncSession) -> None:
         repo = WriteDimensionRepository(write_db_session)
-        node_a = "concept:test-node-a"
-        node_b = "concept:test-node-b"
+        node_a = "test-node-a"
+        node_b = "test-node-b"
 
         await self._create_dim(repo, node_a, batch_index=0, is_definitive=False)
         await self._create_dim(repo, node_b, batch_index=0, is_definitive=False)

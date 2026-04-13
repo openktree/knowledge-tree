@@ -65,7 +65,7 @@ async def store_seeds_from_extracted_nodes(
         if not name:
             continue
 
-        seed_key = make_seed_key(node_type, name)
+        seed_key = make_seed_key(name)
         fact_indices = node.get("fact_indices", [])
 
         # Build fact context for routing
@@ -90,8 +90,8 @@ async def store_seeds_from_extracted_nodes(
             seed_data[seed_key] = {
                 "key": seed_key,
                 "name": name,
-                "node_type": node_type,
-                "entity_subtype": node.get("entity_subtype"),
+                "node_type": "concept",
+                "entity_subtype": None,
                 "fact_count": 1,
             }
             seed_contexts[seed_key] = "; ".join(fact_contents) if fact_contents else name
@@ -143,7 +143,6 @@ async def store_seeds_from_extracted_nodes(
             async with write_seed_repo._session.begin_nested():
                 resolved_key = await route_seed(
                     name,
-                    node_type,
                     fact_context,
                     write_seed_repo,
                     embedding_service=embedding_service,  # type: ignore[arg-type]

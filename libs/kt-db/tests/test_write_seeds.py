@@ -17,7 +17,7 @@ class TestWriteSeedRepository:
         repo = WriteSeedRepository(write_db_session)
         # Use a unique name to avoid collisions with other tests in the shared session
         unique_name = f"Albert Einstein {uuid.uuid4().hex[:8]}"
-        key = make_seed_key("entity", unique_name)
+        key = make_seed_key(unique_name)
         seed = await repo.upsert_seed(key, unique_name, "entity", "person")
         assert seed.key == key
         assert seed.name == unique_name
@@ -29,7 +29,7 @@ class TestWriteSeedRepository:
 
     async def test_upsert_seed_does_not_change_fact_count(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("concept", "quantum mechanics")
+        key = make_seed_key("quantum mechanics")
         await repo.upsert_seed(key, "quantum mechanics", "concept")
         seed = await repo.upsert_seed(key, "quantum mechanics", "concept")
         # fact_count stays 0 until refresh_fact_counts is called
@@ -37,7 +37,7 @@ class TestWriteSeedRepository:
 
     async def test_get_seed_by_key(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("entity", "Marie Curie")
+        key = make_seed_key("Marie Curie")
         await repo.upsert_seed(key, "Marie Curie", "entity", "person")
         seed = await repo.get_seed_by_key(key)
         assert seed is not None
@@ -50,14 +50,14 @@ class TestWriteSeedRepository:
 
     async def test_get_seeds_by_status(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("concept", "relativity status test")
+        key = make_seed_key("relativity status test")
         await repo.upsert_seed(key, "relativity status test", "concept")
         seeds = await repo.get_seeds_by_status("active")
         assert any(s.key == key for s in seeds)
 
     async def test_link_fact(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("entity", "Niels Bohr")
+        key = make_seed_key("Niels Bohr")
         await repo.upsert_seed(key, "Niels Bohr", "entity", "person")
         fact_id = uuid.uuid4()
         is_new = await repo.link_fact(key, fact_id, confidence=0.95)
@@ -68,7 +68,7 @@ class TestWriteSeedRepository:
 
     async def test_get_facts_for_seed(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("concept", "photosynthesis facts")
+        key = make_seed_key("photosynthesis facts")
         await repo.upsert_seed(key, "photosynthesis facts", "concept")
         fid1, fid2 = uuid.uuid4(), uuid.uuid4()
         await repo.link_fact(key, fid1)
@@ -78,8 +78,8 @@ class TestWriteSeedRepository:
 
     async def test_upsert_edge_candidate(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key_a = make_seed_key("entity", "edge cand a")
-        key_b = make_seed_key("entity", "edge cand b")
+        key_a = make_seed_key("edge cand a")
+        key_b = make_seed_key("edge cand b")
         a, b = sorted([key_a, key_b])
         await repo.upsert_seed(a, "edge cand a", "entity")
         await repo.upsert_seed(b, "edge cand b", "entity")
@@ -94,8 +94,8 @@ class TestWriteSeedRepository:
     async def test_upsert_edge_candidate_multiple_facts(self, write_db_session: AsyncSession) -> None:
         """Each fact gets its own row."""
         repo = WriteSeedRepository(write_db_session)
-        key_a = make_seed_key("concept", "edge multi a")
-        key_b = make_seed_key("concept", "edge multi b")
+        key_a = make_seed_key("edge multi a")
+        key_b = make_seed_key("edge multi b")
         a, b = sorted([key_a, key_b])
         await repo.upsert_seed(a, "edge multi a", "concept")
         await repo.upsert_seed(b, "edge multi b", "concept")
@@ -112,8 +112,8 @@ class TestWriteSeedRepository:
     async def test_upsert_edge_candidate_idempotent(self, write_db_session: AsyncSession) -> None:
         """Inserting the same fact twice is a no-op."""
         repo = WriteSeedRepository(write_db_session)
-        key_a = make_seed_key("concept", "edge idem a")
-        key_b = make_seed_key("concept", "edge idem b")
+        key_a = make_seed_key("edge idem a")
+        key_b = make_seed_key("edge idem b")
         a, b = sorted([key_a, key_b])
         await repo.upsert_seed(a, "edge idem a", "concept")
         await repo.upsert_seed(b, "edge idem b", "concept")
@@ -126,9 +126,9 @@ class TestWriteSeedRepository:
 
     async def test_promote_seed(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("entity", "Promoted Entity")
+        key = make_seed_key("Promoted Entity")
         await repo.upsert_seed(key, "Promoted Entity", "entity")
-        node_key = make_seed_key("entity", "Promoted Entity")  # same key
+        node_key = make_seed_key("Promoted Entity")  # same key
         promoted = await repo.promote_seed(key, node_key)
         assert promoted is True
         seed = await repo.get_seed_by_key(key)
@@ -138,7 +138,7 @@ class TestWriteSeedRepository:
 
     async def test_promote_seed_only_active(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("entity", "Already Promoted")
+        key = make_seed_key("Already Promoted")
         await repo.upsert_seed(key, "Already Promoted", "entity")
         await repo.promote_seed(key, key)
         # Second promote should fail (no longer active)
@@ -147,8 +147,8 @@ class TestWriteSeedRepository:
 
     async def test_merge_seeds(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        winner_key = make_seed_key("entity", "Karl Marx Merge Winner")
-        loser_key = make_seed_key("entity", "K Marx Merge Loser")
+        winner_key = make_seed_key("Karl Marx Merge Winner")
+        loser_key = make_seed_key("K Marx Merge Loser")
         await repo.upsert_seed(winner_key, "Karl Marx Merge Winner", "entity", "person")
         await repo.upsert_seed(loser_key, "K Marx Merge Loser", "entity", "person")
         fid1, fid2 = uuid.uuid4(), uuid.uuid4()
@@ -174,9 +174,9 @@ class TestWriteSeedRepository:
     async def test_merge_seeds_with_overlapping_candidates(self, write_db_session: AsyncSession) -> None:
         """Merging seeds with overlapping edge candidates doesn't violate unique constraint."""
         repo = WriteSeedRepository(write_db_session)
-        winner_key = make_seed_key("entity", "Merge Winner Overlap")
-        loser_key = make_seed_key("entity", "Merge Loser Overlap")
-        partner_key = make_seed_key("concept", "Merge Partner Overlap")
+        winner_key = make_seed_key("Merge Winner Overlap")
+        loser_key = make_seed_key("Merge Loser Overlap")
+        partner_key = make_seed_key("Merge Partner Overlap")
         await repo.upsert_seed(winner_key, "Merge Winner Overlap", "entity")
         await repo.upsert_seed(loser_key, "Merge Loser Overlap", "entity")
         await repo.upsert_seed(partner_key, "Merge Partner Overlap", "concept")
@@ -203,8 +203,8 @@ class TestWriteSeedRepository:
 
     async def test_get_edge_candidates_by_status(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key_a = make_seed_key("concept", "status filter a")
-        key_b = make_seed_key("concept", "status filter b")
+        key_a = make_seed_key("status filter a")
+        key_b = make_seed_key("status filter b")
         a, b = sorted([key_a, key_b])
         await repo.upsert_seed(a, "status filter a", "concept")
         await repo.upsert_seed(b, "status filter b", "concept")
@@ -217,8 +217,8 @@ class TestWriteSeedRepository:
 
     async def test_reject_candidate_facts(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key_a = make_seed_key("concept", "reject a")
-        key_b = make_seed_key("concept", "reject b")
+        key_a = make_seed_key("reject a")
+        key_b = make_seed_key("reject b")
         a, b = sorted([key_a, key_b])
         await repo.upsert_seed(a, "reject a", "concept")
         await repo.upsert_seed(b, "reject b", "concept")
@@ -243,8 +243,8 @@ class TestWriteSeedRepository:
 
     async def test_accept_candidate_facts(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key_a = make_seed_key("concept", "accept a")
-        key_b = make_seed_key("concept", "accept b")
+        key_a = make_seed_key("accept a")
+        key_b = make_seed_key("accept b")
         a, b = sorted([key_a, key_b])
         await repo.upsert_seed(a, "accept a", "concept")
         await repo.upsert_seed(b, "accept b", "concept")
@@ -266,8 +266,8 @@ class TestWriteSeedRepository:
     async def test_rejected_facts_excluded_from_pending_query(self, write_db_session: AsyncSession) -> None:
         """New facts for same pair get status=pending even if others are rejected."""
         repo = WriteSeedRepository(write_db_session)
-        key_a = make_seed_key("concept", "mix a")
-        key_b = make_seed_key("concept", "mix b")
+        key_a = make_seed_key("mix a")
+        key_b = make_seed_key("mix b")
         a, b = sorted([key_a, key_b])
         await repo.upsert_seed(a, "mix a", "concept")
         await repo.upsert_seed(b, "mix b", "concept")
@@ -295,8 +295,8 @@ class TestWriteSeedRoutes:
 
     async def test_create_route(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        parent_key = make_seed_key("entity", "Route Parent Test")
-        child_key = make_seed_key("entity", "Route Child Test")
+        parent_key = make_seed_key("Route Parent Test")
+        child_key = make_seed_key("Route Child Test")
         await repo.upsert_seed(parent_key, "Route Parent Test", "entity")
         await repo.upsert_seed(child_key, "Route Child Test", "entity")
 
@@ -307,8 +307,8 @@ class TestWriteSeedRoutes:
 
     async def test_create_route_idempotent(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        parent_key = make_seed_key("entity", "Route Idem Parent")
-        child_key = make_seed_key("entity", "Route Idem Child")
+        parent_key = make_seed_key("Route Idem Parent")
+        child_key = make_seed_key("Route Idem Child")
         await repo.upsert_seed(parent_key, "Route Idem Parent", "entity")
         await repo.upsert_seed(child_key, "Route Idem Child", "entity")
 
@@ -319,9 +319,9 @@ class TestWriteSeedRoutes:
 
     async def test_get_routes_for_parent(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        parent_key = make_seed_key("entity", "Multi Route Parent")
-        child1_key = make_seed_key("entity", "Multi Route Child 1")
-        child2_key = make_seed_key("entity", "Multi Route Child 2")
+        parent_key = make_seed_key("Multi Route Parent")
+        child1_key = make_seed_key("Multi Route Child 1")
+        child2_key = make_seed_key("Multi Route Child 2")
         await repo.upsert_seed(parent_key, "Multi Route Parent", "entity")
         await repo.upsert_seed(child1_key, "Multi Route Child 1", "entity")
         await repo.upsert_seed(child2_key, "Multi Route Child 2", "entity")
@@ -337,8 +337,8 @@ class TestWriteSeedRoutes:
 
     async def test_get_route_for_child(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        parent_key = make_seed_key("entity", "Reverse Lookup Parent")
-        child_key = make_seed_key("entity", "Reverse Lookup Child")
+        parent_key = make_seed_key("Reverse Lookup Parent")
+        child_key = make_seed_key("Reverse Lookup Child")
         await repo.upsert_seed(parent_key, "Reverse Lookup Parent", "entity")
         await repo.upsert_seed(child_key, "Reverse Lookup Child", "entity")
 
@@ -354,7 +354,7 @@ class TestWriteSeedRoutes:
 
     async def test_split_seed_creates_routes(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        original_key = make_seed_key("entity", "Split Routes Test")
+        original_key = make_seed_key("Split Routes Test")
         await repo.upsert_seed(original_key, "Split Routes Test", "entity")
         fid1, fid2 = uuid.uuid4(), uuid.uuid4()
         await repo.link_fact(original_key, fid1)
@@ -362,13 +362,13 @@ class TestWriteSeedRoutes:
 
         new_seeds = [
             {
-                "key": make_seed_key("entity", "Split Routes Test (planet)"),
+                "key": make_seed_key("Split Routes Test (planet)"),
                 "name": "Split Routes Test (planet)",
                 "node_type": "entity",
                 "label": "planet",
             },
             {
-                "key": make_seed_key("entity", "Split Routes Test (god)"),
+                "key": make_seed_key("Split Routes Test (god)"),
                 "name": "Split Routes Test (god)",
                 "node_type": "entity",
                 "label": "god",
@@ -399,7 +399,7 @@ class TestWriteSeedRoutes:
     async def test_split_seed_preserves_extraction_role(self, write_db_session: AsyncSession) -> None:
         """split_seed() must preserve extraction_role on copied fact links."""
         repo = WriteSeedRepository(write_db_session)
-        original_key = make_seed_key("entity", "Split Role Test")
+        original_key = make_seed_key("Split Role Test")
         await repo.upsert_seed(original_key, "Split Role Test", "entity", "person")
 
         fid_mentioned = uuid.uuid4()
@@ -409,7 +409,7 @@ class TestWriteSeedRoutes:
         await repo.link_fact(original_key, fid_attribution, extraction_role="source_attribution")
         await repo.link_fact(original_key, fid_both, extraction_role="source_attribution")
 
-        child_key = make_seed_key("entity", "Split Role Test (specific)")
+        child_key = make_seed_key("Split Role Test (specific)")
         new_seeds = [
             {"key": child_key, "name": "Split Role Test (specific)", "node_type": "entity", "label": "specific"},
         ]
@@ -433,7 +433,7 @@ class TestPhoneticSearch:
 
     async def test_update_and_find_by_phonetic(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("concept", "Phonetic Test Seed")
+        key = make_seed_key("Phonetic Test Seed")
         await repo.upsert_seed(key, "Phonetic Test Seed", "concept")
         await repo.update_phonetic_code(key, "FNTK")
 
@@ -442,7 +442,7 @@ class TestPhoneticSearch:
 
     async def test_find_by_phonetic_filters_by_type(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("entity", "Phonetic Type Filter")
+        key = make_seed_key("Phonetic Type Filter")
         await repo.upsert_seed(key, "Phonetic Type Filter", "entity")
         await repo.update_phonetic_code(key, "FNTKT")
 
@@ -461,7 +461,7 @@ class TestPhoneticSearch:
 
     async def test_update_context_hash(self, write_db_session: AsyncSession) -> None:
         repo = WriteSeedRepository(write_db_session)
-        key = make_seed_key("concept", "Context Hash Test")
+        key = make_seed_key("Context Hash Test")
         await repo.upsert_seed(key, "Context Hash Test", "concept")
         await repo.update_context_hash(key, "abc123def456")
 
@@ -475,13 +475,13 @@ class TestMakeSeedKey:
     """Tests for the make_seed_key function."""
 
     async def test_basic_key(self) -> None:
-        assert make_seed_key("concept", "Artificial Intelligence") == "concept:artificial-intelligence"
+        assert make_seed_key("Artificial Intelligence") == "artificial-intelligence"
 
     async def test_matches_node_key(self) -> None:
-        assert make_seed_key("entity", "OpenAI") == make_node_key("entity", "OpenAI")
+        assert make_seed_key("OpenAI") == make_node_key("OpenAI")
 
     async def test_deterministic_uuid(self) -> None:
-        key = make_seed_key("entity", "Test")
+        key = make_seed_key("Test")
         uuid1 = key_to_uuid(key)
         uuid2 = key_to_uuid(key)
         assert uuid1 == uuid2

@@ -293,7 +293,7 @@ async def _execute_split(
             label = f"variant {i + 1}"
             disambiguated_name = f"{original_name} ({label})"
 
-        new_key = make_seed_key(node_type, disambiguated_name)
+        new_key = make_seed_key(disambiguated_name)
         cluster_fact_ids = [f["id"] for f in cluster]
 
         new_seeds.append(

@@ -538,7 +538,7 @@ async def test_enrich_node_from_pool_returns_enrich_result() -> None:
 
     # Mock write-db lookup: node found with no existing facts
     mock_wn = MagicMock()
-    mock_wn.key = "concept:enrich_test"
+    mock_wn.key = "enrich-test"
     mock_wn.fact_ids = []
 
     # Mock seed lookup: seed found with one fact
@@ -673,13 +673,13 @@ async def test_resolve_edges_creates_edge_from_candidates() -> None:
     ctx = _make_ctx()
     node = _make_mock_node(concept="quantum computing")
     node.node_type = "concept"
-    node.id = key_to_uuid(make_seed_key("concept", "quantum computing"))
+    node.id = key_to_uuid(make_seed_key("quantum computing"))
 
     write_session = MagicMock()
     ctx.graph_engine._write_session = write_session
 
-    source_key = make_seed_key("concept", "quantum computing")
-    target_key = make_seed_key("concept", "quantum mechanics")
+    source_key = make_seed_key("quantum computing")
+    target_key = make_seed_key("quantum mechanics")
     fact_ids = [uuid.uuid4() for _ in range(3)]
 
     candidate_rows = []
@@ -729,13 +729,13 @@ async def test_resolve_edges_skips_unpromoted_seed() -> None:
     ctx = _make_ctx()
     node = _make_mock_node(concept="physics")
     node.node_type = "concept"
-    node.id = key_to_uuid(make_seed_key("concept", "physics"))
+    node.id = key_to_uuid(make_seed_key("physics"))
 
     write_session = MagicMock()
     ctx.graph_engine._write_session = write_session
 
-    source_key = make_seed_key("concept", "physics")
-    target_key = make_seed_key("concept", "thermodynamics")
+    source_key = make_seed_key("physics")
+    target_key = make_seed_key("thermodynamics")
     fact_id = uuid.uuid4()
 
     candidate_row = MagicMock()
@@ -761,18 +761,18 @@ async def test_resolve_edges_skips_unpromoted_seed() -> None:
     assert result["edges_created"] == 0
 
 
-async def test_resolve_edges_cross_type_detected() -> None:
-    """resolve_from_candidates uses cross_type for different node types."""
+async def test_resolve_edges_different_types_uses_related() -> None:
+    """resolve_from_candidates uses related for different node types."""
     ctx = _make_ctx()
     node = _make_mock_node(concept="Albert Einstein")
     node.node_type = "entity"
-    node.id = key_to_uuid(make_seed_key("entity", "Albert Einstein"))
+    node.id = key_to_uuid(make_seed_key("Albert Einstein"))
 
     write_session = MagicMock()
     ctx.graph_engine._write_session = write_session
 
-    source_key = make_seed_key("entity", "Albert Einstein")
-    target_key = make_seed_key("concept", "relativity")
+    source_key = make_seed_key("Albert Einstein")
+    target_key = make_seed_key("relativity")
     fact_ids = [uuid.uuid4() for _ in range(3)]
 
     candidate_rows = []
@@ -815,9 +815,9 @@ async def test_resolve_edges_cross_type_detected() -> None:
         result = await EdgeResolver(ctx).resolve_from_candidates(node)
 
     assert result["edges_created"] == 1
-    # Verify cross_type was used
+    # Verify related was used (all undirected edges are "related" now)
     call_args = ctx.graph_engine.create_edge.call_args
-    assert call_args[0][2] == "cross_type"
+    assert call_args[0][2] == "related"
 
 
 async def test_resolve_edges_handles_llm_error() -> None:
@@ -825,13 +825,13 @@ async def test_resolve_edges_handles_llm_error() -> None:
     ctx = _make_ctx()
     node = _make_mock_node(concept="error_node")
     node.node_type = "concept"
-    node.id = key_to_uuid(make_seed_key("concept", "error_node"))
+    node.id = key_to_uuid(make_seed_key("error_node"))
 
     write_session = MagicMock()
     ctx.graph_engine._write_session = write_session
 
-    source_key = make_seed_key("concept", "error_node")
-    target_key = make_seed_key("concept", "other")
+    source_key = make_seed_key("error_node")
+    target_key = make_seed_key("other")
     fact_ids = [uuid.uuid4() for _ in range(3)]
 
     candidate_rows = []
@@ -1113,14 +1113,14 @@ async def test_resolve_edges_multiple_candidates_batch() -> None:
     ctx = _make_ctx()
     node = _make_mock_node(concept="photosynthesis")
     node.node_type = "concept"
-    node.id = key_to_uuid(make_seed_key("concept", "photosynthesis"))
+    node.id = key_to_uuid(make_seed_key("photosynthesis"))
 
     write_session = MagicMock()
     ctx.graph_engine._write_session = write_session
 
-    source_key = make_seed_key("concept", "photosynthesis")
-    target_key_a = make_seed_key("concept", "chloroplast")
-    target_key_b = make_seed_key("concept", "sunlight")
+    source_key = make_seed_key("photosynthesis")
+    target_key_a = make_seed_key("chloroplast")
+    target_key_b = make_seed_key("sunlight")
     fids_a = [uuid.uuid4() for _ in range(3)]
     fids_b = [uuid.uuid4() for _ in range(3)]
 

@@ -286,11 +286,10 @@ async def run_case(case: RoutingCase) -> tuple[str, bool, str]:
     from kt_facts.processing.seed_routing import route_seed
 
     repo = _build_repo(case)
-    name, node_type, fact_content = case.input
+    name, _node_type, fact_content = case.input
 
     result = await route_seed(
         name=name,
-        node_type=node_type,
         fact_content=fact_content,
         write_seed_repo=repo,
         embedding_service=None,

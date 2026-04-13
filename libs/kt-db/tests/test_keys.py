@@ -14,73 +14,71 @@ from kt_db.keys import (
 
 
 def test_make_node_key_basic():
-    assert make_node_key("concept", "Artificial Intelligence") == "concept:artificial-intelligence"
+    assert make_node_key("Artificial Intelligence") == "artificial-intelligence"
 
 
 def test_make_node_key_entity():
-    assert make_node_key("entity", "OpenAI") == "entity:openai"
+    assert make_node_key("OpenAI") == "openai"
 
 
 def test_make_node_key_strips_whitespace():
-    assert make_node_key("concept", "  quantum computing  ") == "concept:quantum-computing"
+    assert make_node_key("  quantum computing  ") == "quantum-computing"
 
 
 def test_make_node_key_special_chars():
-    assert make_node_key("event", "2024 U.S. Election!") == "event:2024-u-s-election"
+    assert make_node_key("2024 U.S. Election!") == "2024-u-s-election"
 
 
 def test_make_node_key_truncation():
     long_concept = "a" * 300
-    key = make_node_key("concept", long_concept)
-    # "concept:" + slug
-    slug = key.split(":", 1)[1]
-    assert len(slug) <= 200
+    key = make_node_key(long_concept)
+    assert len(key) <= 200
 
 
 def test_make_edge_key_canonical_order():
-    key1 = make_edge_key("related", "concept:ai", "concept:ml")
-    key2 = make_edge_key("related", "concept:ml", "concept:ai")
+    key1 = make_edge_key("related", "ai", "ml")
+    key2 = make_edge_key("related", "ml", "ai")
     assert key1 == key2
-    assert key1 == "related:concept:ai--concept:ml"
+    assert key1 == "related:ai--ml"
 
 
-def test_make_edge_key_cross_type():
-    key = make_edge_key("cross_type", "entity:openai", "concept:ai")
-    assert key == "cross_type:concept:ai--entity:openai"
+def test_make_edge_key_different_types_uses_related():
+    key = make_edge_key("related", "openai", "ai")
+    assert key == "related:ai--openai"
 
 
 def test_make_dimension_key():
-    key = make_dimension_key("concept:ai", "grok-4.1-fast", 0)
-    assert key == "concept:ai:grok-4-1-fast:0"
+    key = make_dimension_key("ai", "grok-4.1-fast", 0)
+    assert key == "ai:grok-4-1-fast:0"
 
 
 def test_make_dimension_key_batch():
-    key = make_dimension_key("concept:ai", "grok-4.1-fast", 2)
-    assert key == "concept:ai:grok-4-1-fast:2"
+    key = make_dimension_key("ai", "grok-4.1-fast", 2)
+    assert key == "ai:grok-4-1-fast:2"
 
 
 # ── key_to_uuid tests ────────────────────────────────────────────────
 
 
 def test_key_to_uuid_returns_uuid():
-    result = key_to_uuid("concept:artificial-intelligence")
+    result = key_to_uuid("artificial-intelligence")
     assert isinstance(result, uuid.UUID)
 
 
 def test_key_to_uuid_deterministic():
-    a = key_to_uuid("concept:artificial-intelligence")
-    b = key_to_uuid("concept:artificial-intelligence")
+    a = key_to_uuid("artificial-intelligence")
+    b = key_to_uuid("artificial-intelligence")
     assert a == b
 
 
 def test_key_to_uuid_different_keys_different_uuids():
-    a = key_to_uuid("concept:ai")
-    b = key_to_uuid("concept:ml")
+    a = key_to_uuid("ai")
+    b = key_to_uuid("ml")
     assert a != b
 
 
 def test_key_to_uuid_is_uuid5():
-    key = "concept:test"
+    key = "test"
     result = key_to_uuid(key)
     expected = uuid.uuid5(KT_NAMESPACE, key)
     assert result == expected
@@ -88,8 +86,8 @@ def test_key_to_uuid_is_uuid5():
 
 def test_key_to_uuid_node_edge_different():
     """Node key and edge key with overlapping text produce different UUIDs."""
-    node_uuid = key_to_uuid("concept:ai")
-    edge_uuid = key_to_uuid("related:concept:ai--concept:ml")
+    node_uuid = key_to_uuid("ai")
+    edge_uuid = key_to_uuid("related:ai--ml")
     assert node_uuid != edge_uuid
 
 
@@ -124,6 +122,6 @@ def test_uri_to_source_id_matches_key_to_uuid():
 
 def test_uri_to_source_id_different_from_node_uuid():
     """Source UUID should differ from node UUID even with similar text."""
-    source_uuid = uri_to_source_id("concept:ai")
-    node_uuid = key_to_uuid("concept:ai")
+    source_uuid = uri_to_source_id("ai")
+    node_uuid = key_to_uuid("ai")
     assert source_uuid != node_uuid

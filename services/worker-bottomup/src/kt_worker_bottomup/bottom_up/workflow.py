@@ -222,7 +222,7 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
 
     bulk_items = []
     for entry in plan.node_plans:
-        sk = entry.get("seed_key") or make_seed_key(entry.get("node_type", "concept"), entry["name"])
+        sk = entry.get("seed_key") or make_seed_key(entry["name"])
         bulk_items.append(
             node_pipeline_wf.create_bulk_run_item(
                 input=BuildNodeInput(

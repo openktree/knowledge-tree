@@ -525,7 +525,7 @@ class AncestryPipeline:
 
         from kt_db.keys import make_seed_key
 
-        seed_key = make_seed_key(node_type, name)
+        seed_key = make_seed_key(name)
         try:
             from kt_db.repositories.write_seeds import WriteSeedRepository
 

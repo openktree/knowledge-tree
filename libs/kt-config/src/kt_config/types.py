@@ -68,13 +68,12 @@ class FactStance(str, Enum):
 
 class EdgeType(str, Enum):
     related = "related"
-    cross_type = "cross_type"
     draws_from = "draws_from"  # Directed: composite → source node (programmatic, not LLM-created)
 
 
 # Undirected edges — canonical UUID ordering enforced.
 # NOTE: "draws_from" is intentionally excluded — it is a directed programmatic edge.
-UNDIRECTED_EDGE_TYPES: frozenset[str] = frozenset({"related", "cross_type"})
+UNDIRECTED_EDGE_TYPES: frozenset[str] = frozenset({"related"})
 
 # No structural edge types in the new model.
 STRUCTURAL_EDGE_TYPES: frozenset[str] = frozenset()
@@ -111,10 +110,10 @@ ALL_SUPERSYNTHESES_ID = _uuid.uuid5(_uuid.NAMESPACE_DNS, "knowledge-tree.all-sup
 
 DEFAULT_PARENTS: dict[str, _uuid.UUID] = {
     "concept": ALL_CONCEPTS_ID,
-    "event": ALL_EVENTS_ID,
+    "entity": ALL_CONCEPTS_ID,  # base types all map to concepts
+    "event": ALL_CONCEPTS_ID,
+    "location": ALL_CONCEPTS_ID,
     "perspective": ALL_PERSPECTIVES_ID,
-    "entity": ALL_ENTITIES_ID,
-    "location": ALL_LOCATIONS_ID,
     "synthesis": ALL_SYNTHESES_ID,
     "supersynthesis": ALL_SUPERSYNTHESES_ID,
 }

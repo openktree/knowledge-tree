@@ -993,7 +993,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
 
         bulk_items = []
         for node in input.selected_nodes:
-            sk = node.seed_key or _make_seed_key(node.node_type, node.name)
+            sk = node.seed_key or _make_seed_key(node.name)
             bulk_items.append(
                 node_pipeline_wf.create_bulk_run_item(
                     input=BuildNodeInput(

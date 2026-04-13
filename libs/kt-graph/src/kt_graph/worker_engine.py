@@ -306,7 +306,7 @@ class WorkerGraphEngine:
         An in-memory Node object is returned (cached for subsequent methods).
         The sync worker propagates to graph-db.
         """
-        node_key = make_node_key(node_type, concept)
+        node_key = make_node_key(concept)
         det_uuid = key_to_uuid(node_key)
 
         # Resolve parent/source keys for write-db
@@ -314,13 +314,13 @@ class WorkerGraphEngine:
         if parent_id is not None:
             parent_node = await self._get_cached_or_write_db(parent_id)
             if parent_node:
-                parent_key = make_node_key(parent_node.node_type, parent_node.concept)
+                parent_key = make_node_key(parent_node.concept)
 
         source_key: str | None = None
         if source_concept_id is not None:
             source_node = await self._get_cached_or_write_db(source_concept_id)
             if source_node:
-                source_key = make_node_key(source_node.node_type, source_node.concept)
+                source_key = make_node_key(source_node.concept)
 
         await self._write_node_repo.upsert(
             node_type=node_type,
@@ -382,8 +382,8 @@ class WorkerGraphEngine:
             logger.warning("create_edge: source or target node not found")
             return
 
-        source_key = make_node_key(source_node.node_type, source_node.concept)
-        target_key = make_node_key(target_node.node_type, target_node.concept)
+        source_key = make_node_key(source_node.concept)
+        target_key = make_node_key(target_node.concept)
 
         fact_id_strs = [str(fid) for fid in fact_ids] if fact_ids else None
 
@@ -415,7 +415,7 @@ class WorkerGraphEngine:
             await self._write_node_repo.upsert(
                 node_type=node.node_type,
                 concept=node.concept,
-                parent_key=make_node_key(parent.node_type, parent.concept),
+                parent_key=make_node_key(parent.concept),
             )
             await self.commit()
             # Update cache so subsequent parent chain validation works
@@ -502,7 +502,7 @@ class WorkerGraphEngine:
                 node_id,
             )
             return
-        node_key = make_node_key(node.node_type, node.concept)
+        node_key = make_node_key(node.concept)
         fact_id_strs = [str(fid) for fid in fact_ids] if fact_ids else None
         await self._write_dim_repo.upsert(
             node_key=node_key,
@@ -570,7 +570,7 @@ class WorkerGraphEngine:
         # Try cache first for node key
         if node_id in self._node_cache:
             node = self._node_cache[node_id]
-            node_key = make_node_key(node.node_type, node.concept)
+            node_key = make_node_key(node.concept)
         else:
             wn = await self._write_node_repo.get_by_uuid(node_id)
             if wn is None:
@@ -588,7 +588,7 @@ class WorkerGraphEngine:
         """
         if node_id in self._node_cache:
             node = self._node_cache[node_id]
-            node_key = make_node_key(node.node_type, node.concept)
+            node_key = make_node_key(node.concept)
         else:
             wn = await self._write_node_repo.get_by_uuid(node_id)
             if wn is None:
@@ -624,7 +624,7 @@ class WorkerGraphEngine:
         node = await self._get_cached_or_write_db(node_id)
         if node:
             try:
-                node_key = make_node_key(node.node_type, node.concept)
+                node_key = make_node_key(node.concept)
                 await self._write_node_repo.increment_access_count(node_key)
                 await self.commit()
             except Exception:
@@ -635,7 +635,7 @@ class WorkerGraphEngine:
         node = await self._get_cached_or_write_db(node_id)
         if node:
             try:
-                node_key = make_node_key(node.node_type, node.concept)
+                node_key = make_node_key(node.concept)
                 await self._write_node_repo.increment_update_count(node_key)
                 await self.commit()
             except Exception:
@@ -739,7 +739,7 @@ class WorkerGraphEngine:
         node = await self._get_cached_or_write_db(node_id)
         if node is None:
             return []
-        node_key = make_node_key(node.node_type, node.concept)
+        node_key = make_node_key(node.concept)
         write_edges = await self._write_edge_repo.get_edges_for_node(node_key)
         edges: list[Edge] = []
         for we in write_edges:

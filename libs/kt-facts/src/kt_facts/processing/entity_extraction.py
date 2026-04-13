@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from kt_facts.processing.extractor_base import EntityExtractor, ExtractedEntity
 from kt_models.gateway import ModelGateway
 
 logger = logging.getLogger(__name__)
@@ -438,3 +439,37 @@ def _parse_per_fact_result(
 
     valid = list(merged.values())
     return valid if valid else None
+
+
+# ── EntityExtractor wrapper ──────────────────────────────────────
+
+
+class LlmEntityExtractor(EntityExtractor):
+    """LLM-based entity extractor.
+
+    Wraps the existing ``extract_entities_from_facts`` function and converts
+    its dict output to ``ExtractedEntity`` objects (dropping node_type).
+    """
+
+    def __init__(self, gateway: ModelGateway) -> None:
+        self._gateway = gateway
+
+    async def extract(
+        self,
+        facts: list,
+        *,
+        scope: str = "",
+    ) -> list[ExtractedEntity] | None:
+
+        raw = await extract_entities_from_facts(facts, self._gateway, scope=scope)
+        if not raw:
+            return None
+
+        return [
+            ExtractedEntity(
+                name=node["name"],
+                fact_indices=node.get("fact_indices", []),
+                aliases=node.get("aliases", []),
+            )
+            for node in raw
+        ]

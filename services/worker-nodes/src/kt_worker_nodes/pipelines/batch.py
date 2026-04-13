@@ -175,7 +175,7 @@ class BatchPipeline:
                 tasks.append(task)
                 continue
             entity_subtype = entry.get("entity_subtype") if node_type == "entity" else None
-            sk = entry.get("seed_key") or make_seed_key(node_type, name)
+            sk = entry.get("seed_key") or make_seed_key(name)
             tasks.append(CreateNodeTask(name=name, node_type=node_type, seed_key=sk, entity_subtype=entity_subtype))
         return tasks
 

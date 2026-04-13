@@ -151,7 +151,7 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
 
             for seed, embedding in zip(seeds, embeddings):
                 try:
-                    node_key = make_node_key(seed.node_type, seed.name)
+                    node_key = make_node_key(seed.name)
                     node_uuid = key_to_uuid(node_key)
 
                     async with ws.begin_nested():

@@ -49,14 +49,14 @@ class TestWriteNodeToNode:
         assert node.updated_at == wn.updated_at
 
     def test_parent_key_resolves_to_uuid(self):
-        wn = _make_write_node(parent_key="concept:parent-topic")
+        wn = _make_write_node(parent_key="parent-topic")
         node = WorkerGraphEngine._write_node_to_node(wn)
 
         assert node.parent_id is not None
         # key_to_uuid is deterministic — same key always produces same UUID
         from kt_db.keys import key_to_uuid
 
-        assert node.parent_id == key_to_uuid("concept:parent-topic")
+        assert node.parent_id == key_to_uuid("parent-topic")
 
     def test_overrides_applied(self):
         wn = _make_write_node(metadata_={"original": True})

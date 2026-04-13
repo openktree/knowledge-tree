@@ -23,7 +23,7 @@ class WriteNodeRepository:
 
     @staticmethod
     def node_key(node_type: str, concept: str) -> str:
-        return make_node_key(node_type, concept)
+        return make_node_key(concept)
 
     async def upsert(
         self,
@@ -43,7 +43,7 @@ class WriteNodeRepository:
         enrichment_status: str | None = None,
     ) -> str:
         """Insert or update a node. Returns the deterministic key."""
-        key = make_node_key(node_type, concept)
+        key = make_node_key(concept)
         node_uuid = key_to_uuid(key)
 
         update_set: dict[str, object] = {"updated_at": func.clock_timestamp()}

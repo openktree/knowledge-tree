@@ -43,23 +43,23 @@ class TestDeduplicateSeed:
     async def test_no_matches_returns_same_key(self):
         repo = make_seed_repo_mock()
         result = await deduplicate_seed(
-            "entity:albert-einstein",
+            "albert-einstein",
             "Albert Einstein",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:albert-einstein"
+        assert result == "albert-einstein"
 
     async def test_trigram_alone_does_not_merge(self):
         """Trigram-only similarity should NOT merge when embedding finds no match."""
         repo = make_seed_repo_mock()
-        existing = make_seed("entity:albert-einstein", "Albert Einstein", "entity", fact_count=5)
+        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=5)
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
 
         result = await deduplicate_seed(
-            "entity:a-einstein",
+            "a-einstein",
             "A. Einstein",
             "entity",
             repo,
@@ -67,19 +67,19 @@ class TestDeduplicateSeed:
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
         # Embedding found no match → trigram alone does NOT merge
-        assert result == "entity:a-einstein"
+        assert result == "a-einstein"
         repo.merge_seeds.assert_not_called()
 
     async def test_trigram_with_embedding_merges(self):
         """When embedding service confirms similarity, merge happens."""
         repo = make_seed_repo_mock()
         # Trigram finds no alias match (names don't match exactly)
-        existing = make_seed("entity:albert-einstein", "Albert Einstein", "entity", fact_count=5)
+        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=5)
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:a-einstein": make_seed("entity:a-einstein", "A. Einstein", "entity", fact_count=1),
-                "entity:albert-einstein": existing,
+                "a-einstein": make_seed("a-einstein", "A. Einstein", "entity", fact_count=1),
+                "albert-einstein": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
@@ -89,24 +89,24 @@ class TestDeduplicateSeed:
 
         qdrant_repo = MagicMock()
         qdrant_repo.upsert = AsyncMock()
-        match_result = make_qdrant_match("entity:albert-einstein", 0.92)
+        match_result = make_qdrant_match("albert-einstein", 0.92)
         qdrant_repo.find_similar = AsyncMock(return_value=[match_result])
 
         result = await deduplicate_seed(
-            "entity:a-einstein",
+            "a-einstein",
             "A. Einstein",
             "entity",
             repo,
             embedding_service=embedding_service,
             qdrant_seed_repo=qdrant_repo,
         )
-        assert result == "entity:albert-einstein"
+        assert result == "albert-einstein"
         repo.merge_seeds.assert_called_once()
 
     async def test_alias_match_merges(self):
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:karl-marx",
+            "karl-marx",
             "Karl Marx",
             "entity",
             fact_count=3,
@@ -115,52 +115,52 @@ class TestDeduplicateSeed:
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:k-marx": make_seed("entity:k-marx", "K. Marx", "entity", fact_count=1),
-                "entity:karl-marx": existing,
+                "k-marx": make_seed("k-marx", "K. Marx", "entity", fact_count=1),
+                "karl-marx": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
 
         result = await deduplicate_seed(
-            "entity:k-marx",
+            "k-marx",
             "K. Marx",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:karl-marx"
+        assert result == "karl-marx"
 
     async def test_merged_seed_skipped(self):
         repo = make_seed_repo_mock()
-        merged = make_seed("entity:old", "Old Name", "entity", status="merged")
+        merged = make_seed("old", "Old Name", "entity", status="merged")
         repo.find_similar_seeds = AsyncMock(return_value=[merged])
 
         result = await deduplicate_seed(
-            "entity:new",
+            "new",
             "New Name",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:new"
+        assert result == "new"
         repo.merge_seeds.assert_not_called()
 
     async def test_self_match_skipped(self):
         repo = make_seed_repo_mock()
-        self_seed = make_seed("entity:test", "Test", "entity", fact_count=5)
+        self_seed = make_seed("test", "Test", "entity", fact_count=5)
         repo.find_similar_seeds = AsyncMock(return_value=[self_seed])
 
         result = await deduplicate_seed(
-            "entity:test",
+            "test",
             "Test",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:test"
+        assert result == "test"
         repo.merge_seeds.assert_not_called()
 
     async def test_embedding_dedup(self):
@@ -173,27 +173,27 @@ class TestDeduplicateSeed:
         qdrant_repo = MagicMock()
         qdrant_repo.upsert = AsyncMock()
 
-        match_result = make_qdrant_match("entity:albert-einstein", 0.95)
+        match_result = make_qdrant_match("albert-einstein", 0.95)
         qdrant_repo.find_similar = AsyncMock(return_value=[match_result])
 
-        existing = make_seed("entity:albert-einstein", "Albert Einstein", "entity", fact_count=5)
+        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=5)
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:einstein": make_seed("entity:einstein", "Einstein", "entity", fact_count=1),
-                "entity:albert-einstein": existing,
+                "einstein": make_seed("einstein", "Einstein", "entity", fact_count=1),
+                "albert-einstein": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
 
         result = await deduplicate_seed(
-            "entity:einstein",
+            "einstein",
             "Einstein",
             "entity",
             repo,
             embedding_service=embedding_service,
             qdrant_seed_repo=qdrant_repo,
         )
-        assert result == "entity:albert-einstein"
+        assert result == "albert-einstein"
 
     async def test_alias_error_continues_to_embedding(self):
         """When trigram/alias search fails, embedding dedup still runs."""
@@ -208,14 +208,14 @@ class TestDeduplicateSeed:
         qdrant_repo.find_similar = AsyncMock(return_value=[])
 
         result = await deduplicate_seed(
-            "entity:test",
+            "test",
             "Test",
             "entity",
             repo,
             embedding_service=embedding_service,
             qdrant_seed_repo=qdrant_repo,
         )
-        assert result == "entity:test"
+        assert result == "test"
         # Should have attempted embedding dedup after alias/trigram failure
         embedding_service.embed_text.assert_called_once()
 
@@ -224,7 +224,7 @@ class TestDeduplicateSeed:
         repo = make_seed_repo_mock()
         # Trigram finds a candidate (high character overlap)
         existing = make_seed(
-            "entity:university-of-arizona",
+            "university-of-arizona",
             "The University of Arizona",
             "entity",
             fact_count=5,
@@ -233,14 +233,14 @@ class TestDeduplicateSeed:
 
         # Embedding finds no match → should NOT merge on trigram alone
         result = await deduplicate_seed(
-            "entity:arizona-state-university",
+            "arizona-state-university",
             "Arizona State University",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:arizona-state-university"
+        assert result == "arizona-state-university"
         repo.merge_seeds.assert_not_called()
 
     async def test_phonetic_with_embedding_floor_merges(self):
@@ -249,7 +249,7 @@ class TestDeduplicateSeed:
         repo.find_similar_seeds = AsyncMock(return_value=[])  # No alias match
 
         existing = make_seed(
-            "entity:democratic-party",
+            "democratic-party",
             "Democratic Party",
             "entity",
             fact_count=5,
@@ -257,13 +257,13 @@ class TestDeduplicateSeed:
         repo.find_by_phonetic = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:democrtic-party": make_seed(
-                    "entity:democrtic-party",
+                "democrtic-party": make_seed(
+                    "democrtic-party",
                     "Democrtic Party",
                     "entity",
                     fact_count=1,
                 ),
-                "entity:democratic-party": existing,
+                "democratic-party": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
@@ -278,13 +278,13 @@ class TestDeduplicateSeed:
         # (below 0.82 merge threshold but above 0.75 typo floor)
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("entity:democratic-party", 0.80),
+                make_qdrant_match("democratic-party", 0.80),
             ]
         )
 
         # Phonetic trigram confirmation
         trigram_for_phonetic = make_seed(
-            "entity:democratic-party",
+            "democratic-party",
             "Democratic Party",
             "entity",
             fact_count=5,
@@ -306,7 +306,7 @@ class TestDeduplicateSeed:
             mock_settings.return_value = s
 
             result = await deduplicate_seed(
-                "entity:democrtic-party",
+                "democrtic-party",
                 "Democrtic Party",
                 "entity",
                 repo,
@@ -314,7 +314,7 @@ class TestDeduplicateSeed:
                 qdrant_seed_repo=qdrant_repo,
             )
 
-        assert result == "entity:democratic-party"
+        assert result == "democratic-party"
         repo.merge_seeds.assert_called_once()
 
     async def test_phonetic_with_embedding_below_floor_skips(self):
@@ -323,7 +323,7 @@ class TestDeduplicateSeed:
         repo.find_similar_seeds = AsyncMock(return_value=[])  # No alias match
 
         existing = make_seed(
-            "entity:bank-of-england",
+            "bank-of-england",
             "Bank of England",
             "entity",
             fact_count=5,
@@ -348,7 +348,7 @@ class TestDeduplicateSeed:
             mock_settings.return_value = s
 
             result = await deduplicate_seed(
-                "entity:bank-of-america",
+                "bank-of-america",
                 "Bank of America",
                 "entity",
                 repo,
@@ -357,7 +357,7 @@ class TestDeduplicateSeed:
             )
 
         # Should NOT merge — embedding too low for phonetic to take effect
-        assert result == "entity:bank-of-america"
+        assert result == "bank-of-america"
         repo.merge_seeds.assert_not_called()
 
     async def test_invalid_name_skips_dedup(self):
@@ -366,14 +366,14 @@ class TestDeduplicateSeed:
 
         # Pure initials — should return immediately without any dedup attempt
         result = await deduplicate_seed(
-            "entity:k-m-a",
+            "k-m-a",
             "K. M. A.",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:k-m-a"
+        assert result == "k-m-a"
         repo.find_similar_seeds.assert_not_called()
         repo.merge_seeds.assert_not_called()
 
@@ -382,19 +382,19 @@ class TestDeduplicateSeed:
         repo = make_seed_repo_mock()
 
         result = await deduplicate_seed(
-            "entity:smith-et-al",
+            "smith-et-al",
             "Smith et al.",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:smith-et-al"
+        assert result == "smith-et-al"
         repo.find_similar_seeds.assert_not_called()
 
     async def test_valid_seed_not_attracted_to_garbage(self):
         """A valid seed should NOT merge into a garbage seed."""
-        garbage_seed = make_seed("entity:some-garbage", "K. M. A.", "entity", fact_count=50)
+        garbage_seed = make_seed("some-garbage", "K. M. A.", "entity", fact_count=50)
         garbage_seed.status = "garbage"
 
         repo = make_seed_repo_mock()
@@ -402,14 +402,14 @@ class TestDeduplicateSeed:
         repo.find_similar_seeds = AsyncMock(return_value=[garbage_seed])
 
         result = await deduplicate_seed(
-            "entity:albert-einstein",
+            "albert-einstein",
             "Albert Einstein",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:albert-einstein"
+        assert result == "albert-einstein"
         repo.merge_seeds.assert_not_called()
 
 
@@ -644,7 +644,7 @@ class TestAcronymMatchIntegration:
         """Acronym match found via trigram candidate search → merge."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:federal-bureau-of-investigation",
+            "federal-bureau-of-investigation",
             "Federal Bureau of Investigation",
             "entity",
             fact_count=5,
@@ -652,28 +652,28 @@ class TestAcronymMatchIntegration:
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:fbi": make_seed("entity:fbi", "FBI", "entity", fact_count=1),
-                "entity:federal-bureau-of-investigation": existing,
+                "fbi": make_seed("fbi", "FBI", "entity", fact_count=1),
+                "federal-bureau-of-investigation": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
 
         result = await deduplicate_seed(
-            "entity:fbi",
+            "fbi",
             "FBI",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:federal-bureau-of-investigation"
+        assert result == "federal-bureau-of-investigation"
         repo.merge_seeds.assert_called_once()
 
     async def test_wrong_initials_no_merge(self):
         """Acronym whose initials don't match the candidate → no merge."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:food-and-drug-administration",
+            "food-and-drug-administration",
             "Food and Drug Administration",
             "entity",
             fact_count=5,
@@ -681,7 +681,7 @@ class TestAcronymMatchIntegration:
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
 
         result = await deduplicate_seed(
-            "entity:fbi",
+            "fbi",
             "FBI",
             "entity",
             repo,
@@ -689,14 +689,14 @@ class TestAcronymMatchIntegration:
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
         # FBI vs FDA — initials don't match
-        assert result == "entity:fbi"
+        assert result == "fbi"
         repo.merge_seeds.assert_not_called()
 
     async def test_non_acronym_candidate_not_merged(self):
         """Non-acronym trigram candidate without exact name match → no merge."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:federal-aviation-administration",
+            "federal-aviation-administration",
             "Federal Aviation Administration",
             "entity",
             fact_count=5,
@@ -704,7 +704,7 @@ class TestAcronymMatchIntegration:
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
 
         result = await deduplicate_seed(
-            "entity:fbi",
+            "fbi",
             "FBI",
             "entity",
             repo,
@@ -712,7 +712,7 @@ class TestAcronymMatchIntegration:
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
         # FBI != FAA initials, no exact name match → no merge
-        assert result == "entity:fbi"
+        assert result == "fbi"
         repo.merge_seeds.assert_not_called()
 
 
@@ -724,7 +724,7 @@ class TestReverseAliasLookup:
         repo.find_similar_seeds = AsyncMock(return_value=[])  # No trigram match
 
         existing = make_seed(
-            "entity:federal-bureau-of-investigation",
+            "federal-bureau-of-investigation",
             "Federal Bureau of Investigation",
             "entity",
             fact_count=5,
@@ -733,21 +733,21 @@ class TestReverseAliasLookup:
         repo.find_seeds_by_alias = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:fbi": make_seed("entity:fbi", "FBI", "entity", fact_count=1),
-                "entity:federal-bureau-of-investigation": existing,
+                "fbi": make_seed("fbi", "FBI", "entity", fact_count=1),
+                "federal-bureau-of-investigation": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
 
         result = await deduplicate_seed(
-            "entity:fbi",
+            "fbi",
             "FBI",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:federal-bureau-of-investigation"
+        assert result == "federal-bureau-of-investigation"
         repo.merge_seeds.assert_called_once()
 
     async def test_reverse_alias_no_match(self):
@@ -757,14 +757,14 @@ class TestReverseAliasLookup:
         repo.find_seeds_by_alias = AsyncMock(return_value=[])
 
         result = await deduplicate_seed(
-            "entity:fbi",
+            "fbi",
             "FBI",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:fbi"
+        assert result == "fbi"
         repo.merge_seeds.assert_not_called()
 
 
@@ -774,7 +774,7 @@ class TestMultiMatchAmbiguity:
         """Single alias candidate → direct merge (no ambiguity)."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:federal-bureau-of-investigation",
+            "federal-bureau-of-investigation",
             "Federal Bureau of Investigation",
             "entity",
             fact_count=5,
@@ -782,28 +782,28 @@ class TestMultiMatchAmbiguity:
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:fbi": make_seed("entity:fbi", "FBI", "entity", fact_count=1),
-                "entity:federal-bureau-of-investigation": existing,
+                "fbi": make_seed("fbi", "FBI", "entity", fact_count=1),
+                "federal-bureau-of-investigation": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
 
         result = await deduplicate_seed(
-            "entity:fbi",
+            "fbi",
             "FBI",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:federal-bureau-of-investigation"
+        assert result == "federal-bureau-of-investigation"
 
     async def test_multi_match_shared_ancestor_merges(self):
         """Two candidates that share a merged ancestor → merge into ancestor."""
         repo = make_seed_repo_mock()
         # Candidate A: merged into ancestor
         candidate_a = make_seed(
-            "entity:cand-a",
+            "cand-a",
             "Candidate A",
             "entity",
             fact_count=3,
@@ -811,7 +811,7 @@ class TestMultiMatchAmbiguity:
         )
         # Candidate B: also merged into same ancestor (via reverse alias)
         candidate_b = make_seed(
-            "entity:cand-b",
+            "cand-b",
             "Candidate B",
             "entity",
             fact_count=2,
@@ -822,55 +822,55 @@ class TestMultiMatchAmbiguity:
 
         # Merge chain: A → merged into ancestor, B → merged into ancestor
         ancestor = make_seed(
-            "entity:ancestor",
+            "ancestor",
             "Ancestor",
             "entity",
             status="active",
             fact_count=10,
         )
         merged_a = make_seed(
-            "entity:cand-a",
+            "cand-a",
             "Candidate A",
             "entity",
             status="merged",
             fact_count=3,
         )
-        merged_a.merged_into_key = "entity:ancestor"
+        merged_a.merged_into_key = "ancestor"
         merged_b = make_seed(
-            "entity:cand-b",
+            "cand-b",
             "Candidate B",
             "entity",
             status="merged",
             fact_count=2,
         )
-        merged_b.merged_into_key = "entity:ancestor"
+        merged_b.merged_into_key = "ancestor"
 
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:incoming": make_seed("entity:incoming", "Alias X", "entity", fact_count=1),
-                "entity:cand-a": merged_a,
-                "entity:cand-b": merged_b,
-                "entity:ancestor": ancestor,
+                "incoming": make_seed("incoming", "Alias X", "entity", fact_count=1),
+                "cand-a": merged_a,
+                "cand-b": merged_b,
+                "ancestor": ancestor,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
 
         result = await deduplicate_seed(
-            "entity:incoming",
+            "incoming",
             "Alias X",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:ancestor"
+        assert result == "ancestor"
 
     async def test_multi_match_distinct_entities_marks_ambiguous(self):
         """Two candidates from different signals → mark as ambiguous."""
         repo = make_seed_repo_mock()
         # Candidate A found via trigram alias match
         candidate_a = make_seed(
-            "entity:securities-and-exchange-commission",
+            "securities-and-exchange-commission",
             "Securities and Exchange Commission",
             "entity",
             fact_count=5,
@@ -880,7 +880,7 @@ class TestMultiMatchAmbiguity:
 
         # Candidate B found via reverse alias lookup (different entity also has "SEC" as alias)
         candidate_b = make_seed(
-            "entity:southeastern-conference",
+            "southeastern-conference",
             "Southeastern Conference",
             "entity",
             fact_count=3,
@@ -891,14 +891,14 @@ class TestMultiMatchAmbiguity:
         # Neither is merged — they're independent
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:sec": make_seed("entity:sec", "SEC", "entity", fact_count=1),
-                "entity:securities-and-exchange-commission": candidate_a,
-                "entity:southeastern-conference": candidate_b,
+                "sec": make_seed("sec", "SEC", "entity", fact_count=1),
+                "securities-and-exchange-commission": candidate_a,
+                "southeastern-conference": candidate_b,
             }.get(k)
         )
 
         result = await deduplicate_seed(
-            "entity:sec",
+            "sec",
             "SEC",
             "entity",
             repo,
@@ -906,7 +906,7 @@ class TestMultiMatchAmbiguity:
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
         # Should return own key (marked as ambiguous)
-        assert result == "entity:sec"
+        assert result == "sec"
         # Should have created routes to both candidates
         assert repo.create_route.call_count == 2
 
@@ -917,7 +917,7 @@ class TestContainmentGuardIntegration:
         """Trigram match that fails containment guard should not merge."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:jeffrey-epstein",
+            "jeffrey-epstein",
             "Jeffrey Epstein",
             "entity",
             fact_count=5,
@@ -925,7 +925,7 @@ class TestContainmentGuardIntegration:
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
 
         result = await deduplicate_seed(
-            "entity:jeffrey-epstein-s-lawyer",
+            "jeffrey-epstein-s-lawyer",
             "Jeffrey Epstein's Lawyer",
             "entity",
             repo,
@@ -933,14 +933,14 @@ class TestContainmentGuardIntegration:
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
         # Should NOT merge — containment mismatch blocks alias, embedding finds nothing
-        assert result == "entity:jeffrey-epstein-s-lawyer"
+        assert result == "jeffrey-epstein-s-lawyer"
         repo.merge_seeds.assert_not_called()
 
     async def test_committee_containment_skipped(self):
         """Contained committee name should not merge."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:democrats-on-the-house-oversight-committee",
+            "democrats-on-the-house-oversight-committee",
             "Democrats on the House Oversight Committee",
             "entity",
             fact_count=3,
@@ -948,14 +948,14 @@ class TestContainmentGuardIntegration:
         repo.find_similar_seeds = AsyncMock(return_value=[existing])
 
         result = await deduplicate_seed(
-            "entity:house-oversight-committee",
+            "house-oversight-committee",
             "House Oversight Committee",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "entity:house-oversight-committee"
+        assert result == "house-oversight-committee"
         repo.merge_seeds.assert_not_called()
 
 
@@ -965,7 +965,7 @@ class TestLLMConfirmMerge:
         """LLM says same entity → merge + specificity upgrade."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "concept:photosynthesis",
+            "photosynthesis",
             "photosynthesis",
             "concept",
             fact_count=5,
@@ -973,13 +973,13 @@ class TestLLMConfirmMerge:
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "concept:oxygenic-photosynthesis": make_seed(
-                    "concept:oxygenic-photosynthesis",
+                "oxygenic-photosynthesis": make_seed(
+                    "oxygenic-photosynthesis",
                     "oxygenic photosynthesis",
                     "concept",
                     fact_count=1,
                 ),
-                "concept:photosynthesis": existing,
+                "photosynthesis": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
@@ -989,7 +989,7 @@ class TestLLMConfirmMerge:
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("concept:photosynthesis", 0.92),
+                make_qdrant_match("photosynthesis", 0.92),
             ]
         )
 
@@ -997,7 +997,7 @@ class TestLLMConfirmMerge:
         write_fact_repo = make_write_fact_repo_mock()
 
         result = await deduplicate_seed(
-            "concept:oxygenic-photosynthesis",
+            "oxygenic-photosynthesis",
             "oxygenic photosynthesis",
             "concept",
             repo,
@@ -1006,15 +1006,15 @@ class TestLLMConfirmMerge:
             model_gateway=model_gw,
             write_fact_repo=write_fact_repo,
         )
-        assert result == "concept:photosynthesis"
+        assert result == "photosynthesis"
         repo.merge_seeds.assert_called_once()
-        repo.rename_seed.assert_called_once_with("concept:photosynthesis", "oxygenic photosynthesis")
+        repo.rename_seed.assert_called_once_with("photosynthesis", "oxygenic photosynthesis")
 
     async def test_auto_merge_skips_llm_for_high_similarity(self):
         """Very high embedding + string guards pass → auto-merge without LLM."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "concept:posttraumatic-growth",
+            "posttraumatic-growth",
             "posttraumatic growth",
             "concept",
             fact_count=5,
@@ -1022,13 +1022,13 @@ class TestLLMConfirmMerge:
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "concept:post-traumatic-growth": make_seed(
-                    "concept:post-traumatic-growth",
+                "post-traumatic-growth": make_seed(
+                    "post-traumatic-growth",
                     "post-traumatic growth",
                     "concept",
                     fact_count=1,
                 ),
-                "concept:posttraumatic-growth": existing,
+                "posttraumatic-growth": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
@@ -1036,7 +1036,7 @@ class TestLLMConfirmMerge:
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("concept:posttraumatic-growth", 0.987),
+                make_qdrant_match("posttraumatic-growth", 0.987),
             ]
         )
 
@@ -1044,7 +1044,7 @@ class TestLLMConfirmMerge:
         write_fact_repo = make_write_fact_repo_mock()
 
         result = await deduplicate_seed(
-            "concept:post-traumatic-growth",
+            "post-traumatic-growth",
             "post-traumatic growth",
             "concept",
             repo,
@@ -1053,7 +1053,7 @@ class TestLLMConfirmMerge:
             model_gateway=model_gw,
             write_fact_repo=write_fact_repo,
         )
-        assert result == "concept:posttraumatic-growth"
+        assert result == "posttraumatic-growth"
         repo.merge_seeds.assert_called_once()
         # LLM should NOT have been called
         model_gw.generate_json.assert_not_called()
@@ -1062,7 +1062,7 @@ class TestLLMConfirmMerge:
         """High embedding but digit-only difference → still uses LLM."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "event:apvac1",
+            "apvac1",
             "APVAC1",
             "event",
             fact_count=5,
@@ -1070,8 +1070,8 @@ class TestLLMConfirmMerge:
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "event:apvac2": make_seed("event:apvac2", "APVAC2", "event", fact_count=1),
-                "event:apvac1": existing,
+                "apvac2": make_seed("apvac2", "APVAC2", "event", fact_count=1),
+                "apvac1": existing,
             }.get(k)
         )
         repo.get_facts_for_seed = AsyncMock(return_value=[])
@@ -1081,7 +1081,7 @@ class TestLLMConfirmMerge:
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("event:apvac1", 0.96),
+                make_qdrant_match("apvac1", 0.96),
             ]
         )
 
@@ -1089,7 +1089,7 @@ class TestLLMConfirmMerge:
         write_fact_repo = make_write_fact_repo_mock()
 
         await deduplicate_seed(
-            "event:apvac2",
+            "apvac2",
             "APVAC2",
             "event",
             repo,
@@ -1105,7 +1105,7 @@ class TestLLMConfirmMerge:
         """High embedding but academic initials → still uses LLM."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "entity:ana-r-p-silva",
+            "ana-r-p-silva",
             "Ana R. P. Silva",
             "entity",
             fact_count=5,
@@ -1113,8 +1113,8 @@ class TestLLMConfirmMerge:
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "entity:ana-r-s-silva": make_seed("entity:ana-r-s-silva", "Ana R. S. Silva", "entity", fact_count=1),
-                "entity:ana-r-p-silva": existing,
+                "ana-r-s-silva": make_seed("ana-r-s-silva", "Ana R. S. Silva", "entity", fact_count=1),
+                "ana-r-p-silva": existing,
             }.get(k)
         )
         repo.get_facts_for_seed = AsyncMock(return_value=[])
@@ -1124,7 +1124,7 @@ class TestLLMConfirmMerge:
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("entity:ana-r-p-silva", 0.982),
+                make_qdrant_match("ana-r-p-silva", 0.982),
             ]
         )
 
@@ -1132,7 +1132,7 @@ class TestLLMConfirmMerge:
         write_fact_repo = make_write_fact_repo_mock()
 
         await deduplicate_seed(
-            "entity:ana-r-s-silva",
+            "ana-r-s-silva",
             "Ana R. S. Silva",
             "entity",
             repo,
@@ -1148,13 +1148,13 @@ class TestLLMConfirmMerge:
         """LLM says different → seeds kept separate, no disambiguation tree."""
         repo = make_seed_repo_mock()
         existing = make_seed(
-            "concept:light-dependent-reactions",
+            "light-dependent-reactions",
             "light-dependent reactions",
             "concept",
             fact_count=3,
         )
         incoming = make_seed(
-            "concept:light-independent-reactions",
+            "light-independent-reactions",
             "light-independent reactions",
             "concept",
             fact_count=1,
@@ -1162,8 +1162,8 @@ class TestLLMConfirmMerge:
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "concept:light-dependent-reactions": existing,
-                "concept:light-independent-reactions": incoming,
+                "light-dependent-reactions": existing,
+                "light-independent-reactions": incoming,
             }.get(k)
         )
         repo.get_facts_for_seed = AsyncMock(return_value=[])
@@ -1173,7 +1173,7 @@ class TestLLMConfirmMerge:
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("concept:light-dependent-reactions", 0.90),
+                make_qdrant_match("light-dependent-reactions", 0.90),
             ]
         )
 
@@ -1181,7 +1181,7 @@ class TestLLMConfirmMerge:
         write_fact_repo = make_write_fact_repo_mock()
 
         result = await deduplicate_seed(
-            "concept:light-independent-reactions",
+            "light-independent-reactions",
             "light-independent reactions",
             "concept",
             repo,
@@ -1199,12 +1199,12 @@ class TestLLMConfirmMerge:
     async def test_llm_unavailable_auto_merges(self):
         """Without model_gateway, Signal 1 auto-merges (backward compat)."""
         repo = make_seed_repo_mock()
-        existing = make_seed("concept:photo", "photosynthesis", "concept", fact_count=5)
+        existing = make_seed("photo", "photosynthesis", "concept", fact_count=5)
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "concept:photo-new": make_seed("concept:photo-new", "photosynthesis process", "concept", fact_count=1),
-                "concept:photo": existing,
+                "photo-new": make_seed("photo-new", "photosynthesis process", "concept", fact_count=1),
+                "photo": existing,
             }.get(k)
         )
         repo.merge_seeds = AsyncMock(return_value=MagicMock())
@@ -1212,12 +1212,12 @@ class TestLLMConfirmMerge:
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("concept:photo", 0.92),
+                make_qdrant_match("photo", 0.92),
             ]
         )
 
         result = await deduplicate_seed(
-            "concept:photo-new",
+            "photo-new",
             "photosynthesis process",
             "concept",
             repo,
@@ -1225,18 +1225,18 @@ class TestLLMConfirmMerge:
             qdrant_seed_repo=qdrant_repo,
             # No model_gateway or write_fact_repo
         )
-        assert result == "concept:photo"
+        assert result == "photo"
         repo.merge_seeds.assert_called_once()
 
     async def test_llm_error_defaults_no_merge(self):
         """LLM error → default to no-merge for safety."""
         repo = make_seed_repo_mock()
-        existing = make_seed("concept:a", "concept A", "concept", fact_count=3)
+        existing = make_seed("a", "concept A", "concept", fact_count=3)
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "concept:b": make_seed("concept:b", "concept B", "concept", fact_count=1),
-                "concept:a": existing,
+                "b": make_seed("b", "concept B", "concept", fact_count=1),
+                "a": existing,
             }.get(k)
         )
         repo.get_facts_for_seed = AsyncMock(return_value=[])
@@ -1246,7 +1246,7 @@ class TestLLMConfirmMerge:
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("concept:a", 0.90),
+                make_qdrant_match("a", 0.90),
             ]
         )
 
@@ -1255,7 +1255,7 @@ class TestLLMConfirmMerge:
         write_fact_repo = make_write_fact_repo_mock()
 
         result = await deduplicate_seed(
-            "concept:b",
+            "b",
             "concept B",
             "concept",
             repo,
@@ -1277,9 +1277,9 @@ class TestLLMConfirmMerge:
 
         confirmed, preferred = await _llm_confirm_merge(
             "Calvin cycle",
-            "concept:calvin-cycle",
+            "calvin-cycle",
             "Calvin-Benson cycle",
-            "concept:calvin-benson-cycle",
+            "calvin-benson-cycle",
             repo,
             write_fact_repo,
             model_gw,
@@ -1291,7 +1291,7 @@ class TestLLMConfirmMerge:
         """Ambiguous anchor seed is skipped by Signal 1 (status != active/promoted)."""
         repo = make_seed_repo_mock()
         ambiguous = make_seed(
-            "concept:light-dependent-reactions",
+            "light-dependent-reactions",
             "light-dependent reactions",
             "concept",
             status="ambiguous",
@@ -1300,32 +1300,32 @@ class TestLLMConfirmMerge:
         repo.find_similar_seeds = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "concept:new-light-concept": make_seed(
-                    "concept:new-light-concept",
+                "new-light-concept": make_seed(
+                    "new-light-concept",
                     "new light concept",
                     "concept",
                     fact_count=1,
                 ),
-                "concept:light-dependent-reactions": ambiguous,
+                "light-dependent-reactions": ambiguous,
             }.get(k)
         )
 
         qdrant_repo = make_qdrant_seed_repo_mock()
         qdrant_repo.find_similar = AsyncMock(
             return_value=[
-                make_qdrant_match("concept:light-dependent-reactions", 0.88),
+                make_qdrant_match("light-dependent-reactions", 0.88),
             ]
         )
 
         result = await deduplicate_seed(
-            "concept:new-light-concept",
+            "new-light-concept",
             "new light concept",
             "concept",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=qdrant_repo,
         )
-        assert result == "concept:new-light-concept"
+        assert result == "new-light-concept"
         repo.merge_seeds.assert_not_called()
 
 
@@ -1358,27 +1358,27 @@ class TestPrefixDisambiguation:
 class TestTextSearchRoute:
     def test_fact_contains_seed_name(self):
         routes = [
-            make_route("", "concept:light-dep:disambig", "light-dependent reactions", "embedding"),
-            make_route("", "concept:light-indep", "light-independent reactions", "embedding"),
+            make_route("", "light-dep:disambig", "light-dependent reactions", "embedding"),
+            make_route("", "light-indep", "light-independent reactions", "embedding"),
         ]
         result = _text_search_route(
             "The light-dependent reactions occur in the thylakoid membrane",
             routes,
         )
-        assert result == "concept:light-dep:disambig"
+        assert result == "light-dep:disambig"
 
     def test_fact_contains_neither(self):
         routes = [
-            make_route("", "concept:a", "light-dependent reactions", "embedding"),
-            make_route("", "concept:b", "light-independent reactions", "embedding"),
+            make_route("", "a", "light-dependent reactions", "embedding"),
+            make_route("", "b", "light-independent reactions", "embedding"),
         ]
         result = _text_search_route("Chloroplasts are organelles", routes)
         assert result is None
 
     def test_fact_contains_both(self):
         routes = [
-            make_route("", "concept:a", "light-dependent reactions", "embedding"),
-            make_route("", "concept:b", "light-independent reactions", "embedding"),
+            make_route("", "a", "light-dependent reactions", "embedding"),
+            make_route("", "b", "light-independent reactions", "embedding"),
         ]
         result = _text_search_route(
             "Both light-dependent reactions and light-independent reactions occur in chloroplasts",
@@ -1395,36 +1395,36 @@ class TestCascadingRouting:
         """A(ambiguous) → B(ambiguous) → C(active). Fact reaches C."""
         from kt_facts.processing.seed_routing import _resolve_through_pipes
 
-        seed_a = make_seed("concept:a", "A", "concept", status="ambiguous")
-        seed_b = make_seed("concept:b", "B", "concept", status="ambiguous")
-        seed_c = make_seed("concept:c", "C", "concept", status="active")
+        seed_a = make_seed("a", "A", "concept", status="ambiguous")
+        seed_b = make_seed("b", "B", "concept", status="ambiguous")
+        seed_c = make_seed("c", "C", "concept", status="active")
 
-        route_a_b = make_route("concept:a", "concept:b", "B", "text")
-        route_b_c = make_route("concept:b", "concept:c", "C", "text")
+        route_a_b = make_route("a", "b", "B", "text")
+        route_b_c = make_route("b", "c", "C", "text")
 
         repo = make_seed_repo_mock()
         # _route_through_pipe looks up routes for parent
         repo.get_routes_for_parent = AsyncMock(
             side_effect=lambda k: {
-                "concept:a": [route_a_b],
-                "concept:b": [route_b_c],
+                "a": [route_a_b],
+                "b": [route_b_c],
             }.get(k, [])
         )
         repo.get_seed_by_key = AsyncMock(
             side_effect=lambda k: {
-                "concept:a": seed_a,
-                "concept:b": seed_b,
-                "concept:c": seed_c,
+                "a": seed_a,
+                "b": seed_b,
+                "c": seed_c,
             }.get(k)
         )
 
         result = await _resolve_through_pipes(
-            "concept:a",
+            "a",
             seed_a,
             "some fact",
             repo,
         )
-        assert result == "concept:c"
+        assert result == "c"
 
     @pytest.mark.asyncio
     async def test_routing_stops_at_max_depth(self):
@@ -1435,10 +1435,10 @@ class TestCascadingRouting:
         seeds = {}
         routes = {}
         for i in range(7):
-            key = f"concept:s{i}"
+            key = f"s{i}"
             seeds[key] = make_seed(key, f"S{i}", "concept", status="ambiguous")
             if i < 6:
-                routes[key] = [make_route(key, f"concept:s{i + 1}", f"S{i + 1}", "text")]
+                routes[key] = [make_route(key, f"s{i + 1}", f"S{i + 1}", "text")]
             else:
                 routes[key] = []
 
@@ -1447,20 +1447,20 @@ class TestCascadingRouting:
         repo.get_seed_by_key = AsyncMock(side_effect=lambda k: seeds.get(k))
 
         result = await _resolve_through_pipes(
-            "concept:s0",
-            seeds["concept:s0"],
+            "s0",
+            seeds["s0"],
             "some fact",
             repo,
         )
         # Should stop at depth 5: concept:s5 (0-indexed from s0 through 5 iterations)
-        assert result == f"concept:s{MAX_ROUTE_DEPTH}"
+        assert result == f"s{MAX_ROUTE_DEPTH}"
 
     @pytest.mark.asyncio
     async def test_routing_stops_on_same_key(self):
         """_route_through_pipe returns same key → no infinite loop."""
         from kt_facts.processing.seed_routing import _resolve_through_pipes
 
-        seed_a = make_seed("concept:a", "A", "concept", status="ambiguous")
+        seed_a = make_seed("a", "A", "concept", status="ambiguous")
 
         repo = make_seed_repo_mock()
         # Only one route that points back to itself (edge case)
@@ -1468,13 +1468,13 @@ class TestCascadingRouting:
         repo.get_seed_by_key = AsyncMock(return_value=seed_a)
 
         result = await _resolve_through_pipes(
-            "concept:a",
+            "a",
             seed_a,
             "some fact",
             repo,
         )
         # No routes → _route_through_pipe returns None → stops at parent
-        assert result == "concept:a"
+        assert result == "a"
 
 
 class TestDiffersOnlyByDigitOrInitial:

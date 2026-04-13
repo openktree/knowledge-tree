@@ -46,4 +46,4 @@ class TestCanonicalizeEdgeIds:
     # -- undirected set completeness ------------------------------------
 
     def test_undirected_types_contains_expected(self) -> None:
-        assert UNDIRECTED_EDGE_TYPES == {"related", "cross_type"}
+        assert UNDIRECTED_EDGE_TYPES == {"related"}

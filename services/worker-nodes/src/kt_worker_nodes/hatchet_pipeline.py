@@ -438,7 +438,7 @@ class HatchetPipeline:
             # Sync seed facts first
             await self._sync_seed_facts_to_node(nid, write_session, ctx.graph_engine)
 
-            node_key = make_node_key(node.node_type, node.concept)
+            node_key = make_node_key(node.concept)
             dim_repo = WriteDimensionRepository(write_session)
             metadata = dict(wn.metadata_ or {})
             rebuild_in_progress = metadata.get("dim_rebuild_in_progress", False)
