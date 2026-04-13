@@ -291,3 +291,87 @@ async def test_stale_learned_preference_is_forgotten_on_total_failure():
     assert result.success is False
     # Learned preference should be cleared so we re-learn next time.
     assert await store.get("example.com") is None
+
+
+# ── Post-fetch hooks ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_post_fetch_hook_called_after_successful_fetch():
+    """A post-fetch hook receives the URI and result and can enrich it."""
+    hook_calls: list[tuple[str, FetchResult]] = []
+
+    async def hook(uri: str, result: FetchResult) -> FetchResult:
+        hook_calls.append((uri, result))
+        meta = dict(result.html_metadata or {})
+        meta["enriched"] = "yes"
+        result.html_metadata = meta
+        return result
+
+    p1 = FakeProvider("a", return_value=_success("a"))
+    reg = FetchProviderRegistry([p1], chain=["a"], post_fetch_hooks=[hook])
+    result = await reg.fetch("https://example.com")
+
+    assert result.success is True
+    assert len(hook_calls) == 1
+    assert hook_calls[0][0] == "https://example.com"
+    assert result.html_metadata is not None
+    assert result.html_metadata["enriched"] == "yes"
+
+
+@pytest.mark.asyncio
+async def test_post_fetch_hook_failure_does_not_break_result():
+    """If a hook raises, the result from the provider is still returned."""
+
+    async def bad_hook(uri: str, result: FetchResult) -> FetchResult:
+        raise RuntimeError("hook exploded")
+
+    p1 = FakeProvider("a", return_value=_success("a"))
+    reg = FetchProviderRegistry([p1], chain=["a"], post_fetch_hooks=[bad_hook])
+    result = await reg.fetch("https://example.com")
+
+    assert result.success is True
+    assert result.provider_id == "a"
+
+
+@pytest.mark.asyncio
+async def test_post_fetch_hooks_not_called_when_all_providers_fail():
+    """Hooks only run on success — they should not be called on total failure."""
+    hook_calls: list[str] = []
+
+    async def hook(uri: str, result: FetchResult) -> FetchResult:
+        hook_calls.append(uri)
+        return result
+
+    p1 = FakeProvider("a", return_value=_failure("a"))
+    reg = FetchProviderRegistry([p1], chain=["a"], post_fetch_hooks=[hook])
+    result = await reg.fetch("https://example.com")
+
+    assert result.success is False
+    assert hook_calls == []
+
+
+@pytest.mark.asyncio
+async def test_multiple_post_fetch_hooks_run_sequentially():
+    """Multiple hooks run in order, each seeing the previous hook's result."""
+    order: list[str] = []
+
+    async def hook_a(uri: str, result: FetchResult) -> FetchResult:
+        order.append("a")
+        meta = dict(result.html_metadata or {})
+        meta["hook_a"] = "done"
+        result.html_metadata = meta
+        return result
+
+    async def hook_b(uri: str, result: FetchResult) -> FetchResult:
+        order.append("b")
+        # hook_b can see hook_a's enrichment
+        assert result.html_metadata is not None
+        assert result.html_metadata.get("hook_a") == "done"
+        return result
+
+    p1 = FakeProvider("a", return_value=_success("a"))
+    reg = FetchProviderRegistry([p1], chain=["a"], post_fetch_hooks=[hook_a, hook_b])
+    result = await reg.fetch("https://example.com")
+
+    assert order == ["a", "b"]

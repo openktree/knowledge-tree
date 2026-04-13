@@ -381,6 +381,7 @@ _register(
         "fetch_flaresolverr_timeout": "flaresolverr_timeout",
         "fetch_host_overrides": "host_overrides",
         "fetch_provider_public_overrides": "provider_public_overrides",
+        "fetch_doi_enrichment": "doi_enrichment",
         "fetch_host_pref_ttl_seconds": "host_pref_ttl_seconds",
         "crossref_email": "crossref_email",
         "unpaywall_email": "unpaywall_email",
@@ -639,6 +640,12 @@ class Settings(BaseSettings):
     # Unpaywall *requires* an email parameter on every request.
     crossref_email: str = ""
     unpaywall_email: str = ""
+
+    # Post-fetch DOI enrichment via Crossref/Unpaywall.  When enabled, the
+    # fetch registry runs a post-fetch hook that queries Crossref for
+    # canonical metadata whenever a fetched page from a known publisher host
+    # contains a DOI.  Disable to skip the extra API roundtrip.
+    fetch_doi_enrichment: bool = True
 
     # TTL for the Redis-backed learned-host-preference cache.
     fetch_host_pref_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 days
