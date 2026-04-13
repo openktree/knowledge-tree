@@ -906,6 +906,105 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
         ctx.log(f"Built {len(proposed_nodes)} proposals from seeds")
 
+        # ── Auto-build: fan out node_pipeline_wf for all seeds ────
+        created_node_ids: list[str] = []
+        created_edge_ids: list[str] = []
+
+        if proposed_nodes:
+            from hatchet_sdk import TriggerWorkflowOptions
+
+            from kt_db.keys import make_seed_key as _make_seed_key
+            from kt_hatchet.models import BuildNodeInput
+            from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
+
+            node_meta = TriggerWorkflowOptions(
+                additional_metadata={
+                    "message_id": input.message_id,
+                    "conversation_id": input.conversation_id,
+                }
+            )
+
+            bulk_items = []
+            for pn in proposed_nodes:
+                sk = pn.seed_key or _make_seed_key(pn.node_type, pn.name)
+                bulk_items.append(
+                    node_pipeline_wf.create_bulk_run_item(
+                        input=BuildNodeInput(
+                            scope_id="ingest_build",
+                            concept=pn.name,
+                            node_type=pn.node_type,
+                            entity_subtype=pn.entity_subtype,
+                            seed_key=sk,
+                            existing_node_id=pn.existing_node_id,
+                            message_id=input.message_id,
+                            conversation_id=input.conversation_id,
+                        ),
+                        options=node_meta,
+                    )
+                )
+
+            ctx.log(f"Auto-build: dispatching {len(bulk_items)} node pipelines")
+            ctx.refresh_timeout("4h")
+
+            results = await node_pipeline_wf.aio_run_many(bulk_items)
+
+            # Collect results
+            for result in results:
+                create_data: dict = result.get("create_node", {}) if isinstance(result, dict) else {}
+                dim_data: dict = result.get("generate_dimensions", {}) if isinstance(result, dict) else {}
+                node_id = create_data.get("node_id")
+                if node_id:
+                    created_node_ids.append(node_id)
+                created_edge_ids.extend(dim_data.get("edge_ids", []))
+
+            ctx.log(f"Auto-build: created {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
+
+        # ── Flush usage to DB ─────────────────────────────────────
+        if created_node_ids:
+            try:
+                from kt_hatchet.usage_helpers import flush_usage_to_db
+
+                await flush_usage_to_db(
+                    worker_state.write_session_factory,
+                    input.conversation_id,
+                    input.message_id,
+                    "ingest_build",
+                )
+            except Exception:
+                logger.warning("Failed to flush usage", exc_info=True)
+
+        # ── Persist research report ───────────────────────────────
+        if created_node_ids:
+            try:
+                from kt_db.repositories.research_reports import ResearchReportRepository
+
+                async with _open_graph_session(worker_state, input.graph_id) as session:
+                    await ResearchReportRepository(session).create(
+                        message_id=msg_uuid,
+                        conversation_id=conv_uuid,
+                        nodes_created=len(created_node_ids),
+                        edges_created=len(created_edge_ids),
+                        waves_completed=1,
+                        explore_budget=0,
+                        explore_used=0,
+                        nav_budget=len(proposed_nodes),
+                        nav_used=len(created_node_ids),
+                        scope_summaries=[
+                            f"Built {len(created_node_ids)} nodes, "
+                            f"{len(created_edge_ids)} edges"
+                        ],
+                        total_prompt_tokens=0,
+                        total_completion_tokens=0,
+                        total_cost_usd=0.0,
+                        usage_by_model=None,
+                        usage_by_task=None,
+                        report_type="ingestion",
+                        workflow_run_id=ctx.workflow_run_id,
+                    )
+                    await session.commit()
+            except Exception:
+                logger.warning("Failed to persist research report", exc_info=True)
+
         output = IngestDecomposeOutput(
             fact_count=decomp_summary.total_facts,
             source_count=len(processed),
@@ -915,6 +1014,10 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             else "",
             key_topics=decomp_summary.key_topics[:20],
             fact_type_counts=decomp_summary.fact_type_counts,
+            nodes_created=len(created_node_ids),
+            edges_created=len(created_edge_ids),
+            created_node_ids=created_node_ids,
+            created_edge_ids=created_edge_ids,
         )
 
         async with _open_graph_session(worker_state, input.graph_id) as session:
@@ -922,8 +1025,10 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             await repo.update_message(
                 msg_uuid,
                 status="completed",
-                content=f"Built {len(proposed_nodes)} proposals from {decomp_summary.total_facts} facts.",
+                content=f"Built {len(created_node_ids)} nodes and {len(created_edge_ids)} edges from {decomp_summary.total_facts} facts.",
                 metadata_json=output.model_dump(),
+                created_nodes=created_node_ids,
+                created_edges=created_edge_ids,
             )
             await session.commit()
 
@@ -935,7 +1040,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             await session.commit()
         raise
 
-    ctx.log(f"Ingest decompose complete: {len(proposed_nodes)} proposals")
+    ctx.log(f"Ingest decompose+build complete: {len(created_node_ids)} nodes from {len(proposed_nodes)} seeds")
     return {}
 
 
