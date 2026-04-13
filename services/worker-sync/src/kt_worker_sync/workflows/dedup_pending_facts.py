@@ -166,6 +166,8 @@ async def dedup_pending_facts(
     if not input.fact_ids:
         return {"claimed": 0, "merged": 0, "ready": 0}
 
+    ctx.log(f"dedup({graph_slug}): starting with {len(input.fact_ids)} fact_ids")
+
     (
         write_session_factory,
         graph_session_factory,
@@ -173,6 +175,7 @@ async def dedup_pending_facts(
     ) = await _resolve_sessions_and_collection(state, graph_slug, input.graph_id)
 
     # ── 0. Recovery: reclaim abandoned in_progress rows ───────────────
+    ctx.log(f"dedup({graph_slug}): recovering abandoned in_progress rows")
     async with write_session_factory() as recovery_session:  # type: ignore[misc]
         await recovery_session.execute(
             text(
@@ -188,6 +191,7 @@ async def dedup_pending_facts(
         await recovery_session.commit()
 
     # ── 1. Snapshot: claim the requested fact_ids ─────────────────────
+    ctx.log(f"dedup({graph_slug}): claiming {len(input.fact_ids)} facts")
     async with write_session_factory() as snapshot_session:  # type: ignore[misc]
         claim_result = await snapshot_session.execute(
             text(
@@ -205,12 +209,10 @@ async def dedup_pending_facts(
         await snapshot_session.commit()
 
     if not claimed_rows:
-        logger.debug(
-            "dedup_pending_facts_wf(%s): nothing to claim for %d fact_ids",
-            graph_slug,
-            len(input.fact_ids),
-        )
+        ctx.log(f"dedup({graph_slug}): nothing to claim, done")
         return {"claimed": 0, "merged": 0, "ready": 0}
+
+    ctx.log(f"dedup({graph_slug}): claimed {len(claimed_rows)} facts")
 
     snapshot: list[tuple[uuid.UUID, str, str]] = [
         (row[0] if isinstance(row[0], uuid.UUID) else uuid.UUID(str(row[0])), row[1], row[2]) for row in claimed_rows
@@ -218,9 +220,11 @@ async def dedup_pending_facts(
     snapshot_ids_set: set[uuid.UUID] = {s[0] for s in snapshot}
 
     # ── 2. Embed + partition ──────────────────────────────────────────
+    ctx.log(f"dedup({graph_slug}): embedding {len(snapshot)} facts")
     embedding_service = state.embedding_service
     contents = [s[1] for s in snapshot]
     embeddings = await embedding_service.embed_batch(contents)
+    ctx.log(f"dedup({graph_slug}): embedding complete")
 
     n = len(snapshot)
     edges: list[tuple[int, int]] = []
@@ -236,6 +240,7 @@ async def dedup_pending_facts(
             if cosine(embeddings[i], embeddings[j]) >= thr:
                 edges.append((i, j))
     components = union_find_components(n, edges)
+    ctx.log(f"dedup({graph_slug}): pairwise done — {len(edges)} edges, {len(components)} components")
 
     # ── 3. Dedup per component ────────────────────────────────────────
     qdrant_client = state.qdrant_client
@@ -316,6 +321,8 @@ async def dedup_pending_facts(
 
         if canonical in snapshot_ids_set:
             surviving_canonicals.append(canonical)
+
+    ctx.log(f"dedup({graph_slug}): component merge done — {merged_count} merged, {len(surviving_canonicals)} surviving")
 
     # ── 4. Finalize: flip survivors to 'ready' ────────────────────────
     # Losers were deleted by merge_into_fast. Surviving canonicals that
