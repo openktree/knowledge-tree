@@ -105,7 +105,7 @@ class HatchetPipeline:
             embedding_service=embedding_service,
             session=None,
             session_factory=resolved_sf,
-            content_fetcher=self._state.content_fetcher,  # type: ignore[arg-type]
+            fetch_registry=self._state.fetch_registry,  # type: ignore[arg-type]
             emit_event=emit_event,
             write_session_factory=resolved_write_sf,
             qdrant_client=self._state.qdrant_client,

@@ -85,7 +85,7 @@ async def _build_agent_context(
         embedding_service=embedding_service,
         session=None,
         session_factory=resolved_sf,
-        content_fetcher=state.content_fetcher,
+        fetch_registry=state.fetch_registry,
         emit_event=emit_event,
         write_session_factory=resolved_write_sf,
         qdrant_client=state.qdrant_client,

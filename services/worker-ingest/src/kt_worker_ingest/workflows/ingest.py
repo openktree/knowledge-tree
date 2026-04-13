@@ -126,7 +126,7 @@ async def _build_agent_context(
         embedding_service=embedding_service,
         session=None,
         emit_event=emit_event,
-        content_fetcher=state.content_fetcher,
+        fetch_registry=state.fetch_registry,
         session_factory=resolved_sf,
         write_session_factory=resolved_write_sf,
         qdrant_client=state.qdrant_client,
