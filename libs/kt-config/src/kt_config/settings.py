@@ -630,6 +630,10 @@ class Settings(BaseSettings):
     # this over time as compute budget allows more frequent refreshes.
     public_cache_refresh_after_days: int = 365
 
+    # Public-cache contribute sweeper (retries failed contribute-back rows).
+    public_contribute_retry_min_age_minutes: int = 15
+    public_contribute_retry_batch_size: int = 200
+
     # Crossref + Unpaywall contact emails (used by the DOI fetcher).
     # Crossref's "polite pool" gives configured users better rate limits;
     # Unpaywall *requires* an email parameter on every request.
