@@ -124,10 +124,24 @@ def build_fetch_registry(
     else:
         pref_store = None
 
+    # Post-fetch DOI enrichment — queries Crossref/Unpaywall after a
+    # provider successfully fetches a page from a known publisher host.
+    from collections.abc import Awaitable, Callable
+
+    from kt_providers.fetch.types import FetchResult
+
+    post_fetch_hooks: list[Callable[[str, FetchResult], Awaitable[FetchResult]]] = []
+    if getattr(settings, "fetch_doi_enrichment", True):
+        from kt_providers.fetch.doi_enricher import DoiEnricher
+
+        enricher = DoiEnricher(timeout=settings.full_text_fetch_timeout)
+        post_fetch_hooks.append(enricher.enrich)
+
     return FetchProviderRegistry(
         providers=providers,
         chain=chain,
         host_overrides=host_overrides,
         host_pref_store=pref_store,
         url_validator=validate_fetch_url,
+        post_fetch_hooks=post_fetch_hooks,
     )

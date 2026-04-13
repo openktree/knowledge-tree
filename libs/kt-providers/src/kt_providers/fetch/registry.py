@@ -49,6 +49,7 @@ class FetchProviderRegistry:
         host_overrides: dict[str, str] | None = None,
         host_pref_store: HostPreferenceStore | None = None,
         url_validator: UrlValidator | None = None,
+        post_fetch_hooks: list[Callable[[str, FetchResult], Awaitable[FetchResult]]] | None = None,
     ) -> None:
         """
         Args:
@@ -57,12 +58,18 @@ class FetchProviderRegistry:
                 — this is the test default; ``build_fetch_registry`` always
                 injects the real SSRF guard for production code paths.
                 A validator should raise ``UnsafeUrlError`` to reject a URL.
+            post_fetch_hooks: Optional list of async callables invoked
+                sequentially after a provider succeeds.  Each hook receives
+                ``(uri, result)`` and returns a (possibly enriched)
+                ``FetchResult``.  Exceptions are caught and logged so a
+                failing hook never breaks the fetch.
         """
         self._providers: dict[str, ContentFetcherProvider] = {p.provider_id: p for p in providers}
         self._chain: list[str] = list(chain)
         self._host_overrides: dict[str, str] = {k.lower(): v for k, v in (host_overrides or {}).items()}
         self._host_pref_store = host_pref_store
         self._url_validator = url_validator
+        self._post_fetch_hooks: list[Callable[[str, FetchResult], Awaitable[FetchResult]]] = post_fetch_hooks or []
 
     @property
     def chain(self) -> list[str]:
@@ -192,6 +199,14 @@ class FetchProviderRegistry:
                         await self._host_pref_store.record(host, pid)
                     except Exception:
                         logger.debug("host-pref record failed for %s", host, exc_info=True)
+
+                # Run post-fetch hooks (e.g. DOI enrichment).
+                for hook in self._post_fetch_hooks:
+                    try:
+                        result = await hook(uri, result)
+                    except Exception:
+                        logger.debug("post-fetch hook failed for %s", uri, exc_info=True)
+
                 return result
 
         # Every provider failed.  Return a synthetic failure with the audit
@@ -260,12 +275,19 @@ class FetchProviderRegistry:
         return list(await asyncio.gather(*tasks))
 
     async def close(self) -> None:
-        """Close every registered provider."""
+        """Close every registered provider and closeable post-fetch hooks."""
         for provider in self._providers.values():
             try:
                 await provider.close()
             except Exception:
                 logger.debug("provider %s close failed", provider.provider_id, exc_info=True)
+        for hook in self._post_fetch_hooks:
+            close_fn = getattr(hook, "close", None) or getattr(getattr(hook, "__self__", None), "close", None)
+            if close_fn is not None:
+                try:
+                    await close_fn()
+                except Exception:
+                    logger.debug("post-fetch hook close failed", exc_info=True)
 
 
 def _ms(t0: float) -> int:
