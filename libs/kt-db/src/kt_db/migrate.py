@@ -59,7 +59,7 @@ async def migrate_all_graphs() -> None:
     # Check which schemas actually exist in the graph-db
     graph_db_schemas: set[str] = set()
     async with engine.connect() as conn:
-        rows = await conn.execute(select(text("schema_name")).select_from(text("information_schema.schemata")))
+        rows = await conn.execute(text("SELECT schema_name FROM information_schema.schemata"))
         graph_db_schemas = {row[0] for row in rows}
 
     await engine.dispose()
@@ -68,7 +68,7 @@ async def migrate_all_graphs() -> None:
     write_engine = create_async_engine(settings.write_database_url, echo=False)
     write_db_schemas: set[str] = set()
     async with write_engine.connect() as conn:
-        rows = await conn.execute(select(text("schema_name")).select_from(text("information_schema.schemata")))
+        rows = await conn.execute(text("SELECT schema_name FROM information_schema.schemata"))
         write_db_schemas = {row[0] for row in rows}
     await write_engine.dispose()
 
