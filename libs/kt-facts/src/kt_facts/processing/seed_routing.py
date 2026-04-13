@@ -39,7 +39,6 @@ _text_search_route = text_search_route
 
 async def route_seed(
     name: str,
-    node_type: str,
     fact_content: str,
     write_seed_repo: WriteSeedRepository,
     embedding_service: EmbeddingService | None = None,
@@ -57,7 +56,7 @@ async def route_seed(
 
     Returns the resolved seed key.
     """
-    key = make_seed_key(node_type, name)
+    key = make_seed_key(name)
 
     seed = await write_seed_repo.get_seed_by_key(key)
 
@@ -65,7 +64,6 @@ async def route_seed(
         # Not found — check phonetic matches for typo detection
         return await _phonetic_route(
             name,
-            node_type,
             key,
             fact_content,
             write_seed_repo,
@@ -288,7 +286,6 @@ async def _llm_select_child(
 
 async def _phonetic_route(
     name: str,
-    node_type: str,
     original_key: str,
     fact_content: str,
     write_seed_repo: WriteSeedRepository,
@@ -308,7 +305,7 @@ async def _phonetic_route(
     try:
         phonetic_matches = await write_seed_repo.find_by_phonetic(
             phonetic_code,
-            node_type,
+            "concept",
             limit=5,
         )
         for candidate in phonetic_matches:
@@ -319,7 +316,7 @@ async def _phonetic_route(
             try:
                 similar_seeds = await write_seed_repo.find_similar_seeds(
                     name,
-                    node_type,
+                    "concept",
                     limit=1,
                     threshold=settings.seed_phonetic_trigram_threshold,
                 )

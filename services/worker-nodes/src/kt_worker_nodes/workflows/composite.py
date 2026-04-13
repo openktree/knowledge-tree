@@ -181,7 +181,7 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
 
         # ── Save version ──────────────────────────────────────────
         if node_id and write_session:
-            node_key = make_node_key(input.node_type, input.concept)
+            node_key = make_node_key(input.concept)
             version_repo = WriteNodeVersionRepository(write_session)
             version_number = await version_repo.next_version_number(node_key)
             await version_repo.create_version(
@@ -309,7 +309,7 @@ async def regenerate_composite_task(input: RegenerateCompositeInput, ctx: Contex
 
         # Save version
         if write_session:
-            node_key = make_node_key(node.node_type, node.concept)
+            node_key = make_node_key(node.concept)
             version_repo = WriteNodeVersionRepository(write_session)
             version_number = await version_repo.next_version_number(node_key)
             await version_repo.create_version(

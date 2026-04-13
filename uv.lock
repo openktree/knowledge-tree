@@ -1946,10 +1946,6 @@ dependencies = [
     { name = "metaphone" },
     { name = "numpy" },
     { name = "scipy" },
-]
-
-[package.dev-dependencies]
-dev = [
     { name = "spacy" },
 ]
 
@@ -1962,10 +1958,11 @@ requires-dist = [
     { name = "metaphone", specifier = ">=0.6" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "scipy", specifier = ">=1.17.1" },
+    { name = "spacy", specifier = ">=3.8.14" },
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "spacy", specifier = ">=3.8.14" }]
+dev = []
 
 [[package]]
 name = "kt-graph"

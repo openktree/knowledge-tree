@@ -197,6 +197,7 @@ _register(
         "decomposition_thinking_level": "thinking_level",
         "file_decomposition_model": "file_model",
         "file_decomposition_thinking_level": "file_thinking_level",
+        "entity_extractor": "entity_extractor",
         "entity_extraction_model": "entity_extraction_model",
         "entity_extraction_thinking_level": "entity_extraction_thinking_level",
         "entity_extraction_batch_size": "entity_extraction_batch_size",
@@ -529,7 +530,8 @@ class Settings(BaseSettings):
     # Per-agent model overrides (empty string = use default_model)
     file_decomposition_model: str = ""
     decomposition_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
-    entity_extraction_model: str = ""  # empty = use decomposition_model
+    entity_extractor: str = "spacy"  # "spacy" or "llm"
+    entity_extraction_model: str = ""  # empty = use decomposition_model (llm extractor only)
     entity_extraction_thinking_level: str = ""
     entity_extraction_batch_size: int = 10
     entity_extraction_concurrency: int = 4
