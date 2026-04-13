@@ -569,15 +569,20 @@ async def strategy_hybrid(facts: list[TestFact], gateway: ModelGateway) -> Extra
 # ── DB fact loader ───────────────────────────────────────────────────
 
 
-async def load_db_facts(n: int = 50) -> list[TestFact]:
-    """Pull N random ready facts from write-db and wrap as TestFact (no ground truth)."""
-    from sqlalchemy import func, select
+async def load_db_facts(n: int = 50, schema: str = "public") -> list[TestFact]:
+    """Pull N random ready facts from write-db and wrap as TestFact (no ground truth).
+
+    Use schema="graph_scientific" to load from the scientific graph.
+    """
+    from sqlalchemy import func, select, text
 
     from kt_db.session import get_write_session_factory
     from kt_db.write_models import WriteFact
 
     factory = get_write_session_factory(application_name="spacy_experiment")
     async with factory() as session:
+        if schema != "public":
+            await session.execute(text(f"SET LOCAL search_path TO {schema},public"))
         stmt = select(WriteFact).where(WriteFact.dedup_status == "ready").order_by(func.random()).limit(n)
         result = await session.execute(stmt)
         rows = list(result.scalars().all())
@@ -625,12 +630,20 @@ def _badge(name: str, ntype: str, matched: bool | None = None) -> str:
     )
 
 
+@dataclass
+class FactSet:
+    """A named collection of facts + their extraction results."""
+
+    label: str  # e.g. "Default Graph" or "Scientific Graph"
+    facts: list[TestFact]
+    results: list[ExtractionResult]
+
+
 def generate_html_report(
     annotated_facts: list[TestFact],
     annotated_results: list[ExtractionResult],
     annotated_scores: list[ScoreCard],
-    db_facts: list[TestFact] | None,
-    db_results: list[ExtractionResult] | None,
+    db_fact_sets: list[FactSet],
     model_name: str,
     output_path: Path,
 ) -> None:
@@ -769,13 +782,13 @@ def generate_html_report(
 
     parts.append("</table></div>")
 
-    # ── Per-fact detail table (DB facts) ─────────────────────────────
-    if db_facts and db_results:
-        db_strategy_names = [r.strategy_name for r in db_results]
+    # ── Per-fact detail tables (DB fact sets) ──────────────────────────
+    for fs in db_fact_sets:
+        db_strategy_names = [r.strategy_name for r in fs.results]
 
-        # DB summary table
+        # Summary table
         parts.append('<div class="section">')
-        parts.append(f"<h2>DB Facts Summary ({len(db_facts)} facts)</h2>")
+        parts.append(f"<h2>{_esc(fs.label)} — Summary ({len(fs.facts)} facts)</h2>")
         parts.append("<table>")
         parts.append(
             "<tr><th>Strategy</th><th class='num'>Items</th><th class='num'>Entities</th>"
@@ -783,7 +796,7 @@ def generate_html_report(
             "<th class='num'>LLM Calls</th><th class='num'>Time</th>"
             "<th class='num'>Tokens</th><th class='num'>Cost</th></tr>"
         )
-        for r in db_results:
+        for r in fs.results:
             entity_count = sum(1 for t in r.entity_types.values() if t == "entity")
             concept_count = sum(1 for t in r.entity_types.values() if t == "concept")
             event_count = sum(1 for t in r.entity_types.values() if t in ("event", "location"))
@@ -802,9 +815,9 @@ def generate_html_report(
             )
         parts.append("</table></div>")
 
-        # Per-fact DB breakdown
+        # Per-fact breakdown
         parts.append('<div class="section">')
-        parts.append("<h2>Per-Fact Breakdown (DB Facts)</h2>")
+        parts.append(f"<h2>{_esc(fs.label)} — Per-Fact Breakdown</h2>")
         parts.append("<table>")
         header = "<tr><th>#</th><th>Fact</th>"
         for sname in db_strategy_names:
@@ -812,12 +825,12 @@ def generate_html_report(
         header += "</tr>"
         parts.append(header)
 
-        for fact in db_facts:
+        for fact in fs.facts:
             parts.append('<tr class="fact-row">')
             parts.append(f"<td class='num'>{fact.idx}</td>")
             parts.append(f"<td class='fact-text'>{_esc(fact.content)}</td>")
 
-            for result in db_results:
+            for result in fs.results:
                 cell_badges = ""
                 for ename, indices in sorted(result.entity_facts.items()):
                     if fact.idx not in indices:
@@ -926,29 +939,34 @@ async def main() -> None:
             f"${card.tokens.cost_usd:>8.5f}"
         )
 
-    # ── Part 2: Real DB facts (extraction count comparison) ──────────
-    _print_sep("PART 2: REAL DB FACTS (no ground truth, count comparison)")
+    # ── Part 2: DB facts from multiple graphs ──────────────────────────
+    db_fact_sets: list[FactSet] = []
 
-    db_facts: list[TestFact] | None = None
-    db_results_list: list[ExtractionResult] | None = None
+    graph_sources = [
+        ("Default Graph", "public", 50),
+        ("Scientific Graph", "graph_scientific", 100),
+    ]
 
-    try:
-        db_facts = await load_db_facts(50)
-        print(f"\nLoaded {len(db_facts)} facts from write-db")
-        if not db_facts:
-            print("  No facts found in write-db. Skipping Part 2.")
-        else:
-            # Show a few sample facts
+    for graph_label, schema, n in graph_sources:
+        _print_sep(f"PART 2: {graph_label.upper()} ({schema}, n={n})")
+
+        try:
+            facts = await load_db_facts(n, schema=schema)
+            print(f"\nLoaded {len(facts)} facts from {schema}")
+            if not facts:
+                print(f"  No facts found in {schema}. Skipping.")
+                continue
+
             print("\nSample facts:")
-            for f in db_facts[:3]:
+            for f in facts[:3]:
                 print(f"  {f.idx}. {f.content[:120]}...")
 
-            db_results_list = []
+            graph_results: list[ExtractionResult] = []
             for name, fn in strategies:
-                _print_sep(f"DB FACTS — {name}")
+                _print_sep(f"{graph_label} — {name}")
                 try:
-                    result = await fn(db_facts, gateway)
-                    db_results_list.append(result)
+                    result = await fn(facts, gateway)
+                    graph_results.append(result)
 
                     _print_all_extractions(result)
                     print(f"\n  Total extracted: {len(result.entity_facts)} items")
@@ -963,12 +981,12 @@ async def main() -> None:
 
                     traceback.print_exc()
 
-            # DB facts summary
-            _print_sep("DB FACTS — SUMMARY")
+            # Summary for this graph
+            _print_sep(f"{graph_label} — SUMMARY")
             header = f"{'Strategy':<28} {'Items':>6} {'Entities':>8} {'Concepts':>8} {'Events':>6} {'Calls':>5} {'Time':>6} {'Tokens':>10} {'Cost':>10}"
             print(header)
             print("-" * len(header))
-            for r in db_results_list:
+            for r in graph_results:
                 entity_count = sum(1 for t in r.entity_types.values() if t == "entity")
                 concept_count = sum(1 for t in r.entity_types.values() if t == "concept")
                 event_count = sum(1 for t in r.entity_types.values() if t in ("event", "location"))
@@ -979,9 +997,13 @@ async def main() -> None:
                     f"{r.tokens.total_tokens:>10,} "
                     f"${r.tokens.cost_usd:>8.5f}"
                 )
-    except Exception as e:
-        print(f"\n  Could not load DB facts: {e}")
-        print("  (Is write-db running? docker compose up -d postgres-write)")
+
+            db_fact_sets.append(FactSet(label=graph_label, facts=facts, results=graph_results))
+        except Exception as e:
+            print(f"\n  Could not load {graph_label} facts: {e}")
+            import traceback
+
+            traceback.print_exc()
 
     # ── Generate HTML report ─────────────────────────────────────────
     if annotated_results and scores:
@@ -990,8 +1012,7 @@ async def main() -> None:
             annotated_facts=TEST_FACTS,
             annotated_results=annotated_results,
             annotated_scores=scores,
-            db_facts=db_facts if db_facts else None,
-            db_results=db_results_list,
+            db_fact_sets=db_fact_sets,
             model_name=model,
             output_path=report_path,
         )
