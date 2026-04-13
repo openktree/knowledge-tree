@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import kt_db
@@ -40,8 +40,12 @@ async def migrate_all_graphs() -> None:
 
     1. Connect to the control-plane graph-db (public schema)
     2. Load all Graph rows
-    3. For each graph, run ``alembic upgrade head`` for both graph-db and
-       write-db, setting ALEMBIC_SCHEMA to target the correct schema.
+    3. For each graph whose schema exists in the target database, run
+       ``alembic upgrade heads`` for both graph-db and write-db, setting
+       ALEMBIC_SCHEMA to target the correct schema.
+
+    Graphs whose schemas live in a separate database (e.g. shared-db)
+    are skipped — those must be migrated via their own DATABASE_URL.
     """
     settings = get_settings()
 
@@ -52,23 +56,47 @@ async def migrate_all_graphs() -> None:
         result = await session.execute(select(Graph).where(Graph.status == "active"))
         graphs = list(result.scalars().all())
 
+    # Check which schemas actually exist in the graph-db
+    graph_db_schemas: set[str] = set()
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            select(text("schema_name")).select_from(text("information_schema.schemata"))
+        )
+        graph_db_schemas = {row[0] for row in rows}
+
     await engine.dispose()
+
+    # Same check for write-db
+    write_engine = create_async_engine(settings.write_database_url, echo=False)
+    write_db_schemas: set[str] = set()
+    async with write_engine.connect() as conn:
+        rows = await conn.execute(
+            select(text("schema_name")).select_from(text("information_schema.schemata"))
+        )
+        write_db_schemas = {row[0] for row in rows}
+    await write_engine.dispose()
 
     logger.info("Found %d active graph(s) to migrate", len(graphs))
 
     for graph in graphs:
         schema = graph.schema_name
-        logger.info("Migrating graph '%s' (schema=%s)", graph.slug, schema)
-
         env = {**os.environ}
         if schema != "public":
             env["ALEMBIC_SCHEMA"] = schema
 
-        # Run graph-db migrations
-        _run_alembic("alembic.ini", "alembic", env, graph.slug, "graph-db")
+        # Run graph-db migrations (only if schema exists)
+        if schema in graph_db_schemas:
+            logger.info("Migrating graph '%s' (schema=%s) graph-db", graph.slug, schema)
+            _run_alembic("alembic.ini", "alembic", env, graph.slug, "graph-db")
+        else:
+            logger.info("Skipping graph '%s' graph-db — schema '%s' not found (lives in another database?)", graph.slug, schema)
 
-        # Run write-db migrations
-        _run_alembic("alembic_write.ini", "alembic_write", env, graph.slug, "write-db")
+        # Run write-db migrations (only if schema exists)
+        if schema in write_db_schemas:
+            logger.info("Migrating graph '%s' (schema=%s) write-db", graph.slug, schema)
+            _run_alembic("alembic_write.ini", "alembic_write", env, graph.slug, "write-db")
+        else:
+            logger.info("Skipping graph '%s' write-db — schema '%s' not found (lives in another database?)", graph.slug, schema)
 
     logger.info("All graph migrations complete")
 
