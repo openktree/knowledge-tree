@@ -1000,8 +1000,17 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             try:
                 from kt_hatchet.client import run_workflow
 
+                # graph_slug is required by Hatchet concurrency expression
+                _dedup_slug = "default"
+                if input.graph_id and worker_state.graph_resolver:
+                    try:
+                        _gs = await worker_state.graph_resolver.resolve(uuid.UUID(input.graph_id))
+                        _dedup_slug = _gs.graph.slug
+                    except Exception:
+                        logger.debug("Could not resolve graph slug for dedup", exc_info=True)
                 dedup_input: dict[str, object] = {
                     "fact_ids": decomp_summary.inserted_fact_ids,
+                    "graph_slug": _dedup_slug,
                 }
                 if input.graph_id:
                     dedup_input["graph_id"] = input.graph_id
