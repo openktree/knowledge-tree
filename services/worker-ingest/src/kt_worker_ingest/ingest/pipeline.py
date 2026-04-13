@@ -950,7 +950,7 @@ async def _rebuild_from_existing(
 
     src: IngestSource = source  # type: ignore[assignment]
 
-    raw_source = await _lookup_raw_source(str(src.raw_source_id), session)
+    raw_source = await _lookup_raw_source(str(src.raw_source_id), write_session or session)
     if raw_source is None:
         return []
 
