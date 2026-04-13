@@ -14,8 +14,10 @@ Requires: OPENROUTER_API_KEY in .env, spacy + en_core_web_lg installed,
 from __future__ import annotations
 
 import asyncio
+import html as html_module
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -586,6 +588,256 @@ async def load_db_facts(n: int = 50) -> list[TestFact]:
     ]
 
 
+# ── HTML report generator ────────────────────────────────────────────
+
+_TYPE_COLORS = {
+    "entity": "#2563eb",
+    "concept": "#7c3aed",
+    "event": "#dc2626",
+    "location": "#059669",
+}
+
+
+def _esc(s: str) -> str:
+    return html_module.escape(s)
+
+
+def _badge(name: str, ntype: str, matched: bool | None = None) -> str:
+    """Render a colored badge for an extracted entity.
+
+    matched=True  -> green border (correct match)
+    matched=False -> red border (false positive)
+    matched=None  -> no border (no ground truth)
+    """
+    bg = _TYPE_COLORS.get(ntype, "#6b7280")
+    border = ""
+    if matched is True:
+        border = "border:2px solid #22c55e;"
+    elif matched is False:
+        border = "border:2px solid #ef4444;"
+    return (
+        f'<span style="display:inline-block;padding:2px 8px;margin:2px;'
+        f"border-radius:12px;font-size:0.8em;color:#fff;"
+        f'background:{bg};{border}">'
+        f"{_esc(name)}"
+        f'<span style="opacity:0.7;font-size:0.8em;margin-left:4px">{ntype}</span>'
+        f"</span>"
+    )
+
+
+def generate_html_report(
+    annotated_facts: list[TestFact],
+    annotated_results: list[ExtractionResult],
+    annotated_scores: list[ScoreCard],
+    db_facts: list[TestFact] | None,
+    db_results: list[ExtractionResult] | None,
+    model_name: str,
+    output_path: Path,
+) -> None:
+    """Generate a self-contained HTML report with per-fact strategy comparison."""
+
+    strategy_names = [r.strategy_name for r in annotated_results]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    parts: list[str] = []
+    parts.append(f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>spaCy vs LLM Entity Extraction Report</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 1400px; margin: 0 auto; padding: 20px; background: #f8fafc; color: #1e293b; }}
+  h1 {{ font-size: 1.6em; margin-bottom: 4px; }}
+  h2 {{ font-size: 1.3em; margin: 30px 0 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }}
+  h3 {{ font-size: 1.1em; margin: 20px 0 8px; }}
+  .meta {{ color: #64748b; font-size: 0.9em; margin-bottom: 20px; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}
+  th, td {{ border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; font-size: 0.9em; }}
+  th {{ background: #f1f5f9; font-weight: 600; }}
+  tr:hover {{ background: #f8fafc; }}
+  .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+  .good {{ color: #16a34a; font-weight: 600; }}
+  .bad {{ color: #dc2626; font-weight: 600; }}
+  .neutral {{ color: #64748b; }}
+  .fact-row {{ background: #fff; }}
+  .fact-text {{ font-size: 0.85em; color: #334155; max-width: 500px; }}
+  .badges {{ min-width: 180px; }}
+  .legend {{ display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0; }}
+  .legend-item {{ display: flex; align-items: center; gap: 4px; font-size: 0.85em; }}
+  .legend-dot {{ width: 12px; height: 12px; border-radius: 50%; display: inline-block; }}
+  .section {{ background: #fff; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+  .highlight {{ background: #fefce8; }}
+</style>
+</head>
+<body>
+<h1>spaCy vs LLM Entity Extraction</h1>
+<div class="meta">Generated {now} | Model: {_esc(model_name)} | {len(annotated_facts)} annotated facts</div>
+""")
+
+    # Legend
+    parts.append('<div class="legend">')
+    for ntype, color in _TYPE_COLORS.items():
+        parts.append(
+            f'<div class="legend-item"><span class="legend-dot" style="background:{color}"></span> {ntype}</div>'
+        )
+    parts.append(
+        '<div class="legend-item"><span class="legend-dot" style="background:#fff;border:2px solid #22c55e"></span> correct match</div>'
+    )
+    parts.append(
+        '<div class="legend-item"><span class="legend-dot" style="background:#fff;border:2px solid #ef4444"></span> false positive</div>'
+    )
+    parts.append("</div>")
+
+    # ── Summary table ────────────────────────────────────────────────
+    parts.append('<div class="section">')
+    parts.append("<h2>Summary</h2>")
+    parts.append("<table>")
+    parts.append(
+        "<tr><th>Strategy</th><th class='num'>Precision</th><th class='num'>Recall</th>"
+        "<th class='num'>F1</th><th class='num'>TP</th><th class='num'>FP</th>"
+        "<th class='num'>FN</th><th class='num'>Items</th><th class='num'>LLM Calls</th>"
+        "<th class='num'>Time</th><th class='num'>Prompt Tok</th>"
+        "<th class='num'>Compl Tok</th><th class='num'>Cost</th></tr>"
+    )
+    for card in annotated_scores:
+        f1_cls = "good" if card.f1 >= 0.95 else ("neutral" if card.f1 >= 0.80 else "bad")
+        fp_cls = "good" if card.false_positives == 0 else "bad"
+        cost_cls = "good" if card.tokens.cost_usd == 0 else "neutral"
+        parts.append(
+            f"<tr>"
+            f"<td>{_esc(card.strategy_name)}</td>"
+            f"<td class='num'>{card.precision:.1%}</td>"
+            f"<td class='num'>{card.recall:.1%}</td>"
+            f"<td class='num {f1_cls}'>{card.f1:.1%}</td>"
+            f"<td class='num good'>{card.true_positives}</td>"
+            f"<td class='num {fp_cls}'>{card.false_positives}</td>"
+            f"<td class='num'>{card.false_negatives}</td>"
+            f"<td class='num'>{card.total_entities}</td>"
+            f"<td class='num'>{card.llm_calls}</td>"
+            f"<td class='num'>{card.elapsed_seconds:.1f}s</td>"
+            f"<td class='num'>{card.tokens.prompt_tokens:,}</td>"
+            f"<td class='num'>{card.tokens.completion_tokens:,}</td>"
+            f"<td class='num {cost_cls}'>${card.tokens.cost_usd:.5f}</td>"
+            f"</tr>"
+        )
+    parts.append("</table></div>")
+
+    # ── Per-fact detail table (annotated) ────────────────────────────
+    parts.append('<div class="section">')
+    parts.append("<h2>Per-Fact Breakdown (Annotated Facts)</h2>")
+    parts.append("<table>")
+    header = "<tr><th>#</th><th>Fact</th><th>Expected</th>"
+    for sname in strategy_names:
+        header += f"<th>{_esc(sname)}</th>"
+    header += "</tr>"
+    parts.append(header)
+
+    for fact in annotated_facts:
+        parts.append('<tr class="fact-row">')
+        parts.append(f"<td class='num'>{fact.idx}</td>")
+        parts.append(f"<td class='fact-text'>{_esc(fact.content)}</td>")
+
+        # Expected column
+        exp_badges = ""
+        for ename, etype in zip(fact.expected_entities, fact.expected_types):
+            exp_badges += _badge(ename, etype, matched=True)
+        if not exp_badges:
+            exp_badges = '<span class="neutral">-</span>'
+        parts.append(f"<td class='badges'>{exp_badges}</td>")
+
+        # Each strategy column
+        for result in annotated_results:
+            cell_badges = ""
+            for ename, indices in sorted(result.entity_facts.items()):
+                if fact.idx not in indices:
+                    continue
+                ntype = result.entity_types.get(ename, "concept")
+                # Determine if this is a correct match for entity-type nodes
+                if ntype == "entity":
+                    matched = _is_entity_in_fact(ename, fact.content)
+                else:
+                    matched = None  # no ground truth scoring for non-entities
+                cell_badges += _badge(ename, ntype, matched)
+            if not cell_badges:
+                cell_badges = '<span class="neutral">-</span>'
+            parts.append(f"<td class='badges'>{cell_badges}</td>")
+
+        parts.append("</tr>")
+
+    parts.append("</table></div>")
+
+    # ── Per-fact detail table (DB facts) ─────────────────────────────
+    if db_facts and db_results:
+        db_strategy_names = [r.strategy_name for r in db_results]
+
+        # DB summary table
+        parts.append('<div class="section">')
+        parts.append(f"<h2>DB Facts Summary ({len(db_facts)} facts)</h2>")
+        parts.append("<table>")
+        parts.append(
+            "<tr><th>Strategy</th><th class='num'>Items</th><th class='num'>Entities</th>"
+            "<th class='num'>Concepts</th><th class='num'>Events/Loc</th>"
+            "<th class='num'>LLM Calls</th><th class='num'>Time</th>"
+            "<th class='num'>Tokens</th><th class='num'>Cost</th></tr>"
+        )
+        for r in db_results:
+            entity_count = sum(1 for t in r.entity_types.values() if t == "entity")
+            concept_count = sum(1 for t in r.entity_types.values() if t == "concept")
+            event_count = sum(1 for t in r.entity_types.values() if t in ("event", "location"))
+            parts.append(
+                f"<tr>"
+                f"<td>{_esc(r.strategy_name)}</td>"
+                f"<td class='num'>{len(r.entity_facts)}</td>"
+                f"<td class='num'>{entity_count}</td>"
+                f"<td class='num'>{concept_count}</td>"
+                f"<td class='num'>{event_count}</td>"
+                f"<td class='num'>{r.llm_calls}</td>"
+                f"<td class='num'>{r.elapsed_seconds:.1f}s</td>"
+                f"<td class='num'>{r.tokens.total_tokens:,}</td>"
+                f"<td class='num'>${r.tokens.cost_usd:.5f}</td>"
+                f"</tr>"
+            )
+        parts.append("</table></div>")
+
+        # Per-fact DB breakdown
+        parts.append('<div class="section">')
+        parts.append("<h2>Per-Fact Breakdown (DB Facts)</h2>")
+        parts.append("<table>")
+        header = "<tr><th>#</th><th>Fact</th>"
+        for sname in db_strategy_names:
+            header += f"<th>{_esc(sname)}</th>"
+        header += "</tr>"
+        parts.append(header)
+
+        for fact in db_facts:
+            parts.append('<tr class="fact-row">')
+            parts.append(f"<td class='num'>{fact.idx}</td>")
+            parts.append(f"<td class='fact-text'>{_esc(fact.content)}</td>")
+
+            for result in db_results:
+                cell_badges = ""
+                for ename, indices in sorted(result.entity_facts.items()):
+                    if fact.idx not in indices:
+                        continue
+                    ntype = result.entity_types.get(ename, "concept")
+                    cell_badges += _badge(ename, ntype)
+                if not cell_badges:
+                    cell_badges = '<span class="neutral">-</span>'
+                parts.append(f"<td class='badges'>{cell_badges}</td>")
+
+            parts.append("</tr>")
+
+        parts.append("</table></div>")
+
+    parts.append("</body></html>")
+
+    output_path.write_text("\n".join(parts), encoding="utf-8")
+    print(f"\nHTML report written to: {output_path}")
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 
@@ -628,6 +880,9 @@ async def main() -> None:
         ("3. spaCy + LLM hybrid", strategy_hybrid),
     ]
 
+    # Collect results for HTML report
+    annotated_results: list[ExtractionResult] = []
+
     # ── Part 1: Annotated test facts (with scoring) ──────────────────
     _print_sep("PART 1: ANNOTATED FACTS (precision/recall scoring)")
 
@@ -636,6 +891,7 @@ async def main() -> None:
         _print_sep(name)
         try:
             result = await fn(TEST_FACTS, gateway)
+            annotated_results.append(result)
             card = _score_result(result)
             scores.append(card)
 
@@ -673,57 +929,72 @@ async def main() -> None:
     # ── Part 2: Real DB facts (extraction count comparison) ──────────
     _print_sep("PART 2: REAL DB FACTS (no ground truth, count comparison)")
 
+    db_facts: list[TestFact] | None = None
+    db_results_list: list[ExtractionResult] | None = None
+
     try:
         db_facts = await load_db_facts(50)
         print(f"\nLoaded {len(db_facts)} facts from write-db")
         if not db_facts:
             print("  No facts found in write-db. Skipping Part 2.")
-            return
+        else:
+            # Show a few sample facts
+            print("\nSample facts:")
+            for f in db_facts[:3]:
+                print(f"  {f.idx}. {f.content[:120]}...")
 
-        # Show a few sample facts
-        print("\nSample facts:")
-        for f in db_facts[:3]:
-            print(f"  {f.idx}. {f.content[:120]}...")
+            db_results_list = []
+            for name, fn in strategies:
+                _print_sep(f"DB FACTS — {name}")
+                try:
+                    result = await fn(db_facts, gateway)
+                    db_results_list.append(result)
 
-        db_results: list[ExtractionResult] = []
-        for name, fn in strategies:
-            _print_sep(f"DB FACTS — {name}")
-            try:
-                result = await fn(db_facts, gateway)
-                db_results.append(result)
+                    _print_all_extractions(result)
+                    print(f"\n  Total extracted: {len(result.entity_facts)} items")
+                    print(f"  LLM calls: {result.llm_calls}  Time: {result.elapsed_seconds:.1f}s")
+                    print(
+                        f"  Tokens: prompt={result.tokens.prompt_tokens:,} completion={result.tokens.completion_tokens:,} total={result.tokens.total_tokens:,}"
+                    )
+                    print(f"  Cost: ${result.tokens.cost_usd:.6f}")
+                except Exception as e:
+                    print(f"  ERROR: {e}")
+                    import traceback
 
-                _print_all_extractions(result)
-                print(f"\n  Total extracted: {len(result.entity_facts)} items")
-                print(f"  LLM calls: {result.llm_calls}  Time: {result.elapsed_seconds:.1f}s")
+                    traceback.print_exc()
+
+            # DB facts summary
+            _print_sep("DB FACTS — SUMMARY")
+            header = f"{'Strategy':<28} {'Items':>6} {'Entities':>8} {'Concepts':>8} {'Events':>6} {'Calls':>5} {'Time':>6} {'Tokens':>10} {'Cost':>10}"
+            print(header)
+            print("-" * len(header))
+            for r in db_results_list:
+                entity_count = sum(1 for t in r.entity_types.values() if t == "entity")
+                concept_count = sum(1 for t in r.entity_types.values() if t == "concept")
+                event_count = sum(1 for t in r.entity_types.values() if t in ("event", "location"))
                 print(
-                    f"  Tokens: prompt={result.tokens.prompt_tokens:,} completion={result.tokens.completion_tokens:,} total={result.tokens.total_tokens:,}"
+                    f"{r.strategy_name:<28} "
+                    f"{len(r.entity_facts):>6} {entity_count:>8} {concept_count:>8} {event_count:>6} "
+                    f"{r.llm_calls:>5} {r.elapsed_seconds:>5.1f}s "
+                    f"{r.tokens.total_tokens:>10,} "
+                    f"${r.tokens.cost_usd:>8.5f}"
                 )
-                print(f"  Cost: ${result.tokens.cost_usd:.6f}")
-            except Exception as e:
-                print(f"  ERROR: {e}")
-                import traceback
-
-                traceback.print_exc()
-
-        # DB facts summary
-        _print_sep("DB FACTS — SUMMARY")
-        header = f"{'Strategy':<28} {'Items':>6} {'Entities':>8} {'Concepts':>8} {'Events':>6} {'Calls':>5} {'Time':>6} {'Tokens':>10} {'Cost':>10}"
-        print(header)
-        print("-" * len(header))
-        for r in db_results:
-            entity_count = sum(1 for t in r.entity_types.values() if t == "entity")
-            concept_count = sum(1 for t in r.entity_types.values() if t == "concept")
-            event_count = sum(1 for t in r.entity_types.values() if t in ("event", "location"))
-            print(
-                f"{r.strategy_name:<28} "
-                f"{len(r.entity_facts):>6} {entity_count:>8} {concept_count:>8} {event_count:>6} "
-                f"{r.llm_calls:>5} {r.elapsed_seconds:>5.1f}s "
-                f"{r.tokens.total_tokens:>10,} "
-                f"${r.tokens.cost_usd:>8.5f}"
-            )
     except Exception as e:
         print(f"\n  Could not load DB facts: {e}")
         print("  (Is write-db running? docker compose up -d postgres-write)")
+
+    # ── Generate HTML report ─────────────────────────────────────────
+    if annotated_results and scores:
+        report_path = Path(__file__).resolve().parent / "spacy_vs_llm_report.html"
+        generate_html_report(
+            annotated_facts=TEST_FACTS,
+            annotated_results=annotated_results,
+            annotated_scores=scores,
+            db_facts=db_facts if db_facts else None,
+            db_results=db_results_list,
+            model_name=model,
+            output_path=report_path,
+        )
 
 
 if __name__ == "__main__":

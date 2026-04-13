@@ -51,3 +51,4 @@ mcp.json
 # Kubernetes
 kubeconfig-*
 infra/*/kubeconfig-*
+experiments/*_report.html
