@@ -59,7 +59,7 @@ class TestStoreSeedsFromExtractedNodes:
         )
         assert count == 1
         assert len(seed_keys) == 1
-        expected_key = make_seed_key("entity", "Albert Einstein")
+        expected_key = make_seed_key("Albert Einstein")
         # Batch upsert should be called with seed data
         repo.upsert_seeds_batch.assert_called_once()
         batch_arg = repo.upsert_seeds_batch.call_args[0][0]
@@ -219,7 +219,7 @@ class TestStoreSeedsFromExtractedNodes:
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        expected_key = make_seed_key("concept", "quantum mechanics")
+        expected_key = make_seed_key("quantum mechanics")
         # Batch upsert should contain the seed data
         repo.upsert_seeds_batch.assert_called_once()
         batch_arg = repo.upsert_seeds_batch.call_args[0][0]

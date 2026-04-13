@@ -10,8 +10,8 @@ def test_import_sync_engine():
 def test_import_keys():
     from kt_db.keys import make_edge_key, make_node_key
 
-    assert make_node_key("concept", "test") == "concept:test"
-    assert make_edge_key("related", "concept:a", "concept:b") == "related:concept:a--concept:b"
+    assert make_node_key("test") == "test"
+    assert make_edge_key("related", "a", "b") == "related:a--b"
 
 
 def test_import_write_models():

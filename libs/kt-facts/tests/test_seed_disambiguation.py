@@ -52,28 +52,28 @@ def _make_write_fact_repo(facts):
 @pytest.mark.asyncio
 class TestCheckDisambiguation:
     async def test_below_threshold_returns_none(self):
-        seed = _make_seed("entity:mars", "Mars", "entity", fact_count=3)
+        seed = _make_seed("mars", "Mars", "entity", fact_count=3)
         repo = _make_repo(seed=seed)
-        result = await check_disambiguation("entity:mars", repo)
+        result = await check_disambiguation("mars", repo)
         assert result is None
 
     async def test_inactive_seed_returns_none(self):
-        seed = _make_seed("entity:mars", "Mars", "entity", status="merged", fact_count=15)
+        seed = _make_seed("mars", "Mars", "entity", status="merged", fact_count=15)
         repo = _make_repo(seed=seed)
-        result = await check_disambiguation("entity:mars", repo)
+        result = await check_disambiguation("mars", repo)
         assert result is None
 
     async def test_missing_seed_returns_none(self):
         repo = _make_repo(seed=None)
-        result = await check_disambiguation("entity:nonexistent", repo)
+        result = await check_disambiguation("nonexistent", repo)
         assert result is None
 
     async def test_insufficient_facts_returns_none(self):
-        seed = _make_seed("entity:mars", "Mars", "entity", fact_count=15)
+        seed = _make_seed("mars", "Mars", "entity", fact_count=15)
         repo = _make_repo(seed=seed, fact_ids=[uuid.uuid4() for _ in range(3)])
         write_fact_repo = MagicMock()
         write_fact_repo.get_by_ids = AsyncMock(return_value=[])
-        result = await check_disambiguation("entity:mars", repo, write_fact_repo=write_fact_repo)
+        result = await check_disambiguation("mars", repo, write_fact_repo=write_fact_repo)
         assert result is None
 
 
@@ -177,7 +177,7 @@ class TestExecuteSplit:
         ]
 
         result = await _execute_split(
-            "entity:mars",
+            "mars",
             "Mars",
             "entity",
             clusters,
@@ -189,6 +189,6 @@ class TestExecuteSplit:
         assert all("key" in s and "name" in s and "node_type" in s for s in result)
         repo.split_seed.assert_called_once()
         call_kwargs = repo.split_seed.call_args
-        assert call_kwargs[1]["original_key"] == "entity:mars"
+        assert call_kwargs[1]["original_key"] == "mars"
         assert call_kwargs[1]["reason"] == "test reason"
         assert len(call_kwargs[1]["new_seeds"]) == 2

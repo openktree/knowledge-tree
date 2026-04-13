@@ -37,7 +37,7 @@ def test_fact_types_complete():
 def test_edge_types_complete():
     from kt_config.types import EdgeType
 
-    expected = {"related", "cross_type", "draws_from"}
+    expected = {"related", "draws_from"}
     assert set(et.value for et in EdgeType) == expected
 
 

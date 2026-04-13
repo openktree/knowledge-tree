@@ -25,7 +25,7 @@ def _make_ctx(write_session=None):
 
 def _make_node(concept="test concept", node_type="concept", node_id=None):
     node = MagicMock()
-    node.id = node_id or key_to_uuid(make_seed_key(node_type, concept))
+    node.id = node_id or key_to_uuid(make_seed_key(concept))
     node.concept = concept
     node.node_type = node_type
     return node
@@ -85,8 +85,8 @@ class TestResolveFromCandidates:
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="quantum mechanics", node_type="concept")
 
-        source_key = make_seed_key("concept", "quantum mechanics")
-        target_key = make_seed_key("entity", "Niels Bohr")
+        source_key = make_seed_key("quantum mechanics")
+        target_key = make_seed_key("Niels Bohr")
         fids = [uuid.uuid4() for _ in range(3)]
 
         target_seed = _make_seed(
@@ -114,9 +114,9 @@ class TestResolveFromCandidates:
 
         assert result["edges_created"] == 1
         assert len(result["edge_ids"]) == 1
-        # Cross-type since entity != concept
+        # All undirected edges use "related" now
         call_args = ctx.graph_engine.create_edge.call_args
-        assert call_args[0][2] == "cross_type"
+        assert call_args[0][2] == "related"
 
     async def test_unpromoted_seed_filtered_out(self):
         from kt_worker_nodes.pipelines.edges.resolver import EdgeResolver
@@ -125,8 +125,8 @@ class TestResolveFromCandidates:
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="physics", node_type="concept")
 
-        source_key = make_seed_key("concept", "physics")
-        other_key = make_seed_key("concept", "thermodynamics")
+        source_key = make_seed_key("physics")
+        other_key = make_seed_key("thermodynamics")
 
         other_seed = _make_seed(other_key, "thermodynamics", "concept", status="active")  # not promoted
 
@@ -148,8 +148,8 @@ class TestResolveFromCandidates:
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="biology", node_type="concept")
 
-        source_key = make_seed_key("concept", "biology")
-        target_key = make_seed_key("concept", "genetics")
+        source_key = make_seed_key("biology")
+        target_key = make_seed_key("genetics")
         fids = [uuid.uuid4() for _ in range(3)]
 
         target_seed = _make_seed(
@@ -187,8 +187,8 @@ class TestResolveFromCandidates:
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="math", node_type="concept")
 
-        source_key = make_seed_key("concept", "math")
-        target_key = make_seed_key("concept", "algebra")
+        source_key = make_seed_key("math")
+        target_key = make_seed_key("algebra")
         fids = [uuid.uuid4() for _ in range(3)]
 
         target_seed = _make_seed(
@@ -225,8 +225,8 @@ class TestResolveFromCandidates:
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="chemistry", node_type="concept")
 
-        source_key = make_seed_key("concept", "chemistry")
-        other_key = make_seed_key("concept", "organic chemistry")
+        source_key = make_seed_key("chemistry")
+        other_key = make_seed_key("organic chemistry")
 
         row = _make_candidate_row(source_key, other_key, uuid.uuid4())
 
@@ -247,8 +247,8 @@ class TestResolveFromCandidates:
         ctx = _make_ctx(write_session=write_session)
         node = _make_node(concept="evolution", node_type="concept")
 
-        source_key = make_seed_key("concept", "evolution")
-        target_key = make_seed_key("concept", "natural selection")
+        source_key = make_seed_key("evolution")
+        target_key = make_seed_key("natural selection")
         fact_ids = [uuid.uuid4() for _ in range(5)]
 
         target_seed = _make_seed(

@@ -95,7 +95,7 @@ async def _link_fact_to_source(session, *, fact_id, content_hash, uri="https://e
 
 
 async def _insert_node(session, *, concept, node_type, fact_ids: list[uuid.UUID]):
-    key = make_node_key(node_type, concept)
+    key = make_node_key(concept)
     node_uuid = key_to_uuid(key)
     stmt = pg_insert(WriteNode).values(
         key=key,
@@ -279,7 +279,7 @@ async def test_match_or_create_node_creates_when_key_missing(write_db_session):
         local_fact_id_by_remote={},
     )
     assert outcome.created is True
-    expected_uuid = key_to_uuid(make_node_key("concept", "boson"))
+    expected_uuid = key_to_uuid(make_node_key("boson"))
     # Local uuid must be derived deterministically — NOT the remote uuid.
     assert outcome.local_node_id == expected_uuid
     assert outcome.local_node_id != cached.node_uuid

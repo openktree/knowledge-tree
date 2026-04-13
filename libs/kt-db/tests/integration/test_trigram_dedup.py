@@ -33,7 +33,7 @@ def _mock_qdrant_repo():
 
 async def _insert_seed(repo: WriteSeedRepository, name: str, node_type: str = "entity") -> str:
     """Insert a seed and return its key."""
-    key = make_seed_key(node_type, name)
+    key = make_seed_key(name)
     await repo.upsert_seed(key, name, node_type)
     return key
 
@@ -129,7 +129,7 @@ class TestFindSimilarSeedsIntegration:
 
         results = await repo.find_similar_seeds("The Miami Herald", "entity", threshold=0.50)
         keys = [s.key for s in results]
-        assert make_seed_key("entity", "Miami Herald") in keys
+        assert make_seed_key("Miami Herald") in keys
 
     async def test_abbreviation_found(self, write_db_session):
         repo = WriteSeedRepository(write_db_session)
@@ -138,7 +138,7 @@ class TestFindSimilarSeedsIntegration:
 
         results = await repo.find_similar_seeds("A. Einstein", "entity", threshold=0.30)
         keys = [s.key for s in results]
-        assert make_seed_key("entity", "Albert Einstein") in keys
+        assert make_seed_key("Albert Einstein") in keys
 
     async def test_different_jurisdiction_not_found_at_high_threshold(self, write_db_session):
         repo = WriteSeedRepository(write_db_session)
@@ -151,7 +151,7 @@ class TestFindSimilarSeedsIntegration:
             threshold=0.75,
         )
         keys = [s.key for s in results]
-        assert make_seed_key("entity", "U.S. Attorney for Southern District of New York") not in keys
+        assert make_seed_key("U.S. Attorney for Southern District of New York") not in keys
 
     async def test_different_wars_not_found(self, write_db_session):
         repo = WriteSeedRepository(write_db_session)
@@ -162,7 +162,7 @@ class TestFindSimilarSeedsIntegration:
         # caught by our containment guard, not by threshold alone
         results = await repo.find_similar_seeds("World War 2", "event", threshold=0.75)
         keys = [s.key for s in results]
-        assert make_seed_key("event", "World War 1") not in keys
+        assert make_seed_key("World War 1") not in keys
 
     async def test_different_publications_not_found(self, write_db_session):
         repo = WriteSeedRepository(write_db_session)
@@ -171,7 +171,7 @@ class TestFindSimilarSeedsIntegration:
 
         results = await repo.find_similar_seeds("New York Post", "entity", threshold=0.75)
         keys = [s.key for s in results]
-        assert make_seed_key("entity", "New York Times") not in keys
+        assert make_seed_key("New York Times") not in keys
 
     async def test_type_filter_works(self, write_db_session):
         """Seeds of different node_type should not match."""
@@ -181,7 +181,7 @@ class TestFindSimilarSeedsIntegration:
 
         results = await repo.find_similar_seeds("Quantum Mechanics", "entity", threshold=0.30)
         keys = [s.key for s in results]
-        assert make_seed_key("concept", "Quantum Mechanics") not in keys
+        assert make_seed_key("Quantum Mechanics") not in keys
 
 
 @pytest.mark.asyncio
