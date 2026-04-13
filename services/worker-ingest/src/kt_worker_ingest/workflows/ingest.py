@@ -59,6 +59,17 @@ async def _open_sessions(state: WorkerState, graph_id: str | None = None) -> Asy
         await write_session.close()
 
 
+@asynccontextmanager
+async def _open_graph_session(state: WorkerState, graph_id: str | None = None) -> AsyncGenerator[Any, None]:
+    """Open a graph-db session scoped to the correct graph schema."""
+    graph_sf, _ = await state.resolve_sessions(graph_id)
+    session = graph_sf()
+    try:
+        yield session
+    finally:
+        await session.close()
+
+
 async def _build_agent_context(
     state: WorkerState,
     *,
@@ -235,7 +246,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
     conv_uuid = uuid.UUID(input.conversation_id)
 
     # Mark as running
-    async with worker_state.session_factory() as session:
+    async with _open_graph_session(worker_state, input.graph_id) as session:
         repo = ConversationRepository(session)
         await repo.update_message(msg_uuid, status="running")
         await session.commit()
@@ -267,7 +278,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             },
         )
 
-        async with _open_sessions(worker_state) as (_, write_session):
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
                 emit_event=emit_cb,
@@ -276,8 +287,8 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             )
 
             # process_ingest_sources needs graph-db for IngestSource table;
-            # open a short-lived session just for that.
-            async with worker_state.session_factory() as graph_session:
+            # open a short-lived session scoped to the correct graph schema.
+            async with _open_graph_session(worker_state, input.graph_id) as graph_session:
                 processed = await process_ingest_sources(
                     conv_uuid,
                     graph_session,
@@ -579,7 +590,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             # Build subgraph from merged results
             from kt_agents_core.results import build_ingest_subgraph
 
-            async with _open_sessions(worker_state) as (_, merge_ws):
+            async with _open_sessions(worker_state, input.graph_id) as (_, merge_ws):
                 merge_ctx = await _build_agent_context(
                     worker_state, emit_event=emit_cb, write_session=merge_ws, user_id=input.user_id
                 )
@@ -587,7 +598,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
             # Persist merged result
             merged_answer = "\n\n---\n\n".join(partition_summaries) if partition_summaries else ""
-            async with worker_state.session_factory() as session:
+            async with _open_graph_session(worker_state, input.graph_id) as session:
                 repo = ConversationRepository(session)
                 await repo.update_message(
                     msg_uuid,
@@ -608,7 +619,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         else:
             # Small document or no index — single agent (existing path)
-            async with _open_sessions(worker_state) as (_, write_session):
+            async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
                 agent_ctx = await _build_agent_context(
                     worker_state,
                     emit_event=emit_cb,
@@ -627,7 +638,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 await write_session.commit()
 
             # Persist result
-            async with worker_state.session_factory() as session:
+            async with _open_graph_session(worker_state, input.graph_id) as session:
                 repo = ConversationRepository(session)
                 await repo.update_message(
                     msg_uuid,
@@ -658,7 +669,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
         try:
             from kt_db.repositories.research_reports import ResearchReportRepository
 
-            async with worker_state.session_factory() as session:
+            async with _open_graph_session(worker_state, input.graph_id) as session:
                 await ResearchReportRepository(session).create(
                     message_id=msg_uuid,
                     conversation_id=conv_uuid,
@@ -686,7 +697,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
     except Exception as e:
         logger.exception("Ingest failed: conv=%s", input.conversation_id)
-        async with worker_state.session_factory() as session:
+        async with _open_graph_session(worker_state, input.graph_id) as session:
             repo = ConversationRepository(session)
             await repo.update_message(msg_uuid, status="failed", error=str(e))
             await session.commit()
@@ -767,12 +778,12 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
     partition_range = (input.index_range_start, input.index_range_end)
 
     # Reconstruct decomp summary and processed sources
-    async with worker_state.session_factory() as session:
+    async with _open_graph_session(worker_state, input.graph_id) as session:
         decomp_summary = await reconstruct_decomp_summary(conv_uuid, session)
         processed_sources = await reconstruct_processed_sources(conv_uuid, session)
 
     # Run the ingest agent scoped to this partition
-    async with _open_sessions(worker_state) as (_, write_session):
+    async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
         agent_ctx = await _build_agent_context(
             worker_state,
             emit_event=emit_cb,
@@ -851,7 +862,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
     conv_uuid = uuid.UUID(input.conversation_id)
 
     # Mark as running
-    async with worker_state.session_factory() as session:
+    async with _open_graph_session(worker_state, input.graph_id) as session:
         repo = ConversationRepository(session)
         await repo.update_message(msg_uuid, status="running")
         await session.commit()
@@ -868,7 +879,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             },
         )
 
-        async with _open_sessions(worker_state) as (_, write_session):
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
                 emit_event=emit_cb,
@@ -877,8 +888,8 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             )
 
             # process_ingest_sources needs graph-db for IngestSource table;
-            # open a short-lived session just for that.
-            async with worker_state.session_factory() as graph_session:
+            # open a short-lived session scoped to the correct graph schema.
+            async with _open_graph_session(worker_state, input.graph_id) as graph_session:
                 processed = await process_ingest_sources(
                     conv_uuid,
                     graph_session,
@@ -1015,7 +1026,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
         proposed_nodes: list[ProposedNode] = []
         try:
-            async with _open_sessions(worker_state) as (_, write_session):
+            async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
                 if write_session is not None:
                     seed_repo = WriteSeedRepository(write_session)
                     seeds = await seed_repo.list_seeds(
@@ -1062,7 +1073,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             fact_type_counts=decomp_summary.fact_type_counts,
         )
 
-        async with worker_state.session_factory() as session:
+        async with _open_graph_session(worker_state, input.graph_id) as session:
             repo = ConversationRepository(session)
             await repo.update_message(
                 msg_uuid,
@@ -1074,7 +1085,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
     except Exception as e:
         logger.exception("Ingest decompose failed: conv=%s", input.conversation_id)
-        async with worker_state.session_factory() as session:
+        async with _open_graph_session(worker_state, input.graph_id) as session:
             repo = ConversationRepository(session)
             await repo.update_message(msg_uuid, status="failed", error=str(e))
             await session.commit()
@@ -1123,7 +1134,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
     conv_uuid = uuid.UUID(input.conversation_id)
 
     # Mark as running
-    async with state.session_factory() as session:
+    async with _open_graph_session(state, input.graph_id) as session:
         from kt_db.repositories.conversations import ConversationRepository
 
         repo = ConversationRepository(session)
@@ -1336,7 +1347,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
         try:
             from kt_db.repositories.research_reports import ResearchReportRepository
 
-            async with state.session_factory() as session:
+            async with _open_graph_session(state, input.graph_id) as session:
                 await ResearchReportRepository(session).create(
                     message_id=msg_uuid,
                     conversation_id=conv_uuid,
@@ -1366,7 +1377,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
             logger.warning("Failed to persist research report", exc_info=True)
 
         # ── Update message with results ──────────────────────────
-        async with state.session_factory() as session:
+        async with _open_graph_session(state, input.graph_id) as session:
             from kt_db.repositories.conversations import ConversationRepository
 
             repo = ConversationRepository(session)
@@ -1391,7 +1402,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
 
     except Exception as e:
         logger.exception("Ingest build failed: conv=%s", input.conversation_id)
-        async with state.session_factory() as session:
+        async with _open_graph_session(state, input.graph_id) as session:
             from kt_db.repositories.conversations import ConversationRepository
 
             repo = ConversationRepository(session)
