@@ -31,3 +31,8 @@ testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kt_facts"]
+
+[dependency-groups]
+dev = [
+    "spacy>=3.8.14",
+]
