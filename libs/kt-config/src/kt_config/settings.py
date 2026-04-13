@@ -689,6 +689,7 @@ class Settings(BaseSettings):
     # Facts
     fact_dedup_atomic_threshold: float = 0.95
     fact_dedup_compound_threshold: float = 0.95
+    dedup_search_batch_size: int = 20
 
     # Seeds
     seed_dedup_embedding_threshold: float = 0.82
