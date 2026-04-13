@@ -183,10 +183,9 @@ async def dedup_pending_facts(
                 UPDATE write_facts
                    SET dedup_status = 'pending'
                  WHERE dedup_status = 'in_progress'
-                   AND updated_at < (now() AT TIME ZONE 'utc') - :age
+                   AND updated_at < (now() AT TIME ZONE 'utc') - INTERVAL '30 minutes'
                 """
             ),
-            {"age": _IN_PROGRESS_RECOVERY_AGE},
         )
         await recovery_session.commit()
 
