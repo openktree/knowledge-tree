@@ -308,6 +308,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             },
         )
 
+        # aio_result() returns {task_name: output} — unwrap the task key
+        if isinstance(decompose_result, dict) and len(decompose_result) == 1:
+            decompose_result = next(iter(decompose_result.values()))
         decompose_output = DecomposeSourcesOutput.model_validate(decompose_result)
 
         # Map to DecompositionSummary for downstream compatibility
@@ -787,6 +790,9 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             },
         )
 
+        # aio_result() returns {task_name: output} — unwrap the task key
+        if isinstance(decompose_result, dict) and len(decompose_result) == 1:
+            decompose_result = next(iter(decompose_result.values()))
         decompose_output = DecomposeSourcesOutput.model_validate(decompose_result)
 
         # Map to DecompositionSummary for downstream compatibility
@@ -938,6 +944,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                             existing_node_id=pn.existing_node_id,
                             message_id=input.message_id,
                             conversation_id=input.conversation_id,
+                            graph_id=input.graph_id,
                         ),
                         options=node_meta,
                     )
