@@ -59,9 +59,7 @@ async def migrate_all_graphs() -> None:
     # Check which schemas actually exist in the graph-db
     graph_db_schemas: set[str] = set()
     async with engine.connect() as conn:
-        rows = await conn.execute(
-            select(text("schema_name")).select_from(text("information_schema.schemata"))
-        )
+        rows = await conn.execute(select(text("schema_name")).select_from(text("information_schema.schemata")))
         graph_db_schemas = {row[0] for row in rows}
 
     await engine.dispose()
@@ -70,9 +68,7 @@ async def migrate_all_graphs() -> None:
     write_engine = create_async_engine(settings.write_database_url, echo=False)
     write_db_schemas: set[str] = set()
     async with write_engine.connect() as conn:
-        rows = await conn.execute(
-            select(text("schema_name")).select_from(text("information_schema.schemata"))
-        )
+        rows = await conn.execute(select(text("schema_name")).select_from(text("information_schema.schemata")))
         write_db_schemas = {row[0] for row in rows}
     await write_engine.dispose()
 
@@ -89,14 +85,18 @@ async def migrate_all_graphs() -> None:
             logger.info("Migrating graph '%s' (schema=%s) graph-db", graph.slug, schema)
             _run_alembic("alembic.ini", "alembic", env, graph.slug, "graph-db")
         else:
-            logger.info("Skipping graph '%s' graph-db — schema '%s' not found (lives in another database?)", graph.slug, schema)
+            logger.info(
+                "Skipping graph '%s' graph-db — schema '%s' not found (lives in another database?)", graph.slug, schema
+            )
 
         # Run write-db migrations (only if schema exists)
         if schema in write_db_schemas:
             logger.info("Migrating graph '%s' (schema=%s) write-db", graph.slug, schema)
             _run_alembic("alembic_write.ini", "alembic_write", env, graph.slug, "write-db")
         else:
-            logger.info("Skipping graph '%s' write-db — schema '%s' not found (lives in another database?)", graph.slug, schema)
+            logger.info(
+                "Skipping graph '%s' write-db — schema '%s' not found (lives in another database?)", graph.slug, schema
+            )
 
     logger.info("All graph migrations complete")
 
