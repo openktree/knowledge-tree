@@ -108,7 +108,7 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
             embedding_service=state.embedding_service,
             session=None,
             session_factory=state.session_factory,
-            content_fetcher=state.content_fetcher,
+            fetch_registry=state.fetch_registry,
             write_session_factory=state.write_session_factory,
             qdrant_client=state.qdrant_client,
         )
@@ -294,7 +294,7 @@ async def regenerate_composite_task(input: RegenerateCompositeInput, ctx: Contex
             embedding_service=state.embedding_service,
             session=None,
             session_factory=state.session_factory,
-            content_fetcher=state.content_fetcher,
+            fetch_registry=state.fetch_registry,
             write_session_factory=state.write_session_factory,
             qdrant_client=state.qdrant_client,
         )
