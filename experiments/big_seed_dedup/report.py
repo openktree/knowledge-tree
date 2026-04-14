@@ -1,8 +1,25 @@
-"""HTML report generator for big-seed dedup replay results."""
+"""HTML report generator for big-seed dedup replay results.
+
+Two views per fixture:
+1. **Event history** — one collapsible card per admit step showing incoming
+   name, fact samples, embedding distances to every existing path, full LLM
+   I/O (alias_gen + multiplex), final decision, token cost.
+2. **Final big-seed structure** — canonical + parent merged forms + each
+   path (label, known_aliases from LLM alias_gen, merged_surface_forms from
+   multiplex routing, fact samples).
+
+Aliases are split deliberately:
+- known_aliases: LLM-generated at path birth. Real-world alternative names
+  for the SAME concept (e.g. "JFK" for "John F. Kennedy").
+- merged_surface_forms: surface forms the multiplexer routed into the path.
+  These are "embedding-ambiguous" — LLM/human may still see them as slightly
+  different, but the system chose to collapse them into one path.
+"""
 
 from __future__ import annotations
 
 import html as html_module
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,12 +52,22 @@ def _badge(text: str, color: str, title: str = "") -> str:
     return f'<span{t} style="{style}">{_esc(text)}</span>'
 
 
-def _usage_cell(u: Usage | None) -> str:
+def _pill(text: str, bg: str = "#f1f5f9", fg: str = "#334155", title: str = "") -> str:
+    t = f' title="{_esc(title)}"' if title else ""
+    style = (
+        f"display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;"
+        f"font-size:0.78em;color:{fg};background:{bg};border:1px solid #cbd5e1;"
+    )
+    return f'<span{t} style="{style}">{_esc(text)}</span>'
+
+
+def _usage_tag(u: Usage | None, kind_label: str) -> str:
     if u is None:
-        return "<span class='neutral'>-</span>"
+        return ""
     return (
-        f"<span class='num'>{u.prompt_tokens:,}→{u.completion_tokens:,}</span>"
-        f"<div class='meta'>{_esc(u.model)} · ${u.cost_usd:.5f} · {u.latency_ms}ms</div>"
+        f"<span class='meta'>{kind_label}: "
+        f"{u.prompt_tokens:,}→{u.completion_tokens:,} tok · "
+        f"${u.cost_usd:.5f} · {u.latency_ms}ms</span>"
     )
 
 
@@ -55,74 +82,119 @@ def _sum_usages(items: list[Usage]) -> Usage:
 
 
 def _collect_usages(big: BigSeed) -> tuple[list[Usage], list[Usage]]:
-    """Return (alias_gen_usages, multiplex_usages)."""
-    alias_u: list[Usage] = []
-    multi_u: list[Usage] = []
-    for p in big.paths:
-        if p.alias_gen_usage:
-            alias_u.append(p.alias_gen_usage)
-    for d in big.history:
-        if d.multiplex_usage:
-            multi_u.append(d.multiplex_usage)
+    alias_u = [p.alias_gen_usage for p in big.paths if p.alias_gen_usage]
+    multi_u = [d.multiplex_usage for d in big.history if d.multiplex_usage]
     return alias_u, multi_u
 
 
-def _decision_badge(d: Decision) -> str:
-    color = _KIND_COLORS.get(d.kind, "#6b7280")
-    return _badge(d.kind, color, d.reason)
-
-
-def _render_path(p, big: BigSeed) -> str:
-    alias_html = " ".join(_badge(a, "#0ea5e9", "LLM-generated alias") for a in p.aliases)
-    observed_html = " ".join(_badge(o, "#64748b", "observed surface form") for o in p.observed_names)
-    facts_html = "".join(f"<li>{_esc(f.content[:260])}</li>" for f in p.facts[:5])
-    alias_cost = ""
-    if p.alias_gen_usage:
-        alias_cost = (
-            f"<div class='meta'>alias_gen: {p.alias_gen_usage.prompt_tokens:,}→"
-            f"{p.alias_gen_usage.completion_tokens:,} tok · "
-            f"${p.alias_gen_usage.cost_usd:.5f}</div>"
+def _render_embed_scores(scores: dict[str, float]) -> str:
+    if not scores:
+        return "<span class='neutral'>(no existing paths yet)</span>"
+    parts: list[str] = []
+    for label, score in sorted(scores.items(), key=lambda x: -x[1]):
+        bg = "#dcfce7" if score >= 0.95 else "#fef9c3" if score >= 0.70 else "#fee2e2"
+        parts.append(
+            f'<span class="score" style="background:{bg}">'
+            f'<b>{score:.3f}</b> <span class="neutral">vs</span> {_esc(label)}'
+            f'</span>'
         )
+    return "".join(parts)
+
+
+def _render_event(d: Decision, step_label: str = "") -> str:
+    color = _KIND_COLORS.get(d.kind, "#6b7280")
+    badge = _badge(d.kind, color, d.reason)
+    routed = d.routed_to_path_label or "-"
+
+    facts_html = "".join(f"<li>{_esc(s)}</li>" for s in d.incoming_fact_samples)
+    if not facts_html:
+        facts_html = "<li class='neutral'>(none)</li>"
+
+    mp_html = ""
+    if d.multiplex_response:
+        mp_html = (
+            "<div class='sub'><b>multiplex LLM →</b> "
+            f"<code>{_esc(json.dumps(d.multiplex_response, ensure_ascii=False))}</code> "
+            f"{_usage_tag(d.multiplex_usage, 'multiplex')}</div>"
+        )
+
+    ag_html = ""
+    if d.alias_gen_response:
+        ag_html = (
+            "<div class='sub'><b>alias_gen LLM →</b> "
+            f"<code>{_esc(json.dumps(d.alias_gen_response, ensure_ascii=False))}</code> "
+            f"{_usage_tag(d.alias_gen_usage, 'alias_gen')}</div>"
+        )
+
+    embed_html = (
+        f"<div class='sub'><b>embed distances</b> "
+        f"(best={d.best_embed_score:.3f}): {_render_embed_scores(d.embed_scores)}</div>"
+    ) if d.embed_scores or d.kind not in ("seed_init", "alias_match") else ""
+
+    alias_gate = f" · gate=<code>{_esc(d.alias_gate)}</code>" if d.alias_gate else ""
+
     return f"""
-    <div class='path'>
-      <div><b>path_id={_esc(p.id)}</b> · label=<b>{_esc(p.label)}</b></div>
-      <div class='meta'>aliases ({len(p.aliases)}): {alias_html or '<span class=neutral>none</span>'}</div>
-      <div class='meta'>observed ({len(p.observed_names)}): {observed_html or '-'}</div>
-      {alias_cost}
-      <details><summary>{len(p.facts)} fact(s) stored</summary><ul>{facts_html}</ul></details>
+    <details class="event" open>
+      <summary>
+        <span class="step">#{d.step}{_esc(step_label)}</span>
+        <b>{_esc(d.incoming_name)}</b>
+        <span class="neutral">({d.incoming_fact_count} facts)</span>
+        → {badge}
+        → <b>{_esc(routed)}</b>{alias_gate}
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> {_esc(d.reason)}</div>
+        <div class="sub"><b>incoming fact samples:</b><ul>{facts_html}</ul></div>
+        {embed_html}
+        {mp_html}
+        {ag_html}
+      </div>
+    </details>
+    """
+
+
+def _render_path(p) -> str:
+    known = " ".join(_pill(a, "#dbeafe", "#1e40af", "LLM-generated known alias") for a in p.known_aliases)
+    merged = " ".join(_pill(a, "#fef3c7", "#92400e", "absorbed surface form") for a in p.merged_surface_forms)
+    facts = "".join(f"<li>{_esc(f.content[:260])}</li>" for f in p.facts[:5])
+    alias_cost = _usage_tag(p.alias_gen_usage, "alias_gen")
+    return f"""
+    <div class="path">
+      <div class="path-head">
+        <span class="path-id">{_esc(p.id)}</span>
+        <b class="path-label">{_esc(p.label)}</b>
+        {alias_cost}
+      </div>
+      <div class="sub"><b>known aliases</b> ({len(p.known_aliases)}): {known or '<span class="neutral">none</span>'}</div>
+      <div class="sub"><b>merged surface forms</b> ({len(p.merged_surface_forms)}): {merged or '<span class="neutral">none</span>'}</div>
+      <details><summary>{len(p.facts)} fact sample(s)</summary><ul>{facts}</ul></details>
     </div>
     """
 
 
-def _render_timeline(big: BigSeed) -> str:
-    rows: list[str] = []
-    rows.append(
-        "<tr><th>#</th><th>Incoming</th><th>Decision</th><th>Routed to</th>"
-        "<th>Best embed</th><th>Multiplex tokens</th><th>alias_gen tokens</th>"
-        "<th>Reason</th></tr>"
+def _render_big_seed(big: BigSeed) -> str:
+    merged_parent = " ".join(
+        _pill(a, "#fef3c7", "#92400e", "absorbed at parent level") for a in big.merged_surface_forms
     )
-    for d in big.history:
-        routed = d.routed_to_path_label or "-"
-        embed = f"{d.best_embed_score:.3f}" if d.best_embed_score else "-"
-        rows.append(
-            "<tr>"
-            f"<td class='num'>{d.step}</td>"
-            f"<td>{_esc(d.incoming_name)}<div class='meta'>{d.incoming_fact_count} facts</div></td>"
-            f"<td>{_decision_badge(d)}</td>"
-            f"<td>{_esc(routed)}</td>"
-            f"<td class='num'>{embed}</td>"
-            f"<td>{_usage_cell(d.multiplex_usage)}</td>"
-            f"<td>{_usage_cell(d.alias_gen_usage)}</td>"
-            f"<td class='reason'>{_esc(d.reason)}</td>"
-            "</tr>"
-        )
-    return "<table>" + "\n".join(rows) + "</table>"
+    paths = "".join(_render_path(p) for p in big.paths)
+    return f"""
+    <div class="bigseed">
+      <div class="canonical">canonical: <b>{_esc(big.canonical_name)}</b>
+        <span class="neutral">({_esc(big.node_type)})</span></div>
+      <div class="sub"><b>parent merged surface forms</b> ({len(big.merged_surface_forms)}):
+        {merged_parent or '<span class="neutral">none</span>'}</div>
+      <div class="paths">
+        <h4>paths ({len(big.paths)})</h4>
+        {paths}
+      </div>
+    </div>
+    """
 
 
-def _render_prod_diff(rr: ReplayResult) -> str:
+def _render_prod_audit(rr: ReplayResult) -> str:
     if not rr.prod_merges:
-        return "<p class='neutral'>(no prod merges recorded for this fixture)</p>"
-    rows = ["<tr><th>Op</th><th>Source</th><th>Target</th><th>Reason</th><th>Facts moved</th><th>When</th></tr>"]
+        return "<p class='neutral'>(no prod merges recorded)</p>"
+    rows = ["<tr><th>op</th><th>source</th><th>target</th><th>reason</th><th class='num'>facts</th><th>when</th></tr>"]
     for m in rr.prod_merges:
         rows.append(
             "<tr>"
@@ -137,10 +209,50 @@ def _render_prod_diff(rr: ReplayResult) -> str:
     return "<table>" + "\n".join(rows) + "</table>"
 
 
+_CSS = """
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         max-width:1500px; margin:0 auto; padding:20px; background:#f8fafc; color:#1e293b; }
+  h1 { font-size:1.6em; margin-bottom:4px; }
+  h2 { font-size:1.3em; margin:28px 0 10px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
+  h3 { font-size:1.05em; margin:16px 0 8px; color:#334155; }
+  h4 { font-size:0.95em; margin:10px 0 6px; color:#475569; }
+  .meta { color:#64748b; font-size:0.78em; margin-left:6px; }
+  .neutral { color:#94a3b8; }
+  .mono { font-family:ui-monospace,Consolas,monospace; font-size:0.82em; }
+  .reason { font-size:0.82em; color:#475569; max-width:340px; }
+  table { border-collapse:collapse; width:100%; margin:8px 0; font-size:0.88em; }
+  th,td { border:1px solid #e2e8f0; padding:6px 10px; text-align:left; vertical-align:top; }
+  th { background:#f1f5f9; font-weight:600; }
+  tr:hover { background:#f8fafc; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .section { background:#fff; border-radius:8px; padding:18px; margin:14px 0;
+             box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+  details.event { border:1px solid #e2e8f0; border-radius:6px; margin:6px 0; background:#fff; }
+  details.event > summary { padding:8px 12px; cursor:pointer; list-style:none;
+                            display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.9em; }
+  details.event > summary::-webkit-details-marker { display:none; }
+  details.event > .body { padding:8px 14px 12px; background:#f8fafc; border-top:1px solid #e2e8f0; }
+  details.event[open] > summary { background:#f1f5f9; border-bottom:1px solid #e2e8f0; }
+  .step { font-family:ui-monospace,Consolas,monospace; color:#64748b; font-size:0.82em; }
+  .sub { margin:4px 0; font-size:0.88em; color:#334155; }
+  .sub ul { margin-left:20px; }
+  .score { display:inline-block; padding:2px 8px; margin:1px;
+           border-radius:10px; font-size:0.78em; border:1px solid #cbd5e1; }
+  .bigseed { background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:14px; margin:8px 0; }
+  .canonical { font-size:1.05em; margin-bottom:8px; }
+  .path { border-left:3px solid #f59e0b; background:#fff; padding:8px 12px; margin:6px 0; border-radius:4px; }
+  .path-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .path-id { font-family:ui-monospace,Consolas,monospace; font-size:0.78em; color:#64748b; }
+  .path-label { color:#1e293b; }
+  code { font-family:ui-monospace,Consolas,monospace; font-size:0.82em;
+         background:#f1f5f9; padding:1px 4px; border-radius:3px; word-break:break-all; }
+"""
+
+
 def generate_report(results: list[ReplayResult], output_path: Path, model_name: str) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    # ── Grand totals ─────────────────────────────────────────────────
     all_alias: list[Usage] = []
     all_multi: list[Usage] = []
     for rr in results:
@@ -151,30 +263,9 @@ def generate_report(results: list[ReplayResult], output_path: Path, model_name: 
     multi_total = _sum_usages(all_multi)
 
     parts: list[str] = []
-    parts.append(f"""<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>
-<title>Big-Seed Dedup Experiment</title>
-<style>
-  * {{ box-sizing:border-box; margin:0; padding:0; }}
-  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-         max-width:1500px; margin:0 auto; padding:20px; background:#f8fafc; color:#1e293b; }}
-  h1 {{ font-size:1.6em; margin-bottom:4px; }}
-  h2 {{ font-size:1.3em; margin:30px 0 12px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }}
-  h3 {{ font-size:1.05em; margin:18px 0 8px; }}
-  .meta {{ color:#64748b; font-size:0.8em; }}
-  table {{ border-collapse:collapse; width:100%; margin:8px 0; font-size:0.88em; }}
-  th,td {{ border:1px solid #e2e8f0; padding:6px 10px; text-align:left; vertical-align:top; }}
-  th {{ background:#f1f5f9; font-weight:600; }}
-  tr:hover {{ background:#f8fafc; }}
-  .num {{ text-align:right; font-variant-numeric:tabular-nums; }}
-  .section {{ background:#fff; border-radius:8px; padding:18px; margin:14px 0; box-shadow:0 1px 3px rgba(0,0,0,0.08); }}
-  .neutral {{ color:#94a3b8; }}
-  .mono {{ font-family:ui-monospace,Consolas,monospace; font-size:0.82em; }}
-  .reason {{ font-size:0.82em; color:#475569; max-width:320px; }}
-  .path {{ border-left:3px solid #f59e0b; padding:6px 10px; margin:6px 0; background:#fffbeb; border-radius:4px; }}
-  details summary {{ cursor:pointer; color:#2563eb; font-size:0.85em; }}
-  ul {{ margin-left:18px; }}
-</style></head><body>""")
-    parts.append(f"<h1>Big-Seed Dedup Experiment</h1>")
+    parts.append(f"<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
+                 f"<title>Big-Seed Dedup Experiment</title><style>{_CSS}</style></head><body>")
+    parts.append("<h1>Big-Seed Dedup Experiment</h1>")
     parts.append(f"<div class='meta'>Generated {now} · model: {_esc(model_name)} · {len(results)} fixture(s)</div>")
 
     # ── Summary ─────────────────────────────────────────────────────
@@ -182,7 +273,7 @@ def generate_report(results: list[ReplayResult], output_path: Path, model_name: 
     parts.append(
         "<tr><th>Fixture</th><th>Target</th><th class='num'>Family</th>"
         "<th class='num'>Processed</th><th class='num'>Paths</th>"
-        "<th class='num'>alias_gen calls</th><th class='num'>multiplex calls</th>"
+        "<th class='num'>alias_gen</th><th class='num'>multiplex</th>"
         "<th class='num'>Prompt tok</th><th class='num'>Compl tok</th>"
         "<th class='num'>Cost</th><th class='num'>Prod merges</th></tr>"
     )
@@ -208,7 +299,6 @@ def generate_report(results: list[ReplayResult], output_path: Path, model_name: 
             f"<td class='num'>{len(rr.prod_merges)}</td>"
             "</tr>"
         )
-    # grand total
     grand_prompt = alias_total.prompt_tokens + multi_total.prompt_tokens
     grand_compl = alias_total.completion_tokens + multi_total.completion_tokens
     grand_cost = alias_total.cost_usd + multi_total.cost_usd
@@ -224,35 +314,29 @@ def generate_report(results: list[ReplayResult], output_path: Path, model_name: 
     )
     parts.append("</table>")
     parts.append(
-        "<div class='meta'>"
-        f"alias_gen subtotal: {alias_total.prompt_tokens:,}→{alias_total.completion_tokens:,} tok · ${alias_total.cost_usd:.5f} · "
-        f"multiplex subtotal: {multi_total.prompt_tokens:,}→{multi_total.completion_tokens:,} tok · ${multi_total.cost_usd:.5f}"
-        "</div></div>"
+        f"<div class='meta'>alias_gen: {alias_total.prompt_tokens:,}→{alias_total.completion_tokens:,} tok · "
+        f"${alias_total.cost_usd:.5f} · multiplex: {multi_total.prompt_tokens:,}→"
+        f"{multi_total.completion_tokens:,} tok · ${multi_total.cost_usd:.5f}</div></div>"
     )
 
-    # ── Per-fixture detail ─────────────────────────────────────────
+    # ── Per-fixture ─────────────────────────────────────────────────
     for rr in results:
         big = rr.big_seed
         parts.append("<div class='section'>")
         parts.append(f"<h2>{_esc(rr.fixture_label)} — {_esc(rr.target_name)}</h2>")
-        parts.append(
-            f"<div class='meta'>canonical = <b>{_esc(big.canonical_name)}</b> "
-            f"({_esc(big.node_type)}) · parent aliases: {big.aliases or 'none'}</div>"
-        )
 
         parts.append("<h3>Final big-seed structure</h3>")
-        for p in big.paths:
-            parts.append(_render_path(p, big))
+        parts.append(_render_big_seed(big))
 
-        parts.append("<h3>Replay timeline</h3>")
-        parts.append(_render_timeline(big))
+        parts.append("<h3>Event history (per admitted seed)</h3>")
+        for d in big.history:
+            parts.append(_render_event(d))
 
         parts.append("<h3>Prod merge audit (ground truth)</h3>")
-        parts.append(_render_prod_diff(rr))
+        parts.append(_render_prod_audit(rr))
 
         parts.append("</div>")
 
     parts.append("</body></html>")
-
     output_path.write_text("\n".join(parts), encoding="utf-8")
     print(f"HTML report written: {output_path}")

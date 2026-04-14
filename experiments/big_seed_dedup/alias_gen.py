@@ -45,8 +45,12 @@ async def generate_aliases(
     facts: list[Fact],
     *,
     runner: LLMRunner,
-) -> tuple[list[str], Usage]:
-    """Generate aliases for a newly created path/big-seed. Returns (aliases, usage)."""
+) -> tuple[list[str], Usage, dict]:
+    """Generate aliases for a newly created path/big-seed.
+
+    Returns (aliases, usage, raw_response). raw_response preserved for the
+    report so the reader can inspect what the LLM saw + emitted.
+    """
     user = _build_user(name, facts)
     response, usage = await runner.call_json(
         kind="alias_gen",
@@ -70,4 +74,4 @@ async def generate_aliases(
             continue
         seen.add(lower)
         aliases.append(cleaned)
-    return aliases, usage
+    return aliases, usage, response if isinstance(response, dict) else {}

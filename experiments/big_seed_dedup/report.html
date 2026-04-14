@@ -1,58 +1,171 @@
-<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>
-<title>Big-Seed Dedup Experiment</title>
-<style>
+<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'><title>Big-Seed Dedup Experiment</title><style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
          max-width:1500px; margin:0 auto; padding:20px; background:#f8fafc; color:#1e293b; }
   h1 { font-size:1.6em; margin-bottom:4px; }
-  h2 { font-size:1.3em; margin:30px 0 12px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
-  h3 { font-size:1.05em; margin:18px 0 8px; }
-  .meta { color:#64748b; font-size:0.8em; }
+  h2 { font-size:1.3em; margin:28px 0 10px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
+  h3 { font-size:1.05em; margin:16px 0 8px; color:#334155; }
+  h4 { font-size:0.95em; margin:10px 0 6px; color:#475569; }
+  .meta { color:#64748b; font-size:0.78em; margin-left:6px; }
+  .neutral { color:#94a3b8; }
+  .mono { font-family:ui-monospace,Consolas,monospace; font-size:0.82em; }
+  .reason { font-size:0.82em; color:#475569; max-width:340px; }
   table { border-collapse:collapse; width:100%; margin:8px 0; font-size:0.88em; }
   th,td { border:1px solid #e2e8f0; padding:6px 10px; text-align:left; vertical-align:top; }
   th { background:#f1f5f9; font-weight:600; }
   tr:hover { background:#f8fafc; }
   .num { text-align:right; font-variant-numeric:tabular-nums; }
-  .section { background:#fff; border-radius:8px; padding:18px; margin:14px 0; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
-  .neutral { color:#94a3b8; }
-  .mono { font-family:ui-monospace,Consolas,monospace; font-size:0.82em; }
-  .reason { font-size:0.82em; color:#475569; max-width:320px; }
-  .path { border-left:3px solid #f59e0b; padding:6px 10px; margin:6px 0; background:#fffbeb; border-radius:4px; }
-  details summary { cursor:pointer; color:#2563eb; font-size:0.85em; }
-  ul { margin-left:18px; }
+  .section { background:#fff; border-radius:8px; padding:18px; margin:14px 0;
+             box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+  details.event { border:1px solid #e2e8f0; border-radius:6px; margin:6px 0; background:#fff; }
+  details.event > summary { padding:8px 12px; cursor:pointer; list-style:none;
+                            display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.9em; }
+  details.event > summary::-webkit-details-marker { display:none; }
+  details.event > .body { padding:8px 14px 12px; background:#f8fafc; border-top:1px solid #e2e8f0; }
+  details.event[open] > summary { background:#f1f5f9; border-bottom:1px solid #e2e8f0; }
+  .step { font-family:ui-monospace,Consolas,monospace; color:#64748b; font-size:0.82em; }
+  .sub { margin:4px 0; font-size:0.88em; color:#334155; }
+  .sub ul { margin-left:20px; }
+  .score { display:inline-block; padding:2px 8px; margin:1px;
+           border-radius:10px; font-size:0.78em; border:1px solid #cbd5e1; }
+  .bigseed { background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:14px; margin:8px 0; }
+  .canonical { font-size:1.05em; margin-bottom:8px; }
+  .path { border-left:3px solid #f59e0b; background:#fff; padding:8px 12px; margin:6px 0; border-radius:4px; }
+  .path-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .path-id { font-family:ui-monospace,Consolas,monospace; font-size:0.78em; color:#64748b; }
+  .path-label { color:#1e293b; }
+  code { font-family:ui-monospace,Consolas,monospace; font-size:0.82em;
+         background:#f1f5f9; padding:1px 4px; border-radius:3px; word-break:break-all; }
 </style></head><body>
 <h1>Big-Seed Dedup Experiment</h1>
-<div class='meta'>Generated 2026-04-14 04:08 UTC · model: openrouter/google/gemini-3.1-flash-lite-preview · 3 fixture(s)</div>
+<div class='meta'>Generated 2026-04-14 13:13 UTC · model: openrouter/google/gemini-3.1-flash-lite-preview · 3 fixture(s)</div>
 <div class='section'><h2>Summary</h2><table>
-<tr><th>Fixture</th><th>Target</th><th class='num'>Family</th><th class='num'>Processed</th><th class='num'>Paths</th><th class='num'>alias_gen calls</th><th class='num'>multiplex calls</th><th class='num'>Prompt tok</th><th class='num'>Compl tok</th><th class='num'>Cost</th><th class='num'>Prod merges</th></tr>
-<tr><td>local</td><td><b>homeopathy</b></td><td class='num'>7</td><td class='num'>4</td><td class='num'>1</td><td class='num'>1</td><td class='num'>3</td><td class='num'>2,091</td><td class='num'>215</td><td class='num'>$0.00085</td><td class='num'>5</td></tr>
-<tr><td>local</td><td><b>Kriya Yoga</b></td><td class='num'>6</td><td class='num'>4</td><td class='num'>1</td><td class='num'>1</td><td class='num'>2</td><td class='num'>1,570</td><td class='num'>173</td><td class='num'>$0.00065</td><td class='num'>3</td></tr>
-<tr><td>prod</td><td><b>Nate</b></td><td class='num'>101</td><td class='num'>82</td><td class='num'>2</td><td class='num'>2</td><td class='num'>2</td><td class='num'>2,001</td><td class='num'>217</td><td class='num'>$0.00083</td><td class='num'>20</td></tr>
-<tr style='background:#fef3c7;font-weight:600'><td colspan=5>GRAND TOTAL</td><td class='num'>4</td><td class='num'>7</td><td class='num'>5,662</td><td class='num'>605</td><td class='num'>$0.00232</td><td></td></tr>
+<tr><th>Fixture</th><th>Target</th><th class='num'>Family</th><th class='num'>Processed</th><th class='num'>Paths</th><th class='num'>alias_gen</th><th class='num'>multiplex</th><th class='num'>Prompt tok</th><th class='num'>Compl tok</th><th class='num'>Cost</th><th class='num'>Prod merges</th></tr>
+<tr><td>local</td><td><b>homeopathy</b></td><td class='num'>7</td><td class='num'>4</td><td class='num'>1</td><td class='num'>1</td><td class='num'>3</td><td class='num'>2,094</td><td class='num'>218</td><td class='num'>$0.00085</td><td class='num'>5</td></tr>
+<tr><td>local</td><td><b>Kriya Yoga</b></td><td class='num'>6</td><td class='num'>4</td><td class='num'>1</td><td class='num'>1</td><td class='num'>2</td><td class='num'>1,576</td><td class='num'>187</td><td class='num'>$0.00067</td><td class='num'>3</td></tr>
+<tr><td>prod</td><td><b>Nate</b></td><td class='num'>101</td><td class='num'>82</td><td class='num'>3</td><td class='num'>3</td><td class='num'>2</td><td class='num'>2,193</td><td class='num'>168</td><td class='num'>$0.00080</td><td class='num'>20</td></tr>
+<tr style='background:#fef3c7;font-weight:600'><td colspan=5>GRAND TOTAL</td><td class='num'>5</td><td class='num'>7</td><td class='num'>5,863</td><td class='num'>573</td><td class='num'>$0.00233</td><td></td></tr>
 </table>
-<div class='meta'>alias_gen subtotal: 1,990→56 tok · $0.00058 · multiplex subtotal: 3,672→549 tok · $0.00174</div></div>
+<div class='meta'>alias_gen: 2,213→64 tok · $0.00065 · multiplex: 3,650→509 tok · $0.00168</div></div>
 <div class='section'>
 <h2>local — homeopathy</h2>
-<div class='meta'>canonical = <b>homeopathy</b> (concept) · parent aliases: ['homeopath', 'homeopathic medicine', 'homeopathic']</div>
 <h3>Final big-seed structure</h3>
 
-    <div class='path'>
-      <div><b>path_id=1d61ea5a</b> · label=<b>homeopathy</b></div>
-      <div class='meta'>aliases (1): <span title="LLM-generated alias" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#0ea5e9;">homoeopathy</span></div>
-      <div class='meta'>observed (1): <span title="observed surface form" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">homeopathy</span></div>
-      <div class='meta'>alias_gen: 552→8 tok · $0.00015</div>
-      <details><summary>10 fact(s) stored</summary><ul><li>The WHO Global Report on Traditional and Complementary Medicine (2019) lists acupuncture, herbal medicines, indigenous traditional medicine, homeopathy, traditional Chinese medicine, naturopathy, chiropractic, osteopathy, ayurvedic medicine, and Unani medicine</li><li>Albert Abrams believed that drugs functioned by possessing the same or similar vibrations as the diseases they were intended to cure, a concept he considered analogous to the teachings of Samuel Hahnemann, the founder of homeopathy.</li><li>Homeopathy is characterized as a magical idea with no possible basis in reality, rather than a natural or herbal remedy.</li><li>The Indian government formed the AYUSH consortium, which unites Ayurveda with Unani, Siddha, Sowa Rigpa, and Homeopathy.</li><li>Samuel Hahnemann developed homeopathy in the late eighteenth century based on the principle of &quot;like cures like,&quot; which posits that a substance producing symptoms in a healthy person can treat similar symptoms in a sick person when prepared in extreme dilution</li></ul></details>
+    <div class="bigseed">
+      <div class="canonical">canonical: <b>homeopathy</b>
+        <span class="neutral">(concept)</span></div>
+      <div class="sub"><b>parent merged surface forms</b> (3):
+        <span title="absorbed at parent level" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#92400e;background:#fef3c7;border:1px solid #cbd5e1;">homeopath</span> <span title="absorbed at parent level" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#92400e;background:#fef3c7;border:1px solid #cbd5e1;">homeopathic medicine</span> <span title="absorbed at parent level" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#92400e;background:#fef3c7;border:1px solid #cbd5e1;">homeopathic</span></div>
+      <div class="paths">
+        <h4>paths (1)</h4>
+        
+    <div class="path">
+      <div class="path-head">
+        <span class="path-id">64740270</span>
+        <b class="path-label">homeopathy</b>
+        <span class='meta'>alias_gen: 552→8 tok · $0.00015 · 2666ms</span>
+      </div>
+      <div class="sub"><b>known aliases</b> (1): <span title="LLM-generated known alias" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#1e40af;background:#dbeafe;border:1px solid #cbd5e1;">homoeopathy</span></div>
+      <div class="sub"><b>merged surface forms</b> (0): <span class="neutral">none</span></div>
+      <details><summary>10 fact sample(s)</summary><ul><li>The WHO Global Report on Traditional and Complementary Medicine (2019) lists acupuncture, herbal medicines, indigenous traditional medicine, homeopathy, traditional Chinese medicine, naturopathy, chiropractic, osteopathy, ayurvedic medicine, and Unani medicine</li><li>Albert Abrams believed that drugs functioned by possessing the same or similar vibrations as the diseases they were intended to cure, a concept he considered analogous to the teachings of Samuel Hahnemann, the founder of homeopathy.</li><li>Homeopathy is characterized as a magical idea with no possible basis in reality, rather than a natural or herbal remedy.</li><li>The Indian government formed the AYUSH consortium, which unites Ayurveda with Unani, Siddha, Sowa Rigpa, and Homeopathy.</li><li>Samuel Hahnemann developed homeopathy in the late eighteenth century based on the principle of &quot;like cures like,&quot; which posits that a substance producing symptoms in a healthy person can treat similar symptoms in a sick person when prepared in extreme dilution</li></ul></details>
     </div>
     
-<h3>Replay timeline</h3>
-<table><tr><th>#</th><th>Incoming</th><th>Decision</th><th>Routed to</th><th>Best embed</th><th>Multiplex tokens</th><th>alias_gen tokens</th><th>Reason</th></tr>
-<tr><td class='num'>0</td><td>homeopathy<div class='meta'>1259 facts</div></td><td><span title="seed initialized from first family member" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">seed_init</span></td><td>homeopathy</td><td class='num'>-</td><td><span class='neutral'>-</span></td><td><span class='num'>552→8</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00015 · 2095ms</div></td><td class='reason'>seed initialized from first family member</td></tr>
-<tr><td class='num'>1</td><td>homeopathy<div class='meta'>872 facts</div></td><td><span title="canonical_name_match" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#059669;">alias_match</span></td><td>-</td><td class='num'>-</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>canonical_name_match</td></tr>
-<tr><td class='num'>2</td><td>homeopath<div class='meta'>44 facts</div></td><td><span title="The incoming term &#x27;homeopath&#x27; refers to the practitioner of the field &#x27;homeopathy&#x27;, which is a standard morphological variant/related term often grouped under the same conceptual node in knowledge graphs." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span></td><td>-</td><td class='num'>0.836</td><td><span class='num'>543→79</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00025 · 1563ms</div></td><td><span class='neutral'>-</span></td><td class='reason'>The incoming term &#x27;homeopath&#x27; refers to the practitioner of the field &#x27;homeopathy&#x27;, which is a standard morphological variant/related term often grouped under the same conceptual node in knowledge graphs.</td></tr>
-<tr><td class='num'>3</td><td>homeopathic medicine<div class='meta'>11 facts</div></td><td><span title="Homeopathic medicine is a direct synonym for the practice of homeopathy and refers to the same conceptual entity." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span></td><td>-</td><td class='num'>0.823</td><td><span class='num'>513→59</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00022 · 2115ms</div></td><td><span class='neutral'>-</span></td><td class='reason'>Homeopathic medicine is a direct synonym for the practice of homeopathy and refers to the same conceptual entity.</td></tr>
-<tr><td class='num'>4</td><td>homeopathic<div class='meta'>1 facts</div></td><td><span title="The term &#x27;homeopathic&#x27; is a standard adjectival form of the canonical concept &#x27;homeopathy&#x27; and refers to the same practice/field." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span></td><td>-</td><td class='num'>0.843</td><td><span class='num'>483→69</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00022 · 1784ms</div></td><td><span class='neutral'>-</span></td><td class='reason'>The term &#x27;homeopathic&#x27; is a standard adjectival form of the canonical concept &#x27;homeopathy&#x27; and refers to the same practice/field.</td></tr></table>
+      </div>
+    </div>
+    
+<h3>Event history (per admitted seed)</h3>
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#0</span>
+        <b>homeopathy</b>
+        <span class="neutral">(1259 facts)</span>
+        → <span title="seed initialized from first family member" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">seed_init</span>
+        → <b>homeopathy</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> seed initialized from first family member</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The WHO Global Report on Traditional and Complementary Medicine (2019) lists acupuncture, herbal medicines, indigenous traditional medicine, homeopathy, traditional Chinese medicine, naturopathy, chiropractic, osteopathy, ayurvedic medicine</li><li>Albert Abrams believed that drugs functioned by possessing the same or similar vibrations as the diseases they were intended to cure, a concept he considered analogous to the teachings of Samuel Hahnemann, the founder of homeopathy.</li><li>Homeopathy is characterized as a magical idea with no possible basis in reality, rather than a natural or herbal remedy.</li></ul></div>
+        
+        
+        <div class='sub'><b>alias_gen LLM →</b> <code>{&quot;aliases&quot;: [&quot;homoeopathy&quot;]}</code> <span class='meta'>alias_gen: 552→8 tok · $0.00015 · 2666ms</span></div>
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#1</span>
+        <b>homeopathy</b>
+        <span class="neutral">(872 facts)</span>
+        → <span title="canonical_name_match" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#059669;">alias_match</span>
+        → <b>-</b> · gate=<code>canonical_name_match</code>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> canonical_name_match</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The WHO Global Report on Traditional and Complementary Medicine (2019) lists acupuncture, herbal medicines, indigenous traditional medicine, homeopathy, traditional Chinese medicine, naturopathy, chiropractic, osteopathy, ayurvedic medicine</li><li>Albert Abrams believed that drugs functioned by possessing the same or similar vibrations as the diseases they were intended to cure, a concept he considered analogous to the teachings of Samuel Hahnemann, the founder of homeopathy.</li><li>Vibrational medicines involve the therapeutic application of fluctuating energy fields projected from sources such as the hands of therapists, electronic devices, lasers, the human voice, musical instruments, or homeopathic, aromatherapy, a</li></ul></div>
+        
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#2</span>
+        <b>homeopath</b>
+        <span class="neutral">(44 facts)</span>
+        → <span title="The incoming term &#x27;homeopath&#x27; refers to the practitioner of the concept &#x27;homeopathy&#x27;, which is a standard morphological variant/related role often grouped under the same canonical concept in knowledge graphs." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> The incoming term &#x27;homeopath&#x27; refers to the practitioner of the concept &#x27;homeopathy&#x27;, which is a standard morphological variant/related role often grouped under the same canonical concept in knowledge graphs.</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The &#x27;Multidisciplinary Group Practice&#x27; model of integrative care, exemplified by the Texas Back Institute in Plano, TX, consists of a facility housing both conventional providers (orthopedist, osteopath, family practitioner, internist, derm</li><li>Homeopathic medicines are not licensed, meaning chemists do not tailor these remedies for individual patients.</li><li>Researchers have investigated the use of the homeopathic medicines Arnica montana 15CH and Apis mellifica 15CH combined with acupuncture to help with pain after surgery.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.836): <span class="score" style="background:#fef9c3"><b>0.836</b> <span class="neutral">vs</span> homeopathy</span></div>
+        <div class='sub'><b>multiplex LLM →</b> <code>{&quot;action&quot;: &quot;alias_to_parent&quot;, &quot;path_id&quot;: null, &quot;new_label&quot;: &quot;homeopath&quot;, &quot;reason&quot;: &quot;The incoming term &#x27;homeopath&#x27; refers to the practitioner of the concept &#x27;homeopathy&#x27;, which is a standard morphological variant/related role often grouped under the same canonical concept in knowledge graphs.&quot;}</code> <span class='meta'>multiplex: 542→79 tok · $0.00025 · 9087ms</span></div>
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#3</span>
+        <b>homeopathic medicine</b>
+        <span class="neutral">(11 facts)</span>
+        → <span title="Homeopathic medicine is a direct synonym for the practice of homeopathy and refers to the same conceptual framework." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> Homeopathic medicine is a direct synonym for the practice of homeopathy and refers to the same conceptual framework.</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The National Center for Complementary and Integrative Health (NCCIH) classifies homeopathic medicine as a form of complementary and alternative medicine (CAM).</li><li>Homeopathic medicine remains outside the umbrella of allopathic treatments because it lacks substantial scientific evidence supporting its effectiveness.</li><li>Serial dilution is a defining characteristic of homeopathic medicine, regardless of the specific ingredients involved in the remedy.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.823): <span class="score" style="background:#fef9c3"><b>0.823</b> <span class="neutral">vs</span> homeopathy</span></div>
+        <div class='sub'><b>multiplex LLM →</b> <code>{&quot;action&quot;: &quot;alias_to_parent&quot;, &quot;path_id&quot;: null, &quot;new_label&quot;: null, &quot;reason&quot;: &quot;Homeopathic medicine is a direct synonym for the practice of homeopathy and refers to the same conceptual framework.&quot;}</code> <span class='meta'>multiplex: 516→59 tok · $0.00022 · 1845ms</span></div>
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#4</span>
+        <b>homeopathic</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="The term &#x27;homeopathic&#x27; is a direct adjectival form of the canonical concept &#x27;homeopathy&#x27; and functions as a surface variant rather than a distinct entity." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> The term &#x27;homeopathic&#x27; is a direct adjectival form of the canonical concept &#x27;homeopathy&#x27; and functions as a surface variant rather than a distinct entity.</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The co-location model of integrative medicine in India involves the Ministry of AYUSH promoting centers in public hospitals where Ayurvedic, Siddha, Unani, and Homeopathic practitioners work alongside allopathic doctors.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.843): <span class="score" style="background:#fef9c3"><b>0.843</b> <span class="neutral">vs</span> homeopathy</span></div>
+        <div class='sub'><b>multiplex LLM →</b> <code>{&quot;action&quot;: &quot;alias_to_parent&quot;, &quot;path_id&quot;: null, &quot;new_label&quot;: null, &quot;reason&quot;: &quot;The term &#x27;homeopathic&#x27; is a direct adjectival form of the canonical concept &#x27;homeopathy&#x27; and functions as a surface variant rather than a distinct entity.&quot;}</code> <span class='meta'>multiplex: 484→72 tok · $0.00023 · 2337ms</span></div>
+        
+      </div>
+    </details>
+    
 <h3>Prod merge audit (ground truth)</h3>
-<table><tr><th>Op</th><th>Source</th><th>Target</th><th>Reason</th><th>Facts moved</th><th>When</th></tr>
+<table><tr><th>op</th><th>source</th><th>target</th><th>reason</th><th class='num'>facts</th><th>when</th></tr>
 <tr><td>merge</td><td class='mono'>homeopathic</td><td class='mono'>homeopathy</td><td class='reason'>embedding + LLM confirmed (score=0.843)</td><td class='num'>1</td><td class='meta'>2026-03-20T02:33:02.383352</td></tr>
 <tr><td>merge</td><td class='mono'>homeopathic-medicine</td><td class='mono'>homeopathy</td><td class='reason'>embedding + LLM confirmed (score=0.823)</td><td class='num'>11</td><td class='meta'>2026-03-20T02:39:53.598492</td></tr>
 <tr><td>merge</td><td class='mono'>homeopathic-drugs</td><td class='mono'>homeopathy</td><td class='reason'>reverse alias match</td><td class='num'>9</td><td class='meta'>2026-03-20T02:40:12.710012</td></tr>
@@ -61,139 +174,1672 @@
 </div>
 <div class='section'>
 <h2>local — Kriya Yoga</h2>
-<div class='meta'>canonical = <b>Kriya Yoga</b> (concept) · parent aliases: ['Kriya yogi', 'Kriya Yogis']</div>
 <h3>Final big-seed structure</h3>
 
-    <div class='path'>
-      <div><b>path_id=9654b95d</b> · label=<b>Kriya Yoga</b></div>
-      <div class='meta'>aliases (2): <span title="LLM-generated alias" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#0ea5e9;">Kriya</span> <span title="LLM-generated alias" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#0ea5e9;">Kriya technique</span></div>
-      <div class='meta'>observed (1): <span title="observed surface form" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">Kriya Yoga</span></div>
-      <div class='meta'>alias_gen: 576→17 tok · $0.00017</div>
-      <details><summary>10 fact(s) stored</summary><ul><li>Paramahansa Yogananda was an Indian guru who taught the path of Kriya Yoga.</li><li>Paramahansa Yogananda founded the Self-Realization Fellowship to teach Kriya Yoga, which he presented as a scientific technique for attaining a direct, personal experience of God.</li><li>The lineage of Kriya Yoga practice includes Mahavatar Babaji, Lahiri Mahasaya, Swami Sri Yukteswar, Paramahansa Yogananda, and Roy Eugene Davis.</li><li>Paramahansa Yogananda taught the path of Kriya Yoga, which he described as the &#x27;jet-airplane&#x27; route to God, consisting of ancient yoga techniques to hasten the spiritual evolution of the student.</li><li>The Yogoda Satsanga Lessons are a home-study series containing thousands of pages of Paramahansa Yogananda&#x27;s personal instructions on meditation techniques, including Kriya Yoga, and guidance on balanced spiritual living.</li></ul></details>
+    <div class="bigseed">
+      <div class="canonical">canonical: <b>Kriya Yoga</b>
+        <span class="neutral">(concept)</span></div>
+      <div class="sub"><b>parent merged surface forms</b> (2):
+        <span title="absorbed at parent level" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#92400e;background:#fef3c7;border:1px solid #cbd5e1;">Kriya yogi</span> <span title="absorbed at parent level" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#92400e;background:#fef3c7;border:1px solid #cbd5e1;">Kriya Yogis</span></div>
+      <div class="paths">
+        <h4>paths (1)</h4>
+        
+    <div class="path">
+      <div class="path-head">
+        <span class="path-id">c6416f97</span>
+        <b class="path-label">Kriya Yoga</b>
+        <span class='meta'>alias_gen: 574→32 tok · $0.00019 · 1457ms</span>
+      </div>
+      <div class="sub"><b>known aliases</b> (3): <span title="LLM-generated known alias" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#1e40af;background:#dbeafe;border:1px solid #cbd5e1;">Kriya</span> <span title="LLM-generated known alias" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#1e40af;background:#dbeafe;border:1px solid #cbd5e1;">Kriya technique</span> <span title="LLM-generated known alias" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#1e40af;background:#dbeafe;border:1px solid #cbd5e1;">Kriya meditation</span></div>
+      <div class="sub"><b>merged surface forms</b> (0): <span class="neutral">none</span></div>
+      <details><summary>10 fact sample(s)</summary><ul><li>Paramahansa Yogananda was an Indian guru who taught the path of Kriya Yoga.</li><li>Paramahansa Yogananda founded the Self-Realization Fellowship to teach Kriya Yoga, which he presented as a scientific technique for attaining a direct, personal experience of God.</li><li>The lineage of Kriya Yoga practice includes Mahavatar Babaji, Lahiri Mahasaya, Swami Sri Yukteswar, Paramahansa Yogananda, and Roy Eugene Davis.</li><li>Paramahansa Yogananda taught the path of Kriya Yoga, which he described as the &#x27;jet-airplane&#x27; route to God, consisting of ancient yoga techniques to hasten the spiritual evolution of the student.</li><li>The Yogoda Satsanga Lessons are a home-study series containing thousands of pages of Paramahansa Yogananda&#x27;s personal instructions on meditation techniques, including Kriya Yoga, and guidance on balanced spiritual living.</li></ul></details>
     </div>
     
-<h3>Replay timeline</h3>
-<table><tr><th>#</th><th>Incoming</th><th>Decision</th><th>Routed to</th><th>Best embed</th><th>Multiplex tokens</th><th>alias_gen tokens</th><th>Reason</th></tr>
-<tr><td class='num'>0</td><td>Kriya Yoga<div class='meta'>705 facts</div></td><td><span title="seed initialized from first family member" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">seed_init</span></td><td>Kriya Yoga</td><td class='num'>-</td><td><span class='neutral'>-</span></td><td><span class='num'>576→17</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00017 · 1782ms</div></td><td class='reason'>seed initialized from first family member</td></tr>
-<tr><td class='num'>1</td><td>Kriya Yoga<div class='meta'>678 facts</div></td><td><span title="canonical_name_match" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#059669;">alias_match</span></td><td>-</td><td class='num'>-</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>canonical_name_match</td></tr>
-<tr><td class='num'>2</td><td>Kriya Yoga<div class='meta'>30 facts</div></td><td><span title="canonical_name_match" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#059669;">alias_match</span></td><td>-</td><td class='num'>-</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>canonical_name_match</td></tr>
-<tr><td class='num'>3</td><td>Kriya yogi<div class='meta'>7 facts</div></td><td><span title="A &#x27;Kriya yogi&#x27; is a practitioner of Kriya Yoga; it is a derivative term referring to the person practicing the concept rather than a distinct entity or a separate branch of the practice." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span></td><td>-</td><td class='num'>0.823</td><td><span class='num'>525→79</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00025 · 2389ms</div></td><td><span class='neutral'>-</span></td><td class='reason'>A &#x27;Kriya yogi&#x27; is a practitioner of Kriya Yoga; it is a derivative term referring to the person practicing the concept rather than a distinct entity or a separate branch of the practice.</td></tr>
-<tr><td class='num'>4</td><td>Kriya Yogis<div class='meta'>1 facts</div></td><td><span title="The incoming term &#x27;Kriya Yogis&#x27; refers to the practitioners of the canonical concept &#x27;Kriya Yoga&#x27; and is a plural variant of the existing parent alias &#x27;Kriya yogi&#x27;." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span></td><td>-</td><td class='num'>0.828</td><td><span class='num'>469→77</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00023 · 1773ms</div></td><td><span class='neutral'>-</span></td><td class='reason'>The incoming term &#x27;Kriya Yogis&#x27; refers to the practitioners of the canonical concept &#x27;Kriya Yoga&#x27; and is a plural variant of the existing parent alias &#x27;Kriya yogi&#x27;.</td></tr></table>
+      </div>
+    </div>
+    
+<h3>Event history (per admitted seed)</h3>
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#0</span>
+        <b>Kriya Yoga</b>
+        <span class="neutral">(705 facts)</span>
+        → <span title="seed initialized from first family member" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">seed_init</span>
+        → <b>Kriya Yoga</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> seed initialized from first family member</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Paramahansa Yogananda was an Indian guru who taught the path of Kriya Yoga.</li><li>Paramahansa Yogananda founded the Self-Realization Fellowship to teach Kriya Yoga, which he presented as a scientific technique for attaining a direct, personal experience of God.</li><li>The lineage of Kriya Yoga practice includes Mahavatar Babaji, Lahiri Mahasaya, Swami Sri Yukteswar, Paramahansa Yogananda, and Roy Eugene Davis.</li></ul></div>
+        
+        
+        <div class='sub'><b>alias_gen LLM →</b> <code>{&quot;aliases&quot;: [&quot;Kriya&quot;, &quot;Kriya technique&quot;, &quot;Kriya meditation&quot;]}</code> <span class='meta'>alias_gen: 574→32 tok · $0.00019 · 1457ms</span></div>
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#1</span>
+        <b>Kriya Yoga</b>
+        <span class="neutral">(678 facts)</span>
+        → <span title="canonical_name_match" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#059669;">alias_match</span>
+        → <b>-</b> · gate=<code>canonical_name_match</code>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> canonical_name_match</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Kriya Yoga is a focused pranayama practice.</li><li>Kriya Yoga is claimed to hold the key to swift and transformative results.</li><li>Kriya Yoga is described as a powerful tool.</li></ul></div>
+        
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#2</span>
+        <b>Kriya Yoga</b>
+        <span class="neutral">(30 facts)</span>
+        → <span title="canonical_name_match" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#059669;">alias_match</span>
+        → <b>-</b> · gate=<code>canonical_name_match</code>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> canonical_name_match</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Lahiri Mahasaya related: “Babaji instructed me in the ancient rigid rules that govern the transmission of the yogic art from guru to disciple. ‘Bestow the Kriya key only on qualified chelas,’ Babaji said. ‘He who vows to sacrifice all in th</li><li>Lahiri Mahasaya asked Mahavatar Babaji to relax the strict requirements for Kriya discipleship, stating: “‘Angelic Guru, as you have already favored mankind by resurrecting the lost Kriya art, will you not increase that benefit by relaxing </li><li>Paramahansa Yogananda quoted a merciful guru as saying: “Give Kriya to all who humbly ask you for help.”</li></ul></div>
+        
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#3</span>
+        <b>Kriya yogi</b>
+        <span class="neutral">(7 facts)</span>
+        → <span title="A &#x27;Kriya yogi&#x27; is a practitioner of Kriya Yoga; the term refers to the person following the path rather than a distinct concept or entity." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> A &#x27;Kriya yogi&#x27; is a practitioner of Kriya Yoga; the term refers to the person following the path rather than a distinct concept or entity.</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Paramahansa Yogananda stated: “Hundreds of thousands of Kriya Yogis are needed to bring into manifestation a world of peace.”</li><li>Swami Kriyananda identified himself first and foremost as a disciple of Paramhansa Yogananda, rather than as a Kriya yogi, teacher, meditator, or author.</li><li>Swami Sri Yukteswar Giri was an Indian Hindu monk, yogi, and Kriya yogi.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.823): <span class="score" style="background:#fef9c3"><b>0.823</b> <span class="neutral">vs</span> Kriya Yoga</span></div>
+        <div class='sub'><b>multiplex LLM →</b> <code>{&quot;action&quot;: &quot;alias_to_parent&quot;, &quot;path_id&quot;: &quot;c6416f97&quot;, &quot;new_label&quot;: null, &quot;reason&quot;: &quot;A &#x27;Kriya yogi&#x27; is a practitioner of Kriya Yoga; the term refers to the person following the path rather than a distinct concept or entity.&quot;}</code> <span class='meta'>multiplex: 529→79 tok · $0.00025 · 1382ms</span></div>
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#4</span>
+        <b>Kriya Yogis</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="The incoming term &#x27;Kriya Yogis&#x27; is the plural form of &#x27;Kriya yogi&#x27;, which is already listed as a merged surface form of the canonical &#x27;Kriya Yoga&#x27;." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#14b8a6;">llm_alias_to_parent</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> The incoming term &#x27;Kriya Yogis&#x27; is the plural form of &#x27;Kriya yogi&#x27;, which is already listed as a merged surface form of the canonical &#x27;Kriya Yoga&#x27;.</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Sri Yukteswar held the view common among Kriya yogis that the ajna chakra (third eye) is the primary bodily center for spiritual realization.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.828): <span class="score" style="background:#fef9c3"><b>0.828</b> <span class="neutral">vs</span> Kriya Yoga</span></div>
+        <div class='sub'><b>multiplex LLM →</b> <code>{&quot;action&quot;: &quot;alias_to_parent&quot;, &quot;path_id&quot;: null, &quot;new_label&quot;: null, &quot;reason&quot;: &quot;The incoming term &#x27;Kriya Yogis&#x27; is the plural form of &#x27;Kriya yogi&#x27;, which is already listed as a merged surface form of the canonical &#x27;Kriya Yoga&#x27;.&quot;}</code> <span class='meta'>multiplex: 473→76 tok · $0.00023 · 2118ms</span></div>
+        
+      </div>
+    </details>
+    
 <h3>Prod merge audit (ground truth)</h3>
-<table><tr><th>Op</th><th>Source</th><th>Target</th><th>Reason</th><th>Facts moved</th><th>When</th></tr>
+<table><tr><th>op</th><th>source</th><th>target</th><th>reason</th><th class='num'>facts</th><th>when</th></tr>
 <tr><td>merge</td><td class='mono'>kriya-yogis</td><td class='mono'>kriya-yogi</td><td class='reason'>embedding + LLM confirmed (score=0.897)</td><td class='num'>2</td><td class='meta'>2026-03-23T01:35:02.743556</td></tr>
 <tr><td>merge</td><td class='mono'>kriya-practice</td><td class='mono'>kriya</td><td class='reason'>embedding + LLM confirmed (score=0.849)</td><td class='num'>1</td><td class='meta'>2026-03-23T01:35:37.112290</td></tr>
 <tr><td>split</td><td class='mono'>kriya-yoga</td><td class='mono'>kriya-yoga:disambig</td><td class='reason'>embedding disambiguation: &#x27;Kriya Yoga&#x27; vs incoming</td><td class='num'>678</td><td class='meta'>2026-03-23T01:45:43.803939</td></tr></table>
 </div>
 <div class='section'>
 <h2>prod — Nate</h2>
-<div class='meta'>canonical = <b>Nate</b> (entity) · parent aliases: none</div>
 <h3>Final big-seed structure</h3>
 
-    <div class='path'>
-      <div><b>path_id=09e98f9b</b> · label=<b>Nate</b></div>
-      <div class='meta'>aliases (3): <span title="LLM-generated alias" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#0ea5e9;">North Atlantic Treaty Organization</span> <span title="LLM-generated alias" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#0ea5e9;">OTAN</span> <span title="LLM-generated alias" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#0ea5e9;">Organisation du traité de l&#x27;Atlantique nord</span></div>
-      <div class='meta'>observed (1): <span title="observed surface form" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">Nate</span></div>
-      <div class='meta'>alias_gen: 519→24 tok · $0.00017</div>
-      <details><summary>10 fact(s) stored</summary><ul><li>Nate and his son Alberto hunted and killed two armadillos and three coatis near a stream in Anachere.</li><li>Russia is likely to deploy disinformation and DDoS assaults to destabilize NATO-aligned regions by exploiting Western divisions.</li><li>Participants in the study responded using two 5-button response boxes (NAtA or SINORAD) with both hands.</li><li>In 2017, Jeffrey Epstein texted Indian businessman Anil Ambani offering to organize a private dinner with the head of NATO, while stating he would not attend.</li><li>In early 1991, the United States and NATO allies, with the agreement of the Soviet Union, invaded Kuwait to oust occupying Iraqi forces.</li></ul></details>
+    <div class="bigseed">
+      <div class="canonical">canonical: <b>Nate</b>
+        <span class="neutral">(entity)</span></div>
+      <div class="sub"><b>parent merged surface forms</b> (0):
+        <span class="neutral">none</span></div>
+      <div class="paths">
+        <h4>paths (3)</h4>
+        
+    <div class="path">
+      <div class="path-head">
+        <span class="path-id">df44df30</span>
+        <b class="path-label">Nate</b>
+        <span class='meta'>alias_gen: 521→9 tok · $0.00014 · 1934ms</span>
+      </div>
+      <div class="sub"><b>known aliases</b> (1): <span title="LLM-generated known alias" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#1e40af;background:#dbeafe;border:1px solid #cbd5e1;">North Atlantic Treaty Organization</span></div>
+      <div class="sub"><b>merged surface forms</b> (0): <span class="neutral">none</span></div>
+      <details><summary>10 fact sample(s)</summary><ul><li>Nate and his son Alberto hunted and killed two armadillos and three coatis near a stream in Anachere.</li><li>Russia is likely to deploy disinformation and DDoS assaults to destabilize NATO-aligned regions by exploiting Western divisions.</li><li>Participants in the study responded using two 5-button response boxes (NAtA or SINORAD) with both hands.</li><li>In 2017, Jeffrey Epstein texted Indian businessman Anil Ambani offering to organize a private dinner with the head of NATO, while stating he would not attend.</li><li>In early 1991, the United States and NATO allies, with the agreement of the Soviet Union, invaded Kuwait to oust occupying Iraqi forces.</li></ul></details>
     </div>
+    
+    <div class="path">
+      <div class="path-head">
+        <span class="path-id">33825331</span>
+        <b class="path-label">Nate Payton</b>
+        <span class='meta'>alias_gen: 343→7 tok · $0.00010 · 1416ms</span>
+      </div>
+      <div class="sub"><b>known aliases</b> (1): <span title="LLM-generated known alias" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#1e40af;background:#dbeafe;border:1px solid #cbd5e1;">Nathan Payton</span></div>
+      <div class="sub"><b>merged surface forms</b> (1): <span title="absorbed surface form" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#92400e;background:#fef3c7;border:1px solid #cbd5e1;">Nate Payton</span></div>
+      <details><summary>4 fact sample(s)</summary><ul><li>Nate Payton observes that Steven Greer did not mention personal contacts with aliens in his YouTube videos prior to 2018, focusing instead on government concealment of UFO evidence.</li><li>Nate Payton notes an inconsistency in Steven Greer&#x27;s documentary where he expresses suicidal thoughts early on, but later claims to have dispelled the fear of death through enlightenment of consciousness.</li><li>Steven Greer&#x27;s earlier YouTube videos focused on the government hiding UFO evidence, whereas his later content (post-2018) emphasizes his personal contacts with aliens, according to Nate Payton.</li><li>Steven Greer exhibits emotional inconsistency by crying about suicidal thoughts in the beginning of his documentary while later claiming to have dispelled the fear of death through the enlightenment of consciousness, according to Nate Payton.</li></ul></details>
+    </div>
+    
+    <div class="path">
+      <div class="path-head">
+        <span class="path-id">75d706f4</span>
+        <b class="path-label">Nathan (Podcaster)</b>
+        <span class='meta'>alias_gen: 223→8 tok · $0.00007 · 1958ms</span>
+      </div>
+      <div class="sub"><b>known aliases</b> (1): <span title="LLM-generated known alias" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#1e40af;background:#dbeafe;border:1px solid #cbd5e1;">Nathan Rehn</span></div>
+      <div class="sub"><b>merged surface forms</b> (1): <span title="absorbed surface form" style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#92400e;background:#fef3c7;border:1px solid #cbd5e1;">Nathan</span></div>
+      <details><summary>1 fact sample(s)</summary><ul><li>The podcast &#x27;That UFO Podcast&#x27; hosted by Andy and Nathan examines the sincerity, evolution, and controversies surrounding Steven Greer&#x27;s work in the UFO community.</li></ul></details>
+    </div>
+    
+      </div>
+    </div>
+    
+<h3>Event history (per admitted seed)</h3>
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#0</span>
+        <b>Nate</b>
+        <span class="neutral">(419 facts)</span>
+        → <span title="seed initialized from first family member" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">seed_init</span>
+        → <b>Nate</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> seed initialized from first family member</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nate and his son Alberto hunted and killed two armadillos and three coatis near a stream in Anachere.</li><li>Russia is likely to deploy disinformation and DDoS assaults to destabilize NATO-aligned regions by exploiting Western divisions.</li><li>Participants in the study responded using two 5-button response boxes (NAtA or SINORAD) with both hands.</li></ul></div>
+        
+        
+        <div class='sub'><b>alias_gen LLM →</b> <code>{&quot;aliases&quot;: [&quot;North Atlantic Treaty Organization&quot;]}</code> <span class='meta'>alias_gen: 521→9 tok · $0.00014 · 1934ms</span></div>
+      </div>
+    </details>
     
 
-    <div class='path'>
-      <div><b>path_id=244b61c2</b> · label=<b>Nate Payton</b></div>
-      <div class='meta'>aliases (1): <span title="LLM-generated alias" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#0ea5e9;">Nathan Payton</span></div>
-      <div class='meta'>observed (2): <span title="observed surface form" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">Nate Payton</span> <span title="observed surface form" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">Nathan</span></div>
-      <div class='meta'>alias_gen: 343→7 tok · $0.00010</div>
-      <details><summary>5 fact(s) stored</summary><ul><li>Nate Payton observes that Steven Greer did not mention personal contacts with aliens in his YouTube videos prior to 2018, focusing instead on government concealment of UFO evidence.</li><li>Nate Payton notes an inconsistency in Steven Greer&#x27;s documentary where he expresses suicidal thoughts early on, but later claims to have dispelled the fear of death through enlightenment of consciousness.</li><li>Steven Greer&#x27;s earlier YouTube videos focused on the government hiding UFO evidence, whereas his later content (post-2018) emphasizes his personal contacts with aliens, according to Nate Payton.</li><li>Steven Greer exhibits emotional inconsistency by crying about suicidal thoughts in the beginning of his documentary while later claiming to have dispelled the fear of death through the enlightenment of consciousness, according to Nate Payton.</li><li>The podcast &#x27;That UFO Podcast&#x27; hosted by Andy and Nathan examines the sincerity, evolution, and controversies surrounding Steven Greer&#x27;s work in the UFO community.</li></ul></details>
-    </div>
+    <details class="event" open>
+      <summary>
+        <span class="step">#1</span>
+        <b>United Nations</b>
+        <span class="neutral">(282 facts)</span>
+        → <span title="best embed 0.141 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.141 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The United Nations’ Convention on Psychotropic Substances initiated an international ban on psychedelics in 1971, which restricted the clinical use of these psychoactive substances.</li><li>The active suppression of psychoactive substances is a late twentieth-century global phenomenon led by the United States and the United Nations, with deeper historical roots in Christianity and the colonial Americas.</li><li>The United Nations&#x27; Convention on Psychotropic Substances of 1971 initiated international bans on psychedelics that remain binding today.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.141): <span class="score" style="background:#fee2e2"><b>0.141</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
     
-<h3>Replay timeline</h3>
-<table><tr><th>#</th><th>Incoming</th><th>Decision</th><th>Routed to</th><th>Best embed</th><th>Multiplex tokens</th><th>alias_gen tokens</th><th>Reason</th></tr>
-<tr><td class='num'>0</td><td>Nate<div class='meta'>419 facts</div></td><td><span title="seed initialized from first family member" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#64748b;">seed_init</span></td><td>Nate</td><td class='num'>-</td><td><span class='neutral'>-</span></td><td><span class='num'>519→24</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00017 · 1011ms</div></td><td class='reason'>seed initialized from first family member</td></tr>
-<tr><td class='num'>1</td><td>United Nations<div class='meta'>282 facts</div></td><td><span title="best embed score 0.141 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.141</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.141 &lt; floor 0.7</td></tr>
-<tr><td class='num'>2</td><td>NASS<div class='meta'>188 facts</div></td><td><span title="best embed score 0.356 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.356</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.356 &lt; floor 0.7</td></tr>
-<tr><td class='num'>3</td><td>Alaska Natives<div class='meta'>24 facts</div></td><td><span title="best embed score 0.204 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.204</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.204 &lt; floor 0.7</td></tr>
-<tr><td class='num'>4</td><td>Navy<div class='meta'>26 facts</div></td><td><span title="best embed score 0.365 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.365</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.365 &lt; floor 0.7</td></tr>
-<tr><td class='num'>5</td><td>Senate<div class='meta'>15 facts</div></td><td><span title="best embed score 0.203 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.203</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.203 &lt; floor 0.7</td></tr>
-<tr><td class='num'>6</td><td>Nature<div class='meta'>11 facts</div></td><td><span title="best embed score 0.298 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.298</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.298 &lt; floor 0.7</td></tr>
-<tr><td class='num'>7</td><td>Nuxalk Nation<div class='meta'>11 facts</div></td><td><span title="best embed score 0.248 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.248</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.248 &lt; floor 0.7</td></tr>
-<tr><td class='num'>8</td><td>Nathan Wolfe<div class='meta'>11 facts</div></td><td><span title="best embed score 0.339 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.339</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.339 &lt; floor 0.7</td></tr>
-<tr><td class='num'>9</td><td>Nathan Myhrvold<div class='meta'>11 facts</div></td><td><span title="best embed score 0.237 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.237</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.237 &lt; floor 0.7</td></tr>
-<tr><td class='num'>10</td><td>NAEYC<div class='meta'>5 facts</div></td><td><span title="best embed score 0.251 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.251</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.251 &lt; floor 0.7</td></tr>
-<tr><td class='num'>11</td><td>Gitga&#x27;at Nation<div class='meta'>6 facts</div></td><td><span title="best embed score 0.169 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.169</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.169 &lt; floor 0.7</td></tr>
-<tr><td class='num'>12</td><td>Nasr<div class='meta'>6 facts</div></td><td><span title="best embed score 0.326 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.326</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.326 &lt; floor 0.7</td></tr>
-<tr><td class='num'>13</td><td>state<div class='meta'>5 facts</div></td><td><span title="best embed score 0.244 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.244</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.244 &lt; floor 0.7</td></tr>
-<tr><td class='num'>14</td><td>Nate Oayton<div class='meta'>5 facts</div></td><td><span title="best embed score 0.693 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.693</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.693 &lt; floor 0.7</td></tr>
-<tr><td class='num'>15</td><td>Nations Credit<div class='meta'>5 facts</div></td><td><span title="best embed score 0.212 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.212</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.212 &lt; floor 0.7</td></tr>
-<tr><td class='num'>16</td><td>Tribal Nations<div class='meta'>4 facts</div></td><td><span title="best embed score 0.184 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.184</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.184 &lt; floor 0.7</td></tr>
-<tr><td class='num'>17</td><td>Nathan Seidle<div class='meta'>4 facts</div></td><td><span title="best embed score 0.378 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.378</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.378 &lt; floor 0.7</td></tr>
-<tr><td class='num'>18</td><td>Natalie Depraz<div class='meta'>4 facts</div></td><td><span title="best embed score 0.336 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.336</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.336 &lt; floor 0.7</td></tr>
-<tr><td class='num'>19</td><td>The Nation<div class='meta'>4 facts</div></td><td><span title="best embed score 0.302 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.302</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.302 &lt; floor 0.7</td></tr>
-<tr><td class='num'>20</td><td>Slate<div class='meta'>4 facts</div></td><td><span title="best embed score 0.306 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.306</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.306 &lt; floor 0.7</td></tr>
-<tr><td class='num'>21</td><td>Nate Payton<div class='meta'>4 facts</div></td><td><span title="Nate Payton is a distinct individual (a researcher/commentator on Steven Greer) and is not related to the existing NATO-related or fictional entities under the &#x27;Nate&#x27; seed." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#f59e0b;">llm_new_path</span></td><td>Nate Payton</td><td class='num'>0.713</td><td><span class='num'>532→78</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00025 · 1824ms</div></td><td><span class='num'>343→7</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00010 · 1707ms</div></td><td class='reason'>Nate Payton is a distinct individual (a researcher/commentator on Steven Greer) and is not related to the existing NATO-related or fictional entities under the &#x27;Nate&#x27; seed.</td></tr>
-<tr><td class='num'>22</td><td>Kate<div class='meta'>4 facts</div></td><td><span title="best embed score 0.296 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.296</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.296 &lt; floor 0.7</td></tr>
-<tr><td class='num'>23</td><td>First Nations<div class='meta'>3 facts</div></td><td><span title="best embed score 0.222 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.222</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.222 &lt; floor 0.7</td></tr>
-<tr><td class='num'>24</td><td>Cymulate<div class='meta'>3 facts</div></td><td><span title="best embed score 0.198 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.198</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.198 &lt; floor 0.7</td></tr>
-<tr><td class='num'>25</td><td>Nasdaq<div class='meta'>3 facts</div></td><td><span title="best embed score 0.307 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.307</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.307 &lt; floor 0.7</td></tr>
-<tr><td class='num'>26</td><td>National Front<div class='meta'>3 facts</div></td><td><span title="best embed score 0.206 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.206</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.206 &lt; floor 0.7</td></tr>
-<tr><td class='num'>27</td><td>National Taxpayer Advocate<div class='meta'>3 facts</div></td><td><span title="best embed score 0.228 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.228</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.228 &lt; floor 0.7</td></tr>
-<tr><td class='num'>28</td><td>Cancer Nation<div class='meta'>3 facts</div></td><td><span title="best embed score 0.219 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.219</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.219 &lt; floor 0.7</td></tr>
-<tr><td class='num'>29</td><td>Native Hawaiian<div class='meta'>2 facts</div></td><td><span title="best embed score 0.235 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.235</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.235 &lt; floor 0.7</td></tr>
-<tr><td class='num'>30</td><td>Squamish Nation<div class='meta'>2 facts</div></td><td><span title="best embed score 0.190 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.190</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.190 &lt; floor 0.7</td></tr>
-<tr><td class='num'>31</td><td>Nakala<div class='meta'>2 facts</div></td><td><span title="best embed score 0.284 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.284</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.284 &lt; floor 0.7</td></tr>
-<tr><td class='num'>32</td><td>Nasuni<div class='meta'>2 facts</div></td><td><span title="best embed score 0.292 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.292</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.292 &lt; floor 0.7</td></tr>
-<tr><td class='num'>33</td><td>Nagel<div class='meta'>2 facts</div></td><td><span title="best embed score 0.328 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.328</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.328 &lt; floor 0.7</td></tr>
-<tr><td class='num'>34</td><td>Nate Kornell<div class='meta'>2 facts</div></td><td><span title="best embed score 0.477 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.477</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.477 &lt; floor 0.7</td></tr>
-<tr><td class='num'>35</td><td>Natixis<div class='meta'>2 facts</div></td><td><span title="best embed score 0.251 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.251</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.251 &lt; floor 0.7</td></tr>
-<tr><td class='num'>36</td><td>Nate Swanson<div class='meta'>2 facts</div></td><td><span title="best embed score 0.624 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.624</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.624 &lt; floor 0.7</td></tr>
-<tr><td class='num'>37</td><td>Nagi<div class='meta'>2 facts</div></td><td><span title="best embed score 0.373 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.373</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.373 &lt; floor 0.7</td></tr>
-<tr><td class='num'>38</td><td>NACA<div class='meta'>2 facts</div></td><td><span title="best embed score 0.330 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.330</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.330 &lt; floor 0.7</td></tr>
-<tr><td class='num'>39</td><td>Nat Turner<div class='meta'>1 facts</div></td><td><span title="best embed score 0.326 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.326</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.326 &lt; floor 0.7</td></tr>
-<tr><td class='num'>40</td><td>Narrows<div class='meta'>2 facts</div></td><td><span title="best embed score 0.314 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.314</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.314 &lt; floor 0.7</td></tr>
-<tr><td class='num'>41</td><td>T. Nawaz<div class='meta'>1 facts</div></td><td><span title="best embed score 0.325 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.325</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.325 &lt; floor 0.7</td></tr>
-<tr><td class='num'>42</td><td>Deonicio Nate<div class='meta'>1 facts</div></td><td><span title="best embed score 0.613 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.613</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.613 &lt; floor 0.7</td></tr>
-<tr><td class='num'>43</td><td>Salmon Nation<div class='meta'>1 facts</div></td><td><span title="best embed score 0.280 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.280</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.280 &lt; floor 0.7</td></tr>
-<tr><td class='num'>44</td><td>NAFTA<div class='meta'>1 facts</div></td><td><span title="best embed score 0.282 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.282</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.282 &lt; floor 0.7</td></tr>
-<tr><td class='num'>45</td><td>Nature Medicine<div class='meta'>1 facts</div></td><td><span title="best embed score 0.202 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.202</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.202 &lt; floor 0.7</td></tr>
-<tr><td class='num'>46</td><td>NAACL<div class='meta'>1 facts</div></td><td><span title="best embed score 0.301 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.301</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.301 &lt; floor 0.7</td></tr>
-<tr><td class='num'>47</td><td>Nathaniel D. Daw<div class='meta'>1 facts</div></td><td><span title="best embed score 0.478 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.478</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.478 &lt; floor 0.7</td></tr>
-<tr><td class='num'>48</td><td>Nagel, T.<div class='meta'>1 facts</div></td><td><span title="best embed score 0.275 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.275</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.275 &lt; floor 0.7</td></tr>
-<tr><td class='num'>49</td><td>Nathan Rosen<div class='meta'>1 facts</div></td><td><span title="best embed score 0.329 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.329</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.329 &lt; floor 0.7</td></tr>
-<tr><td class='num'>50</td><td>Nakatani<div class='meta'>1 facts</div></td><td><span title="best embed score 0.316 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.316</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.316 &lt; floor 0.7</td></tr>
-<tr><td class='num'>51</td><td>National Grid<div class='meta'>1 facts</div></td><td><span title="best embed score 0.195 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.195</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.195 &lt; floor 0.7</td></tr>
-<tr><td class='num'>52</td><td>Nationalist<div class='meta'>1 facts</div></td><td><span title="best embed score 0.268 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.268</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.268 &lt; floor 0.7</td></tr>
-<tr><td class='num'>53</td><td>Dr. Nasr<div class='meta'>1 facts</div></td><td><span title="best embed score 0.271 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.271</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.271 &lt; floor 0.7</td></tr>
-<tr><td class='num'>54</td><td>Nathan Twining<div class='meta'>1 facts</div></td><td><span title="best embed score 0.456 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.456</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.456 &lt; floor 0.7</td></tr>
-<tr><td class='num'>55</td><td>Movie Nation<div class='meta'>1 facts</div></td><td><span title="best embed score 0.228 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.228</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.228 &lt; floor 0.7</td></tr>
-<tr><td class='num'>56</td><td>Nathan<div class='meta'>1 facts</div></td><td><span title="The incoming entity &#x27;Nathan&#x27; is identified as the co-host of &#x27;That UFO Podcast&#x27; alongside Andy, discussing Steven Greer&#x27;s work, which aligns with the context of Nate Payton (path_id=244b61c2) who is also a commentator on Steven Greer&#x27;s work." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#7c3aed;">llm_merge_path</span></td><td>Nate Payton</td><td class='num'>0.712</td><td><span class='num'>607→108</span><div class='meta'>openrouter/google/gemini-3.1-flash-lite-preview · $0.00031 · 2115ms</div></td><td><span class='neutral'>-</span></td><td class='reason'>The incoming entity &#x27;Nathan&#x27; is identified as the co-host of &#x27;That UFO Podcast&#x27; alongside Andy, discussing Steven Greer&#x27;s work, which aligns with the context of Nate Payton (path_id=244b61c2) who is also a commentator on Steven Greer&#x27;s work.</td></tr>
-<tr><td class='num'>57</td><td>Na Yin<div class='meta'>1 facts</div></td><td><span title="best embed score 0.229 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.229</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.229 &lt; floor 0.7</td></tr>
-<tr><td class='num'>58</td><td>Nathifa Forde<div class='meta'>1 facts</div></td><td><span title="best embed score 0.351 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.351</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.351 &lt; floor 0.7</td></tr>
-<tr><td class='num'>59</td><td>Tim Tate<div class='meta'>1 facts</div></td><td><span title="best embed score 0.301 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.301</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.301 &lt; floor 0.7</td></tr>
-<tr><td class='num'>60</td><td>Natalie Lett<div class='meta'>1 facts</div></td><td><span title="best embed score 0.399 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.399</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.399 &lt; floor 0.7</td></tr>
-<tr><td class='num'>61</td><td>NAS<div class='meta'>1 facts</div></td><td><span title="best embed score 0.361 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.361</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.361 &lt; floor 0.7</td></tr>
-<tr><td class='num'>62</td><td>NAS-SSB<div class='meta'>1 facts</div></td><td><span title="best embed score 0.274 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.274</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.274 &lt; floor 0.7</td></tr>
-<tr><td class='num'>63</td><td>Roman Senate<div class='meta'>1 facts</div></td><td><span title="best embed score 0.118 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.118</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.118 &lt; floor 0.7</td></tr>
-<tr><td class='num'>64</td><td>Cate<div class='meta'>1 facts</div></td><td><span title="best embed score 0.398 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.398</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.398 &lt; floor 0.7</td></tr>
-<tr><td class='num'>65</td><td>Natai<div class='meta'>1 facts</div></td><td><span title="best embed score 0.494 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.494</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.494 &lt; floor 0.7</td></tr>
-<tr><td class='num'>66</td><td>Natasha Parvin<div class='meta'>1 facts</div></td><td><span title="best embed score 0.336 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.336</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.336 &lt; floor 0.7</td></tr>
-<tr><td class='num'>67</td><td>Nacho<div class='meta'>1 facts</div></td><td><span title="best embed score 0.358 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.358</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.358 &lt; floor 0.7</td></tr>
-<tr><td class='num'>68</td><td>Nations Bank<div class='meta'>1 facts</div></td><td><span title="best embed score 0.246 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.246</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.246 &lt; floor 0.7</td></tr>
-<tr><td class='num'>69</td><td>NAACP<div class='meta'>1 facts</div></td><td><span title="best embed score 0.289 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.289</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.289 &lt; floor 0.7</td></tr>
-<tr><td class='num'>70</td><td>Nathan Adler<div class='meta'>1 facts</div></td><td><span title="best embed score 0.458 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.458</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.458 &lt; floor 0.7</td></tr>
-<tr><td class='num'>71</td><td>Texas Senate<div class='meta'>1 facts</div></td><td><span title="best embed score 0.155 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.155</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.155 &lt; floor 0.7</td></tr>
-<tr><td class='num'>72</td><td>Ashgate<div class='meta'>1 facts</div></td><td><span title="best embed score 0.189 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.189</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.189 &lt; floor 0.7</td></tr>
-<tr><td class='num'>73</td><td>Nazis<div class='meta'>1 facts</div></td><td><span title="best embed score 0.268 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.268</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.268 &lt; floor 0.7</td></tr>
-<tr><td class='num'>74</td><td>Nancy<div class='meta'>1 facts</div></td><td><span title="best embed score 0.433 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.433</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.433 &lt; floor 0.7</td></tr>
-<tr><td class='num'>75</td><td>Navire<div class='meta'>1 facts</div></td><td><span title="best embed score 0.236 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.236</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.236 &lt; floor 0.7</td></tr>
-<tr><td class='num'>76</td><td>Nathan Kallus<div class='meta'>4 facts</div></td><td><span title="best embed score 0.477 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.477</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.477 &lt; floor 0.7</td></tr>
-<tr><td class='num'>77</td><td>Nallet, C.<div class='meta'>1 facts</div></td><td><span title="best embed score 0.311 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.311</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.311 &lt; floor 0.7</td></tr>
-<tr><td class='num'>78</td><td>Na Li<div class='meta'>5 facts</div></td><td><span title="best embed score 0.306 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.306</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.306 &lt; floor 0.7</td></tr>
-<tr><td class='num'>79</td><td>T. Natsoulas<div class='meta'>2 facts</div></td><td><span title="best embed score 0.275 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.275</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.275 &lt; floor 0.7</td></tr>
-<tr><td class='num'>80</td><td>Nayak<div class='meta'>1 facts</div></td><td><span title="best embed score 0.331 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.331</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.331 &lt; floor 0.7</td></tr>
-<tr><td class='num'>81</td><td>Nathan L. King<div class='meta'>2 facts</div></td><td><span title="best embed score 0.464 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.464</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.464 &lt; floor 0.7</td></tr>
-<tr><td class='num'>82</td><td>Nathan Sales<div class='meta'>3 facts</div></td><td><span title="best embed score 0.418 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span></td><td>-</td><td class='num'>0.418</td><td><span class='neutral'>-</span></td><td><span class='neutral'>-</span></td><td class='reason'>best embed score 0.418 &lt; floor 0.7</td></tr></table>
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#2</span>
+        <b>NASS</b>
+        <span class="neutral">(188 facts)</span>
+        → <span title="best embed 0.356 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.356 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The National Agricultural Statistics Service (NASS) published annual National Hemp Reports for the United States Department of Agriculture in 2022, 2023, and 2024.</li><li>The NASA Clickworkers project engages amateur astronomers to mark craters on Mars.</li><li>IBM and NASA collaborated to develop open-source scientific foundation models trained on vast troves of scientific literature to facilitate researcher access to and building upon existing scientific knowledge.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.356): <span class="score" style="background:#fee2e2"><b>0.356</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#3</span>
+        <b>Alaska Natives</b>
+        <span class="neutral">(24 facts)</span>
+        → <span title="best embed 0.204 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.204 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The variety of cultivated and wild foods consumed by American Indian and Alaska Native populations before contact with Europeans was as vast and variable as the regions they inhabited.</li><li>Nearly 40% of American Indian and Alaska Native men and more than 46% of American Indian and Alaska Native women are obese, with the highest rates occurring among Elders aged 55-64.</li><li>Among American Indian and Alaska Native Elders, 30% (nearly 1 in 3) have diabetes.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.204): <span class="score" style="background:#fee2e2"><b>0.204</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#4</span>
+        <b>Navy</b>
+        <span class="neutral">(26 facts)</span>
+        → <span title="best embed 0.365 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.365 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>A 1988 study by Trent and Conway, published in the American Journal of Health Promotion, examined the relationship between dietary factors and physical fitness among men serving on Navy ships.</li><li>The Japanese attack on Pearl Harbor on December 7, 1941, revealed significant failures in the U.S. intelligence apparatus, including casual and uncoordinated handling of intelligence, insufficient attention to collection requirements, and a</li><li>The National Security Act of 1947 created the position of Secretary of Defense and unified the Army, Navy, and the newly-created Air Force under this position.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.365): <span class="score" style="background:#fee2e2"><b>0.365</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#5</span>
+        <b>Senate</b>
+        <span class="neutral">(15 facts)</span>
+        → <span title="best embed 0.203 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.203 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The Clark task force recommended the creation of a permanent watchdog commission to oversee the CIA, consisting of members of the House and Senate and distinguished private citizens appointed by the President.</li><li>In 1988, a Senate committee commissioned a group of private citizens, led by New York businessman Eli Jacobs, to review counterintelligence progress and provide recommendations; their 1989 report did not result in new legislation.</li><li>Following investigations into CIA activities, Congressional oversight of the agency evolved into a select intelligence committee in the House of Representatives, while the Senate supervised covert actions authorized by the President.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.203): <span class="score" style="background:#fee2e2"><b>0.203</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#6</span>
+        <b>Nature</b>
+        <span class="neutral">(11 facts)</span>
+        → <span title="best embed 0.298 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.298 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>K. J. Gaston published &#x27;Global patterns in biodiversity&#x27; in the journal Nature in 2000.</li><li>The thermal performance of a single-pane window retrofitted with a 72.1 cm × 71.4 cm SiCellA 1.5 mm-thick film was evaluated in a building on the University of Colorado campus, as documented in reference 214, published by Nature in 2023.</li><li>The paper &#x27;Detecting hallucinations in large language models using semantic entropy&#x27; by Farquhar et al. (2024) proposes a method for identifying hallucinations in large language models using semantic entropy, published in Nature.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.298): <span class="score" style="background:#fee2e2"><b>0.298</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#7</span>
+        <b>Nuxalk Nation</b>
+        <span class="neutral">(11 facts)</span>
+        → <span title="best embed 0.248 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.248 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Kuhnlein (1990) documented the nutrient values of indigenous wild plant greens and roots used by the Nuxalk people of Bella Coola, British Columbia.</li><li>Kuhnlein and Chotiboriboon analyzed methods to strengthen Indigenous Peoples&#x27; food systems using case studies from the Nuxalk Nation in British Columbia, Canada, and the Pwo Karen People of the Sanephong Community in Thailand.</li><li>The Nuxalk Nation, inhabiting the Bella Coola valley, historically relied on a food system featuring five species of Pacific salmon, sea foods, game, tree foods, root foods, and various wild fruits and greens.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.248): <span class="score" style="background:#fee2e2"><b>0.248</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#8</span>
+        <b>Nathan Wolfe</b>
+        <span class="neutral">(11 facts)</span>
+        → <span title="best embed 0.339 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.339 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nathan Wolfe, a former human biology professor at Stanford University, discussed research plans regarding sexual behavior with Jeffrey Epstein, as well as topics involving &#x27;hottie interns&#x27;.</li><li>In 2013, Stanford University virologist Nathan Wolfe proposed that Jeffrey Epstein fund a study on the sexual behavior of undergraduate students to test a &quot;horny virus hypothesis.&quot;</li><li>Five former members and one current member of Scientific American’s scientific board of advisers—Lisa Randall, George Church, Danny Hillis, Martin Nowak, Lawrence Krauss, and Nathan Wolfe—had connections with Jeffrey Epstein, according to a</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.339): <span class="score" style="background:#fee2e2"><b>0.339</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#9</span>
+        <b>Nathan Myhrvold</b>
+        <span class="neutral">(11 facts)</span>
+        → <span title="best embed 0.237 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.237 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nathan Myhrvold (born 1959) traveled on Jeffrey Epstein&#x27;s plane between 1996 and 1997 and accompanied Epstein on a 1998 trip to the Sarov nuclear center in Russia.</li><li>Nathan Myhrvold founded Microsoft Research in 1991 and has worked on evolutionary algorithms, TerraPower nuclear energy, and served as a postdoc for Stephen Hawking at Cambridge.</li><li>In 1998, Nathan Myhrvold attended a trip to the Sarov nuclear center in Russia, an event documented in New York Times archives, which the author identifies as a convergence point for nuclear energy infrastructure, quantum computing research</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.237): <span class="score" style="background:#fee2e2"><b>0.237</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#10</span>
+        <b>NAEYC</b>
+        <span class="neutral">(5 facts)</span>
+        → <span title="best embed 0.251 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.251 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The National Association for the Education of Young Children (NAEYC) 2020 guidelines state that developmentally appropriate practice does not mean children play without a planned learning environment or learn primarily through direct instru</li><li>To foster happy, successful, lifelong learners, children must be immersed in developmentally appropriate practice and rich, culturally relevant curricular learning, as stated by the National Association for the Education of Young Children (</li><li>The authors of the article &#x27;The Power of Playful Learning in the Early Childhood Setting&#x27; use the term &#x27;free play&#x27; synonymously with the NAEYC&#x27;s term &#x27;self-directed play&#x27;.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.251): <span class="score" style="background:#fee2e2"><b>0.251</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#11</span>
+        <b>Gitga&#x27;at Nation</b>
+        <span class="neutral">(6 facts)</span>
+        → <span title="best embed 0.169 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.169 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Gitga&#x27;at matriarch Helen Clifton stated: “We&#x27;re rich! We&#x27;re rich in our food!” (pers. comm. to NT 2002; Ommer et al., 2006; Turner and Turner, 2007).</li><li>Turner et al. (2012) describe the fall feasts of the Gitga&#x27;at community of Hartley Bay, British Columbia, as a method to feed the people.</li><li>Nancy J. Turner and H. Clifton published &#x27;“The forest and the seaweed”: gitga&#x27;at seaweed, traditional ecological knowledge and community survival&#x27; in the book &#x27;Eating and Healing: Traditional Food as Medicine&#x27; in 2006.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.169): <span class="score" style="background:#fee2e2"><b>0.169</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#12</span>
+        <b>Nasr</b>
+        <span class="neutral">(6 facts)</span>
+        → <span title="best embed 0.326 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.326 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Dr. Nasr predicts that political tension in Iran will erupt again due to economic pressures and the events of January 8th involving the Iranian government and people.</li><li>Dr. Nasr assesses that the U.S.-Iran negotiations in Geneva were successful only in the sense that they did not collapse.</li><li>Dr. Nasr asserts that Iran entered negotiations under two primary pressures: the threat of a direct U.S. or Israeli military attack due to the U.S. military armada in the Gulf, and domestic protests driven by U.S. economic sanctions.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.326): <span class="score" style="background:#fee2e2"><b>0.326</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#13</span>
+        <b>state</b>
+        <span class="neutral">(5 facts)</span>
+        → <span title="best embed 0.244 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.244 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Scholars fear researching the spiritual aspects of psychedelic substances due to the risk of professional ostracization, being branded as a heretic by the Church, or imprisonment by the state.</li><li>During the Civil War, the Union Departments of the Navy, State, and War each maintained their own separate intelligence services.</li><li>The Office of Policy Coordination (OPC), led by Frank Wisner, operated with a unique structure where it answered to the secretaries of defense, state, and the National Security Council rather than the CIA director.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.244): <span class="score" style="background:#fee2e2"><b>0.244</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#14</span>
+        <b>Nate Oayton</b>
+        <span class="neutral">(5 facts)</span>
+        → <span title="best embed 0.693 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.693 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nate Oayton recounts attending a CE-5 session where he witnessed no contact or phenomena.</li><li>Nate Oayton claims that Dr. Steven Greer&#x27;s CSETI conventions involve him speaking about his own importance for five hours.</li><li>Nate Oayton characterizes Steven Greer&#x27;s &#x27;upgraded&#x27; seminars as sales pitches designed to extract more money from attendees.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.693): <span class="score" style="background:#fee2e2"><b>0.693</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#15</span>
+        <b>Nations Credit</b>
+        <span class="neutral">(5 facts)</span>
+        → <span title="best embed 0.212 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.212 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Bank of America reportedly planned to divest from Nations Credit because it earned $5 million a month, while retaining Equicredit because it earned $30 million a month, according to National Mortgage News.</li><li>Home improvement companies and mortgage brokers act as &#x27;bird dog brokers&#x27; for subprime lenders, connecting potential borrowers with lenders such as Ameriquest and Nations Credit.</li><li>Bank of America owns the subprime mortgage companies Nations Credit and Equicredit.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.212): <span class="score" style="background:#fee2e2"><b>0.212</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#16</span>
+        <b>Tribal Nations</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="best embed 0.184 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.184 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Tribal Nations are actively working to reclaim their language, culture, and traditional foodways.</li><li>The U.S. government historically issued food rations to Tribal Nations.</li><li>Tribal Nations are actively working to reclaim their language, culture, and traditional foodways in response to the intergenerational trauma caused by forced assimilation and boarding schools.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.184): <span class="score" style="background:#fee2e2"><b>0.184</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#17</span>
+        <b>Nathan Seidle</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="best embed 0.378 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.378 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Attendees at the March 2010 Opening Hardware workshop included Alicia Gibb, Bunnie Wang, Chris Anderson, David A. Mellis, Gianluca Martino, Massimo Banzi, Tom Igoe, Nathan Seidle, Zach Smith, Limor Fried, Phillip Torrone, Becky Stern, Benja</li><li>In December 2010, Nathan Seidle proposed the adoption of an open source hardware logo created by a SparkFun designer to indicate that SparkFun products were open source.</li><li>The Open Source Hardware Association (OSHWA) was founded by Alicia Gibb, with a board consisting of Catarina Mota, Danese Cooper, Wendy Seltzer, Windell Oskay, and Nathan Seidle, and legal counsel Aaron Williamson.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.378): <span class="score" style="background:#fee2e2"><b>0.378</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#18</span>
+        <b>Natalie Depraz</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="best embed 0.336 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.336 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Natalie Depraz and Francisco Varela authored three papers titled &#x27;Au coeur de temps: l’auto antécédence&#x27; (I, II, and III) submitted to the journals Etudes phénoménologiques, Intellektica, and Raidons Pratiques in 2002.</li><li>Natalie Depraz published &#x27;La conscience. Approches croisées: des Classiques aux sciences cognitives&#x27; in 2001 through A. Colin in Paris.</li><li>Natalie Depraz published &#x27;Lucidité du corps. De l’empirisme transcendental en phénoménologie&#x27; in 2001 through Kruwer in Dordrecht.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.336): <span class="score" style="background:#fee2e2"><b>0.336</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#19</span>
+        <b>The Nation</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="best embed 0.302 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.302 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The Nation asserts that it is unlikely Jeffrey Epstein and Ehud Barak could have engaged in disaster capitalism without the complicity of American intelligence agencies.</li><li>The author of the article in The Nation asserts that Jeffrey Epstein&#x27;s alleged activities were likely facilitated by the complicity of American intelligence agencies.</li><li>Katha Pollit wrote in The Nation that Jeffrey Epstein successfully integrated himself into high-level science by cultivating major figures in the field socially and distributing his wealth.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.302): <span class="score" style="background:#fee2e2"><b>0.302</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#20</span>
+        <b>Slate</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="best embed 0.306 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.306 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>A science journalist writing for Slate magazine (Engber 2016) described the findings regarding the ego-depletion effect as &quot;terrifying&quot; because they suggest the entire field of social psychology research is &quot;suspicious&quot;.</li><li>Daniel Engber observed in Slate that while Jeffrey Epstein&#x27;s social gatherings frequently included young women, the &quot;beautiful minds&quot; Epstein cultivated were almost exclusively male.</li><li>Computer scientist Roger Schank told Slate regarding Jeffrey Epstein&#x27;s conviction: “I never actually believed this underage thing... They might have been in their early 20s or late teens, but when I talked to them…they were always in colleg</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.306): <span class="score" style="background:#fee2e2"><b>0.306</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#21</span>
+        <b>Nate Payton</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="Nate Payton is a specific individual (a researcher/commentator on Steven Greer) and is distinct from the NATO acronym or the generic person named Nate in the existing path." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#f59e0b;">llm_new_path</span>
+        → <b>Nate Payton</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> Nate Payton is a specific individual (a researcher/commentator on Steven Greer) and is distinct from the NATO acronym or the generic person named Nate in the existing path.</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nate Payton observes that Steven Greer did not mention personal contacts with aliens in his YouTube videos prior to 2018, focusing instead on government concealment of UFO evidence.</li><li>Nate Payton notes an inconsistency in Steven Greer&#x27;s documentary where he expresses suicidal thoughts early on, but later claims to have dispelled the fear of death through enlightenment of consciousness.</li><li>Steven Greer&#x27;s earlier YouTube videos focused on the government hiding UFO evidence, whereas his later content (post-2018) emphasizes his personal contacts with aliens, according to Nate Payton.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.713): <span class="score" style="background:#fef9c3"><b>0.713</b> <span class="neutral">vs</span> Nate</span></div>
+        <div class='sub'><b>multiplex LLM →</b> <code>{&quot;action&quot;: &quot;new_path&quot;, &quot;path_id&quot;: null, &quot;new_label&quot;: &quot;Nate Payton&quot;, &quot;reason&quot;: &quot;Nate Payton is a specific individual (a researcher/commentator on Steven Greer) and is distinct from the NATO acronym or the generic person named Nate in the existing path.&quot;}</code> <span class='meta'>multiplex: 515→75 tok · $0.00024 · 7722ms</span></div>
+        <div class='sub'><b>alias_gen LLM →</b> <code>{&quot;aliases&quot;: [&quot;Nathan Payton&quot;]}</code> <span class='meta'>alias_gen: 343→7 tok · $0.00010 · 1416ms</span></div>
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#22</span>
+        <b>Kate</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="best embed 0.296 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.296 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Kate argues that the review article on disappointmentmedia.com fails to provide evidence to support its claims that Steven Greer&#x27;s work is pseudoscience.</li><li>Kate asserts that the review of the documentary &#x27;Close Encounters of the Fifth Kind&#x27; fails to provide evidence to support its claims of pseudoscience and false statements.</li><li>Kate defends the credibility of Steven Greer, stating that the volume of his evidence and the caliber of his whistleblowers are strong.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.296): <span class="score" style="background:#fee2e2"><b>0.296</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.208</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#23</span>
+        <b>First Nations</b>
+        <span class="neutral">(3 facts)</span>
+        → <span title="best embed 0.222 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.222 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The arrival of Europeans in the Northwest Coast region, beginning in the late 1700s, initiated significant changes in the lifeways of First Nations, including the introduction of new foods.</li><li>Coastal First Nations historically used tidal estuarine ecosystems to cultivate key food species in managed garden sites.</li><li>While some coastal First Nations elders recall hearing about lhásem (riceroot) bulbs from their ancestors, many have not tasted them, and recent generations have largely lost touch with this ancestral food, though exceptions exist, such as </li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.222): <span class="score" style="background:#fee2e2"><b>0.222</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.206</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#24</span>
+        <b>Cymulate</b>
+        <span class="neutral">(3 facts)</span>
+        → <span title="best embed 0.198 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.198 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Sasha Gohman, VP of Research at Cymulate, states that once quantum computers are capable of cracking AES-256 encryption, it will have devastating effects on all aspects of security.</li><li>Sasha Gohman, VP of Research at Cymulate, warns that quantum computing advancements could render many techniques in the MITRE ATT&amp;CK framework vulnerable to state-level attacks, specifically citing risks to traffic encryption, extortion, le</li><li>Sasha Gohman, VP of Research at Cymulate, advises organizations to begin preparing for quantum threats by adopting or planning to adopt post-quantum cryptography.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.198): <span class="score" style="background:#fee2e2"><b>0.198</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.121</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#25</span>
+        <b>Nasdaq</b>
+        <span class="neutral">(3 facts)</span>
+        → <span title="best embed 0.307 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.307 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nasdaq implemented Atlan to create a common understanding of data across the organization, which Michael Weiss, Product Manager at Nasdaq, described as being like &quot;having Google for our data.&quot;</li><li>Michael Weiss, Product Manager at Nasdaq, stated: &quot;The implementation of Atlan has also led to a common understanding of data across Nasdaq... This is like having Google for our data.&quot;</li><li>Betashares Nasdaq 100 ETF (NDQ) has an expected return of 21.66% and a volatility of 19.16% according to Diversiview.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.307): <span class="score" style="background:#fee2e2"><b>0.307</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.226</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#26</span>
+        <b>National Front</b>
+        <span class="neutral">(3 facts)</span>
+        → <span title="best embed 0.206 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.206 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>In 1951, Mohammad Mosaddegh, a member of the National Front, campaigned for the nationalization of the Iranian oil industry under the policy known as khal&#x27;-e yad (Law of repossession).</li><li>Following the arrest of Khalil Tahmassebi for the assassination of Prime Minister Razmara, over 8,000 members of the National Front and the Marxist Tudeh party protested, threatening the Shah, Iranian legislators opposing oil nationalizatio</li><li>Following the resignation of Mohammad Mosaddegh in 1952, the Shah installed Ahmad Qavam as Prime Minister, which triggered protests by the National Front and the Tudeh party.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.206): <span class="score" style="background:#fee2e2"><b>0.206</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.181</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#27</span>
+        <b>National Taxpayer Advocate</b>
+        <span class="neutral">(3 facts)</span>
+        → <span title="best embed 0.228 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.228 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The National Taxpayer Advocate (NTA) proposes separating the Earned Income Tax Credit (EITC) into a worker credit and a child credit to make the credits easier for families to understand and claim.</li><li>The National Taxpayer Advocate (NTA) recommends updating tax rules to allow primary carers to claim the EITC and Child Tax Credit (CTC) based on caregiving responsibilities, rather than the residency, income, support, and relationship tests</li><li>The National Taxpayer Advocate (2020) published an analysis on making the Earned Income Tax Credit (EITC) work more effectively for both taxpayers and the government.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.228): <span class="score" style="background:#fee2e2"><b>0.228</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.177</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#28</span>
+        <b>Cancer Nation</b>
+        <span class="neutral">(3 facts)</span>
+        → <span title="best embed 0.219 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.219 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Cancer Nation represents the 18 million cancer survivors in the United States, defined as individuals living with, through, and beyond cancer.</li><li>Organizations providing additional resources for cancer survivors include Cancer Nation, The National Children&#x27;s Cancer Society (NCCS), and The Samfund.</li><li>Crystal A. Champion served as a 2020 Cancer Nation Elevate Ambassador.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.219): <span class="score" style="background:#fee2e2"><b>0.219</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.196</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#29</span>
+        <b>Native Hawaiian</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.235 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.235 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>There are nearly 800,000 people age 65 and older in the United States who identify as American Indian, Alaskan Native, and Native Hawaiian and Other Pacific Islander elders.</li><li>The Indigenous Nourishment Model (INM) was developed with American Indian, Alaska Native, Native Hawaiian, and Pacific Islander urban residents living in Baltimore and Minneapolis.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.235): <span class="score" style="background:#fee2e2"><b>0.235</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.212</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#30</span>
+        <b>Squamish Nation</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.190 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.190 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Styawat and relatives from the Squamish Nation organize an annual Indigenous Foods Celebration, a one-day, hands-on event focused on plant foods and medicines, where participants learn to harvest, process, and create food or medicine.</li><li>The authors acknowledge specific Indigenous teachers who shared knowledge for the paper, including Helen Clifton and Eagle Chief Ernie Hill Jr. (Gitga&#x27;at Nation), Ronald Chum Newman, Salia Joy Joseph, Joy Joseph-McCullough, Chief Floyd Jose</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.190): <span class="score" style="background:#fee2e2"><b>0.190</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.177</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#31</span>
+        <b>Nakala</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.284 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.284 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Detailed explanations of the questionnaire and related data collected for the study are available in Nakala, a repository dedicated to humanities and social sciences research data in France.</li><li>The study classified food into 18 groups based on lists from the FAO and the World Health Organization, specifically including sentinel fried foods and processed meats, while excluding vitamin A-rich food items to focus on diet-related dise</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.284): <span class="score" style="background:#fee2e2"><b>0.284</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.231</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#32</span>
+        <b>Nasuni</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.292 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.292 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Russ Kennedy, chief evangelist at Nasuni, asserts that in 2025, data protection and rapid recovery will become the backbone of any AI strategy as enterprises increasingly rely on AI to power operations.</li><li>Russ Kennedy, chief evangelist at Nasuni, observes that threat actors are evolving by using AI to create insidious methods, such as embedding corrupted models and targeting AI frameworks directly.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.292): <span class="score" style="background:#fee2e2"><b>0.292</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.240</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#33</span>
+        <b>Nagel</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.328 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.328 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Christine Korsgaard&#x27;s account of the relationship between self-consciousness and the perspective of practical reason is discussed by Nagel (1996), Fitzpatrick (2005), and Soteriou (2013).</li><li>The genetic argument for panpsychism has been supported throughout the twentieth century by figures including Drake (1925), Wright (1953), Waddington (1961), and Nagel (1979).</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.328): <span class="score" style="background:#fee2e2"><b>0.328</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.218</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#34</span>
+        <b>Nate Kornell</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.477 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.477 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nate Kornell published &#x27;Where is the ‘Meta’ in Animal Metacognition?&#x27; in the Journal of Comparative Psychology in 2014.</li><li>Nate Kornell, Lisa K. Son, and Herbert S. Terrace published &#x27;Transfer of Metacognitive Skills and Hint Seeking in Monkeys&#x27; in Psychological Science in 2007.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.477): <span class="score" style="background:#fee2e2"><b>0.477</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.432</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#35</span>
+        <b>Natixis</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.251 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.251 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Natixis published a press release titled &#x27;Individual Investors Still Expect Double Digit Investment Returns Despite New Market Environment&#x27; on June 21, 2023.</li><li>Natixis published a report titled &#x27;Les effets à attendre du développement du télétravail&#x27; in their Flash Economie series, examining the expected effects of the development of telework.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.251): <span class="score" style="background:#fee2e2"><b>0.251</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.237</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#36</span>
+        <b>Nate Swanson</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.624 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.624 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nate Swanson previously served as the senior director for European and Russian affairs at the National Security Council and as the deputy assistant secretary for Iran and Iraq at the US Department of State’s Bureau of Near Eastern Affairs.</li><li>Nate Swanson is a resident senior fellow and director of the Iran Strategy Project at the Scowcroft Middle East Security Initiative, and served as a senior advisor on Iran policy to successive administrations starting in 2015, including as </li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.624): <span class="score" style="background:#fee2e2"><b>0.624</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.605</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#37</span>
+        <b>Nagi</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.373 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.373 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nagi, a commentator on regional affairs, stated that Iran faces difficult strategic options regarding its proxy network, with each available option being worse than the others.</li><li>Nagi stated that Iran faces difficult strategic options regarding its regional proxies, with each available option being worse than the others.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.373): <span class="score" style="background:#fee2e2"><b>0.373</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.242</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#38</span>
+        <b>NACA</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.330 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.330 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>General Nathan Twining, a future USAF Chief of Staff, authored a memo on September 23, 1947, that recommended intelligence cooperation regarding UFOs between the Army, Navy, Atomic Energy Commission, the Defense Department&#x27;s Joint Research </li><li>Paul R. Hill, a former NACA/NASA aerospace engineer, authored the book &#x27;Unconventional Flying Objects: A Scientific Analysis&#x27;, published by Hampton Roads Publishing Company in 1995.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.330): <span class="score" style="background:#fee2e2"><b>0.330</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.278</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#39</span>
+        <b>Nat Turner</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.326 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.326 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Major slave rebellions included the Stono Rebellion of 1739 and Nat Turner&#x27;s Revolt in 1831.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.326): <span class="score" style="background:#fee2e2"><b>0.326</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.314</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#40</span>
+        <b>Narrows</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.314 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.314 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Narrows held art owned by Leon Black as collateral and accounted for the majority of loans tied to Leon Black&#x27;s art portfolio as of 2016, according to Forbes.</li><li>Narrows accounted for the vast majority of loans tied to Leon Black&#x27;s art portfolio as of 2016.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.314): <span class="score" style="background:#fee2e2"><b>0.314</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.231</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#41</span>
+        <b>T. Nawaz</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.325 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.325 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The article titled &#x27;Medicinal plants and human health: a comprehensive review of bioactive compounds, therapeutic effects, and applications&#x27; was authored by R. Latif and T. Nawaz and published in the journal Phytochem Rev in 2026, volume 25</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.325): <span class="score" style="background:#fee2e2"><b>0.325</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.307</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#42</span>
+        <b>Deonicio Nate</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.613 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.613 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Deonicio Nate, a member of the Tsimane tribe, hunts for brown capuchin monkeys, coatis, peccaries, capybaras, and tapirs in the old-growth forest near Anachere.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.613): <span class="score" style="background:#fee2e2"><b>0.613</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.545</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#43</span>
+        <b>Salmon Nation</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.280 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.280 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Gary Nabhan authored the 2006 book &#x27;Renewing Salmon Nation&#x27;s Food Traditions,&#x27; published by Oregon State University Press, which focuses on the revitalization of food traditions in the Salmon Nation region.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.280): <span class="score" style="background:#fee2e2"><b>0.280</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.273</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#44</span>
+        <b>NAFTA</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.281 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.281 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Deregulation of goods and services sectors like electricity, water, and airlines, combined with market harmonization efforts such as NAFTA in the EU and North America, facilitated the rise of global markets, as noted by Olivier Blanchard an</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.281): <span class="score" style="background:#fee2e2"><b>0.281</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.241</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#45</span>
+        <b>Nature Medicine</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.202 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.202 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Karan Singhal et al. (2025) published &#x27;Toward expert-level medical question answering with large language models&#x27; in Nature Medicine, pages 1–8, focusing on medical question answering capabilities of large language models.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.202): <span class="score" style="background:#fee2e2"><b>0.202</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.170</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#46</span>
+        <b>NAACL</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.301 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.301 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The paper &#x27;CommonsenseQA: A Question Answering Challenge Targeting Commonsense Knowledge&#x27; was published at NAACL in 2024, utilizes the CommonsenseQA dataset, and is categorized under Multiple-choice QA.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.301): <span class="score" style="background:#fee2e2"><b>0.301</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.259</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#47</span>
+        <b>Nathaniel D. Daw</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.478 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.478 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Peter Dayan and Nathaniel D. Daw authored &#x27;Decision theory, reinforcement learning, and the brain&#x27;, published in the journal Cognitive, Affective, &amp; Behavioral Neuroscience in 2008.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.478): <span class="score" style="background:#fee2e2"><b>0.478</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.449</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#48</span>
+        <b>Nagel, T.</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.275 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.275 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nagel, T. (1974) published &#x27;What is it like to be a bat&#x27; in Philosophical Review, 83, 435-450.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.275): <span class="score" style="background:#fee2e2"><b>0.275</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.221</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#49</span>
+        <b>Nathan Rosen</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.329 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.329 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The Einstein-Podolsky-Rosen (EPR) paradox, which highlights non-local correlations of entangled quantum systems, was proposed by Albert Einstein, Boris Podolsky, and Nathan Rosen in 1935.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.329): <span class="score" style="background:#fee2e2"><b>0.329</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.292</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#50</span>
+        <b>Nakatani</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.316 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.316 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nakatani et al. estimated the origin of the crown group Gymnotiformes to be 189 Mya and the stem group Gymnotiformes to be 226 Mya.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.316): <span class="score" style="background:#fee2e2"><b>0.316</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.265</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#51</span>
+        <b>National Grid</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.195 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.195 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Grid-connected power systems integrate flow power models into the National Grid and operate in two modes: matched output mode and unmatched output mode.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.195): <span class="score" style="background:#fee2e2"><b>0.195</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.160</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#52</span>
+        <b>Nationalist</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.268 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.268 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>China agreed to negotiate in April 1955 and claimed a limited victory following the Nationalist withdrawal from Dachen Island.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.268): <span class="score" style="background:#fee2e2"><b>0.268</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.212</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#53</span>
+        <b>Dr. Nasr</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.271 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.271 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Dr. Nasr predicts that political tension in Iran will erupt again due to economic pressures and the events of January 8th involving the Iranian government and people.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.271): <span class="score" style="background:#fee2e2"><b>0.271</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.263</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#54</span>
+        <b>Nathan Twining</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.456 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.456 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>General Nathan Twining, a future USAF Chief of Staff, authored a memo on September 23, 1947, that recommended intelligence cooperation regarding UFOs between the Army, Navy, Atomic Energy Commission, the Defense Department&#x27;s Joint Research </li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.456): <span class="score" style="background:#fee2e2"><b>0.456</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.434</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#55</span>
+        <b>Movie Nation</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.228 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.228 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The reviewer for Movie Nation characterizes Dr. Steven Greer as a seller of books, videos, seminars, and meditation CDs.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.228): <span class="score" style="background:#fee2e2"><b>0.228</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.219</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#56</span>
+        <b>Nathan</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="The incoming entity is a podcaster co-hosting &#x27;That UFO Podcast&#x27;, which is distinct from the NATO entity and the researcher Nate Payton." style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#f59e0b;">llm_new_path</span>
+        → <b>Nathan (Podcaster)</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> The incoming entity is a podcaster co-hosting &#x27;That UFO Podcast&#x27;, which is distinct from the NATO entity and the researcher Nate Payton.</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The podcast &#x27;That UFO Podcast&#x27; hosted by Andy and Nathan examines the sincerity, evolution, and controversies surrounding Steven Greer&#x27;s work in the UFO community.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.712): <span class="score" style="background:#fef9c3"><b>0.712</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.551</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        <div class='sub'><b>multiplex LLM →</b> <code>{&quot;action&quot;: &quot;new_path&quot;, &quot;path_id&quot;: null, &quot;new_label&quot;: &quot;Nathan (Podcaster)&quot;, &quot;reason&quot;: &quot;The incoming entity is a podcaster co-hosting &#x27;That UFO Podcast&#x27;, which is distinct from the NATO entity and the researcher Nate Payton.&quot;}</code> <span class='meta'>multiplex: 591→69 tok · $0.00025 · 2159ms</span></div>
+        <div class='sub'><b>alias_gen LLM →</b> <code>{&quot;aliases&quot;: [&quot;Nathan Rehn&quot;]}</code> <span class='meta'>alias_gen: 223→8 tok · $0.00007 · 1958ms</span></div>
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#57</span>
+        <b>Na Yin</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.229 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.229 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>A study by Na Yin and Deborah Balk published in Science Magazine identified a connection between extreme heat and work disability among older, marginalized workers.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.229): <span class="score" style="background:#fee2e2"><b>0.229</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.207</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.201</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#58</span>
+        <b>Nathifa Forde</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.351 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.351 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>New York City Mayor Eric Adams appointed Nathifa Forde as the Executive Director of the NYC Her Future initiative on March 29, 2024.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.351): <span class="score" style="background:#fee2e2"><b>0.351</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.335</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.319</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#59</span>
+        <b>Tim Tate</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.301 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.301 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Tim Tate is a producer of the documentary &#x27;Conspiracy of Silence&#x27;.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.301): <span class="score" style="background:#fee2e2"><b>0.301</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.289</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.275</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#60</span>
+        <b>Natalie Lett</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.400 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.400 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Natalie Lett, a Boston University student (COM’27), explains the science behind extremophile life and investigates how these microbial communities might provide clues to life on Mars.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.400): <span class="score" style="background:#fee2e2"><b>0.400</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.360</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.309</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#61</span>
+        <b>NAS</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.361 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.361 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The results of the ESA-JAXA-NASA study and the NAS-ESF review were presented to the ESA Planetary Working Group (PPWG) and COSPAR.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.361): <span class="score" style="background:#fee2e2"><b>0.361</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.276</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.275</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#62</span>
+        <b>NAS-SSB</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.274 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.274 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The 2020 update to COSPAR&#x27;s planetary protection policy for icy moons was based on a project funded by the European Commission and led by the European Science Foundation, with partners including DLR/Germany, INAF/Italy, Eurospace, Space Tec</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.274): <span class="score" style="background:#fee2e2"><b>0.274</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.246</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.194</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#63</span>
+        <b>Roman Senate</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.118 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.118 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Julius Caesar, the founder of the Roman Empire, established the &#x27;Acta senatus&#x27;, which functioned as a daily newspaper by making public the minutes of discussions and decisions of the Roman Senate.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.118): <span class="score" style="background:#fee2e2"><b>0.118</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.100</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.078</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#64</span>
+        <b>Cate</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.398 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.398 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Cate describes Kaya as lovely and appreciates her vibe and sense of humor, noting that Kaya provided a helpful introduction to the QHHT session and that the experience was profound.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.398): <span class="score" style="background:#fee2e2"><b>0.398</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.256</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.232</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#65</span>
+        <b>Natai</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.494 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.494 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Natai expressed gratitude for the experience of working with the practitioner.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.494): <span class="score" style="background:#fee2e2"><b>0.494</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.377</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.318</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#66</span>
+        <b>Natasha Parvin</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.336 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.336 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Natasha Parvin holds the IPHM (International Practitioners of Holistic Medicine) credential.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.336): <span class="score" style="background:#fee2e2"><b>0.336</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.297</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.269</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#67</span>
+        <b>Nacho</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.358 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.358 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The entity states that Nacho the cat is well and serves as a teacher.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.358): <span class="score" style="background:#fee2e2"><b>0.358</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.295</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.257</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#68</span>
+        <b>Nations Bank</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.246 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.246 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>In 1993, Nations Bank (now Bank of America) acquired Chrysler First (which became Nations Credit) and publicly assured that they would address abusive practices associated with the subprime mortgage company.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.246): <span class="score" style="background:#fee2e2"><b>0.246</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.242</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.167</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#69</span>
+        <b>NAACP</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.289 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.289 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The coalition against predatory lending in North Carolina grew to include 88 organizations representing 3 million members, including credit unions, community banks, large banks, mortgage bankers, mortgage brokers, realtors, the NAACP, civil</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.289): <span class="score" style="background:#fee2e2"><b>0.289</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.275</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.177</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#70</span>
+        <b>Nathan Adler</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.481 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.481 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nathan Adler proposed the concept of the &quot;antinomian personality&quot; in his 1972 book, The Underground Stream: New Life Styles and the Antinomian Personality, describing it as a character type that rejects conventional morality and prioritizes</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.481): <span class="score" style="background:#fee2e2"><b>0.481</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.458</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.368</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#71</span>
+        <b>Texas Senate</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.155 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.155 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>The course &#x27;Negotiation for Legislation&#x27; at Texas Law is taught by Jorge Ramirez, who serves as the Chief of Staff to the Dean of the Texas Senate.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.155): <span class="score" style="background:#fee2e2"><b>0.155</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.145</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.102</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#72</span>
+        <b>Ashgate</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.189 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.189 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>George D. Chryssides edited the book &#x27;Heaven’s Gate: Postmodernity and Popular Culture in a Suicide Group&#x27;, published by Ashgate/Routledge in 2011/2021.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.189): <span class="score" style="background:#fee2e2"><b>0.189</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.156</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.150</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#73</span>
+        <b>Nazis</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.268 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.268 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Alan Dershowitz stated he was appalled by Jeffrey Epstein&#x27;s interest in genetic manipulation, citing the Nazis&#x27; use of eugenics in the 1930s as a point of comparison.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.268): <span class="score" style="background:#fee2e2"><b>0.268</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.228</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.189</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#74</span>
+        <b>Nancy</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.433 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.433 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nancy is a 2020 Elevate Ambassador who is enrolled in the PhD program at Arizona State University’s Edson College of Nursing and Health Innovation, where her research focuses on promoting cancer rehabilitation.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.433): <span class="score" style="background:#fee2e2"><b>0.433</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.361</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.311</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#75</span>
+        <b>Navire</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.236 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.236 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>A preclinical study led by Therapeutics Discovery and Navire scientists found that SHP2 inhibitors were effective in blocking the MAPK pathway and overcoming resistance to available therapies in solid tumors.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.236): <span class="score" style="background:#fee2e2"><b>0.236</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.187</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.155</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#76</span>
+        <b>Nathan Kallus</b>
+        <span class="neutral">(4 facts)</span>
+        → <span title="best embed 0.529 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.529 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>James McInerney and Nathan Kallus argue that uncertainty quantification in deep learning is crucial for safe and reliable decision-making in downstream tasks.</li><li>James McInerney and Nathan Kallus propose an uncertainty quantification method called &#x27;regularization variation&#x27; (RegVar) for large networks, where predictions that are more sensitive to the regularization of network parameters are less cer</li><li>James McInerney and Nathan Kallus claim that regularization variation (RegVar) provides uncertainty estimates that, in the infinitesimal limit, exactly recover the Laplace approximation in Bayesian deep learning.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.529): <span class="score" style="background:#fee2e2"><b>0.529</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.477</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.444</b> <span class="neutral">vs</span> Nate Payton</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#77</span>
+        <b>Nallet, C.</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.311 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.311 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nallet, C., Berent, I., Werker, J. F., &amp; Gervain, J. (2023). The neonate brain’s sensitivity to repetition‐based structure: Specific to speech? Developmental Science, 26(6), e13408.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.311): <span class="score" style="background:#fee2e2"><b>0.311</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.309</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.248</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#78</span>
+        <b>Na Li</b>
+        <span class="neutral">(5 facts)</span>
+        → <span title="best embed 0.306 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.306 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Hongni Wang, Junxi Zhang, Na Li, Linglong Kong, Bei Jiang, and Xiaodong Yan identify that estimating optimal treatment regimes for right-censored data while ensuring fairness across ethnic subgroups is a crucial but underexplored problem in</li><li>Hongni Wang, Junxi Zhang, Na Li, Linglong Kong, Bei Jiang, and Xiaodong Yan propose a framework for estimating heterogeneous treatment effects (HTE) using nonparametric methods and user-controllable fairness constraints.</li><li>The framework proposed by Hongni Wang, Junxi Zhang, Na Li, Linglong Kong, Bei Jiang, and Xiaodong Yan demonstrates the double robustness property of the heterogeneous treatment effect (HTE) estimator under mild regularization assumptions.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.306): <span class="score" style="background:#fee2e2"><b>0.306</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.257</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.227</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#79</span>
+        <b>T. Natsoulas</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.275 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.275 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Natsoulas, T. (1978) published &#x27;Consciousness&#x27; in American Psychologist, October, 906-914.</li><li>Natsoulas, T. (1983) published &#x27;Concepts of consciousness&#x27; in The Journal of Mind and Behavior, 4(1), 13-59.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.275): <span class="score" style="background:#fee2e2"><b>0.275</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.247</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.241</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#80</span>
+        <b>Nayak</b>
+        <span class="neutral">(1 facts)</span>
+        → <span title="best embed 0.331 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.331 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nayak authored &#x27;Psychedelics and psychotherapy,&#x27; published in Pharmacopsychiatry.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.331): <span class="score" style="background:#fee2e2"><b>0.331</b> <span class="neutral">vs</span> Nate</span><span class="score" style="background:#fee2e2"><b>0.295</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.247</b> <span class="neutral">vs</span> Nathan (Podcaster)</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#81</span>
+        <b>Nathan L. King</b>
+        <span class="neutral">(2 facts)</span>
+        → <span title="best embed 0.558 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.558 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nathan L. King defended responsibilist virtue epistemology against the situationist challenge in a 2014 article.</li><li>Nathan L. King argued for perseverance as an intellectual virtue in a 2014 article.</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.558): <span class="score" style="background:#fee2e2"><b>0.558</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.464</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.456</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
+
+    <details class="event" open>
+      <summary>
+        <span class="step">#82</span>
+        <b>Nathan Sales</b>
+        <span class="neutral">(3 facts)</span>
+        → <span title="best embed 0.440 &lt; floor 0.7" style="display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:0.78em;color:#fff;background:#dc2626;">embed_reject</span>
+        → <b>-</b>
+      </summary>
+      <div class="body">
+        <div class="sub"><b>reason:</b> best embed 0.440 &lt; floor 0.7</div>
+        <div class="sub"><b>incoming fact samples:</b><ul><li>Nathan Sales, the State Department&#x27;s coordinator for counterterrorism, stated in November 2020 that the Trump administration used sanctions to pressure the Iranian regime for its support of terrorism globally and human rights violations dom</li><li>Nathan Sales stated that the United States remains committed to holding the Iranian regime accountable for bloodshed in South America, Europe, Syria, Lebanon, and Yemen.</li><li>Nathan Sales, the U.S. State Department coordinator for counterterrorism, stated in 2018 that Saraya al Ashtar is &quot;another in a long line of Iranian sponsored terrorists who kill on behalf of a corrupt regime.&quot;</li></ul></div>
+        <div class='sub'><b>embed distances</b> (best=0.440): <span class="score" style="background:#fee2e2"><b>0.440</b> <span class="neutral">vs</span> Nathan (Podcaster)</span><span class="score" style="background:#fee2e2"><b>0.418</b> <span class="neutral">vs</span> Nate Payton</span><span class="score" style="background:#fee2e2"><b>0.382</b> <span class="neutral">vs</span> Nate</span></div>
+        
+        
+      </div>
+    </details>
+    
 <h3>Prod merge audit (ground truth)</h3>
-<table><tr><th>Op</th><th>Source</th><th>Target</th><th>Reason</th><th>Facts moved</th><th>When</th></tr>
+<table><tr><th>op</th><th>source</th><th>target</th><th>reason</th><th class='num'>facts</th><th>when</th></tr>
 <tr><td>merge</td><td class='mono'>entity:naxi</td><td class='mono'>entity:naxi-people</td><td class='reason'>embedding + LLM confirmed (score=0.884)</td><td class='num'>1</td><td class='meta'>2026-03-30T16:46:35.653584</td></tr>
 <tr><td>merge</td><td class='mono'>entity:nuxalk</td><td class='mono'>entity:nuxalk-nation</td><td class='reason'>embedding + LLM confirmed (score=0.920)</td><td class='num'>3</td><td class='meta'>2026-03-30T17:29:42.908332</td></tr>
 <tr><td>merge</td><td class='mono'>entity:alaska-natives</td><td class='mono'>entity:alaska-native</td><td class='reason'>embedding + LLM confirmed (score=0.869)</td><td class='num'>4</td><td class='meta'>2026-03-30T17:29:51.802646</td></tr>

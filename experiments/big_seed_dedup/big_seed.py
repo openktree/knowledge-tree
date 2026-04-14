@@ -45,15 +45,25 @@ class Fact:
 
 @dataclass
 class Path:
-    """A disambiguation branch within a big seed."""
+    """A disambiguation branch within a big seed.
+
+    Two kinds of aliases live here:
+    - known_aliases: LLM-generated at birth from sample facts. Real-world
+      alternative names for the SAME concept (acronyms, stylized spellings).
+    - merged_surface_forms: incoming surface forms that were admitted into
+      this path via alias_match / embed_auto_route / llm_merge_path. These
+      are "embedding-ambiguous" — not necessarily the same as known
+      aliases, but routed here by the multiplexer.
+    """
 
     id: str
     label: str
-    aliases: list[str] = field(default_factory=list)
-    observed_names: list[str] = field(default_factory=list)  # surface forms seen
+    known_aliases: list[str] = field(default_factory=list)
+    merged_surface_forms: list[str] = field(default_factory=list)
     facts: list[Fact] = field(default_factory=list)
     embedding: list[float] | None = None
-    alias_gen_usage: Usage | None = None   # token cost of the birth-time alias gen
+    alias_gen_usage: Usage | None = None
+    alias_gen_response: dict | None = None  # raw LLM response (for report)
 
     @staticmethod
     def new(label: str) -> Path:
@@ -67,14 +77,18 @@ class Decision:
     step: int
     incoming_name: str
     incoming_fact_count: int
-    kind: DecisionKind
+    incoming_fact_samples: list[str] = field(default_factory=list)  # shown in report
+    kind: DecisionKind = "llm_reject"
     routed_to_path_id: str | None = None
     routed_to_path_label: str | None = None
     reason: str = ""
     embed_scores: dict[str, float] = field(default_factory=dict)  # path_label -> cosine
     best_embed_score: float = 0.0
+    alias_gate: str = ""  # alias hit type if any
     multiplex_usage: Usage | None = None
-    alias_gen_usage: Usage | None = None  # set only when new_path was created
+    multiplex_response: dict | None = None  # raw LLM response
+    alias_gen_usage: Usage | None = None
+    alias_gen_response: dict | None = None
 
 
 @dataclass
@@ -83,7 +97,7 @@ class BigSeed:
 
     canonical_name: str
     node_type: str
-    aliases: list[str] = field(default_factory=list)  # LLM-generated + observed variants at parent level
+    merged_surface_forms: list[str] = field(default_factory=list)  # admitted via alias_to_parent
     paths: list[Path] = field(default_factory=list)
     history: list[Decision] = field(default_factory=list)
 

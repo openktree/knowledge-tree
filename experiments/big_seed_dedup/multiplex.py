@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
 from .alias_gen import generate_aliases
-from .big_seed import BigSeed, Decision, Fact, Path, Usage
+from .big_seed import BigSeed, Decision, Fact, Path
 from .llm import LLMRunner, cosine
 
 # Thresholds (kept local — experiment only, no settings dep)
@@ -19,18 +17,20 @@ def _norm(s: str) -> str:
     return s.strip().lower()
 
 
-def _alias_hit(name: str, big: BigSeed) -> tuple[str | None, str | None]:
+def _alias_hit(name: str, big: BigSeed) -> tuple[str | None, str]:
     """Return (path_id, reason) if incoming name hits an alias; path_id None = parent alias."""
     n = _norm(name)
     if n == _norm(big.canonical_name):
         return None, "canonical_name_match"
-    if any(_norm(a) == n for a in big.aliases):
-        return None, "parent_alias_match"
+    if any(_norm(a) == n for a in big.merged_surface_forms):
+        return None, "parent_merged_form_match"
     for p in big.paths:
-        if _norm(p.label) == n or any(_norm(a) == n for a in p.aliases):
-            return p.id, "path_alias_match"
-        if any(_norm(o) == n for o in p.observed_names):
-            return p.id, "path_observed_match"
+        if _norm(p.label) == n:
+            return p.id, "path_label_match"
+        if any(_norm(a) == n for a in p.known_aliases):
+            return p.id, "path_known_alias_match"
+        if any(_norm(o) == n for o in p.merged_surface_forms):
+            return p.id, "path_merged_form_match"
     return None, ""
 
 
@@ -60,15 +60,15 @@ Output JSON exactly:
 def _build_multiplex_user(big: BigSeed, name: str, facts: list[Fact]) -> str:
     lines: list[str] = []
     lines.append(f'Canonical: "{big.canonical_name}" (node_type={big.node_type})')
-    lines.append(f"Parent aliases: {big.aliases or '[]'}")
+    lines.append(f"Parent merged surface forms: {big.merged_surface_forms or '[]'}")
     lines.append("")
     lines.append(f"Existing paths ({len(big.paths)}):")
     if not big.paths:
         lines.append("  (none)")
     for p in big.paths:
         lines.append(f'  - path_id={p.id}  label="{p.label}"')
-        lines.append(f"    aliases: {p.aliases or '[]'}")
-        lines.append(f"    observed surface forms: {p.observed_names or '[]'}")
+        lines.append(f"    known aliases: {p.known_aliases or '[]'}")
+        lines.append(f"    merged surface forms: {p.merged_surface_forms or '[]'}")
         for f in p.facts[:SAMPLE_FACTS_FOR_LLM]:
             lines.append(f"    • {f.content[:240]}")
     lines.append("")
@@ -100,6 +100,10 @@ async def _score_embeddings(
     return scores, best_score, best_id
 
 
+def _fact_samples(facts: list[Fact]) -> list[str]:
+    return [f.content[:240] for f in facts[:SAMPLE_FACTS_FOR_LLM] if f.content.strip()]
+
+
 async def admit(
     big: BigSeed,
     name: str,
@@ -114,13 +118,14 @@ async def admit(
         step=step,
         incoming_name=name,
         incoming_fact_count=len(facts),
-        kind="llm_reject",
+        incoming_fact_samples=_fact_samples(facts),
     )
 
     # ── 1. Alias match ────────────────────────────────────────────────
     path_id, reason = _alias_hit(name, big)
     if reason:
         decision.kind = "alias_match"
+        decision.alias_gate = reason
         decision.reason = reason
         if path_id:
             p = big.find_path(path_id)
@@ -139,13 +144,11 @@ async def admit(
     decision.best_embed_score = best_score
 
     if big.paths and best_score < EMBED_REJECT_FLOOR:
-        # Way off from every path — reject outright.
         decision.kind = "embed_reject"
-        decision.reason = f"best embed score {best_score:.3f} < floor {EMBED_REJECT_FLOOR}"
+        decision.reason = f"best embed {best_score:.3f} < floor {EMBED_REJECT_FLOOR}"
         return decision
 
     if best_id and best_score >= EMBED_AUTO_ROUTE:
-        # Very close to an existing path AND surface form close enough to skip LLM.
         p = big.find_path(best_id)
         if p and _surface_compatible(name, p):
             decision.kind = "embed_auto_route"
@@ -164,6 +167,7 @@ async def admit(
         max_tokens=400,
     )
     decision.multiplex_usage = usage
+    decision.multiplex_response = response if isinstance(response, dict) else {}
 
     action = str(response.get("action", "reject")) if isinstance(response, dict) else "reject"
     llm_reason = str(response.get("reason", "")) if isinstance(response, dict) else ""
@@ -180,7 +184,7 @@ async def admit(
             decision.routed_to_path_label = p.label
             _absorb_into_path(p, name, facts)
             return decision
-        # fall through to treat as new_path if LLM gave a bad id
+        # fall through to new_path if id invalid
 
     if action == "alias_to_parent":
         decision.kind = "llm_alias_to_parent"
@@ -191,16 +195,17 @@ async def admit(
         decision.kind = "llm_reject"
         return decision
 
-    # new_path (default) — create, generate aliases, embed label
+    # new_path — create, generate aliases, embed label
     label = str(new_label).strip() if isinstance(new_label, str) and new_label.strip() else name
     new_path = Path.new(label=label)
-    new_path.observed_names.append(name)
+    new_path.merged_surface_forms.append(name)
     new_path.facts.extend(facts[:SAMPLE_FACTS_STORED])
     new_path.embedding = await runner.embed(label)
 
-    aliases, alias_usage = await generate_aliases(label, facts, runner=runner)
-    new_path.aliases = aliases
+    aliases, alias_usage, alias_resp = await generate_aliases(label, facts, runner=runner)
+    new_path.known_aliases = aliases
     new_path.alias_gen_usage = alias_usage
+    new_path.alias_gen_response = alias_resp
 
     big.paths.append(new_path)
 
@@ -208,17 +213,13 @@ async def admit(
     decision.routed_to_path_id = new_path.id
     decision.routed_to_path_label = new_path.label
     decision.alias_gen_usage = alias_usage
+    decision.alias_gen_response = alias_resp
     return decision
 
 
 def _is_more_specific(new: str, old: str) -> bool:
-    """Longer-wins heuristic: new is more specific iff it is strictly longer AND
-    contains the old name as a whole-word substring (case-insensitive).
-
-    Addresses the prod bug where short "Nate" was chosen as canonical over a
-    longer disambiguating form. Substring check guards against swapping for
-    unrelated longer strings; length delta of 3+ chars avoids thrashing on
-    minor variants ("Nate" vs "Nate.").
+    """Longer-wins heuristic: new is more specific iff strictly longer AND
+    contains old as whole-word substring. Fixes prod's short-canonical bug.
     """
     n = new.strip()
     o = old.strip()
@@ -228,7 +229,6 @@ def _is_more_specific(new: str, old: str) -> bool:
     ol = o.lower()
     if ol not in nl:
         return False
-    # word-boundary: either at start/end or surrounded by non-alnum
     idx = nl.find(ol)
     before_ok = idx == 0 or not nl[idx - 1].isalnum()
     end = idx + len(ol)
@@ -237,43 +237,39 @@ def _is_more_specific(new: str, old: str) -> bool:
 
 
 def _absorb_into_path(p: Path, name: str, facts: list[Fact]) -> None:
-    if name not in p.observed_names:
-        p.observed_names.append(name)
-    # Cap retained facts to avoid unbounded growth in LLM context later
+    if name not in p.merged_surface_forms and _norm(name) != _norm(p.label):
+        p.merged_surface_forms.append(name)
     remaining = SAMPLE_FACTS_STORED - len(p.facts)
     if remaining > 0:
         p.facts.extend(facts[:remaining])
-    # Longest-wins: if incoming is more specific, promote it to the path label
     if _is_more_specific(name, p.label):
-        if p.label not in p.aliases:
-            p.aliases.insert(0, p.label)
+        # demote old label into merged_surface_forms
+        if p.label not in p.merged_surface_forms:
+            p.merged_surface_forms.insert(0, p.label)
         p.label = name
 
 
 def _absorb_into_parent(big: BigSeed, name: str) -> None:
-    if name.strip().lower() == big.canonical_name.strip().lower():
+    if _norm(name) == _norm(big.canonical_name):
         return
-    lowered = {a.strip().lower() for a in big.aliases}
-    # Longest-wins at parent level too: swap canonical if incoming is more specific.
+    lowered = {a.strip().lower() for a in big.merged_surface_forms}
     if _is_more_specific(name, big.canonical_name):
         old = big.canonical_name
         big.canonical_name = name
         if old.lower() not in lowered:
-            big.aliases.append(old)
+            big.merged_surface_forms.append(old)
         return
     if name.strip().lower() not in lowered:
-        big.aliases.append(name)
+        big.merged_surface_forms.append(name)
 
 
 def _surface_compatible(name: str, p: Path) -> bool:
-    """Cheap string check: incoming name shares substantial overlap with the path label/aliases."""
     n = _norm(name)
     if n == _norm(p.label):
         return True
-    for a in p.aliases + p.observed_names:
+    for a in p.known_aliases + p.merged_surface_forms:
         if _norm(a) == n:
             return True
-    # substring either direction, min 4 chars
     lbl = _norm(p.label)
     if len(n) >= 4 and (n in lbl or lbl in n):
         return True
@@ -290,31 +286,29 @@ async def seed_from_first(
     """Initialize a BigSeed from its first member. Runs alias_gen once."""
     big = BigSeed(canonical_name=canonical_name, node_type=node_type)
     first_path = Path.new(label=canonical_name)
-    first_path.observed_names.append(canonical_name)
     first_path.facts.extend(facts[:SAMPLE_FACTS_STORED])
     first_path.embedding = await runner.embed(canonical_name)
 
-    aliases, alias_usage = await generate_aliases(canonical_name, facts, runner=runner)
-    first_path.aliases = aliases
+    aliases, alias_usage, alias_resp = await generate_aliases(canonical_name, facts, runner=runner)
+    first_path.known_aliases = aliases
     first_path.alias_gen_usage = alias_usage
+    first_path.alias_gen_response = alias_resp
     big.paths.append(first_path)
 
     dec = Decision(
         step=0,
         incoming_name=canonical_name,
         incoming_fact_count=len(facts),
+        incoming_fact_samples=_fact_samples(facts),
         kind="seed_init",
         routed_to_path_id=first_path.id,
         routed_to_path_label=first_path.label,
         reason="seed initialized from first family member",
         alias_gen_usage=alias_usage,
+        alias_gen_response=alias_resp,
     )
     big.history.append(dec)
     return big, dec
 
 
 __all__ = ["admit", "seed_from_first", "EMBED_REJECT_FLOOR", "EMBED_AUTO_ROUTE"]
-
-
-# silence unused json import warning in case we later emit raw responses
-_ = json

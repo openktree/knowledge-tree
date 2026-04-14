@@ -50,7 +50,7 @@ async def main_async(fixtures: Path, out: Path, cache: Path) -> None:
             f"skipped={rr.members_skipped}  decisions={len(rr.big_seed.history)}"
         )
         for p in rr.big_seed.paths:
-            print(f"    - [{p.id}] {p.label}  aliases={len(p.aliases)}  observed={len(p.observed_names)}")
+            print(f"    - [{p.id}] {p.label}  known_aliases={len(p.known_aliases)}  merged={len(p.merged_surface_forms)}")
         results.append(rr)
 
     generate_report(results, out, model_name=gateway.decomposition_model)
