@@ -58,7 +58,6 @@ import type {
   PaginatedSeedsResponse,
   PaginatedPerspectiveSeedsResponse,
   SeedDetailResponse,
-  SeedDivergenceResponse,
   SeedTreeResponse,
   PaginatedEdgeCandidatePairs,
   EdgeCandidatePairDetail,
@@ -611,12 +610,6 @@ export const api = {
   seeds: {
     get(key: string): Promise<SeedDetailResponse> {
       return graphRequest<SeedDetailResponse>(`/seeds/${encodeURIComponent(key)}`);
-    },
-
-    getDivergence(key: string): Promise<SeedDivergenceResponse> {
-      return graphRequest<SeedDivergenceResponse>(
-        `/seeds/divergence/${encodeURIComponent(key)}`,
-      );
     },
 
     list(params?: {

@@ -970,19 +970,6 @@ class SeedFactResponse(BaseModel):
     extraction_role: str = "mentioned"
 
 
-class SeedDivergenceResponse(BaseModel):
-    """Fact embedding divergence metrics for a seed."""
-
-    seed_key: str
-    fact_count: int
-    vectors_found: int
-    mean_pairwise_distance: float | None = None
-    max_pairwise_distance: float | None = None
-    min_pairwise_distance: float | None = None
-    std_pairwise_distance: float | None = None
-    cluster_estimate: int = 1
-
-
 class SeedDetailResponse(BaseModel):
     """Full detail for a single seed."""
 

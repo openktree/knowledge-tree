@@ -1146,17 +1146,6 @@ export interface SeedFactResponse {
   extraction_role: "mentioned" | "source_attribution";
 }
 
-export interface SeedDivergenceResponse {
-  seed_key: string;
-  fact_count: number;
-  vectors_found: number;
-  mean_pairwise_distance: number | null;
-  max_pairwise_distance: number | null;
-  min_pairwise_distance: number | null;
-  std_pairwise_distance: number | null;
-  cluster_estimate: number;
-}
-
 export interface SeedDetailResponse {
   key: string;
   seed_uuid: string;

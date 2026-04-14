@@ -16,7 +16,6 @@ from kt_api.schemas import (
     PerspectiveSeedPairResponse,
     PromoteSeedResponse,
     SeedDetailResponse,
-    SeedDivergenceResponse,
     SeedFactResponse,
     SeedMergeResponse,
     SeedResponse,
@@ -31,7 +30,6 @@ from kt_db.repositories.write_seeds import WriteSeedRepository
 from kt_db.write_models import WriteFact, WriteSeed
 
 if TYPE_CHECKING:
-    from qdrant_client import AsyncQdrantClient
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 router = APIRouter(prefix="/api/v1/seeds", tags=["seeds"])
@@ -402,97 +400,6 @@ async def mark_seed_garbage(
 
 # ── Catch-all seed detail endpoints ─────────────────────────────────
 # These use {seed_key:path} which matches anything — must be LAST.
-
-
-async def _get_seed_divergence_impl(
-    write_session_factory: async_sessionmaker[AsyncSession],
-    seed_key: str,
-    qdrant_client: AsyncQdrantClient,
-    collection_name: str = "facts",
-) -> SeedDivergenceResponse:
-    """Shared implementation for computing fact embedding divergence."""
-    from kt_qdrant.repositories.facts import QdrantFactRepository
-
-    async with write_session_factory() as session:
-        repo = WriteSeedRepository(session)
-        seed = await repo.get_seed_by_key(seed_key)
-        if not seed:
-            raise HTTPException(status_code=404, detail="Seed not found")
-
-        seed_facts = await repo.get_seed_facts(seed_key)
-        fact_ids = [sf.fact_id for sf in seed_facts]
-
-        if len(fact_ids) < 2:
-            return SeedDivergenceResponse(
-                seed_key=seed_key,
-                fact_count=len(fact_ids),
-                vectors_found=len(fact_ids),
-            )
-
-        fact_repo = QdrantFactRepository(qdrant_client, collection_name)
-        vectors = await fact_repo.get_vectors(fact_ids)
-
-        if len(vectors) < 2:
-            return SeedDivergenceResponse(
-                seed_key=seed_key,
-                fact_count=len(fact_ids),
-                vectors_found=len(vectors),
-            )
-
-        import numpy as np
-
-        vecs = np.array(list(vectors.values()))
-        norms = np.linalg.norm(vecs, axis=1, keepdims=True)
-        norms = np.where(norms == 0, 1, norms)
-        normalized = vecs / norms
-
-        sim_matrix = normalized @ normalized.T
-        n = len(vecs)
-
-        distances = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                distances.append(1.0 - float(sim_matrix[i, j]))
-
-        distances_arr = np.array(distances)
-
-        mean_dist = float(distances_arr.mean())
-        std_dist = float(distances_arr.std())
-        cluster_estimate = 1
-        if mean_dist > 0:
-            cv = std_dist / mean_dist
-            if cv > 0.5 and mean_dist > 0.3:
-                cluster_estimate = 2
-            if cv > 0.7 and mean_dist > 0.4:
-                cluster_estimate = 3
-
-        return SeedDivergenceResponse(
-            seed_key=seed_key,
-            fact_count=len(fact_ids),
-            vectors_found=len(vectors),
-            mean_pairwise_distance=round(mean_dist, 4),
-            max_pairwise_distance=round(float(distances_arr.max()), 4),
-            min_pairwise_distance=round(float(distances_arr.min()), 4),
-            std_pairwise_distance=round(std_dist, 4),
-            cluster_estimate=cluster_estimate,
-        )
-
-
-@router.get("/divergence/{seed_key:path}", response_model=SeedDivergenceResponse)
-async def get_seed_divergence(seed_key: str) -> SeedDivergenceResponse:
-    """Compute fact embedding divergence for a seed.
-
-    Fetches all fact embeddings from Qdrant, computes pairwise cosine
-    distances, and returns divergence metrics. High divergence suggests
-    the seed may be ambiguous (facts cluster in distinct regions).
-    """
-    from kt_api.dependencies import get_qdrant_client_cached
-
-    return await _get_seed_divergence_impl(
-        get_write_session_factory_cached(),
-        seed_key,
-        get_qdrant_client_cached(),
-    )
 
 
 async def _get_seed_tree_impl(

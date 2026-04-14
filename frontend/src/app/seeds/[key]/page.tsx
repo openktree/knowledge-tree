@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect, useCallback } from "react";
+import { use, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -13,7 +13,6 @@ import {
   Sprout,
   Network,
   Rocket,
-  Activity,
   Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,6 @@ import type {
   SeedRouteResponse,
   SeedMergeResponse,
   SeedFactResponse,
-  SeedDivergenceResponse,
 } from "@/types";
 import { EdgeCandidatesForSeed } from "@/components/seed/EdgeCandidatesForSeed";
 
@@ -152,110 +150,6 @@ function MergeHistory({ merges }: { merges: SeedMergeResponse[] }) {
         </Card>
       ))}
     </div>
-  );
-}
-
-function DivergenceCard({ seedKey }: { seedKey: string }) {
-  const [data, setData] = useState<SeedDivergenceResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // Reset loading state when seedKey changes (avoids synchronous setState in effect)
-  const [prevSeedKey, setPrevSeedKey] = useState(seedKey);
-  if (seedKey !== prevSeedKey) {
-    setPrevSeedKey(seedKey);
-    setLoading(true);
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    api.seeds
-      .getDivergence(seedKey)
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch(() => {
-        // Silently fail — metric is informational
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [seedKey]);
-
-  if (loading) {
-    return (
-      <Card className="mb-4">
-        <CardContent className="p-3 flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" />
-          Computing fact divergence...
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!data || data.vectors_found < 2 || data.mean_pairwise_distance === null) {
-    return null;
-  }
-
-  const mean = data.mean_pairwise_distance;
-  // Color: green (low divergence) → yellow → red (high divergence)
-  const divergenceLevel =
-    mean < 0.2 ? "low" : mean < 0.4 ? "moderate" : "high";
-  const colorClass =
-    divergenceLevel === "low"
-      ? "border-green-500/30 bg-green-50 dark:bg-green-950/30"
-      : divergenceLevel === "moderate"
-        ? "border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/30"
-        : "border-red-500/30 bg-red-50 dark:bg-red-950/30";
-  const textClass =
-    divergenceLevel === "low"
-      ? "text-green-700 dark:text-green-400"
-      : divergenceLevel === "moderate"
-        ? "text-yellow-700 dark:text-yellow-400"
-        : "text-red-700 dark:text-red-400";
-
-  return (
-    <Card className={`mb-4 ${colorClass}`}>
-      <CardContent className="p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Activity className={`size-4 ${textClass}`} />
-          <span className={`text-sm font-medium ${textClass}`}>
-            Fact Divergence: {divergenceLevel}
-          </span>
-          {data.cluster_estimate > 1 && (
-            <Badge variant="outline" className="text-xs">
-              ~{data.cluster_estimate} clusters
-            </Badge>
-          )}
-        </div>
-        <div className="grid grid-cols-4 gap-3 text-xs">
-          <div>
-            <div className="text-muted-foreground">Mean distance</div>
-            <div className="font-mono font-medium">{mean.toFixed(4)}</div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Std deviation</div>
-            <div className="font-mono font-medium">
-              {data.std_pairwise_distance?.toFixed(4) ?? "—"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Min / Max</div>
-            <div className="font-mono font-medium">
-              {data.min_pairwise_distance?.toFixed(3)} / {data.max_pairwise_distance?.toFixed(3)}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Vectors</div>
-            <div className="font-mono font-medium">
-              {data.vectors_found} / {data.fact_count}
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -598,7 +492,6 @@ export default function SeedDetailPage({
               )}
 
               <TabsContent value="facts">
-                <DivergenceCard seedKey={decodedKey} />
                 <FactsList facts={seed.facts} />
               </TabsContent>
 
