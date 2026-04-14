@@ -1,0 +1,55 @@
+{
+  "fixture_kind": "facts",
+  "fixture_label": "pathology",
+  "description": "Deterministic fixture of hand-picked facts covering the dedup pathologies the pipeline must handle correctly. Each block targets a specific failure mode documented in prior runs.",
+  "n": 40,
+  "facts": [
+    {"id": "nate-001", "content": "Nate Oayton runs a consulting firm in Denver specializing in tax strategy for small businesses."},
+    {"id": "nate-002", "content": "Nate Payton, a retired NFL linebacker, founded a youth coaching program in Kansas City."},
+    {"id": "nate-003", "content": "Nathan Wolfe, a virologist, founded Metabiota in 2008 to track emerging infectious diseases."},
+    {"id": "nate-004", "content": "Nate Silver published The Signal and the Noise in 2012 analyzing political and sports prediction models."},
+    {"id": "nate-005", "content": "NATO agreed to expand its eastward membership following the 2022 summit in Madrid."},
+
+    {"id": "homeo-001", "content": "Homeopathy was founded by Samuel Hahnemann in the late 18th century in Germany, based on the principle of treating like with like."},
+    {"id": "homeo-002", "content": "A homeopath typically conducts consultations lasting sixty to ninety minutes with each patient to assess symptoms holistically."},
+    {"id": "homeo-003", "content": "Homeopathic medicine undergoes serial dilution until the original substance becomes undetectable in the final preparation."},
+    {"id": "homeo-004", "content": "Critics argue homeopathy produces no more measurable efficacy than placebo in large controlled trials."},
+    {"id": "homeo-005", "content": "The UK National Health Service defunded homeopathic medicine reimbursements across public clinics in 2017."},
+
+    {"id": "micu-001", "content": "MICU1 is the primary gatekeeper of the mitochondrial calcium uniporter in most human cell types."},
+    {"id": "micu-002", "content": "MICU2 forms a heterodimer with MICU1 and acts as an inhibitory subunit at low cytosolic calcium concentrations."},
+    {"id": "micu-003", "content": "MICU3 is highly expressed in neural tissue where it accelerates the activation of the mitochondrial uniporter complex."},
+    {"id": "micu-004", "content": "Loss of MICU1 function leads to myopathy and neurodevelopmental disorders in affected human patients."},
+    {"id": "micu-005", "content": "MICU2 knockouts in cardiomyocytes show altered calcium uptake kinetics compared to MICU1 knockouts."},
+
+    {"id": "trends-001", "content": "Trends in Cell Biology published a 2018 review titled Hallmarks of cellular senescence by Hernandez-Segura, Nehme and Demaria."},
+    {"id": "trends-002", "content": "Recent trends in renewable energy investment show a forty percent year-over-year increase in solar capacity deployments."},
+    {"id": "trends-003", "content": "Trends in Neurosciences highlighted optogenetic advances in its most-cited 2020 review article on circuit mapping."},
+    {"id": "trends-004", "content": "Market trends across emerging economies diverged significantly during the pandemic recovery period."},
+    {"id": "trends-005", "content": "Trends in Music Generation featured deep generative models for polyphonic composition in its 2023 special issue."},
+
+    {"id": "mercury-001", "content": "Mercury is the smallest planet in the solar system, orbiting closest to the Sun with a year lasting 88 Earth days."},
+    {"id": "mercury-002", "content": "Mercury is a toxic heavy metal used historically in thermometers and dental amalgams before regulation limited its applications."},
+    {"id": "mercury-003", "content": "Mercury, in Roman mythology, was the messenger god associated with commerce, travellers and trickery."},
+    {"id": "mercury-004", "content": "Mercury contamination in predatory fish species poses neurotoxicity risks to pregnant women and developing fetuses."},
+    {"id": "mercury-005", "content": "The Mariner 10 mission conducted the first three flybys of the planet Mercury between 1974 and 1975."},
+
+    {"id": "un-001", "content": "The UN Security Council passed resolution 2728 calling for a humanitarian ceasefire in Gaza in 2024."},
+    {"id": "un-002", "content": "United Nations peacekeeping forces deployed to seven active conflict zones during fiscal year 2024."},
+    {"id": "un-003", "content": "NATO was founded in 1949 by twelve member states to counter Soviet expansion in post-war Europe."},
+    {"id": "un-004", "content": "The North Atlantic Treaty Organization expanded to include Finland in 2023 and Sweden in 2024 following their application."},
+
+    {"id": "kriya-001", "content": "Kriya yogi practitioners undergo multi-year initiation sequences under the guidance of a qualified master in the Himalayan tradition."},
+    {"id": "kriya-002", "content": "Kriya Yogis performed coordinated breath and mudra cycles during the Mahasamadhi observance at the Self-Realization Fellowship headquarters."},
+    {"id": "plant-001", "content": "Plants photosynthesize by converting sunlight into chemical energy stored as glucose and other carbohydrates."},
+    {"id": "plant-002", "content": "The plant cell wall, composed primarily of cellulose, provides structural rigidity and turgor resistance."},
+
+    {"id": "physics-001", "content": "A physicist at CERN proposed a new parity-violating decay mechanism in B mesons during the 2023 LHCb collaboration meeting."},
+    {"id": "physics-002", "content": "Modern physics encompasses quantum field theory, general relativity, statistical mechanics and condensed matter topics."},
+    {"id": "law-001", "content": "The lawyer representing the plaintiff cited precedent from the 1954 Brown versus Board of Education case during oral argument."},
+    {"id": "law-002", "content": "Contract law in the European Union is partially harmonized through the Rome I regulation on choice of law."},
+
+    {"id": "cross-001", "content": "Trends in Cell Biology devoted a 2021 issue to mitochondrial signaling, with multiple articles citing MICU1 and MICU2 regulatory roles."},
+    {"id": "cross-002", "content": "The UN World Health Organization, known as WHO, published updated guidelines on antimicrobial resistance containment in 2023."}
+  ]
+}

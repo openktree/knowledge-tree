@@ -11,8 +11,7 @@ DecisionKind = Literal[
     "alias_hit",                     # bookkeeping-only: reverse alias lookup surfaced candidate(s)
     "merge_into_big_seed",           # incoming merged into flat big-seed
     "merge_into_path",               # big-seed already split; merged into existing disambig path
-    "split_big_seed",                # flat big-seed split into disambig paths
-    "new_disambig_path",             # big-seed already split; incoming becomes new disambig branch
+    "new_disambig_path",             # new disambiguation branch (auto-promotes flat content on first split)
     "shell",                         # shell_classify marked as shell noun — short-circuited
     "merge_by_exact_extraction",     # Phase B: same literal name seen in another fact
     "merge_by_alias_match",          # Phase D: name is a verbatim alias of another unique name

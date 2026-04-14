@@ -65,37 +65,28 @@ HARD RULES — never merge the following (split into paths or birth new bigseed)
 ACTIONS (pick exactly one):
 
 1. "merge_into_big_seed"
-   Use when candidate big-seed is flat AND incoming is literally the same
+   Use when target big-seed is flat AND incoming is literally the same
    concept. Incoming aliases/embeddings/facts append to the flat big-seed.
    Response: {"action": "merge_into_big_seed", "target_big_seed_id": "..."}
 
 2. "merge_into_path"
-   Use when candidate big-seed is already disambiguated AND incoming is
+   Use when target big-seed is already disambiguated AND incoming is
    literally the same entity as one of its existing paths.
    Response: {"action": "merge_into_path",
               "target_big_seed_id": "...", "target_path_id": "..."}
 
-3. "split_big_seed"
-   Use when candidate big-seed was flat BUT incoming reveals it was
-   actually ambiguous. Produce TWO or more disambiguated paths: partition
-   the existing big-seed's aliases into those paths, and add incoming as
-   a new path. Each path needs an unambiguous label.
-   Response: {"action": "split_big_seed",
-              "target_big_seed_id": "...",
-              "paths": [
-                {"label": "Name (role)",
-                 "from_parent_aliases": [<subset of parent aliases>]},
-                ...
-              ],
-              "incoming_goes_to_label": "Name (role)"  (which of the new paths)
-             }
-
-4. "new_disambig_path"
-   Use when candidate big-seed is already disambiguated AND incoming is a
-   NEW distinct entity that shares the surface form.
+3. "new_disambig_path"
+   Use whenever the incoming reveals a distinct concept sharing a surface
+   form with the target big-seed. Provide an unambiguous label for the
+   incoming concept in `incoming_disambig_label`. If the target big-seed
+   is still flat, ALSO provide `existing_disambig_label` — the system
+   will promote the flat content into a sibling path under that label.
+   If the target is already disambiguated, `existing_disambig_label` is
+   ignored.
    Response: {"action": "new_disambig_path",
               "target_big_seed_id": "...",
-              "disambig_label": "Name (role)"}
+              "incoming_disambig_label": "Name (role-for-incoming)",
+              "existing_disambig_label": "Name (role-for-existing)" or null}
 
 Pick only ONE candidate big-seed when multiple surfaced. Prefer the one
 with the closest semantic match. If genuinely none match the incoming,
@@ -436,29 +427,35 @@ async def _apply_llm_decision(
             decision.target_path_id = p.id
             decision.target_path_label = p.label
 
-    elif action == "split_big_seed":
-        new_paths = _split_big_seed(
-            big, incoming_name, aliases, facts, vecs, response, runner_vecs=vecs
-        )
-        decision.kind = "split_big_seed"
-        decision.split_paths = [
-            {"id": p.id, "label": p.label, "aliases": p.aliases} for p in new_paths
-        ]
-        # which path the incoming ended up on
-        goes = str(response.get("incoming_goes_to_label", "")).strip().lower()
-        for p in new_paths:
-            if p.label.strip().lower() == goes:
-                decision.target_path_id = p.id
-                decision.target_path_label = p.label
-                break
-
     elif action == "new_disambig_path":
-        label = str(response.get("disambig_label", "")).strip() or f"{incoming_name} (variant)"
-        p = _new_disambig_path(big, label, incoming_name, aliases, facts, vecs)
+        incoming_label = (
+            str(response.get("incoming_disambig_label", "")).strip()
+            or str(response.get("disambig_label", "")).strip()  # legacy compat
+            or f"{incoming_name} (variant)"
+        )
+        existing_label_raw = response.get("existing_disambig_label")
+        existing_label = (
+            str(existing_label_raw).strip() if isinstance(existing_label_raw, str) else ""
+        )
+        p_incoming, p_promoted = _apply_new_disambig_path(
+            big,
+            incoming_label=incoming_label,
+            existing_label=existing_label or big.canonical_name,
+            incoming_name=incoming_name,
+            aliases=aliases,
+            facts=facts,
+            vecs=vecs,
+        )
         decision.kind = "new_disambig_path"
-        decision.target_path_id = p.id
-        decision.target_path_label = p.label
-        decision.disambig_label = label
+        decision.target_path_id = p_incoming.id
+        decision.target_path_label = p_incoming.label
+        decision.disambig_label = incoming_label
+        if p_promoted is not None:
+            decision.split_paths = [
+                {"id": p_promoted.id, "label": p_promoted.label, "aliases": p_promoted.aliases},
+                {"id": p_incoming.id, "label": p_incoming.label, "aliases": p_incoming.aliases},
+            ]
+            decision.reason += f" | promoted flat content to sibling path '{p_promoted.label}'"
 
     else:
         # unknown action — treat as merge_into_big_seed as a safe default
@@ -500,110 +497,61 @@ def _merge_path(
         p.facts.extend(facts[:remaining])
 
 
-def _split_big_seed(
+def _promote_flat_to_path(big: BigSeed, label: str) -> Path:
+    """Convert a flat bigseed's parent-level content into a single Path.
+    Called the first time disambiguation happens on a previously-flat bigseed.
+    Caller is responsible for clearing parent-level state after promotion.
+    """
+    p = Path.new(label=label)
+    # ensure label is findable as an alias
+    p.aliases.append(label)
+    for a in big.aliases:
+        if a.strip() and a.strip().lower() not in {x.strip().lower() for x in p.aliases}:
+            p.aliases.append(a)
+    p.embeddings = list(big.embeddings)
+    p.facts = list(big.facts)
+    return p
+
+
+def _apply_new_disambig_path(
     big: BigSeed,
-    incoming_name: str,
-    incoming_aliases: list[str],
-    incoming_facts: list[Fact],
-    incoming_vecs: list[NamedVec],
-    response: dict,
     *,
-    runner_vecs: list[NamedVec],
-) -> list[Path]:
-    """Partition flat big-seed into paths per LLM directive."""
-    raw_paths = response.get("paths") or []
-    goes = str(response.get("incoming_goes_to_label", "")).strip().lower()
-
-    src_aliases = {a.strip().lower(): a for a in big.aliases}
-    src_embeddings = {nv.source_name.strip().lower(): nv for nv in big.embeddings}
-
-    new_paths: list[Path] = []
-    for raw in raw_paths:
-        if not isinstance(raw, dict):
-            continue
-        label = str(raw.get("label", "")).strip()
-        if not label:
-            continue
-        p = Path.new(label=label)
-        for a in raw.get("from_parent_aliases", []) or []:
-            if not isinstance(a, str):
-                continue
-            key = a.strip().lower()
-            if key in src_aliases:
-                p.aliases.append(src_aliases[key])
-                if key in src_embeddings:
-                    p.embeddings.append(src_embeddings[key])
-        # If label isn't already an alias, keep it discoverable
-        if not any(a.strip().lower() == label.strip().lower() for a in p.aliases):
-            p.aliases.insert(0, label)
-        new_paths.append(p)
-
-    # Fallback: if LLM returned zero usable paths, synthesize two-way split
-    if not new_paths:
-        p1 = Path.new(label=big.canonical_name)
-        p1.aliases = list(big.aliases)
-        p1.embeddings = list(big.embeddings)
-        p1.facts = list(big.facts)
-        p2 = Path.new(label=incoming_name)
-        new_paths = [p1, p2]
-
-    # Place the incoming into the labelled target path (or the last new path)
-    target: Path | None = None
-    for p in new_paths:
-        if p.label.strip().lower() == goes:
-            target = p
-            break
-    if target is None:
-        # find path whose aliases don't include the incoming canonical — treat as new branch
-        target = new_paths[-1]
-    _merge_path(target, incoming_name, incoming_aliases, incoming_facts, incoming_vecs)
-
-    # Distribute parent facts: each path gets facts whose content mentions any of
-    # its aliases (cheap heuristic). Unassigned parent facts go to first path.
-    unassigned: list[Fact] = []
-    for f in big.facts:
-        placed = False
-        low = f.content.lower()
-        for p in new_paths:
-            if any(a.strip().lower() in low for a in p.aliases if a.strip()):
-                if len(p.facts) < SAMPLE_FACTS_STORED and f not in p.facts:
-                    p.facts.append(f)
-                placed = True
-                break
-        if not placed:
-            unassigned.append(f)
-    if unassigned and new_paths:
-        for f in unassigned:
-            if len(new_paths[0].facts) < SAMPLE_FACTS_STORED and f not in new_paths[0].facts:
-                new_paths[0].facts.append(f)
-
-    # Commit: flatten parent; paths take over
-    big.paths = new_paths
-    big.aliases = []
-    big.embeddings = []
-    big.facts = []
-    return new_paths
-
-
-def _new_disambig_path(
-    big: BigSeed,
-    label: str,
+    incoming_label: str,
+    existing_label: str,
     incoming_name: str,
     aliases: list[str],
     facts: list[Fact],
     vecs: list[NamedVec],
-) -> Path:
-    p = Path.new(label=label)
-    p.aliases.append(label)
-    if incoming_name.strip().lower() != label.strip().lower():
-        p.aliases.append(incoming_name)
+) -> tuple[Path, Path | None]:
+    """Unified disambiguation handler.
+
+    - If `big` is flat (no paths): auto-promote its flat content into a
+      sibling path labelled `existing_label`, then create a new path for
+      the incoming. Returns (incoming_path, promoted_path).
+    - If `big` is already disambiguated: just add the incoming path.
+      Returns (incoming_path, None).
+    """
+    promoted: Path | None = None
+    if not big.paths:
+        # First disambig event — promote existing flat content.
+        promoted = _promote_flat_to_path(big, existing_label)
+        big.paths.append(promoted)
+        big.aliases = []
+        big.embeddings = []
+        big.facts = []
+
+    # Create the incoming's path.
+    incoming = Path.new(label=incoming_label)
+    incoming.aliases.append(incoming_label)
+    if incoming_name.strip().lower() != incoming_label.strip().lower():
+        incoming.aliases.append(incoming_name)
     for a in aliases:
-        if a.strip() and a.strip().lower() not in {x.strip().lower() for x in p.aliases}:
-            p.aliases.append(a)
-    p.embeddings = vecs
-    p.facts.extend(facts[:SAMPLE_FACTS_STORED])
-    big.paths.append(p)
-    return p
+        if a.strip() and a.strip().lower() not in {x.strip().lower() for x in incoming.aliases}:
+            incoming.aliases.append(a)
+    incoming.embeddings = vecs
+    incoming.facts.extend(facts[:SAMPLE_FACTS_STORED])
+    big.paths.append(incoming)
+    return incoming, promoted
 
 
 __all__ = ["intake", "EMBED_THRESHOLD"]
