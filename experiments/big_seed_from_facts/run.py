@@ -29,7 +29,7 @@ from experiments.big_seed_dedup.multiplex import intake  # noqa: E402
 from experiments.big_seed_dedup.qdrant_index import QdrantIndex  # noqa: E402
 from experiments.big_seed_dedup.report import generate_report  # noqa: E402
 
-from .extract_entities import Extracted, extract_from_facts  # noqa: E402
+from .extract_entities import Extracted, Ignored, extract_from_facts  # noqa: E402
 
 QDRANT_COLLECTION = "bigseed_facts_experiment_paths"
 
@@ -76,17 +76,20 @@ async def run_facts_pipeline(
     min_mentions: int = 1,
     alias_batch_size: int = 20,
     alias_concurrency: int = 5,
-) -> tuple[Registry, dict[str, int], int]:
+    apply_generic_filter: bool = True,
+) -> tuple[Registry, list[Ignored], dict[str, int], int, bool]:
     facts, labels = _load_fact_fixtures(fixtures_dir)
     if not facts:
         print("No fact fixtures found.")
-        return Registry(), {}, 0
+        return Registry(), [], {}, 0, apply_generic_filter
 
     facts_by_id = {str(f["id"]): f for f in facts}
     print(f"Loaded {len(facts)} raw facts from fixtures: {labels}")
 
-    print("Extracting entities with spaCy…")
-    extracted, stats = extract_from_facts(facts, min_mentions=min_mentions)
+    print(f"Extracting entities with spaCy (generic_filter={apply_generic_filter})…")
+    extracted, ignored, stats = extract_from_facts(
+        facts, min_mentions=min_mentions, apply_generic_filter=apply_generic_filter,
+    )
     print(f"  stats: {stats}")
 
     items = _extracted_to_intake_items(extracted, facts_by_id)
@@ -136,7 +139,7 @@ async def run_facts_pipeline(
         )
         registry.history.append(decision)
 
-    return registry, stats, len(facts)
+    return registry, ignored, stats, len(facts), apply_generic_filter
 
 
 async def main_async(
@@ -146,6 +149,7 @@ async def main_async(
     reset_qdrant: bool,
     model_override: str | None,
     min_mentions: int,
+    apply_generic_filter: bool,
 ) -> None:
     gateway = ModelGateway()
     if model_override:
@@ -156,8 +160,9 @@ async def main_async(
     qdrant = QdrantIndex(collection_name=QDRANT_COLLECTION)
     await qdrant.ensure(reset=reset_qdrant)
 
-    registry, stats, fact_count = await run_facts_pipeline(
-        fixtures, runner=runner, qdrant=qdrant, min_mentions=min_mentions
+    registry, ignored, stats, fact_count, filter_on = await run_facts_pipeline(
+        fixtures, runner=runner, qdrant=qdrant, min_mentions=min_mentions,
+        apply_generic_filter=apply_generic_filter,
     )
 
     print(f"\nRegistry: {len(registry.big_seeds)} big-seed(s), {len(registry.history)} decisions")
@@ -168,7 +173,29 @@ async def main_async(
         print(f"  … and {len(registry.big_seeds) - 30} more")
 
     print(f"\nspaCy stats: {stats} · raw facts loaded: {fact_count}")
-    generate_report(registry, out, model_name=gateway.decomposition_model)
+
+    # Serialize ignored list for the report renderer
+    ignored_section = {
+        "filter_on": filter_on,
+        "fact_count": fact_count,
+        "stats": stats,
+        "ignored": [
+            {
+                "name": i.name,
+                "node_type": i.node_type,
+                "source": i.source,
+                "ner_label": i.ner_label,
+                "head_lemma": i.head_lemma,
+                "token_count": i.token_count,
+                "reason": i.reason,
+                "detail": i.detail,
+                "fact_count": len(i.fact_ids),
+            }
+            for i in ignored
+        ],
+    }
+    generate_report(registry, out, model_name=gateway.decomposition_model,
+                    ignored_section=ignored_section)
 
 
 def main() -> None:
@@ -181,10 +208,13 @@ def main() -> None:
     parser.add_argument("--model", default=None)
     parser.add_argument("--min-mentions", type=int, default=1,
                         help="Drop spaCy entities appearing in fewer than this many facts")
+    parser.add_argument("--no-generic-filter", dest="generic_filter", action="store_false",
+                        help="Disable the NER-label/regex/concreteness pre-filter (default: enabled)")
+    parser.set_defaults(generic_filter=True)
     args = parser.parse_args()
     asyncio.run(main_async(
         Path(args.fixtures), Path(args.out), Path(args.cache),
-        args.reset_qdrant, args.model, args.min_mentions,
+        args.reset_qdrant, args.model, args.min_mentions, args.generic_filter,
     ))
 
 

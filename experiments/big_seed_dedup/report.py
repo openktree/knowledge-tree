@@ -256,7 +256,90 @@ _CSS = """
 """
 
 
-def generate_report(registry: Registry, output_path: Path, model_name: str) -> None:
+def _render_ignored_section(section: dict) -> str:
+    """Render audit of spaCy candidates dropped by the generic filter."""
+    filter_on = section.get("filter_on", True)
+    fact_count = section.get("fact_count", 0)
+    stats = section.get("stats", {}) or {}
+    ignored = section.get("ignored", []) or []
+
+    kept = stats.get("unique_kept", 0)
+    total_seen = kept + stats.get("unique_ignored", 0)
+
+    parts: list[str] = []
+    parts.append("<div class='section'><h2>Ignored seeds (pre-filter audit)</h2>")
+    parts.append(
+        f"<div class='meta'>filter_on={filter_on} · raw_facts={fact_count} · "
+        f"unique candidates seen: {total_seen} · kept: {kept} · "
+        f"ignored: {stats.get('unique_ignored', 0)}</div>"
+    )
+
+    if not filter_on:
+        parts.append("<p class='neutral'>Generic filter disabled for this run — no rejections recorded.</p>")
+        parts.append("</div>")
+        return "".join(parts)
+
+    # Stats breakdown
+    parts.append("<table>")
+    parts.append("<tr><th>Reason</th><th class='num'>Rejected unique</th><th class='num'>Rejected mentions</th></tr>")
+    for reason in ("ner_label", "regex", "concreteness"):
+        unique_count = sum(1 for i in ignored if i["reason"] == reason)
+        mention_count = stats.get(f"ignored_{reason}", 0)
+        parts.append(
+            f"<tr><td>{_esc(reason)}</td>"
+            f"<td class='num'>{unique_count}</td>"
+            f"<td class='num'>{mention_count}</td></tr>"
+        )
+    parts.append("</table>")
+
+    # Per-filter collapsible tables
+    for reason, header_extra in (
+        ("ner_label", "Dropped because spaCy NER labeled it as a numeric/temporal span."),
+        ("regex", "Dropped because the surface string is a pure number / date / page marker."),
+        ("concreteness", f"Dropped because single-token head-noun concreteness < {CONCRETENESS_THRESHOLD}."),
+    ):
+        rows = [i for i in ignored if i["reason"] == reason]
+        if not rows:
+            continue
+        parts.append(
+            f"<details><summary><b>{_esc(reason)}</b> — {len(rows)} unique · {header_extra}</summary>"
+        )
+        parts.append("<table>")
+        parts.append(
+            "<tr><th>name</th><th>head_lemma</th><th>tok</th><th>source</th>"
+            "<th>ner_label</th><th>detail</th><th class='num'>facts</th></tr>"
+        )
+        rows.sort(key=lambda r: (-r.get("fact_count", 0), r.get("name", "").lower()))
+        for r in rows:
+            parts.append(
+                "<tr>"
+                f"<td><b>{_esc(r.get('name', ''))}</b></td>"
+                f"<td class='mono'>{_esc(r.get('head_lemma') or '')}</td>"
+                f"<td class='num'>{r.get('token_count', 0)}</td>"
+                f"<td>{_esc(r.get('source', ''))}</td>"
+                f"<td class='mono'>{_esc(r.get('ner_label') or '')}</td>"
+                f"<td class='mono'>{_esc(r.get('detail', ''))}</td>"
+                f"<td class='num'>{r.get('fact_count', 0)}</td>"
+                "</tr>"
+            )
+        parts.append("</table></details>")
+
+    parts.append("</div>")
+    return "".join(parts)
+
+
+# Borderline threshold (kept in sync with generic_filter.CONCRETENESS_THRESHOLD
+# but we avoid importing to keep this module usable outside the facts experiment)
+CONCRETENESS_THRESHOLD = 2.5
+
+
+def generate_report(
+    registry: Registry,
+    output_path: Path,
+    model_name: str,
+    *,
+    ignored_section: dict | None = None,
+) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     alias_usages = [d.alias_gen_usage for d in registry.history if d.alias_gen_usage]
@@ -300,6 +383,10 @@ def generate_report(registry: Registry, output_path: Path, model_name: str) -> N
         f"${at.cost_usd:.5f} · multiplex: {mt.prompt_tokens:,}→{mt.completion_tokens:,} tok · "
         f"${mt.cost_usd:.5f}</div></div>"
     )
+
+    # Ignored seeds audit (only when ignored_section is provided)
+    if ignored_section is not None:
+        parts.append(_render_ignored_section(ignored_section))
 
     # Global big-seed list
     parts.append("<div class='section'><h2>Global big-seed list</h2>")
