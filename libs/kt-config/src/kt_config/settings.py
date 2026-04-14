@@ -41,8 +41,16 @@ class GraphDatabaseConfig(BaseModel):
     graph_database_url: str
     write_database_url: str
     qdrant_url: str = ""  # per-graph Qdrant URL; empty = use global qdrant_url
-    pool_size: int = 5
-    max_overflow: int = 10
+    # Graph-db (read side) pool — mirrors root Settings.db_pool_size defaults
+    graph_pool_size: int = 20
+    graph_max_overflow: int = 40
+    graph_pool_timeout: int = 30
+    graph_pool_recycle: int = 1800
+    # Write-db (worker pipeline writes) pool — mirrors root Settings.write_db_pool_size defaults
+    write_pool_size: int = 100
+    write_max_overflow: int = 700
+    write_pool_timeout: int = 120
+    write_pool_recycle: int = 600
 
     @field_validator("graph_database_url", "write_database_url")
     @classmethod
@@ -789,9 +797,18 @@ class Settings(BaseSettings):
     # Frontend
     frontend_url: str = "http://localhost:3000"
 
-    # Multi-graph pool sizes (for schema-mode non-default graphs)
-    graph_pool_size: int = 5
-    graph_max_overflow: int = 10
+    # Pool sizes for non-default (multigraph) graphs that live on the system
+    # DBs — i.e. schema-mode graphs with no ``database_connection_id``.
+    # Mirrors default-graph sizes (db_* / write_db_*) so worker load on a
+    # non-default graph has the same headroom as on the default graph.
+    multigraph_db_pool_size: int = 20
+    multigraph_db_max_overflow: int = 40
+    multigraph_db_pool_timeout: int = 30
+    multigraph_db_pool_recycle: int = 1800
+    multigraph_write_db_pool_size: int = 100
+    multigraph_write_db_max_overflow: int = 700
+    multigraph_write_db_pool_timeout: int = 120
+    multigraph_write_db_pool_recycle: int = 600
 
     # Multi-graph: named database connections (config_key → connection config)
     # Auto-discovered from EXTRA_DB_<NAME>_* env vars injected by the Helm chart,

@@ -220,27 +220,43 @@ class GraphSessionResolver:
                     )
                 graph_url = graph_db_config.graph_database_url
                 write_url = graph_db_config.write_database_url
-                pool_size = graph_db_config.pool_size
-                max_overflow = graph_db_config.max_overflow
+                graph_pool_size = graph_db_config.graph_pool_size
+                graph_max_overflow = graph_db_config.graph_max_overflow
+                graph_pool_timeout = graph_db_config.graph_pool_timeout
+                graph_pool_recycle = graph_db_config.graph_pool_recycle
+                write_pool_size = graph_db_config.write_pool_size
+                write_max_overflow = graph_db_config.write_max_overflow
+                write_pool_timeout = graph_db_config.write_pool_timeout
+                write_pool_recycle = graph_db_config.write_pool_recycle
                 if graph_db_config.qdrant_url:
                     _qdrant_url = graph_db_config.qdrant_url
             else:
                 graph_url = settings.database_url
                 write_url = settings.write_database_url
-                pool_size = settings.graph_pool_size
-                max_overflow = settings.graph_max_overflow
+                graph_pool_size = settings.multigraph_db_pool_size
+                graph_max_overflow = settings.multigraph_db_max_overflow
+                graph_pool_timeout = settings.multigraph_db_pool_timeout
+                graph_pool_recycle = settings.multigraph_db_pool_recycle
+                write_pool_size = settings.multigraph_write_db_pool_size
+                write_max_overflow = settings.multigraph_write_db_max_overflow
+                write_pool_timeout = settings.multigraph_write_db_pool_timeout
+                write_pool_recycle = settings.multigraph_write_db_pool_recycle
 
             graph_engine, graph_sf = _make_session_factory(
                 graph_url,
-                pool_size=pool_size,
-                max_overflow=max_overflow,
+                pool_size=graph_pool_size,
+                max_overflow=graph_max_overflow,
+                pool_timeout=graph_pool_timeout,
+                pool_recycle=graph_pool_recycle,
                 schema_name=graph.schema_name,
                 application_name=f"kt-graph-{graph.slug}",
             )
             write_engine, write_sf = _make_session_factory(
                 write_url,
-                pool_size=pool_size,
-                max_overflow=max_overflow,
+                pool_size=write_pool_size,
+                max_overflow=write_max_overflow,
+                pool_timeout=write_pool_timeout,
+                pool_recycle=write_pool_recycle,
                 schema_name=graph.schema_name,
                 application_name=f"kt-write-{graph.slug}",
             )
