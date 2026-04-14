@@ -92,10 +92,10 @@ async def run_pipeline(
     print(f"Pre-computing alias + shell for {len(batch_entries)} unique names "
           f"(batch_size={alias_batch_size}, concurrency={alias_concurrency}) — in parallel...")
     alias_cache, shell_cache = await _asyncio.gather(
-        generate_aliases_batch(batch_entries, runner=runner,
-                                chunk_size=alias_batch_size, concurrency=alias_concurrency),
+        generate_aliases_batch(names_only, runner=runner,
+                                chunk_size=max(40, alias_batch_size), concurrency=alias_concurrency),
         classify_shell_batch(names_only, runner=runner,
-                              chunk_size=max(20, alias_batch_size), concurrency=alias_concurrency),
+                              chunk_size=max(40, alias_batch_size), concurrency=alias_concurrency),
     )
     print(f"  alias_gen: {len(alias_cache)} · shell_classify: {len(shell_cache)}")
 

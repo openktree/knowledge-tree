@@ -134,18 +134,18 @@ async def run_facts_pipeline(
                 ))
     print(f"[B] emitted {exact_merge_events} merge_by_exact_extraction events")
 
-    # ── Phase C: alias_gen + shell_classify (parallel LLM) ──────────
+    # ── Phase C: alias_gen + shell_classify (parallel LLM, both fact-free) ──────────
     print(f"[C] Pre-computing alias + shell for {len(unique_items)} names "
           f"(batch={alias_batch_size}, concurrency={alias_concurrency}) — parallel…")
     names_only = [n for n, _t, _fs in unique_items]
     alias_cache, shell_cache = await asyncio.gather(
         generate_aliases_batch(
-            [(n, fs) for n, _t, fs in unique_items],
-            runner=runner, chunk_size=alias_batch_size, concurrency=alias_concurrency,
+            names_only, runner=runner,
+            chunk_size=max(40, alias_batch_size), concurrency=alias_concurrency,
         ),
         classify_shell_batch(
             names_only, runner=runner,
-            chunk_size=max(20, alias_batch_size), concurrency=alias_concurrency,
+            chunk_size=max(40, alias_batch_size), concurrency=alias_concurrency,
         ),
     )
     print(f"[C] alias_gen: {len(alias_cache)} · shell_classify: {len(shell_cache)}")

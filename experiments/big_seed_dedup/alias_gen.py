@@ -22,70 +22,63 @@ MAX_FACT_CHARS = 300
 # ── Alias epistemology ─────────────────────────────────────────────
 
 _ALIAS_SYSTEM = """\
-You extract aliases for entries in a knowledge graph. Emit ONLY
-aliases that are epistemologically equivalent to the given name.
+ALIAS RULE
 
-A string X is an alias of Y iff:
-  - X and Y refer to the IDENTICAL real-world referent, AND
-  - X can replace Y in any factual sentence about Y without shifting
-    meaning, part of speech, or referent class.
+X is an alias of Y iff replacing Y with X, or X with Y, in any
+sentence preserves what the sentence refers to. The test is
+bidirectional and must hold in every possible sentence, not just
+one you have in mind.
 
-Epistemological test: substitute X for Y in a concrete sentence
-about Y. If the sentence now refers to something different
-(different thing, different part of speech, different scope,
-different role) — it is NOT an alias. Reject it.
+Two names are aliases when they are naming variants of the same
+referent set — different ways of writing the same name, not
+different names that happen to overlap.
 
-Include: acronym ↔ expansion, alternate spellings / transliterations,
-singular ↔ plural of the same concept (emit both when countable),
-capitalization / stylization variants, common short form for the
-same individual.
+Emit an alias only when the relationship is one of:
+- acronym and its expansion (same entity)
+- alternate spelling or transliteration
+- singular and plural of one concept
+- official short and long form of the same entity
+- capitalization or stylization variant
 
-Exclude: noun ↔ derived adjective, practitioner ↔ practice, tool
-↔ user, derivative product ↔ parent discipline, part ↔ whole,
-instance ↔ category, organization ↔ member, parent concept ↔
-specialization, pronouns, generic titles.
+Ambiguity in the referent set is irrelevant to the test. A name
+with multiple senses is an alias of another name with the same
+multiple senses. Downstream disambiguation is not your concern.
 
-Return an empty list when unsure. Prefer silence over a wrong alias.
+If substituting one for the other narrows, broadens, or shifts
+the referent set in any context, they are not aliases. If you
+need surrounding text to decide what a name points to, it is not
+a universal alias.
 
-Output JSON exactly:
-{"aliases": ["alias1", "alias2", ...]}
+Return [] whenever the relationship is anything other than a pure
+naming variant. Empty output is correct when uncertain.
+
+Output JSON exactly: {"aliases": ["..."]}
 """
 
 _ALIAS_BATCH_SYSTEM = _ALIAS_SYSTEM + """\
 
-BATCH MODE: user message lists multiple entries. Return aliases per
-entry index. Include every entry even if its alias list is empty.
+BATCH MODE: user message lists multiple names. Return aliases per
+entry. Include every entry, empty list included when none.
 
 Output JSON exactly:
 {"results": [{"index": N, "aliases": ["..."]}, ...]}
 """
 
 
-def _build_alias_user(name: str, facts: list[Fact]) -> str:
-    sample = facts[:MAX_FACTS]
-    fact_block = "\n".join(
-        f"- {f.content[:MAX_FACT_CHARS]}" for f in sample if f.content.strip()
-    )
-    if not fact_block:
-        fact_block = "(no facts available)"
+def _build_alias_user(name: str) -> str:
     return (
-        f'Name: "{name}"\n\nSample facts:\n{fact_block}\n\n'
+        f'Name: "{name}"\n\n'
         'Return JSON: {"aliases": [...]}. Only the JSON.'
     )
 
 
-def _build_alias_batch_user(entries: list[tuple[str, list[Fact]]]) -> str:
-    parts: list[str] = []
-    for idx, (name, facts) in enumerate(entries, start=1):
-        sample = facts[:MAX_FACTS]
-        fact_lines = "\n".join(
-            f"    - {f.content[:MAX_FACT_CHARS]}" for f in sample if f.content.strip()
-        ) or "    (no facts)"
-        parts.append(f'[{idx}] "{name}"\n{fact_lines}')
-    body = "\n\n".join(parts)
+def _build_alias_batch_user(names: list[str]) -> str:
+    parts = "\n".join(f'[{i}] "{n}"' for i, n in enumerate(names, start=1))
     return (
-        f"Emit aliases for each of the {len(entries)} entries below.\n\n{body}\n\n"
-        'Return JSON: {"results": [{"index": N, "aliases": [...]}, ...]}. Only the JSON.'
+        f"List aliases for each of the {len(names)} names below.\n\n"
+        f"{parts}\n\n"
+        'Return JSON: {"results": [{"index": N, "aliases": [...]}, ...]}. '
+        "Only the JSON."
     )
 
 
@@ -192,15 +185,18 @@ def _share_usage(total: Usage, n: int, kind: str) -> Usage:
 
 async def generate_aliases(
     name: str,
-    facts: list[Fact],
+    facts: list[Fact] | None = None,  # kept for signature parity, ignored
     *,
     runner: LLMRunner,
 ) -> tuple[list[str], Usage, dict]:
+    """Fact-free alias generation. `facts` accepted but ignored — the
+    LLM sees the bare name only, producing universal aliases based on
+    world knowledge, not on one specific context."""
     response, usage = await runner.call_json(
         kind="alias_gen",
         system_prompt=_ALIAS_SYSTEM,
-        user_content=_build_alias_user(name, facts),
-        max_tokens=400,
+        user_content=_build_alias_user(name),
+        max_tokens=200,
     )
     raw = response.get("aliases", []) if isinstance(response, dict) else []
     return _clean_aliases(raw, name), usage, response if isinstance(response, dict) else {}
@@ -226,23 +222,28 @@ async def classify_shell(
 # ── Batch entry points ─────────────────────────────────────────────
 
 async def generate_aliases_batch(
-    entries: list[tuple[str, list[Fact]]],
+    names: list[str],
     *,
     runner: LLMRunner,
-    chunk_size: int = 20,
+    chunk_size: int = 40,
     concurrency: int = 5,
 ) -> dict[str, tuple[list[str], Usage, dict]]:
-    """Alias-only batch. Returns dict name -> (aliases, usage_share, raw_entry)."""
-    sem = asyncio.Semaphore(concurrency)
-    chunks = [entries[i : i + chunk_size] for i in range(0, len(entries), chunk_size)]
+    """Fact-free alias batch. Returns dict name -> (aliases, usage_share, raw_entry).
 
-    async def run_chunk(chunk: list[tuple[str, list[Fact]]]):
+    Input is name-only: LLM emits aliases based on world knowledge, not
+    fact context, so coreferences and context-specific rescues cannot
+    leak into the alias graph.
+    """
+    sem = asyncio.Semaphore(concurrency)
+    chunks = [names[i : i + chunk_size] for i in range(0, len(names), chunk_size)]
+
+    async def run_chunk(chunk: list[str]):
         async with sem:
             response, usage = await runner.call_json(
                 kind="alias_gen_batch",
                 system_prompt=_ALIAS_BATCH_SYSTEM,
                 user_content=_build_alias_batch_user(chunk),
-                max_tokens=min(4000, 300 * len(chunk)),
+                max_tokens=min(2500, 80 * len(chunk)),
             )
         by_idx: dict[int, list] = {}
         for r in (response.get("results", []) if isinstance(response, dict) else []):
@@ -256,7 +257,7 @@ async def generate_aliases_batch(
 
         share = _share_usage(usage, len(chunk), "alias_gen_batch")
         out: dict[str, tuple[list[str], Usage, dict]] = {}
-        for idx, (name, _facts) in enumerate(chunk, start=1):
+        for idx, name in enumerate(chunk, start=1):
             aliases = _clean_aliases(by_idx.get(idx, []), name)
             out[name] = (aliases, share, {"index": idx, "aliases": aliases})
         return out

@@ -11,11 +11,35 @@ Adapted from experiments/spacy_vs_llm_extraction.py.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass, field
 
 import spacy
 
 from .generic_filter import FilterDecision, GenericFilter
+
+
+# Paired-quote strippers — leave contractions intact by requiring 3+ chars
+# between quotes. Unicode smart quotes are normalized to ASCII first (NFKC).
+_PAIRED_SINGLE = re.compile(r"'([^'\n]{3,}?)'")
+_PAIRED_DOUBLE = re.compile(r'"([^"\n]{3,}?)"')
+
+
+def _normalize_text(text: str) -> str:
+    """NFKC normalize + strip paired quotes around 3+-char phrases.
+
+    Run before spaCy so its tokenizer doesn't fragment quoted titles
+    like `'Trends in Cell Biology'` into `Trends` + leftover tokens.
+    Contractions (don't, it's) survive because they don't match the
+    3-char-minimum paired pattern.
+    """
+    if not text:
+        return text
+    text = unicodedata.normalize("NFKC", text)
+    text = _PAIRED_SINGLE.sub(r"\1", text)
+    text = _PAIRED_DOUBLE.sub(r"\1", text)
+    return text
 
 _nlp = None
 
@@ -159,7 +183,7 @@ def extract_from_facts(
         if not content.strip():
             continue
         stats["facts"] += 1
-        mentions = _extract_mentions(content)
+        mentions = _extract_mentions(_normalize_text(content))
 
         for name, ntype, source, ner_label, head_lemma, token_count in mentions:
             stats["mentions"] += 1
