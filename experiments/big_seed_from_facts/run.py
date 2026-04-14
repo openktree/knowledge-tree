@@ -115,7 +115,7 @@ async def run_facts_pipeline(
 
     # Pre-embed names + all generated aliases
     to_embed: list[str] = []
-    for name, (aliases, _u, _r) in alias_cache.items():
+    for name, (aliases, _is_shell, _reason, _u, _r) in alias_cache.items():
         to_embed.append(name)
         to_embed.extend(aliases)
     print(f"Pre-embedding {len(set(to_embed))} unique strings…")

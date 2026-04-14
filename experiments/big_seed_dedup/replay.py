@@ -96,7 +96,7 @@ async def run_pipeline(
 
     # Pre-embed all canonical names + their generated aliases to fully warm cache.
     to_embed: list[str] = []
-    for name, (aliases, _u, _r) in alias_cache.items():
+    for name, (aliases, _is_shell, _reason, _u, _r) in alias_cache.items():
         to_embed.append(name)
         to_embed.extend(aliases)
     print(f"Pre-embedding {len(set(to_embed))} unique strings...")

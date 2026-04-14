@@ -166,14 +166,16 @@ def extract_from_facts(
             stats[source] += 1
             key = name.strip().lower()
 
-            # Filter decision pipeline
+            # Filter decision pipeline — NER label + regex only.
+            # Concreteness dropped: too many false positives on real
+            # phenomena (consciousness, anxiety, belief). Shell-noun
+            # filtering is handled by the LLM alias_gen classifier
+            # downstream, which is context-aware.
             decision: FilterDecision | None = None
             if apply_generic_filter:
                 decision = gf.check_ner_label(ner_label)
                 if decision is None:
                     decision = gf.check_regex(name)
-                if decision is None:
-                    decision = gf.check_concreteness(name, head_lemma, token_count)
 
             if decision is not None:
                 stats[f"ignored_{decision.reason}"] = stats.get(f"ignored_{decision.reason}", 0) + 1

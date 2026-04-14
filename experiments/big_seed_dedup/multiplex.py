@@ -23,6 +23,7 @@ from .big_seed import (
     NamedVec,
     Path,
     Registry,
+    ShellSeed,
     Usage,
 )
 from .llm import LLMRunner
@@ -185,7 +186,7 @@ async def intake(
     runner: LLMRunner,
     qdrant: QdrantIndex,
     step: int,
-    precomputed_aliases: tuple[list[str], "Usage", dict] | None = None,
+    precomputed_aliases: tuple[list[str], bool, str, Usage, dict] | None = None,
 ) -> Decision:
     d = Decision(
         step=step,
@@ -194,14 +195,34 @@ async def intake(
         incoming_fact_samples=_fact_samples(facts),
     )
 
-    # ── 1. alias_gen ────────────────────────────────────────────────
+    # ── 1. alias_gen (+ shell classifier) ───────────────────────────
     if precomputed_aliases is not None:
-        aliases, alias_usage, alias_resp = precomputed_aliases
+        aliases, is_shell, shell_reason, alias_usage, alias_resp = precomputed_aliases
     else:
-        aliases, alias_usage, alias_resp = await generate_aliases(name, facts, runner=runner)
+        aliases, is_shell, shell_reason, alias_usage, alias_resp = await generate_aliases(
+            name, facts, runner=runner
+        )
     d.incoming_aliases = aliases
     d.alias_gen_usage = alias_usage
     d.alias_gen_response = alias_resp
+
+    # ── shell short-circuit: skip embedding, qdrant, multiplex ──────
+    if is_shell:
+        registry.shell_seeds.append(
+            ShellSeed(
+                name=name,
+                node_type=node_type,
+                fact_count=len(facts),
+                fact_samples=_fact_samples(facts),
+                aliases=aliases,
+                reason=shell_reason,
+                alias_gen_usage=alias_usage,
+            )
+        )
+        d.kind = "shell"
+        d.reason = shell_reason or "alias_gen classified as shell noun"
+        d.target_big_seed_canonical = None
+        return d
 
     # ── 2. embed ────────────────────────────────────────────────────
     vecs = await _embed_with_aliases(runner, name, aliases)

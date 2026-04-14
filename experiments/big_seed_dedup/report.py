@@ -256,6 +256,36 @@ _CSS = """
 """
 
 
+def _render_shell_section(shell_seeds: list) -> str:
+    """Audit seeds short-circuited by the alias_gen shell classifier."""
+    parts: list[str] = []
+    parts.append("<div class='section'><h2>Shell seeds (alias_gen short-circuit)</h2>")
+    parts.append(
+        f"<div class='meta'>{len(shell_seeds)} candidate(s) classified as shell nouns — "
+        "never embedded, never merged, never promoted. "
+        "Epistemological filter via LLM at alias_gen time.</div>"
+    )
+    parts.append("<table>")
+    parts.append(
+        "<tr><th>name</th><th>node_type</th><th class='num'>facts</th>"
+        "<th>shell reason</th><th>aliases</th></tr>"
+    )
+    shell_seeds_sorted = sorted(shell_seeds, key=lambda s: (-getattr(s, 'fact_count', 0), getattr(s, 'name', '').lower()))
+    for s in shell_seeds_sorted:
+        aliases = " ".join(_pill(a, "#dbeafe", "#1e40af") for a in getattr(s, 'aliases', []) or [])
+        parts.append(
+            "<tr>"
+            f"<td><b>{_esc(getattr(s, 'name', ''))}</b></td>"
+            f"<td>{_esc(getattr(s, 'node_type', ''))}</td>"
+            f"<td class='num'>{getattr(s, 'fact_count', 0)}</td>"
+            f"<td class='reason'>{_esc(getattr(s, 'reason', ''))}</td>"
+            f"<td>{aliases or '<span class=neutral>-</span>'}</td>"
+            "</tr>"
+        )
+    parts.append("</table></div>")
+    return "".join(parts)
+
+
 def _render_ignored_section(section: dict) -> str:
     """Render audit of spaCy candidates dropped by the generic filter."""
     filter_on = section.get("filter_on", True)
@@ -279,12 +309,14 @@ def _render_ignored_section(section: dict) -> str:
         parts.append("</div>")
         return "".join(parts)
 
-    # Stats breakdown
+    # Stats breakdown — only non-zero reasons
     parts.append("<table>")
     parts.append("<tr><th>Reason</th><th class='num'>Rejected unique</th><th class='num'>Rejected mentions</th></tr>")
     for reason in ("ner_label", "regex", "concreteness"):
         unique_count = sum(1 for i in ignored if i["reason"] == reason)
         mention_count = stats.get(f"ignored_{reason}", 0)
+        if unique_count == 0 and mention_count == 0:
+            continue
         parts.append(
             f"<tr><td>{_esc(reason)}</td>"
             f"<td class='num'>{unique_count}</td>"
@@ -387,6 +419,10 @@ def generate_report(
     # Ignored seeds audit (only when ignored_section is provided)
     if ignored_section is not None:
         parts.append(_render_ignored_section(ignored_section))
+
+    # Shell seeds audit — short-circuited by alias_gen LLM classifier
+    if registry.shell_seeds:
+        parts.append(_render_shell_section(registry.shell_seeds))
 
     # Global big-seed list
     parts.append("<div class='section'><h2>Global big-seed list</h2>")

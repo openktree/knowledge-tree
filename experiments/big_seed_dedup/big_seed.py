@@ -13,6 +13,7 @@ DecisionKind = Literal[
     "merge_into_path",          # big-seed already split; merged into existing disambig path
     "split_big_seed",           # flat big-seed split into disambig paths
     "new_disambig_path",        # big-seed already split; incoming becomes new disambig branch
+    "shell",                    # alias_gen flagged as shell noun — short-circuited
 ]
 
 
@@ -142,17 +143,34 @@ class Decision:
 
 
 @dataclass
+class ShellSeed:
+    """A candidate classified by alias_gen as a shell noun — short-circuits
+    the pipeline: never embedded, never sent to multiplex, never promoted."""
+
+    name: str
+    node_type: str
+    fact_count: int
+    fact_samples: list[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
+    reason: str = ""
+    alias_gen_usage: Usage | None = None
+
+
+@dataclass
 class Registry:
     """Global pool — big-seeds, alias index, qdrant handle wrapper.
 
     alias_index: lowercased alias → list of (big_seed_id, path_id|None).
       path_id=None means the alias lives at the big-seed's flat level.
     history: ordered list of Decision, one per intake.
+    shell_seeds: candidates the alias_gen stage marked as shell nouns;
+      never embedded, never merged, never promoted.
     """
 
     big_seeds: list[BigSeed] = field(default_factory=list)
     alias_index: dict[str, list[tuple[str, str | None]]] = field(default_factory=dict)
     history: list[Decision] = field(default_factory=list)
+    shell_seeds: list[ShellSeed] = field(default_factory=list)
 
     def find_big_seed(self, bs_id: str) -> BigSeed | None:
         for b in self.big_seeds:
