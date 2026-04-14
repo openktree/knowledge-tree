@@ -106,49 +106,43 @@ subject?" If yes → is_shell=false. If no → is_shell=true.
 
 Shell words are pure propositional slots — they only acquire
 meaning through a complement ("the METHOD of X", "the ASPECTS of
-Y", "the ISSUE that Z"). They are grammatical containers, not
-substantive concepts.
+Y"). They are grammatical containers, not substantive concepts.
 
-Examples — shell (pure containers, no topical identity anywhere):
-  method, methods, approach, approaches, way, ways, kind, sort,
-  type, form, aspect, aspects, issue, issues, matter, case, point,
-  fact, thing, item, respect, regard, role, roles, lack.
+Examples — shell: method, methods, approach, approaches, way,
+ways, kind, sort, type, form, aspect, aspects, issue, issues,
+matter, case, point, fact, thing, item, respect, regard, role,
+roles, lack.
 
 NOT shell — always a legitimate topic somewhere:
-  consciousness, anxiety, depression, memory, emotion, belief,
-  democracy, capitalism, socialism, philosophy, psychology,
-  ethics, justice, freedom, liberty, autonomy, life, leadership,
-  income, global powers, knowledge, education, technology,
-  religion, poverty, wealth, equality, inequality,
-  sustainability, innovation, creativity, resilience, motivation,
-  productivity, health, entrepreneurship.
+consciousness, anxiety, depression, memory, emotion, belief,
+democracy, capitalism, socialism, philosophy, psychology,
+ethics, justice, freedom, liberty, autonomy, life, leadership,
+income, global powers, knowledge, education, technology,
+religion, poverty, wealth, equality, inequality, sustainability,
+innovation, creativity, resilience, motivation, productivity,
+health, entrepreneurship.
 
-Default: is_shell=FALSE. Flip to true only when the noun is a pure
-container with no topical identity anywhere. When uncertain, emit
-is_shell=false — letting a generic word through is always preferred
-to wrongly filtering a topic.
+Default: is_shell=FALSE. Flip true only when confident. When
+uncertain, is_shell=false. Multi-token names are NEVER shell.
 
-Multi-token names are NEVER shell. "theory of everything", "general
-theory of relativity", "string theory" — all not shell.
-
-Output JSON exactly:
-{"is_shell": bool, "shell_reason": "brief justification or empty"}
+Output the boolean only, no explanation. JSON exactly:
+{"is_shell": bool}
 """
 
 _SHELL_BATCH_SYSTEM = _SHELL_SYSTEM + """\
 
 BATCH MODE: user message lists multiple names. Classify each one.
-Include every entry.
+Include every entry. Boolean-only output, no reasoning.
 
 Output JSON exactly:
-{"results": [{"index": N, "is_shell": bool, "shell_reason": "..."}, ...]}
+{"results": [{"index": N, "is_shell": bool}, ...]}
 """
 
 
 def _build_shell_user(name: str) -> str:
     return (
         f'Name: "{name}"\n\n'
-        'Return JSON: {"is_shell": bool, "shell_reason": "..."}. Only the JSON.'
+        'Return JSON: {"is_shell": bool}. Only the JSON.'
     )
 
 
@@ -157,7 +151,7 @@ def _build_shell_batch_user(names: list[str]) -> str:
     return (
         f"Classify each of the {len(names)} names below as shell or not.\n\n"
         f"{parts}\n\n"
-        'Return JSON: {"results": [{"index": N, "is_shell": bool, "shell_reason": "..."}, ...]}. '
+        'Return JSON: {"results": [{"index": N, "is_shell": bool}, ...]}. '
         "Only the JSON."
     )
 
@@ -217,15 +211,16 @@ async def classify_shell(
     *,
     runner: LLMRunner,
 ) -> tuple[bool, str, Usage, dict]:
+    """Returns (is_shell, reason, usage, response). reason is always ''
+    now — the prompt no longer asks for one (saves ~34% cost)."""
     response, usage = await runner.call_json(
         kind="shell_classify",
         system_prompt=_SHELL_SYSTEM,
         user_content=_build_shell_user(name),
-        max_tokens=150,
+        max_tokens=30,
     )
     is_shell = bool(response.get("is_shell", False)) if isinstance(response, dict) else False
-    reason = str(response.get("shell_reason", "")) if isinstance(response, dict) else ""
-    return is_shell, reason, usage, response if isinstance(response, dict) else {}
+    return is_shell, "", usage, response if isinstance(response, dict) else {}
 
 
 # ── Batch entry points ─────────────────────────────────────────────
@@ -290,7 +285,7 @@ async def classify_shell_batch(
                 kind="shell_classify_batch",
                 system_prompt=_SHELL_BATCH_SYSTEM,
                 user_content=_build_shell_batch_user(chunk),
-                max_tokens=min(3000, 120 * len(chunk)),
+                max_tokens=min(1200, 40 * len(chunk)),
             )
         by_idx: dict[int, dict] = {}
         for r in (response.get("results", []) if isinstance(response, dict) else []):
@@ -307,8 +302,7 @@ async def classify_shell_batch(
         for idx, name in enumerate(chunk, start=1):
             entry = by_idx.get(idx) or {}
             is_shell = bool(entry.get("is_shell", False))
-            reason = str(entry.get("shell_reason", ""))
-            out[name] = (is_shell, reason, share, {"index": idx, "is_shell": is_shell, "shell_reason": reason})
+            out[name] = (is_shell, "", share, {"index": idx, "is_shell": is_shell})
         return out
 
     merged: dict[str, tuple[bool, str, Usage, dict]] = {}

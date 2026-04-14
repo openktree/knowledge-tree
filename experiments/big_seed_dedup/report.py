@@ -25,6 +25,11 @@ _KIND_COLORS = {
     "split_big_seed": "#f59e0b",
     "new_disambig_path": "#d97706",
     "alias_hit": "#64748b",
+    "merge_by_exact_extraction": "#10b981",
+    "merge_by_alias_match": "#14b8a6",
+    "shell": "#6b7280",
+    "embed_reject": "#94a3b8",
+    "llm_reject": "#ef4444",
 }
 
 
