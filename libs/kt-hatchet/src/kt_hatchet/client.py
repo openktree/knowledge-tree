@@ -65,12 +65,8 @@ async def list_child_runs(parent_task_external_id: str, since: object | None = N
         )
         return list(result.rows or [])
     except Exception as exc:
-        logger.warning(
-            "Failed to list child runs for task %s: %s", parent_task_external_id, exc
-        )
-        raise RuntimeError(
-            f"Failed to list child runs for task '{parent_task_external_id}': {exc}"
-        ) from exc
+        logger.warning("Failed to list child runs for task %s: %s", parent_task_external_id, exc)
+        raise RuntimeError(f"Failed to list child runs for task '{parent_task_external_id}': {exc}") from exc
 
 
 async def has_child_runs(parent_task_external_id: str, since: object | None = None) -> bool:
@@ -93,9 +89,7 @@ async def has_child_runs(parent_task_external_id: str, since: object | None = No
         )
         return bool(result.rows)
     except Exception as exc:
-        logger.debug(
-            "has_child_runs probe failed for %s: %s", parent_task_external_id, exc
-        )
+        logger.debug("has_child_runs probe failed for %s: %s", parent_task_external_id, exc)
         return False
 
 

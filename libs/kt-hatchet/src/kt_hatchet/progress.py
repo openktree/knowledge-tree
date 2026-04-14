@@ -49,9 +49,7 @@ def map_task_summary(task: Any, *, has_children: bool = False) -> dict[str, Any]
     }
 
 
-async def annotate_has_children(
-    items: list[dict[str, Any]], *, since: datetime | None = None
-) -> list[dict[str, Any]]:
+async def annotate_has_children(items: list[dict[str, Any]], *, since: datetime | None = None) -> list[dict[str, Any]]:
     """Probe each item's ``task_id`` for spawned child workflow runs in parallel.
 
     Mutates ``has_children`` in place and returns the same list.
@@ -68,9 +66,7 @@ async def annotate_has_children(
     return items
 
 
-async def fetch_child_task_items(
-    parent_task_id: str, *, since: datetime | None = None
-) -> list[dict[str, Any]]:
+async def fetch_child_task_items(parent_task_id: str, *, since: datetime | None = None) -> list[dict[str, Any]]:
     """Fetch direct children of a task as ``PipelineTaskItem``-shaped dicts.
 
     Lists spawned child workflow runs via ``list_child_runs``, then for each
