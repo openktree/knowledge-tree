@@ -23,6 +23,7 @@ _KIND_COLORS = {
     "merge_into_big_seed": "#0ea5e9",
     "merge_into_path": "#7c3aed",
     "new_disambig_path": "#f59e0b",
+    "preemptive_disambig_birth": "#ec4899",
     "alias_hit": "#64748b",
     "merge_by_exact_extraction": "#10b981",
     "merge_by_alias_match": "#14b8a6",

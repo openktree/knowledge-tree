@@ -15,6 +15,7 @@ DecisionKind = Literal[
     "shell",                         # shell_classify marked as shell noun — short-circuited
     "merge_by_exact_extraction",     # Phase B: same literal name seen in another fact
     "merge_by_alias_match",          # Phase D: name is a verbatim alias of another unique name
+    "preemptive_disambig_birth",     # genesis with disambig paths suggested by world knowledge
 ]
 
 

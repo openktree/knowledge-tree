@@ -149,6 +149,67 @@ def _build_shell_batch_user(names: list[str]) -> str:
     )
 
 
+# ── Natural disambiguation suggestion (fact-free, name-only) ───────
+
+_SUGGEST_DISAMBIG_SYSTEM = """\
+NATURAL AMBIGUITY RULE
+
+Given a bare name, list canonical disambiguation labels if the name
+is a naturally ambiguous term that commonly refers to multiple
+distinct real-world entities or concepts. Use only world knowledge
+about the name itself — no context.
+
+Examples:
+  Mercury     → ["Mercury (planet)", "Mercury (element)", "Mercury (Roman god)"]
+  Apollo      → ["Apollo (Greek god)", "Apollo (NASA program)", "Apollo (theatre)"]
+  Java        → ["Java (programming language)", "Java (island)"]
+  Jaguar      → ["Jaguar (animal)", "Jaguar (car brand)"]
+  Newton      → ["Newton (physicist)", "Newton (unit of force)"]
+  Python      → ["Python (programming language)", "Python (snake)", "Python (mythology)"]
+  Paris       → ["Paris (France)", "Paris (Greek myth)"]
+  Cambridge   → ["Cambridge (England)", "Cambridge (Massachusetts)"]
+  Washington  → ["Washington (state)", "Washington D.C.", "George Washington"]
+  Amazon      → ["Amazon (company)", "Amazon (river)", "Amazon (rainforest)"]
+  Saturn      → ["Saturn (planet)", "Saturn (Roman god)", "Saturn (car brand)"]
+
+Multi-token names are typically NOT naturally ambiguous — emit
+empty list for them.
+
+Default: empty list. When unsure, empty list. Missing ambiguity is
+cheap (downstream multiplex catches late cases); wrongly pre-
+disambiguating a single-meaning name is expensive.
+
+Output JSON exactly: {"paths": ["Label1", ...]}
+"""
+
+_SUGGEST_DISAMBIG_BATCH_SYSTEM = _SUGGEST_DISAMBIG_SYSTEM + """\
+
+BATCH MODE: user message lists multiple names. Return disambig
+labels per entry. Include every entry, empty list included.
+
+Output JSON exactly:
+{"results": [{"index": N, "paths": ["..."]}, ...]}
+"""
+
+
+def _build_suggest_disambig_user(name: str) -> str:
+    return (
+        f'Name: "{name}"\n\n'
+        'Return JSON: {"paths": [...]}. Only the JSON.'
+    )
+
+
+def _build_suggest_disambig_batch_user(names: list[str]) -> str:
+    parts = "\n".join(f'[{i}] "{n}"' for i, n in enumerate(names, start=1))
+    return (
+        f"For each of the {len(names)} names below, emit disambiguation paths "
+        f"if the name is naturally ambiguous, else empty list.\n\n"
+        f"{parts}\n\n"
+        'Return JSON: {"results": [{"index": N, "paths": ["..."]}, ...]}. '
+        "Only the JSON."
+    )
+
+
 # ── Helpers ────────────────────────────────────────────────────────
 
 def _clean_aliases(raw: list, canonical: str) -> list[str]:
@@ -307,6 +368,67 @@ async def classify_shell_batch(
         return out
 
     merged: dict[str, tuple[bool, str, Usage, dict]] = {}
+    for coro in asyncio.as_completed([run_chunk(c) for c in chunks]):
+        merged.update(await coro)
+    return merged
+
+
+async def suggest_disambig(
+    name: str,
+    *,
+    runner: LLMRunner,
+) -> tuple[list[str], Usage, dict]:
+    """Suggest natural disambiguation paths for a name (fact-free)."""
+    response, usage = await runner.call_json(
+        kind="suggest_disambig",
+        system_prompt=_SUGGEST_DISAMBIG_SYSTEM,
+        user_content=_build_suggest_disambig_user(name),
+        max_tokens=200,
+    )
+    raw = response.get("paths", []) if isinstance(response, dict) else []
+    paths = [str(p).strip() for p in raw if isinstance(p, str) and str(p).strip()]
+    return paths, usage, response if isinstance(response, dict) else {}
+
+
+async def suggest_disambig_batch(
+    names: list[str],
+    *,
+    runner: LLMRunner,
+    chunk_size: int = 40,
+    concurrency: int = 5,
+) -> dict[str, tuple[list[str], Usage, dict]]:
+    """Fact-free suggestion of disambig path labels per name. Returns
+    dict name -> (paths, usage_share, raw_entry)."""
+    sem = asyncio.Semaphore(concurrency)
+    chunks = [names[i : i + chunk_size] for i in range(0, len(names), chunk_size)]
+
+    async def run_chunk(chunk: list[str]):
+        async with sem:
+            response, usage = await runner.call_json(
+                kind="suggest_disambig_batch",
+                system_prompt=_SUGGEST_DISAMBIG_BATCH_SYSTEM,
+                user_content=_build_suggest_disambig_batch_user(chunk),
+                max_tokens=min(2500, 120 * len(chunk)),
+            )
+        by_idx: dict[int, list[str]] = {}
+        for r in (response.get("results", []) if isinstance(response, dict) else []):
+            if not isinstance(r, dict):
+                continue
+            try:
+                idx = int(r.get("index"))
+            except (TypeError, ValueError):
+                continue
+            raw = r.get("paths", []) if isinstance(r.get("paths", []), list) else []
+            by_idx[idx] = [str(p).strip() for p in raw if isinstance(p, str) and str(p).strip()]
+
+        share = _share_usage(usage, len(chunk), "suggest_disambig_batch")
+        out: dict[str, tuple[list[str], Usage, dict]] = {}
+        for idx, name in enumerate(chunk, start=1):
+            paths = by_idx.get(idx, [])
+            out[name] = (paths, share, {"index": idx, "paths": paths})
+        return out
+
+    merged: dict[str, tuple[list[str], Usage, dict]] = {}
     for coro in asyncio.as_completed([run_chunk(c) for c in chunks]):
         merged.update(await coro)
     return merged

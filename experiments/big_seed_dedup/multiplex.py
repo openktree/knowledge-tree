@@ -35,6 +35,61 @@ SAMPLE_FACTS_STORED = 10
 MAX_QDRANT_CANDIDATES = 8
 
 
+_ROUTE_FACTS_SYSTEM = """\
+You route facts to the correct disambiguation path of a name.
+
+Given a canonical name N, a list of disambiguation paths (each
+labelled e.g. "N (role)"), and facts mentioning N, assign each
+fact to the path it is actually about. Use only the fact content.
+
+Return JSON exactly:
+{"assignments": [{"fact_id": "...", "path_label": "..."}, ...]}
+
+If a fact does not fit any path, set "path_label" to null — that
+fact will remain at the parent level.
+"""
+
+
+async def route_facts_to_paths(
+    name: str,
+    path_labels: list[str],
+    facts: list[Fact],
+    *,
+    runner: LLMRunner,
+) -> tuple[dict[str, str | None], Usage, dict]:
+    """Ask the LLM to assign each fact to a path label. Returns
+    (fact_id → path_label or None, usage, raw_response)."""
+    label_lines = "\n".join(f"  [{i + 1}] {p}" for i, p in enumerate(path_labels))
+    fact_lines = "\n".join(
+        f'  F{i + 1} (id={f.id}): {f.content[:400]}' for i, f in enumerate(facts)
+    )
+    user = (
+        f'Canonical name: "{name}"\n\nPaths:\n{label_lines}\n\nFacts:\n{fact_lines}\n\n'
+        'Return JSON: {"assignments": [{"fact_id": "...", "path_label": "..."}, ...]}.'
+    )
+    response, usage = await runner.call_json(
+        kind="route_facts",
+        system_prompt=_ROUTE_FACTS_SYSTEM,
+        user_content=user,
+        max_tokens=min(2000, 60 * max(1, len(facts))),
+    )
+    assignments: dict[str, str | None] = {}
+    raw = response.get("assignments", []) if isinstance(response, dict) else []
+    valid = {p.strip().lower(): p for p in path_labels}
+    for a in raw:
+        if not isinstance(a, dict):
+            continue
+        fid = str(a.get("fact_id", "")).strip()
+        lab = a.get("path_label")
+        if not fid:
+            continue
+        if isinstance(lab, str) and lab.strip().lower() in valid:
+            assignments[fid] = valid[lab.strip().lower()]
+        else:
+            assignments[fid] = None
+    return assignments, usage, response if isinstance(response, dict) else {}
+
+
 _MULTIPLEX_SYSTEM = """\
 You are maintaining a knowledge-graph deduplication registry. Every
 "big-seed" represents ONE real-world entity or concept. A big-seed may be
@@ -178,6 +233,9 @@ async def intake(
     qdrant: QdrantIndex,
     step: int,
     precomputed: tuple[list[str], bool, str, Usage, dict, Usage, dict] | None = None,
+    suggested_paths: list[str] | None = None,
+    suggest_usage: Usage | None = None,
+    suggest_response: dict | None = None,
 ) -> Decision:
     d = Decision(
         step=step,
@@ -272,6 +330,25 @@ async def intake(
     # ── 5. decide ───────────────────────────────────────────────────
     candidates = list(hit_candidates.values())
     if not candidates:
+        # Preemptive disambiguation: if world knowledge said this name is
+        # naturally ambiguous, create the bigseed WITH paths from inception
+        # instead of flat.
+        if suggested_paths and len(suggested_paths) >= 2 and facts:
+            await _apply_preemptive_disambig(
+                registry=registry,
+                qdrant=qdrant,
+                runner=runner,
+                decision=d,
+                name=name,
+                node_type=node_type,
+                aliases=aliases,
+                facts=facts,
+                vecs=vecs,
+                suggested_paths=suggested_paths,
+                suggest_usage=suggest_usage,
+                suggest_response=suggest_response,
+            )
+            return d
         _apply_genesis(registry, d, name, node_type, aliases, facts, vecs)
         await _index_big_seed(qdrant, registry.find_big_seed(d.target_big_seed_id))  # type: ignore[arg-type]
         _register_aliases_for_big_seed(registry, d.target_big_seed_id)  # type: ignore[arg-type]
@@ -495,6 +572,90 @@ def _merge_path(
     remaining = SAMPLE_FACTS_STORED - len(p.facts)
     if remaining > 0:
         p.facts.extend(facts[:remaining])
+
+
+async def _apply_preemptive_disambig(
+    *,
+    registry: Registry,
+    qdrant: QdrantIndex,
+    runner: LLMRunner,
+    decision: Decision,
+    name: str,
+    node_type: str,
+    aliases: list[str],
+    facts: list[Fact],
+    vecs: list[NamedVec],
+    suggested_paths: list[str],
+    suggest_usage: Usage | None,
+    suggest_response: dict | None,
+) -> None:
+    """Genesis with pre-suggested disambig paths. One LLM call routes facts
+    to paths; bigseed is born with paths, no flat state."""
+    # Store diagnostic trace of the suggestion on the decision
+    if suggest_response is not None:
+        # piggyback on shell_classification_response if unused; but keep them
+        # distinct for the report. We'll put the suggest trace on a
+        # dedicated field below if available; otherwise fall back to reason.
+        pass
+
+    # Route facts via LLM
+    assignments, route_usage, route_response = await route_facts_to_paths(
+        name, suggested_paths, facts, runner=runner,
+    )
+
+    # Build bigseed with empty paths first
+    big = BigSeed.new(canonical=name, node_type=node_type)
+    big.alias_gen_usage = decision.alias_gen_usage
+    big.alias_gen_response = decision.alias_gen_response
+    registry.big_seeds.append(big)
+
+    # Embed each path label so qdrant search can later match on it
+    label_vecs: dict[str, list[float]] = {}
+    for label in suggested_paths:
+        label_vecs[label] = await runner.embed(label)
+
+    for label in suggested_paths:
+        p = Path.new(label=label)
+        p.aliases.append(label)
+        p.embeddings.append(NamedVec(source_name=label, vec=label_vecs[label]))
+        # attach any facts routed to this label
+        for f in facts:
+            if assignments.get(f.id) == label:
+                if len(p.facts) < SAMPLE_FACTS_STORED:
+                    p.facts.append(f)
+        big.paths.append(p)
+
+    # Unassigned facts → distribute to first path (conservative)
+    unassigned = [f for f in facts if assignments.get(f.id) is None]
+    if unassigned and big.paths:
+        tgt = big.paths[0]
+        for f in unassigned:
+            if len(tgt.facts) < SAMPLE_FACTS_STORED:
+                tgt.facts.append(f)
+
+    # Parent-level aliases — keep canonical + LLM aliases so future lookups hit
+    # (But path-level aliases are where actual facts/embeddings live.)
+    # Actually for bigseeds with paths, parent aliases are empty by convention.
+    big.aliases = []
+    big.embeddings = []
+    big.facts = []
+
+    decision.kind = "preemptive_disambig_birth"
+    decision.target_big_seed_id = big.id
+    decision.target_big_seed_canonical = big.canonical_name
+    decision.split_paths = [
+        {"id": p.id, "label": p.label, "aliases": p.aliases} for p in big.paths
+    ]
+    decision.reason = (
+        f"naturally ambiguous — born with {len(suggested_paths)} paths; "
+        f"{len(facts) - len(unassigned)}/{len(facts)} facts routed"
+    )
+    # Store route_facts usage as multiplex_usage surrogate so it appears in summary
+    decision.multiplex_usage = route_usage
+    decision.multiplex_response = route_response
+
+    await _index_big_seed(qdrant, big)
+    _register_aliases_for_big_seed(registry, big.id)
 
 
 def _promote_flat_to_path(big: BigSeed, label: str) -> Path:

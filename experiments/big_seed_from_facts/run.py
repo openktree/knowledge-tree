@@ -25,6 +25,7 @@ from kt_models.gateway import ModelGateway  # noqa: E402
 from experiments.big_seed_dedup.alias_gen import (  # noqa: E402
     classify_shell_batch,
     generate_aliases_batch,
+    suggest_disambig_batch,
 )
 from experiments.big_seed_dedup.big_seed import Decision, Fact, Registry, ShellSeed  # noqa: E402
 from experiments.big_seed_dedup.llm import LLMRunner  # noqa: E402
@@ -134,11 +135,12 @@ async def run_facts_pipeline(
                 ))
     print(f"[B] emitted {exact_merge_events} merge_by_exact_extraction events")
 
-    # ── Phase C: alias_gen + shell_classify (parallel LLM, both fact-free) ──────────
-    print(f"[C] Pre-computing alias + shell for {len(unique_items)} names "
-          f"(batch={alias_batch_size}, concurrency={alias_concurrency}) — parallel…")
+    # ── Phase C: alias_gen + shell_classify + suggest_disambig (3-way parallel) ──
+    print(f"[C] Pre-computing alias + shell + suggest_disambig for "
+          f"{len(unique_items)} names (batch={alias_batch_size}, "
+          f"concurrency={alias_concurrency}) — parallel…")
     names_only = [n for n, _t, _fs in unique_items]
-    alias_cache, shell_cache = await asyncio.gather(
+    alias_cache, shell_cache, disambig_cache = await asyncio.gather(
         generate_aliases_batch(
             names_only, runner=runner,
             chunk_size=max(40, alias_batch_size), concurrency=alias_concurrency,
@@ -147,8 +149,14 @@ async def run_facts_pipeline(
             names_only, runner=runner,
             chunk_size=max(40, alias_batch_size), concurrency=alias_concurrency,
         ),
+        suggest_disambig_batch(
+            names_only, runner=runner,
+            chunk_size=max(40, alias_batch_size), concurrency=alias_concurrency,
+        ),
     )
-    print(f"[C] alias_gen: {len(alias_cache)} · shell_classify: {len(shell_cache)}")
+    sug_hits = sum(1 for v in disambig_cache.values() if v[0])
+    print(f"[C] alias_gen: {len(alias_cache)} · shell_classify: {len(shell_cache)} · "
+          f"suggest_disambig: {len(disambig_cache)} ({sug_hits} names got preemptive paths)")
 
     # ── Phase D: alias-equivalence dedup (union-find) ───────────────
     # Build DSU over names. Two names are equivalent if one's generated
@@ -278,6 +286,7 @@ async def run_facts_pipeline(
         fs = merged_facts[rep]
         a_entry = alias_cache.get(rep)
         s_entry = shell_cache.get(rep)
+        d_entry = disambig_cache.get(rep)
         pre = None
         if a_entry is not None and s_entry is not None:
             rep_aliases_from_llm, a_u, a_r = a_entry
@@ -285,6 +294,13 @@ async def run_facts_pipeline(
             final_aliases = list(dict.fromkeys(rep_aliases_from_llm + merged_aliases[rep]))
             is_shell, s_reason, s_u, s_r = s_entry
             pre = (final_aliases, is_shell, s_reason, a_u, a_r, s_u, s_r)
+        suggested_paths: list[str] | None = None
+        suggest_usage = None
+        suggest_response = None
+        if d_entry is not None:
+            suggested_paths_list, suggest_usage, suggest_response = d_entry
+            if suggested_paths_list:
+                suggested_paths = suggested_paths_list
         step += 1
         decision = await intake(
             name=rep,
@@ -295,6 +311,9 @@ async def run_facts_pipeline(
             qdrant=qdrant,
             step=step,
             precomputed=pre,
+            suggested_paths=suggested_paths,
+            suggest_usage=suggest_usage,
+            suggest_response=suggest_response,
         )
         registry.history.append(decision)
 
