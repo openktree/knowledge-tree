@@ -185,6 +185,7 @@ async def intake(
     runner: LLMRunner,
     qdrant: QdrantIndex,
     step: int,
+    precomputed_aliases: tuple[list[str], "Usage", dict] | None = None,
 ) -> Decision:
     d = Decision(
         step=step,
@@ -194,7 +195,10 @@ async def intake(
     )
 
     # ── 1. alias_gen ────────────────────────────────────────────────
-    aliases, alias_usage, alias_resp = await generate_aliases(name, facts, runner=runner)
+    if precomputed_aliases is not None:
+        aliases, alias_usage, alias_resp = precomputed_aliases
+    else:
+        aliases, alias_usage, alias_resp = await generate_aliases(name, facts, runner=runner)
     d.incoming_aliases = aliases
     d.alias_gen_usage = alias_usage
     d.alias_gen_response = alias_resp

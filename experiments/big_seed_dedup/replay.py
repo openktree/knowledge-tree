@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path as _Path
 from typing import Any
 
+from .alias_gen import generate_aliases_batch
 from .big_seed import Fact, Registry
 from .llm import LLMRunner
 from .multiplex import intake
@@ -70,18 +71,42 @@ async def run_pipeline(
     *,
     runner: LLMRunner,
     qdrant: QdrantIndex,
+    alias_batch_size: int = 20,
+    alias_concurrency: int = 5,
 ) -> Registry:
     registry = Registry()
     members = order_stream(load_fixtures(fixtures_dir))
+    members = [m for m in members if m.name and m.facts]
+
+    # dedup names for batch (first-wins; later name reuses get fresh alias_gen call per intake)
+    seen: set[str] = set()
+    batch_entries: list[tuple[str, list[Fact]]] = []
+    for m in members:
+        if m.name in seen:
+            continue
+        seen.add(m.name)
+        batch_entries.append((m.name, m.facts))
+
+    print(f"Pre-computing aliases for {len(batch_entries)} unique names "
+          f"(batch_size={alias_batch_size}, concurrency={alias_concurrency})...")
+    alias_cache = await generate_aliases_batch(
+        batch_entries, runner=runner, chunk_size=alias_batch_size, concurrency=alias_concurrency
+    )
+    print(f"  alias_gen done: {len(alias_cache)} entries")
+
+    # Pre-embed all canonical names + their generated aliases to fully warm cache.
+    to_embed: list[str] = []
+    for name, (aliases, _u, _r) in alias_cache.items():
+        to_embed.append(name)
+        to_embed.extend(aliases)
+    print(f"Pre-embedding {len(set(to_embed))} unique strings...")
+    await runner.embed_batch(to_embed)
+    print("  embeddings done")
 
     step = 0
     for m in members:
-        if not m.name:
-            continue
-        if not m.facts:
-            # skip empty members — nothing for the LLM to reason about
-            continue
         step += 1
+        pre = alias_cache.get(m.name)
         decision = await intake(
             name=m.name,
             facts=m.facts,
@@ -90,6 +115,7 @@ async def run_pipeline(
             runner=runner,
             qdrant=qdrant,
             step=step,
+            precomputed_aliases=pre,
         )
         registry.history.append(decision)
 

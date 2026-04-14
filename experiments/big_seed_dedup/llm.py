@@ -145,6 +145,26 @@ class LLMRunner:
         await self._append_cache({"kind": "embed", "key": key, "text": text, "embedding": vec})
         return vec
 
+    async def embed_batch(self, texts: list[str]) -> None:
+        """Embed many texts, populating cache. Skips anything already cached."""
+        model_id = getattr(self.embedder, "_model", "embed")
+        missing: list[str] = []
+        seen: set[str] = set()
+        for t in texts:
+            if not t or t in seen:
+                continue
+            seen.add(t)
+            k = self._hash("embed", {"model": model_id, "text": t})
+            if k not in self._embed_cache:
+                missing.append(t)
+        if not missing:
+            return
+        vecs = await self.embedder.embed_batch(missing)
+        for t, v in zip(missing, vecs):
+            k = self._hash("embed", {"model": model_id, "text": t})
+            self._embed_cache[k] = v
+            await self._append_cache({"kind": "embed", "key": k, "text": t, "embedding": v})
+
 
 def cosine(a: list[float], b: list[float]) -> float:
     if not a or not b:

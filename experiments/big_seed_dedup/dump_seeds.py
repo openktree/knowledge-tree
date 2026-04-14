@@ -250,10 +250,57 @@ def _safe(s: str) -> str:
     return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in s.lower())[:60]
 
 
+async def dump_random(
+    session: AsyncSession,
+    n: int,
+    out_dir: Path,
+    label: str,
+    min_facts: int,
+) -> Path | None:
+    """Dump N random active/promoted seeds (with >= min_facts facts)."""
+    from sqlalchemy import func as sqlfunc
+
+    stmt = (
+        select(WriteSeed)
+        .where(
+            WriteSeed.status.in_(["active", "promoted", "ambiguous"]),
+            WriteSeed.fact_count >= min_facts,
+        )
+        .order_by(sqlfunc.random())
+        .limit(n)
+    )
+    result = await session.execute(stmt)
+    seeds = list(result.scalars().all())
+    if not seeds:
+        print("  [skip] no seeds found")
+        return None
+
+    members: list[dict[str, Any]] = []
+    for s in seeds:
+        members.append({**_seed_to_dict(s), "facts": await _facts_for_seed(session, s.key)})
+
+    fixture = {
+        "fixture_label": label,
+        "target_name": f"random_sample_n={len(seeds)}",
+        "canonical": _seed_to_dict(seeds[0]),
+        "family_size": len(seeds),
+        "family": members,
+        "current_merges": [],
+    }
+
+    out_path = out_dir / f"{label}__random_{len(seeds)}.json"
+    out_path.write_text(json.dumps(fixture, indent=2, ensure_ascii=False), encoding="utf-8")
+    total_facts = sum(len(m["facts"]) for m in members)
+    print(f"  [ok] {out_path.name}  seeds={len(seeds)}  facts={total_facts}")
+    return out_path
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", help="Async SQLAlchemy URL for the write-db. Defaults to settings.write_database_url.")
-    parser.add_argument("--names", required=True, help="Comma-separated seed names to dump")
+    parser.add_argument("--names", help="Comma-separated seed names to dump (family + fan-out mode)")
+    parser.add_argument("--random", type=int, help="Dump N random seeds (scale-test mode, no targeted family)")
+    parser.add_argument("--min-facts", type=int, default=2, help="Min fact_count for --random mode")
     parser.add_argument("--label", required=True, help="Fixture label prefix, e.g. 'prod' or 'local'")
     parser.add_argument("--out", default=str(Path(__file__).resolve().parent / "fixtures"))
     parser.add_argument("--fan-out", type=int, default=80,
@@ -261,6 +308,8 @@ async def main() -> None:
     parser.add_argument("--trigram-threshold", type=float, default=0.30,
                         help="pg_trgm similarity cutoff for neighbor fan-out")
     args = parser.parse_args()
+    if not args.names and not args.random:
+        parser.error("must pass --names or --random")
 
     if args.db:
         url = args.db
@@ -276,17 +325,23 @@ async def main() -> None:
     engine = create_async_engine(url, pool_pre_ping=True)
     maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    names = [n.strip() for n in args.names.split(",") if n.strip()]
     async with maker() as session:
-        for name in names:
-            print(f"- {name}")
+        if args.random:
+            print(f"- random sample n={args.random} (min_facts={args.min_facts})")
             try:
-                await dump_one(
-                    session, name, out_dir, args.label,
-                    fan_out=args.fan_out, trigram_threshold=args.trigram_threshold,
-                )
+                await dump_random(session, args.random, out_dir, args.label, args.min_facts)
             except Exception as exc:
                 print(f"  [ERR] {exc}", file=sys.stderr)
+        if args.names:
+            for name in [n.strip() for n in args.names.split(",") if n.strip()]:
+                print(f"- {name}")
+                try:
+                    await dump_one(
+                        session, name, out_dir, args.label,
+                        fan_out=args.fan_out, trigram_threshold=args.trigram_threshold,
+                    )
+                except Exception as exc:
+                    print(f"  [ERR] {exc}", file=sys.stderr)
 
     await engine.dispose()
 

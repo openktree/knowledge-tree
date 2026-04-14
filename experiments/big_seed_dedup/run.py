@@ -26,8 +26,12 @@ from .replay import run_pipeline  # noqa: E402
 from .report import generate_report  # noqa: E402
 
 
-async def main_async(fixtures: Path, out: Path, cache: Path, reset_qdrant: bool) -> None:
+async def main_async(
+    fixtures: Path, out: Path, cache: Path, reset_qdrant: bool, model_override: str | None
+) -> None:
     gateway = ModelGateway()
+    if model_override:
+        gateway.decomposition_model = model_override
     embedder = EmbeddingService()
     runner = LLMRunner(gateway=gateway, embedder=embedder, cache_path=cache)
 
@@ -53,12 +57,15 @@ def main() -> None:
     parser.add_argument("--cache", default=str(here / "llm_cache.jsonl"))
     parser.add_argument("--reset-qdrant", action="store_true",
                         help="Drop and recreate the experiment Qdrant collection before running.")
+    parser.add_argument("--model", default=None,
+                        help="Override LLM model id for alias_gen + multiplex (e.g. openrouter/openai/gpt-5-nano)")
     args = parser.parse_args()
     asyncio.run(main_async(
         Path(args.fixtures),
         Path(args.out),
         Path(args.cache),
         args.reset_qdrant,
+        args.model,
     ))
 
 
