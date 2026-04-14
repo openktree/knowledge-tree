@@ -50,6 +50,8 @@ class WriteSourceRepository:
         content_hash: str | None = None,
         provider_id: str,
         provider_metadata: dict | None = None,
+        canonical_url: str | None = None,
+        doi: str | None = None,
     ) -> WriteRawSource:
         """Insert or return existing source, deduplicating by URI then content_hash.
 
@@ -60,6 +62,10 @@ class WriteSourceRepository:
         duplicate entries when search engines return different snippets for
         the same URL across queries.  Falls back to content_hash upsert for
         genuinely new URLs.
+
+        When ``canonical_url`` / ``doi`` are provided and the existing row
+        is missing them, backfills those columns so the public-cache bridge
+        can contribute the source upstream.
         """
         from kt_db.keys import uri_to_source_id
 
@@ -69,6 +75,18 @@ class WriteSourceRepository:
             await self._session.execute(select(WriteRawSource).where(WriteRawSource.uri == uri).limit(1))
         ).scalar_one_or_none()
         if existing is not None:
+            # Backfill canonical_url/doi if missing — legacy rows created
+            # before these columns were plumbed through, or rows created
+            # via a code path that didn't compute them.
+            updated = False
+            if canonical_url and not existing.canonical_url:
+                existing.canonical_url = canonical_url
+                updated = True
+            if doi and not existing.doi:
+                existing.doi = doi
+                updated = True
+            if updated:
+                await self._session.flush()
             return existing
 
         if content_hash is None:
@@ -88,6 +106,8 @@ class WriteSourceRepository:
                 content_hash=content_hash,
                 provider_id=provider_id,
                 provider_metadata=provider_metadata,
+                canonical_url=canonical_url,
+                doi=doi,
             )
             .on_conflict_do_nothing(index_elements=["id"])
             .returning(WriteRawSource.id)

@@ -413,6 +413,8 @@ async def _find_or_create_raw_source(
     provider_id: str,
     write_session: AsyncSession | None = None,
     is_full_text: bool = True,
+    canonical_url: str | None = None,
+    doi: str | None = None,
 ) -> RawSource:
     """Find an existing RawSource by id (deterministic from URI), or create one.
 
@@ -420,6 +422,10 @@ async def _find_or_create_raw_source(
     The synchronous ingest path needs the graph-db row immediately so the
     same-transaction FactSource FK can resolve; the write-db mirror keeps
     worker-sync's watermark in lockstep so it never re-emits the row.
+
+    When ``canonical_url`` / ``doi`` are provided, both graph-db and write-db
+    rows receive them — required for the multigraph public-cache bridge to
+    contribute sources upstream.
     """
     from kt_db.keys import uri_to_source_id
 
@@ -435,6 +441,8 @@ async def _find_or_create_raw_source(
             raw_content=raw_content,
             content_hash=content_hash,
             provider_id=provider_id,
+            canonical_url=canonical_url,
+            doi=doi,
         )
 
     result = await session.execute(select(RawSource).where(RawSource.id == deterministic_id))
@@ -451,6 +459,8 @@ async def _find_or_create_raw_source(
         content_type=content_type,
         provider_id=provider_id,
         is_full_text=is_full_text,
+        canonical_url=canonical_url,
+        doi=doi,
     )
     session.add(raw_source)
     await session.flush()
@@ -735,6 +745,8 @@ async def _process_link_source(
             content_type=fetch_result.content_type or "image/png",
             provider_id="ingest_link",
             write_session=write_session,
+            canonical_url=canonical,
+            doi=doi,
         )
         await _persist_fetcher_audit(
             write_session,
@@ -775,6 +787,8 @@ async def _process_link_source(
         provider_id="ingest_link",
         write_session=write_session,
         is_full_text=is_full,
+        canonical_url=canonical,
+        doi=doi,
     )
     await _persist_fetcher_audit(
         write_session,
