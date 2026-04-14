@@ -577,10 +577,17 @@ class PipelineTaskItem(BaseModel):
     started_at: str | None = None  # ISO 8601
     wave_number: int | None = None  # Only set for explore_scope tasks
     node_type: str | None = None  # "concept" | "entity" | "event" | "perspective" etc.
+    has_children: bool = False
     children: list["PipelineTaskItem"] = Field(default_factory=list)
 
 
 PipelineTaskItem.model_rebuild()
+
+
+class TaskChildrenResponse(BaseModel):
+    """Children of a single Hatchet task (spawned child workflow runs)."""
+
+    tasks: list[PipelineTaskItem] = Field(default_factory=list)
 
 
 class PipelineSnapshotResponse(BaseModel):
@@ -604,6 +611,7 @@ class ProgressResponse(BaseModel):
     """
 
     message_id: str
+    workflow_run_id: str | None = None
     status: str  # "pending" | "running" | "completed" | "failed"
     content: str  # answer text (empty while running)
     error: str | None = None

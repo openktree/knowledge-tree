@@ -86,6 +86,7 @@ import type {
   SentenceFactLink,
   SynthesisNodeResponse,
   PipelineSnapshotResponse,
+  TaskChildrenResponse,
   GraphResponse,
   CreateGraphRequest,
   UpdateGraphRequest,
@@ -1307,6 +1308,12 @@ export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
 export async function getWorkflowProgress(workflowRunId: string) {
   return graphRequest<PipelineSnapshotResponse>(
     `/workflows/${encodeURIComponent(workflowRunId)}/progress`
+  );
+}
+
+export async function getTaskChildren(workflowRunId: string, taskId: string) {
+  return graphRequest<TaskChildrenResponse>(
+    `/workflows/${encodeURIComponent(workflowRunId)}/tasks/${encodeURIComponent(taskId)}/children`
   );
 }
 

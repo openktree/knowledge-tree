@@ -46,6 +46,59 @@ async def get_workflow_run_details(workflow_run_id: str) -> object:
         raise RuntimeError(f"Failed to fetch workflow run '{workflow_run_id}': {exc}") from exc
 
 
+async def list_child_runs(parent_task_external_id: str, since: object | None = None) -> list:
+    """List workflow runs spawned by the given parent task.
+
+    ``since`` is a ``datetime`` (tz-aware) used as the lower bound of the
+    Hatchet search window. Defaults to ``now - 1 day``.
+    """
+    import logging
+    from datetime import datetime, timedelta, timezone
+
+    logger = logging.getLogger(__name__)
+    h = get_hatchet()
+    since_dt = since or (datetime.now(tz=timezone.utc) - timedelta(days=1))
+    try:
+        result = await h.runs.aio_list(
+            parent_task_external_id=parent_task_external_id,
+            since=since_dt,
+        )
+        return list(result.rows or [])
+    except Exception as exc:
+        logger.warning(
+            "Failed to list child runs for task %s: %s", parent_task_external_id, exc
+        )
+        raise RuntimeError(
+            f"Failed to list child runs for task '{parent_task_external_id}': {exc}"
+        ) from exc
+
+
+async def has_child_runs(parent_task_external_id: str, since: object | None = None) -> bool:
+    """Quick probe: does this task have at least one spawned child workflow run?
+
+    Returns ``False`` on any Hatchet error rather than raising, so it's safe to
+    call on every task in a polling loop.
+    """
+    import logging
+    from datetime import datetime, timedelta, timezone
+
+    logger = logging.getLogger(__name__)
+    h = get_hatchet()
+    since_dt = since or (datetime.now(tz=timezone.utc) - timedelta(days=1))
+    try:
+        result = await h.runs.aio_list(
+            parent_task_external_id=parent_task_external_id,
+            since=since_dt,
+            limit=1,
+        )
+        return bool(result.rows)
+    except Exception as exc:
+        logger.debug(
+            "has_child_runs probe failed for %s: %s", parent_task_external_id, exc
+        )
+        return False
+
+
 def _ensure_dict(input: dict | object) -> dict:
     """Coerce *input* to a plain dict.
 

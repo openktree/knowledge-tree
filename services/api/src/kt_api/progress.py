@@ -18,6 +18,7 @@ from kt_api.schemas import (
     PipelineTaskItem,
     ProgressResponse,
     ResearchReportResponse,
+    TaskChildrenResponse,
 )
 from kt_db.repositories.conversations import ConversationRepository
 from kt_db.repositories.research_reports import ResearchReportRepository
@@ -27,12 +28,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["progress"])
 
 
-def _build_task_items(details: object) -> list[PipelineTaskItem]:
-    """Convert Hatchet V1WorkflowRunDetails.tasks to PipelineTaskItem list."""
-    from kt_hatchet.progress import map_task_summary
+def _run_since(details: object) -> object | None:
+    """Extract a safe ``since`` datetime from run details for child-run listing."""
+    from datetime import timedelta
+
+    created = getattr(getattr(details, "run", None), "created_at", None)
+    if created is None:
+        return None
+    try:
+        return created - timedelta(hours=1)
+    except Exception:
+        return None
+
+
+async def _build_task_items(details: object) -> list[PipelineTaskItem]:
+    """Convert Hatchet V1WorkflowRunDetails.tasks to PipelineTaskItem list.
+
+    Probes every top-level task for spawned child workflow runs so the UI can
+    render a chevron without a second roundtrip.
+    """
+    from kt_hatchet.progress import annotate_has_children, map_task_summary
 
     tasks: list = getattr(details, "tasks", []) or []
-    return [PipelineTaskItem(**map_task_summary(t)) for t in tasks]
+    items = [map_task_summary(t) for t in tasks]
+    await annotate_has_children(items, since=_run_since(details))
+    return [PipelineTaskItem(**i) for i in items]
 
 
 @router.get(
@@ -69,7 +89,7 @@ async def get_message_progress(
             details = await get_workflow_run_details(msg.workflow_run_id)
             status = map_run_status(details)
             error = error or map_run_error(details)
-            task_items = _build_task_items(details)
+            task_items = await _build_task_items(details)
         except RuntimeError:
             logger.debug(
                 "Hatchet unavailable for run %s, falling back to DB status",
@@ -78,6 +98,7 @@ async def get_message_progress(
 
     return ProgressResponse(
         message_id=str(msg.id),
+        workflow_run_id=msg.workflow_run_id,
         status=status,
         content=msg.content or "",
         error=error,
@@ -148,10 +169,43 @@ async def get_workflow_progress(
             message_id="",
             workflow_run_id=workflow_run_id,
             status=map_run_status(details),
-            tasks=_build_task_items(details),
+            tasks=await _build_task_items(details),
         )
     except RuntimeError:
         raise HTTPException(
             status_code=502,
             detail="Unable to fetch workflow status from Hatchet",
         )
+
+
+@router.get(
+    "/workflows/{workflow_run_id}/tasks/{task_id}/children",
+    response_model=TaskChildrenResponse,
+)
+async def get_task_children(
+    workflow_run_id: str,
+    task_id: str,
+) -> TaskChildrenResponse:
+    """Lazy-fetch direct children of a Hatchet task.
+
+    Lists spawned child workflow runs whose parent_task_external_id matches
+    ``task_id``, then returns their root tasks. Each returned item is itself
+    probed for grandchildren (``has_children``) so the UI can recurse.
+    """
+    from kt_hatchet.client import get_workflow_run_details
+    from kt_hatchet.progress import fetch_child_task_items
+
+    since = None
+    try:
+        details = await get_workflow_run_details(workflow_run_id)
+        since = _run_since(details)
+    except RuntimeError:
+        pass  # Fall back to default (now - 1 day) inside list_child_runs.
+
+    try:
+        items = await fetch_child_task_items(task_id, since=since)
+    except RuntimeError as exc:
+        logger.warning("fetch_child_task_items failed for %s: %s", task_id, exc)
+        raise HTTPException(status_code=502, detail="Unable to fetch task children")
+
+    return TaskChildrenResponse(tasks=[PipelineTaskItem(**i) for i in items])

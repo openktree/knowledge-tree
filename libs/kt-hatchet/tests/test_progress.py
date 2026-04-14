@@ -6,7 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from kt_hatchet.progress import map_run_error, map_run_status, map_task_summary
+from kt_hatchet.progress import (
+    annotate_has_children,
+    fetch_child_task_items,
+    map_run_error,
+    map_run_status,
+    map_task_summary,
+)
 
 
 def _make_status(value: str) -> SimpleNamespace:
@@ -153,3 +159,60 @@ class TestMapRunError:
     def test_with_error(self) -> None:
         details = _make_details(error_message="task timed out")
         assert map_run_error(details) == "task timed out"
+
+
+# ---------------------------------------------------------------------------
+# annotate_has_children / fetch_child_task_items
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotateHasChildren:
+    @pytest.mark.asyncio
+    async def test_probes_in_parallel(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[str] = []
+
+        async def fake_has(parent_id: str, since: object | None = None) -> bool:
+            calls.append(parent_id)
+            return parent_id == "yes"
+
+        monkeypatch.setattr("kt_hatchet.client.has_child_runs", fake_has)
+
+        items = [
+            {"task_id": "yes", "has_children": False},
+            {"task_id": "no", "has_children": False},
+            {"task_id": "skip", "has_children": True},
+        ]
+        await annotate_has_children(items)
+        assert items[0]["has_children"] is True
+        assert items[1]["has_children"] is False
+        assert items[2]["has_children"] is True  # already set, not re-probed
+        assert "skip" not in calls
+
+
+class TestFetchChildTaskItems:
+    @pytest.mark.asyncio
+    async def test_lists_and_fetches_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        run_row = SimpleNamespace(metadata=SimpleNamespace(id="child-run-1"))
+        child_task = _make_task(task_external_id="ct-1", display_name="node_create")
+        details = SimpleNamespace(tasks=[child_task])
+
+        async def fake_list(parent_id: str, since: object | None = None) -> list:
+            assert parent_id == "root-task"
+            return [run_row]
+
+        async def fake_get(run_id: str) -> object:
+            assert run_id == "child-run-1"
+            return details
+
+        async def fake_has(task_id: str, since: object | None = None) -> bool:
+            return task_id == "ct-1"
+
+        monkeypatch.setattr("kt_hatchet.client.list_child_runs", fake_list)
+        monkeypatch.setattr("kt_hatchet.client.get_workflow_run_details", fake_get)
+        monkeypatch.setattr("kt_hatchet.client.has_child_runs", fake_has)
+
+        items = await fetch_child_task_items("root-task")
+        assert len(items) == 1
+        assert items[0]["task_id"] == "ct-1"
+        assert items[0]["display_name"] == "node_create"
+        assert items[0]["has_children"] is True
