@@ -1,14 +1,11 @@
-"""Birth-time alias generation + shell-noun classifier.
+"""Alias generation + shell-noun classifier — two independent LLM calls.
 
-The same LLM call that emits aliases also decides whether the incoming
-name is a "shell noun" (Schmid 2000) — a bare abstract noun used as a
-propositional container with no topic-specific content (e.g. "method",
-"approach", "way", "issue"). Real phenomena / subjects / entities like
-"consciousness", "anxiety", "capitalism", "Einstein" are NOT shell nouns
-and must not be classified as such.
+- generate_aliases_batch: takes (name, facts), emits known aliases.
+- classify_shell_batch: takes name only (no facts), emits is_shell.
 
-Shell seeds are never promoted to nodes and are short-circuited out of
-the embedding / multiplex pipeline downstream.
+Separated so each call gets the full attention budget + a focused
+system prompt. Shell classifier is deliberately context-free to force
+universal judgment and eliminate context-driven false positives.
 """
 
 from __future__ import annotations
@@ -21,65 +18,50 @@ from .llm import LLMRunner
 MAX_FACTS = 10
 MAX_FACT_CHARS = 300
 
-_EPISTEMOLOGY = """\
-ALIAS RULE — a string X is an alias of Y iff X and Y refer to the
-IDENTICAL real-world referent and X can replace Y in any factual
-sentence about Y without shifting meaning, part of speech, or
-referent class.
+
+# ── Alias epistemology ─────────────────────────────────────────────
+
+_ALIAS_SYSTEM = """\
+You extract aliases for entries in a knowledge graph. Emit ONLY
+aliases that are epistemologically equivalent to the given name.
+
+A string X is an alias of Y iff:
+  - X and Y refer to the IDENTICAL real-world referent, AND
+  - X can replace Y in any factual sentence about Y without shifting
+    meaning, part of speech, or referent class.
+
+Epistemological test: substitute X for Y in a concrete sentence
+about Y. If the sentence now refers to something different
+(different thing, different part of speech, different scope,
+different role) — it is NOT an alias. Reject it.
 
 Include: acronym ↔ expansion, alternate spellings / transliterations,
 singular ↔ plural of the same concept (emit both when countable),
-capitalization / stylization variants.
+capitalization / stylization variants, common short form for the
+same individual.
 
-Exclude: noun ↔ derived adjective, practitioner ↔ practice, tool ↔
-user, derivative product ↔ parent discipline, part ↔ whole, instance
-↔ category, organization ↔ member, parent concept ↔ specialization,
-pronouns, generic titles.
+Exclude: noun ↔ derived adjective, practitioner ↔ practice, tool
+↔ user, derivative product ↔ parent discipline, part ↔ whole,
+instance ↔ category, organization ↔ member, parent concept ↔
+specialization, pronouns, generic titles.
 
-SHELL RULE (Schmid 2000 "conceptual shell nouns"): a name is SHELL iff
-it is a bare abstract noun whose meaning is a propositional container
-— i.e. its content is supplied by what it refers to in context, not by
-any specific real-world phenomenon it names.
+Return an empty list when unsure. Prefer silence over a wrong alias.
 
-  - Shell test: could the name be replaced by "thing", "piece",
-    "matter", "item" without semantic loss? If yes → SHELL.
-  - Shell examples (empty containers): method, approach, way, manner,
-    kind, sort, type, form, aspect, issue, matter, case, point, fact,
-    thing, factor, role, item, respect.
-  - NOT shell (real phenomena / subjects / entities): consciousness,
-    anxiety, depression, memory, democracy, capitalism, philosophy,
-    psychology, belief (as a cognitive phenomenon), justice,
-    homeopathy, Einstein, NASA, CRISPR, quantum entanglement.
-
-Multi-token phrases ("string theory", "theory of everything",
-"general theory of relativity") are NEVER shell — they carry
-topic-specific content via their modifiers. is_shell must be false
-for any name that contains more than one content token.
-
-Return an empty alias list when unsure. Prefer silence over a wrong
-alias. Set is_shell cautiously — false by default; only true when the
-name is clearly an empty container.
+Output JSON exactly:
+{"aliases": ["alias1", "alias2", ...]}
 """
 
-_SYSTEM = (
-    "You classify knowledge-graph candidate names along two axes: (1) known aliases, "
-    "(2) whether the name is a SHELL NOUN that should not become a graph node.\n\n"
-    + _EPISTEMOLOGY
-    + "\nOutput JSON exactly:\n"
-    '{"aliases": ["..."], "is_shell": bool, "shell_reason": "brief justification or empty"}\n'
-)
+_ALIAS_BATCH_SYSTEM = _ALIAS_SYSTEM + """\
 
-_BATCH_SYSTEM = (
-    "You classify multiple knowledge-graph candidate names along two axes: (1) known aliases, "
-    "(2) whether each name is a SHELL NOUN that should not become a graph node.\n\n"
-    + _EPISTEMOLOGY
-    + "\nBATCH MODE: user message lists multiple entries. Respond with an entry per input index, "
-    "every entry included.\n\nOutput JSON exactly:\n"
-    '{"results": [{"index": N, "aliases": ["..."], "is_shell": bool, "shell_reason": "..."}]}\n'
-)
+BATCH MODE: user message lists multiple entries. Return aliases per
+entry index. Include every entry even if its alias list is empty.
+
+Output JSON exactly:
+{"results": [{"index": N, "aliases": ["..."]}, ...]}
+"""
 
 
-def _build_user(name: str, facts: list[Fact]) -> str:
+def _build_alias_user(name: str, facts: list[Fact]) -> str:
     sample = facts[:MAX_FACTS]
     fact_block = "\n".join(
         f"- {f.content[:MAX_FACT_CHARS]}" for f in sample if f.content.strip()
@@ -87,13 +69,12 @@ def _build_user(name: str, facts: list[Fact]) -> str:
     if not fact_block:
         fact_block = "(no facts available)"
     return (
-        f'Name: "{name}"\n\n'
-        f"Sample facts:\n{fact_block}\n\n"
-        'Return JSON: {"aliases": [...], "is_shell": bool, "shell_reason": "..."}. Only the JSON.'
+        f'Name: "{name}"\n\nSample facts:\n{fact_block}\n\n'
+        'Return JSON: {"aliases": [...]}. Only the JSON.'
     )
 
 
-def _build_batch_user(entries: list[tuple[str, list[Fact]]]) -> str:
+def _build_alias_batch_user(entries: list[tuple[str, list[Fact]]]) -> str:
     parts: list[str] = []
     for idx, (name, facts) in enumerate(entries, start=1):
         sample = facts[:MAX_FACTS]
@@ -103,11 +84,85 @@ def _build_batch_user(entries: list[tuple[str, list[Fact]]]) -> str:
         parts.append(f'[{idx}] "{name}"\n{fact_lines}')
     body = "\n\n".join(parts)
     return (
-        f"Classify and alias each of the {len(entries)} entries below.\n\n{body}\n\n"
-        'Return JSON: {"results": [{"index": N, "aliases": [...], "is_shell": bool, "shell_reason": "..."}]}. '
+        f"Emit aliases for each of the {len(entries)} entries below.\n\n{body}\n\n"
+        'Return JSON: {"results": [{"index": N, "aliases": [...]}, ...]}. Only the JSON.'
+    )
+
+
+# ── Shell rule (context-free, name-only input) ─────────────────────
+
+_SHELL_SYSTEM = """\
+You classify whether a bare noun is a SHELL NOUN.
+
+SHELL RULE — a noun is SHELL only when it cannot, in any domain
+anywhere, serve as a legitimate topic of study, policy, or
+substantive discourse.
+
+Universal topic test: ask yourself "in any domain whatsoever —
+philosophy, science, economics, sociology, biology, psychology,
+self-help, business, politics, everyday life — could a book,
+article, or research project meaningfully have this noun as its
+subject?" If yes → is_shell=false. If no → is_shell=true.
+
+Shell words are pure propositional slots — they only acquire
+meaning through a complement ("the METHOD of X", "the ASPECTS of
+Y", "the ISSUE that Z"). They are grammatical containers, not
+substantive concepts.
+
+Examples — shell (pure containers, no topical identity anywhere):
+  method, methods, approach, approaches, way, ways, kind, sort,
+  type, form, aspect, aspects, issue, issues, matter, case, point,
+  fact, thing, item, respect, regard, role, roles, lack.
+
+NOT shell — always a legitimate topic somewhere:
+  consciousness, anxiety, depression, memory, emotion, belief,
+  democracy, capitalism, socialism, philosophy, psychology,
+  ethics, justice, freedom, liberty, autonomy, life, leadership,
+  income, global powers, knowledge, education, technology,
+  religion, poverty, wealth, equality, inequality,
+  sustainability, innovation, creativity, resilience, motivation,
+  productivity, health, entrepreneurship.
+
+Default: is_shell=FALSE. Flip to true only when the noun is a pure
+container with no topical identity anywhere. When uncertain, emit
+is_shell=false — letting a generic word through is always preferred
+to wrongly filtering a topic.
+
+Multi-token names are NEVER shell. "theory of everything", "general
+theory of relativity", "string theory" — all not shell.
+
+Output JSON exactly:
+{"is_shell": bool, "shell_reason": "brief justification or empty"}
+"""
+
+_SHELL_BATCH_SYSTEM = _SHELL_SYSTEM + """\
+
+BATCH MODE: user message lists multiple names. Classify each one.
+Include every entry.
+
+Output JSON exactly:
+{"results": [{"index": N, "is_shell": bool, "shell_reason": "..."}, ...]}
+"""
+
+
+def _build_shell_user(name: str) -> str:
+    return (
+        f'Name: "{name}"\n\n'
+        'Return JSON: {"is_shell": bool, "shell_reason": "..."}. Only the JSON.'
+    )
+
+
+def _build_shell_batch_user(names: list[str]) -> str:
+    parts = "\n".join(f'[{i}] "{n}"' for i, n in enumerate(names, start=1))
+    return (
+        f"Classify each of the {len(names)} names below as shell or not.\n\n"
+        f"{parts}\n\n"
+        'Return JSON: {"results": [{"index": N, "is_shell": bool, "shell_reason": "..."}, ...]}. '
         "Only the JSON."
     )
 
+
+# ── Helpers ────────────────────────────────────────────────────────
 
 def _clean_aliases(raw: list, canonical: str) -> list[str]:
     out: list[str] = []
@@ -127,29 +182,53 @@ def _clean_aliases(raw: list, canonical: str) -> list[str]:
     return out
 
 
+def _share_usage(total: Usage, n: int, kind: str) -> Usage:
+    n = max(1, n)
+    return Usage(
+        kind=kind,
+        model=total.model,
+        prompt_tokens=total.prompt_tokens // n,
+        completion_tokens=total.completion_tokens // n,
+        cost_usd=total.cost_usd / n,
+        latency_ms=total.latency_ms,
+    )
+
+
+# ── Single-seed entry points (kept for parity / tests) ─────────────
+
 async def generate_aliases(
     name: str,
     facts: list[Fact],
     *,
     runner: LLMRunner,
-) -> tuple[list[str], bool, str, Usage, dict]:
-    """Single-seed alias_gen + shell classification.
-
-    Returns (aliases, is_shell, shell_reason, usage, raw_response).
-    """
-    user = _build_user(name, facts)
+) -> tuple[list[str], Usage, dict]:
     response, usage = await runner.call_json(
         kind="alias_gen",
-        system_prompt=_SYSTEM,
-        user_content=user,
-        max_tokens=500,
+        system_prompt=_ALIAS_SYSTEM,
+        user_content=_build_alias_user(name, facts),
+        max_tokens=400,
     )
     raw = response.get("aliases", []) if isinstance(response, dict) else []
-    aliases = _clean_aliases(raw, name)
-    is_shell = bool(response.get("is_shell", False)) if isinstance(response, dict) else False
-    shell_reason = str(response.get("shell_reason", "")) if isinstance(response, dict) else ""
-    return aliases, is_shell, shell_reason, usage, response if isinstance(response, dict) else {}
+    return _clean_aliases(raw, name), usage, response if isinstance(response, dict) else {}
 
+
+async def classify_shell(
+    name: str,
+    *,
+    runner: LLMRunner,
+) -> tuple[bool, str, Usage, dict]:
+    response, usage = await runner.call_json(
+        kind="shell_classify",
+        system_prompt=_SHELL_SYSTEM,
+        user_content=_build_shell_user(name),
+        max_tokens=150,
+    )
+    is_shell = bool(response.get("is_shell", False)) if isinstance(response, dict) else False
+    reason = str(response.get("shell_reason", "")) if isinstance(response, dict) else ""
+    return is_shell, reason, usage, response if isinstance(response, dict) else {}
+
+
+# ── Batch entry points ─────────────────────────────────────────────
 
 async def generate_aliases_batch(
     entries: list[tuple[str, list[Fact]]],
@@ -157,24 +236,62 @@ async def generate_aliases_batch(
     runner: LLMRunner,
     chunk_size: int = 20,
     concurrency: int = 5,
-) -> dict[str, tuple[list[str], bool, str, Usage, dict]]:
-    """Batch alias_gen + shell classification. Returns dict
-    name -> (aliases, is_shell, shell_reason, usage_share, raw_entry)."""
+) -> dict[str, tuple[list[str], Usage, dict]]:
+    """Alias-only batch. Returns dict name -> (aliases, usage_share, raw_entry)."""
     sem = asyncio.Semaphore(concurrency)
-    chunks: list[list[tuple[str, list[Fact]]]] = [
-        entries[i : i + chunk_size] for i in range(0, len(entries), chunk_size)
-    ]
+    chunks = [entries[i : i + chunk_size] for i in range(0, len(entries), chunk_size)]
 
     async def run_chunk(chunk: list[tuple[str, list[Fact]]]):
         async with sem:
-            user = _build_batch_user(chunk)
             response, usage = await runner.call_json(
                 kind="alias_gen_batch",
-                system_prompt=_BATCH_SYSTEM,
-                user_content=user,
-                max_tokens=min(4000, 400 * len(chunk)),
+                system_prompt=_ALIAS_BATCH_SYSTEM,
+                user_content=_build_alias_batch_user(chunk),
+                max_tokens=min(4000, 300 * len(chunk)),
             )
+        by_idx: dict[int, list] = {}
+        for r in (response.get("results", []) if isinstance(response, dict) else []):
+            if not isinstance(r, dict):
+                continue
+            try:
+                idx = int(r.get("index"))
+            except (TypeError, ValueError):
+                continue
+            by_idx[idx] = r.get("aliases", []) if isinstance(r.get("aliases", []), list) else []
 
+        share = _share_usage(usage, len(chunk), "alias_gen_batch")
+        out: dict[str, tuple[list[str], Usage, dict]] = {}
+        for idx, (name, _facts) in enumerate(chunk, start=1):
+            aliases = _clean_aliases(by_idx.get(idx, []), name)
+            out[name] = (aliases, share, {"index": idx, "aliases": aliases})
+        return out
+
+    merged: dict[str, tuple[list[str], Usage, dict]] = {}
+    for coro in asyncio.as_completed([run_chunk(c) for c in chunks]):
+        merged.update(await coro)
+    return merged
+
+
+async def classify_shell_batch(
+    names: list[str],
+    *,
+    runner: LLMRunner,
+    chunk_size: int = 40,   # smaller prompts → larger chunks OK
+    concurrency: int = 5,
+) -> dict[str, tuple[bool, str, Usage, dict]]:
+    """Shell-only batch, name-only input (no facts). Returns
+    dict name -> (is_shell, reason, usage_share, raw_entry)."""
+    sem = asyncio.Semaphore(concurrency)
+    chunks = [names[i : i + chunk_size] for i in range(0, len(names), chunk_size)]
+
+    async def run_chunk(chunk: list[str]):
+        async with sem:
+            response, usage = await runner.call_json(
+                kind="shell_classify_batch",
+                system_prompt=_SHELL_BATCH_SYSTEM,
+                user_content=_build_shell_batch_user(chunk),
+                max_tokens=min(3000, 120 * len(chunk)),
+            )
         by_idx: dict[int, dict] = {}
         for r in (response.get("results", []) if isinstance(response, dict) else []):
             if not isinstance(r, dict):
@@ -185,34 +302,16 @@ async def generate_aliases_batch(
                 continue
             by_idx[idx] = r
 
-        n = max(1, len(chunk))
-        share = Usage(
-            kind="alias_gen_batch",
-            model=usage.model,
-            prompt_tokens=usage.prompt_tokens // n,
-            completion_tokens=usage.completion_tokens // n,
-            cost_usd=usage.cost_usd / n,
-            latency_ms=usage.latency_ms,
-        )
-
-        out: dict[str, tuple[list[str], bool, str, Usage, dict]] = {}
-        for idx, (name, _facts) in enumerate(chunk, start=1):
+        share = _share_usage(usage, len(chunk), "shell_classify_batch")
+        out: dict[str, tuple[bool, str, Usage, dict]] = {}
+        for idx, name in enumerate(chunk, start=1):
             entry = by_idx.get(idx) or {}
-            raw_aliases = entry.get("aliases", []) if isinstance(entry.get("aliases", []), list) else []
-            aliases = _clean_aliases(raw_aliases, name)
             is_shell = bool(entry.get("is_shell", False))
-            shell_reason = str(entry.get("shell_reason", ""))
-            entry_resp = {
-                "index": idx,
-                "aliases": aliases,
-                "is_shell": is_shell,
-                "shell_reason": shell_reason,
-            }
-            out[name] = (aliases, is_shell, shell_reason, share, entry_resp)
+            reason = str(entry.get("shell_reason", ""))
+            out[name] = (is_shell, reason, share, {"index": idx, "is_shell": is_shell, "shell_reason": reason})
         return out
 
-    merged: dict[str, tuple[list[str], bool, str, Usage, dict]] = {}
+    merged: dict[str, tuple[bool, str, Usage, dict]] = {}
     for coro in asyncio.as_completed([run_chunk(c) for c in chunks]):
-        result = await coro
-        merged.update(result)
+        merged.update(await coro)
     return merged

@@ -122,6 +122,10 @@ class Decision:
     alias_gen_usage: Usage | None = None
     alias_gen_response: dict | None = None
 
+    # shell classifier (separate LLM call)
+    shell_classification_usage: Usage | None = None
+    shell_classification_response: dict | None = None
+
     # lookup results
     reverse_alias_hits: list[Candidate] = field(default_factory=list)
     embed_candidates: list[Candidate] = field(default_factory=list)

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 
-from .alias_gen import generate_aliases
+from .alias_gen import classify_shell, generate_aliases
 from .big_seed import (
     BigSeed,
     Candidate,
@@ -186,7 +186,7 @@ async def intake(
     runner: LLMRunner,
     qdrant: QdrantIndex,
     step: int,
-    precomputed_aliases: tuple[list[str], bool, str, Usage, dict] | None = None,
+    precomputed: tuple[list[str], bool, str, Usage, dict, Usage, dict] | None = None,
 ) -> Decision:
     d = Decision(
         step=step,
@@ -195,16 +195,21 @@ async def intake(
         incoming_fact_samples=_fact_samples(facts),
     )
 
-    # ── 1. alias_gen (+ shell classifier) ───────────────────────────
-    if precomputed_aliases is not None:
-        aliases, is_shell, shell_reason, alias_usage, alias_resp = precomputed_aliases
+    # ── 1. alias_gen + shell classifier (two independent LLM calls) ──
+    if precomputed is not None:
+        (
+            aliases, is_shell, shell_reason,
+            alias_usage, alias_resp,
+            shell_usage, shell_resp,
+        ) = precomputed
     else:
-        aliases, is_shell, shell_reason, alias_usage, alias_resp = await generate_aliases(
-            name, facts, runner=runner
-        )
+        aliases, alias_usage, alias_resp = await generate_aliases(name, facts, runner=runner)
+        is_shell, shell_reason, shell_usage, shell_resp = await classify_shell(name, runner=runner)
     d.incoming_aliases = aliases
     d.alias_gen_usage = alias_usage
     d.alias_gen_response = alias_resp
+    d.shell_classification_usage = shell_usage
+    d.shell_classification_response = shell_resp
 
     # ── shell short-circuit: skip embedding, qdrant, multiplex ──────
     if is_shell:
@@ -220,7 +225,7 @@ async def intake(
             )
         )
         d.kind = "shell"
-        d.reason = shell_reason or "alias_gen classified as shell noun"
+        d.reason = shell_reason or "shell_classify marked as shell noun"
         d.target_big_seed_canonical = None
         return d
 

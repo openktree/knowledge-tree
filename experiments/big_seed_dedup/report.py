@@ -118,6 +118,21 @@ def _render_event(d: Decision) -> str:
             f"{_usage_tag(d.alias_gen_usage, 'alias_gen')}</div>"
         )
 
+    shell_block = ""
+    sr = d.shell_classification_response
+    if sr is not None:
+        is_shell = bool(sr.get("is_shell", False)) if isinstance(sr, dict) else False
+        reason = str(sr.get("shell_reason", "")) if isinstance(sr, dict) else ""
+        verdict = (
+            _badge("shell=true", "#dc2626", reason) if is_shell
+            else _badge("shell=false", "#16a34a", reason)
+        )
+        shell_block = (
+            "<div class='sub'><b>shell_classify →</b> "
+            f"{verdict} <span class='reason'>{_esc(reason)}</span> "
+            f"{_usage_tag(d.shell_classification_usage, 'shell_classify')}</div>"
+        )
+
     rev_html = ""
     if d.reverse_alias_hits:
         rev_html = "<div class='sub'><b>reverse alias hits:</b></div>" + "".join(
@@ -164,6 +179,7 @@ def _render_event(d: Decision) -> str:
         <div class="sub"><b>reason:</b> {_esc(d.reason)}</div>
         <div class="sub"><b>incoming fact samples:</b><ul>{facts_html}</ul></div>
         {alias_block}
+        {shell_block}
         {rev_html}
         {emb_cands_html}
         {near_html}
@@ -375,12 +391,14 @@ def generate_report(
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     alias_usages = [d.alias_gen_usage for d in registry.history if d.alias_gen_usage]
+    shell_usages = [d.shell_classification_usage for d in registry.history if d.shell_classification_usage]
     multi_usages = [d.multiplex_usage for d in registry.history if d.multiplex_usage]
     at = _sum_usages(alias_usages)
+    st = _sum_usages(shell_usages)
     mt = _sum_usages(multi_usages)
-    total_prompt = at.prompt_tokens + mt.prompt_tokens
-    total_compl = at.completion_tokens + mt.completion_tokens
-    total_cost = at.cost_usd + mt.cost_usd
+    total_prompt = at.prompt_tokens + st.prompt_tokens + mt.prompt_tokens
+    total_compl = at.completion_tokens + st.completion_tokens + mt.completion_tokens
+    total_cost = at.cost_usd + st.cost_usd + mt.cost_usd
 
     kind_counts: dict[str, int] = {}
     for d in registry.history:
@@ -402,6 +420,7 @@ def generate_report(
         f"<tr><td>big-seeds created</td><td class='num'>{len(registry.big_seeds)}</td></tr>"
         f"<tr><td>decisions</td><td class='num'>{len(registry.history)}</td></tr>"
         f"<tr><td>alias_gen calls</td><td class='num'>{len(alias_usages)}</td></tr>"
+        f"<tr><td>shell_classify calls</td><td class='num'>{len(shell_usages)}</td></tr>"
         f"<tr><td>multiplex calls</td><td class='num'>{len(multi_usages)}</td></tr>"
         f"<tr><td>prompt tokens</td><td class='num'>{total_prompt:,}</td></tr>"
         f"<tr><td>completion tokens</td><td class='num'>{total_compl:,}</td></tr>"
@@ -412,7 +431,8 @@ def generate_report(
     parts.append("</table>")
     parts.append(
         f"<div class='meta'>alias_gen: {at.prompt_tokens:,}→{at.completion_tokens:,} tok · "
-        f"${at.cost_usd:.5f} · multiplex: {mt.prompt_tokens:,}→{mt.completion_tokens:,} tok · "
+        f"${at.cost_usd:.5f} · shell_classify: {st.prompt_tokens:,}→{st.completion_tokens:,} tok · "
+        f"${st.cost_usd:.5f} · multiplex: {mt.prompt_tokens:,}→{mt.completion_tokens:,} tok · "
         f"${mt.cost_usd:.5f}</div></div>"
     )
 

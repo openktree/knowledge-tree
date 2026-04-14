@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path as _Path
 from typing import Any
 
-from .alias_gen import generate_aliases_batch
+from .alias_gen import classify_shell_batch, generate_aliases_batch
 from .big_seed import Fact, Registry
 from .llm import LLMRunner
 from .multiplex import intake
@@ -87,26 +87,36 @@ async def run_pipeline(
         seen.add(m.name)
         batch_entries.append((m.name, m.facts))
 
-    print(f"Pre-computing aliases for {len(batch_entries)} unique names "
-          f"(batch_size={alias_batch_size}, concurrency={alias_concurrency})...")
-    alias_cache = await generate_aliases_batch(
-        batch_entries, runner=runner, chunk_size=alias_batch_size, concurrency=alias_concurrency
+    import asyncio as _asyncio
+    names_only = [n for n, _ in batch_entries]
+    print(f"Pre-computing alias + shell for {len(batch_entries)} unique names "
+          f"(batch_size={alias_batch_size}, concurrency={alias_concurrency}) — in parallel...")
+    alias_cache, shell_cache = await _asyncio.gather(
+        generate_aliases_batch(batch_entries, runner=runner,
+                                chunk_size=alias_batch_size, concurrency=alias_concurrency),
+        classify_shell_batch(names_only, runner=runner,
+                              chunk_size=max(20, alias_batch_size), concurrency=alias_concurrency),
     )
-    print(f"  alias_gen done: {len(alias_cache)} entries")
+    print(f"  alias_gen: {len(alias_cache)} · shell_classify: {len(shell_cache)}")
 
-    # Pre-embed all canonical names + their generated aliases to fully warm cache.
+    # Pre-embed canonical names + their generated aliases.
     to_embed: list[str] = []
-    for name, (aliases, _is_shell, _reason, _u, _r) in alias_cache.items():
+    for name, (aliases, _u, _r) in alias_cache.items():
         to_embed.append(name)
         to_embed.extend(aliases)
     print(f"Pre-embedding {len(set(to_embed))} unique strings...")
     await runner.embed_batch(to_embed)
-    print("  embeddings done")
 
     step = 0
     for m in members:
         step += 1
-        pre = alias_cache.get(m.name)
+        a = alias_cache.get(m.name)
+        s = shell_cache.get(m.name)
+        pre = None
+        if a is not None and s is not None:
+            aliases, a_u, a_r = a
+            is_shell, s_reason, s_u, s_r = s
+            pre = (aliases, is_shell, s_reason, a_u, a_r, s_u, s_r)
         decision = await intake(
             name=m.name,
             facts=m.facts,
@@ -115,7 +125,7 @@ async def run_pipeline(
             runner=runner,
             qdrant=qdrant,
             step=step,
-            precomputed_aliases=pre,
+            precomputed=pre,
         )
         registry.history.append(decision)
 

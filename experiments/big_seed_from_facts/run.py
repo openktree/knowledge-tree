@@ -22,7 +22,10 @@ from kt_models.embeddings import EmbeddingService  # noqa: E402
 from kt_models.gateway import ModelGateway  # noqa: E402
 
 # reuse the seed-experiment primitives — separate qdrant collection below
-from experiments.big_seed_dedup.alias_gen import generate_aliases_batch  # noqa: E402
+from experiments.big_seed_dedup.alias_gen import (  # noqa: E402
+    classify_shell_batch,
+    generate_aliases_batch,
+)
 from experiments.big_seed_dedup.big_seed import Fact, Registry  # noqa: E402
 from experiments.big_seed_dedup.llm import LLMRunner  # noqa: E402
 from experiments.big_seed_dedup.multiplex import intake  # noqa: E402
@@ -103,19 +106,25 @@ async def run_facts_pipeline(
         unique_items.append((name, ntype, fs))
     print(f"  {len(unique_items)} unique entity names to run through intake")
 
-    # Batch alias_gen
-    print(f"Pre-computing aliases (batch={alias_batch_size}, concurrency={alias_concurrency})…")
-    alias_cache = await generate_aliases_batch(
-        [(n, fs) for n, _t, fs in unique_items],
-        runner=runner,
-        chunk_size=alias_batch_size,
-        concurrency=alias_concurrency,
+    # Parallel precompute: alias_gen (with facts) + shell_classify (name-only)
+    print(f"Pre-computing alias + shell for {len(unique_items)} names "
+          f"(batch={alias_batch_size}, concurrency={alias_concurrency}) — in parallel…")
+    names_only = [n for n, _t, _fs in unique_items]
+    alias_cache, shell_cache = await asyncio.gather(
+        generate_aliases_batch(
+            [(n, fs) for n, _t, fs in unique_items],
+            runner=runner, chunk_size=alias_batch_size, concurrency=alias_concurrency,
+        ),
+        classify_shell_batch(
+            names_only, runner=runner,
+            chunk_size=max(20, alias_batch_size), concurrency=alias_concurrency,
+        ),
     )
-    print(f"  alias_gen done: {len(alias_cache)} entries")
+    print(f"  alias_gen: {len(alias_cache)} · shell_classify: {len(shell_cache)}")
 
-    # Pre-embed names + all generated aliases
+    # Pre-embed names + generated aliases
     to_embed: list[str] = []
-    for name, (aliases, _is_shell, _reason, _u, _r) in alias_cache.items():
+    for name, (aliases, _u, _r) in alias_cache.items():
         to_embed.append(name)
         to_embed.extend(aliases)
     print(f"Pre-embedding {len(set(to_embed))} unique strings…")
@@ -126,7 +135,13 @@ async def run_facts_pipeline(
     step = 0
     for name, ntype, fs in unique_items:
         step += 1
-        pre = alias_cache.get(name)
+        a = alias_cache.get(name)
+        s = shell_cache.get(name)
+        pre = None
+        if a is not None and s is not None:
+            aliases, a_u, a_r = a
+            is_shell, s_reason, s_u, s_r = s
+            pre = (aliases, is_shell, s_reason, a_u, a_r, s_u, s_r)
         decision = await intake(
             name=name,
             facts=fs,
@@ -135,7 +150,7 @@ async def run_facts_pipeline(
             runner=runner,
             qdrant=qdrant,
             step=step,
-            precomputed_aliases=pre,
+            precomputed=pre,
         )
         registry.history.append(decision)
 
