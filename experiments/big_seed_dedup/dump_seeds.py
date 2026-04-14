@@ -30,7 +30,7 @@ from typing import Any
 from uuid import UUID
 
 from dotenv import load_dotenv
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
@@ -171,7 +171,32 @@ def _seed_to_dict(seed: WriteSeed) -> dict[str, Any]:
     }
 
 
-async def dump_one(session: AsyncSession, name: str, out_dir: Path, label: str) -> Path | None:
+async def _trigram_neighbors(
+    session: AsyncSession, name: str, node_type: str, limit: int, threshold: float
+) -> list[WriteSeed]:
+    """Pull trigram-similar seeds (any status) to expand the candidate pool."""
+    stmt = (
+        select(WriteSeed)
+        .where(
+            WriteSeed.node_type == node_type,
+            func.similarity(WriteSeed.name, name) >= threshold,
+        )
+        .order_by(func.similarity(WriteSeed.name, name).desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def dump_one(
+    session: AsyncSession,
+    name: str,
+    out_dir: Path,
+    label: str,
+    *,
+    fan_out: int,
+    trigram_threshold: float,
+) -> Path | None:
     hits = await _find_seeds_by_name(session, name)
     if not hits:
         print(f"  [skip] no seed named '{name}'")
@@ -181,6 +206,7 @@ async def dump_one(session: AsyncSession, name: str, out_dir: Path, label: str) 
     hits.sort(key=lambda s: -(s.fact_count or 0))
     anchor = hits[0]
     family = await _collect_family(session, anchor)
+
     # Include any other same-name seeds found (may be disjoint families)
     for h in hits:
         if h.key not in {s.key for s in family}:
@@ -188,6 +214,16 @@ async def dump_one(session: AsyncSession, name: str, out_dir: Path, label: str) 
             for s in extra:
                 if s.key not in {f.key for f in family}:
                     family.append(s)
+
+    # Fan out: pull trigram-similar neighbors so multiplexer sees realistic mix.
+    seen = {s.key for s in family}
+    neighbors = await _trigram_neighbors(
+        session, anchor.name, anchor.node_type, limit=fan_out, threshold=trigram_threshold
+    )
+    for n in neighbors:
+        if n.key not in seen:
+            family.append(n)
+            seen.add(n.key)
 
     members: list[dict[str, Any]] = []
     for s in family:
@@ -220,6 +256,10 @@ async def main() -> None:
     parser.add_argument("--names", required=True, help="Comma-separated seed names to dump")
     parser.add_argument("--label", required=True, help="Fixture label prefix, e.g. 'prod' or 'local'")
     parser.add_argument("--out", default=str(Path(__file__).resolve().parent / "fixtures"))
+    parser.add_argument("--fan-out", type=int, default=80,
+                        help="Max trigram-similar seeds to include beyond the family (for realistic replay)")
+    parser.add_argument("--trigram-threshold", type=float, default=0.30,
+                        help="pg_trgm similarity cutoff for neighbor fan-out")
     args = parser.parse_args()
 
     if args.db:
@@ -241,7 +281,10 @@ async def main() -> None:
         for name in names:
             print(f"- {name}")
             try:
-                await dump_one(session, name, out_dir, args.label)
+                await dump_one(
+                    session, name, out_dir, args.label,
+                    fan_out=args.fan_out, trigram_threshold=args.trigram_threshold,
+                )
             except Exception as exc:
                 print(f"  [ERR] {exc}", file=sys.stderr)
 

@@ -211,6 +211,31 @@ async def admit(
     return decision
 
 
+def _is_more_specific(new: str, old: str) -> bool:
+    """Longer-wins heuristic: new is more specific iff it is strictly longer AND
+    contains the old name as a whole-word substring (case-insensitive).
+
+    Addresses the prod bug where short "Nate" was chosen as canonical over a
+    longer disambiguating form. Substring check guards against swapping for
+    unrelated longer strings; length delta of 3+ chars avoids thrashing on
+    minor variants ("Nate" vs "Nate.").
+    """
+    n = new.strip()
+    o = old.strip()
+    if len(n) <= len(o) + 2:
+        return False
+    nl = n.lower()
+    ol = o.lower()
+    if ol not in nl:
+        return False
+    # word-boundary: either at start/end or surrounded by non-alnum
+    idx = nl.find(ol)
+    before_ok = idx == 0 or not nl[idx - 1].isalnum()
+    end = idx + len(ol)
+    after_ok = end == len(nl) or not nl[end].isalnum()
+    return before_ok and after_ok
+
+
 def _absorb_into_path(p: Path, name: str, facts: list[Fact]) -> None:
     if name not in p.observed_names:
         p.observed_names.append(name)
@@ -218,12 +243,24 @@ def _absorb_into_path(p: Path, name: str, facts: list[Fact]) -> None:
     remaining = SAMPLE_FACTS_STORED - len(p.facts)
     if remaining > 0:
         p.facts.extend(facts[:remaining])
+    # Longest-wins: if incoming is more specific, promote it to the path label
+    if _is_more_specific(name, p.label):
+        if p.label not in p.aliases:
+            p.aliases.insert(0, p.label)
+        p.label = name
 
 
 def _absorb_into_parent(big: BigSeed, name: str) -> None:
     if name.strip().lower() == big.canonical_name.strip().lower():
         return
     lowered = {a.strip().lower() for a in big.aliases}
+    # Longest-wins at parent level too: swap canonical if incoming is more specific.
+    if _is_more_specific(name, big.canonical_name):
+        old = big.canonical_name
+        big.canonical_name = name
+        if old.lower() not in lowered:
+            big.aliases.append(old)
+        return
     if name.strip().lower() not in lowered:
         big.aliases.append(name)
 
