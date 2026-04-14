@@ -1,4 +1,4 @@
-"""Big-seed data model — in-memory only, no DB."""
+"""Big-seed v2 data model — flat container by default, paths only on disambig."""
 
 from __future__ import annotations
 
@@ -7,22 +7,18 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 DecisionKind = Literal[
-    "alias_match",          # exact alias hit on parent or path
-    "embed_auto_route",     # embedding >= auto-route cutoff, routed to path
-    "embed_reject",         # embedding below floor vs everything, rejected
-    "llm_merge_path",       # LLM picked an existing path
-    "llm_alias_to_parent",  # LLM said alias of canonical, not a path split
-    "llm_new_path",         # LLM created a new disambiguation branch
-    "llm_reject",           # LLM said different entity altogether
-    "seed_init",            # the first member that seeded the big seed
+    "genesis",                  # no candidates → new flat big-seed
+    "alias_hit",                # bookkeeping-only: reverse alias lookup surfaced candidate(s)
+    "merge_into_big_seed",      # incoming merged into flat big-seed
+    "merge_into_path",          # big-seed already split; merged into existing disambig path
+    "split_big_seed",           # flat big-seed split into disambig paths
+    "new_disambig_path",        # big-seed already split; incoming becomes new disambig branch
 ]
 
 
 @dataclass
 class Usage:
-    """Token + cost accounting for a single LLM call."""
-
-    kind: str                    # "alias_gen" | "multiplex" | "embed"
+    kind: str
     model: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -36,34 +32,30 @@ class Usage:
 
 @dataclass
 class Fact:
-    """Minimal fact shape used by the experiment."""
-
     id: str
     content: str
-    source: str = ""  # optional, for display
+    source: str = ""
+
+
+@dataclass
+class NamedVec:
+    """An embedded surface form. source_name tells you which alias this vec
+    belongs to; one big-seed/path may hold many (one per alias + canonical)."""
+
+    source_name: str
+    vec: list[float]
 
 
 @dataclass
 class Path:
-    """A disambiguation branch within a big seed.
-
-    Two kinds of aliases live here:
-    - known_aliases: LLM-generated at birth from sample facts. Real-world
-      alternative names for the SAME concept (acronyms, stylized spellings).
-    - merged_surface_forms: incoming surface forms that were admitted into
-      this path via alias_match / embed_auto_route / llm_merge_path. These
-      are "embedding-ambiguous" — not necessarily the same as known
-      aliases, but routed here by the multiplexer.
-    """
+    """Disambiguation branch within a big-seed. Exists only when big-seed
+    is ambiguous. Label must be unambiguous, e.g. "John (actor)"."""
 
     id: str
     label: str
-    known_aliases: list[str] = field(default_factory=list)
-    merged_surface_forms: list[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
+    embeddings: list[NamedVec] = field(default_factory=list)
     facts: list[Fact] = field(default_factory=list)
-    embedding: list[float] | None = None
-    alias_gen_usage: Usage | None = None
-    alias_gen_response: dict | None = None  # raw LLM response (for report)
 
     @staticmethod
     def new(label: str) -> Path:
@@ -71,35 +63,27 @@ class Path:
 
 
 @dataclass
-class Decision:
-    """One admit step in the replay trace."""
+class BigSeed:
+    """Flat container by default. Holds many aliases + multiple embeddings.
+    `paths` populated only after disambiguation."""
 
-    step: int
-    incoming_name: str
-    incoming_fact_count: int
-    incoming_fact_samples: list[str] = field(default_factory=list)  # shown in report
-    kind: DecisionKind = "llm_reject"
-    routed_to_path_id: str | None = None
-    routed_to_path_label: str | None = None
-    reason: str = ""
-    embed_scores: dict[str, float] = field(default_factory=dict)  # path_label -> cosine
-    best_embed_score: float = 0.0
-    alias_gate: str = ""  # alias hit type if any
-    multiplex_usage: Usage | None = None
-    multiplex_response: dict | None = None  # raw LLM response
+    id: str
+    canonical_name: str
+    node_type: str
+    aliases: list[str] = field(default_factory=list)
+    embeddings: list[NamedVec] = field(default_factory=list)
+    facts: list[Fact] = field(default_factory=list)
+    paths: list[Path] = field(default_factory=list)
     alias_gen_usage: Usage | None = None
     alias_gen_response: dict | None = None
 
+    @property
+    def ambiguous(self) -> bool:
+        return bool(self.paths)
 
-@dataclass
-class BigSeed:
-    """The new unified seed container."""
-
-    canonical_name: str
-    node_type: str
-    merged_surface_forms: list[str] = field(default_factory=list)  # admitted via alias_to_parent
-    paths: list[Path] = field(default_factory=list)
-    history: list[Decision] = field(default_factory=list)
+    @staticmethod
+    def new(canonical: str, node_type: str) -> BigSeed:
+        return BigSeed(id=uuid.uuid4().hex[:8], canonical_name=canonical, node_type=node_type)
 
     def find_path(self, path_id: str) -> Path | None:
         for p in self.paths:
@@ -107,25 +91,92 @@ class BigSeed:
                 return p
         return None
 
-    def total_usage(self) -> dict[str, Usage]:
-        """Aggregate token usage across all decisions, split by kind."""
-        totals: dict[str, Usage] = {
-            "alias_gen": Usage(kind="alias_gen"),
-            "multiplex": Usage(kind="multiplex"),
-        }
-        for p in self.paths:
-            if p.alias_gen_usage:
-                _acc(totals["alias_gen"], p.alias_gen_usage)
-        for d in self.history:
-            if d.multiplex_usage:
-                _acc(totals["multiplex"], d.multiplex_usage)
-        return totals
+
+@dataclass
+class Candidate:
+    """A (big_seed, optional path) candidate surfaced by reverse-alias or
+    qdrant search. `via` is "alias" | "embedding" | "both".
+    score only meaningful for embedding hits."""
+
+    big_seed_id: str
+    path_id: str | None
+    canonical_name: str
+    path_label: str | None
+    score: float
+    via: str
+    matched_alias: str | None = None       # which alias hit (reverse lookup)
+    matched_source_name: str | None = None  # which embed source_name hit
 
 
-def _acc(dst: Usage, src: Usage) -> None:
-    dst.prompt_tokens += src.prompt_tokens
-    dst.completion_tokens += src.completion_tokens
-    dst.cost_usd += src.cost_usd
-    dst.latency_ms += src.latency_ms
-    if src.model and not dst.model:
-        dst.model = src.model
+@dataclass
+class Decision:
+    """One intake event — full observable trace per incoming seed."""
+
+    step: int
+    incoming_name: str
+    incoming_fact_count: int
+    incoming_fact_samples: list[str] = field(default_factory=list)
+    incoming_aliases: list[str] = field(default_factory=list)
+
+    alias_gen_usage: Usage | None = None
+    alias_gen_response: dict | None = None
+
+    # lookup results
+    reverse_alias_hits: list[Candidate] = field(default_factory=list)
+    embed_candidates: list[Candidate] = field(default_factory=list)
+    all_embed_scores: list[tuple[str, float]] = field(default_factory=list)  # (label, score) sorted desc
+
+    # multiplex
+    multiplex_usage: Usage | None = None
+    multiplex_response: dict | None = None
+
+    # outcome
+    kind: DecisionKind = "genesis"
+    target_big_seed_id: str | None = None
+    target_big_seed_canonical: str | None = None
+    target_path_id: str | None = None
+    target_path_label: str | None = None
+    split_paths: list[dict] = field(default_factory=list)   # only for split_big_seed
+    disambig_label: str = ""
+    reason: str = ""
+
+
+@dataclass
+class Registry:
+    """Global pool — big-seeds, alias index, qdrant handle wrapper.
+
+    alias_index: lowercased alias → list of (big_seed_id, path_id|None).
+      path_id=None means the alias lives at the big-seed's flat level.
+    history: ordered list of Decision, one per intake.
+    """
+
+    big_seeds: list[BigSeed] = field(default_factory=list)
+    alias_index: dict[str, list[tuple[str, str | None]]] = field(default_factory=dict)
+    history: list[Decision] = field(default_factory=list)
+
+    def find_big_seed(self, bs_id: str) -> BigSeed | None:
+        for b in self.big_seeds:
+            if b.id == bs_id:
+                return b
+        return None
+
+    def register_alias(self, alias: str, bs_id: str, path_id: str | None) -> None:
+        key = alias.strip().lower()
+        if not key:
+            return
+        bucket = self.alias_index.setdefault(key, [])
+        if (bs_id, path_id) not in bucket:
+            bucket.append((bs_id, path_id))
+
+    def lookup_aliases(self, names: list[str]) -> list[tuple[str, str, str | None]]:
+        """For each candidate name, return (matched_alias, bs_id, path_id)."""
+        hits: list[tuple[str, str, str | None]] = []
+        seen: set[tuple[str, str | None]] = set()
+        for n in names:
+            key = n.strip().lower()
+            for bs_id, path_id in self.alias_index.get(key, []):
+                if (bs_id, path_id) in seen:
+                    continue
+                seen.add((bs_id, path_id))
+                hits.append((n, bs_id, path_id))
+        return hits

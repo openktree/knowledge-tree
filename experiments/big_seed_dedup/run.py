@@ -1,9 +1,10 @@
-"""Run big-seed replay on all fixtures, produce HTML report.
+"""Run big-seed v2 pipeline on all fixtures, produce global report.
 
 Usage:
     uv run --project services/api python -m experiments.big_seed_dedup.run \\
         --fixtures experiments/big_seed_dedup/fixtures \\
-        --out experiments/big_seed_dedup/report.html
+        --out experiments/big_seed_dedup/report.html \\
+        --reset-qdrant
 """
 
 from __future__ import annotations
@@ -20,40 +21,28 @@ from kt_models.embeddings import EmbeddingService  # noqa: E402
 from kt_models.gateway import ModelGateway  # noqa: E402
 
 from .llm import LLMRunner  # noqa: E402
-from .replay import replay_fixture  # noqa: E402
+from .qdrant_index import QdrantIndex  # noqa: E402
+from .replay import run_pipeline  # noqa: E402
 from .report import generate_report  # noqa: E402
 
 
-async def main_async(fixtures: Path, out: Path, cache: Path) -> None:
+async def main_async(fixtures: Path, out: Path, cache: Path, reset_qdrant: bool) -> None:
     gateway = ModelGateway()
     embedder = EmbeddingService()
     runner = LLMRunner(gateway=gateway, embedder=embedder, cache_path=cache)
 
-    fixture_paths = sorted(fixtures.glob("*.json"))
-    if not fixture_paths:
-        print(f"No fixtures found in {fixtures}")
-        return
+    qdrant = QdrantIndex()
+    await qdrant.ensure(reset=reset_qdrant)
 
-    results = []
-    for fp in fixture_paths:
-        print(f"\n== Replay: {fp.name} ==")
-        try:
-            rr = await replay_fixture(fp, runner)
-        except Exception as exc:
-            print(f"  ERROR: {exc}")
-            import traceback
+    print(f"Running pipeline on {fixtures} (reset_qdrant={reset_qdrant})")
+    registry = await run_pipeline(fixtures, runner=runner, qdrant=qdrant)
 
-            traceback.print_exc()
-            continue
-        print(
-            f"  paths={len(rr.big_seed.paths)}  processed={rr.members_processed}  "
-            f"skipped={rr.members_skipped}  decisions={len(rr.big_seed.history)}"
-        )
-        for p in rr.big_seed.paths:
-            print(f"    - [{p.id}] {p.label}  known_aliases={len(p.known_aliases)}  merged={len(p.merged_surface_forms)}")
-        results.append(rr)
+    print(f"\nRegistry: {len(registry.big_seeds)} big-seed(s), {len(registry.history)} decisions")
+    for b in registry.big_seeds:
+        path_info = f"paths={len(b.paths)}" if b.paths else "flat"
+        print(f"  - [{b.id}] {b.canonical_name!r} ({b.node_type}) aliases={len(b.aliases)} {path_info}")
 
-    generate_report(results, out, model_name=gateway.decomposition_model)
+    generate_report(registry, out, model_name=gateway.decomposition_model)
 
 
 def main() -> None:
@@ -62,8 +51,15 @@ def main() -> None:
     parser.add_argument("--fixtures", default=str(here / "fixtures"))
     parser.add_argument("--out", default=str(here / "report.html"))
     parser.add_argument("--cache", default=str(here / "llm_cache.jsonl"))
+    parser.add_argument("--reset-qdrant", action="store_true",
+                        help="Drop and recreate the experiment Qdrant collection before running.")
     args = parser.parse_args()
-    asyncio.run(main_async(Path(args.fixtures), Path(args.out), Path(args.cache)))
+    asyncio.run(main_async(
+        Path(args.fixtures),
+        Path(args.out),
+        Path(args.cache),
+        args.reset_qdrant,
+    ))
 
 
 if __name__ == "__main__":

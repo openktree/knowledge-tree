@@ -1,314 +1,582 @@
-"""Multiplexer admit logic: alias match → embedding distance → LLM decision."""
+"""Global intake pipeline — v2.
+
+Per incoming seed:
+  1. generate aliases
+  2. embed
+  3. reverse alias lookup (global)
+  4. qdrant search across all indexed embeddings
+  5. merge candidates, dedup by (big_seed_id, path_id)
+  6. LLM multiplex (if any candidates) OR genesis (if none)
+  7. apply + index
+"""
 
 from __future__ import annotations
 
+import json
+
 from .alias_gen import generate_aliases
-from .big_seed import BigSeed, Decision, Fact, Path
-from .llm import LLMRunner, cosine
+from .big_seed import (
+    BigSeed,
+    Candidate,
+    Decision,
+    Fact,
+    NamedVec,
+    Path,
+    Registry,
+    Usage,
+)
+from .llm import LLMRunner
+from .qdrant_index import QdrantIndex
 
-# Thresholds (kept local — experiment only, no settings dep)
-EMBED_REJECT_FLOOR = 0.70       # below this vs ALL paths → reject (different concept)
-EMBED_AUTO_ROUTE = 0.95         # above this AND surface forms rhyme → auto-route
-SAMPLE_FACTS_FOR_LLM = 3        # per-path sample shown to multiplex LLM
-SAMPLE_FACTS_STORED = 10        # kept on path for future LLM context
-
-
-def _norm(s: str) -> str:
-    return s.strip().lower()
-
-
-def _alias_hit(name: str, big: BigSeed) -> tuple[str | None, str]:
-    """Return (path_id, reason) if incoming name hits an alias; path_id None = parent alias."""
-    n = _norm(name)
-    if n == _norm(big.canonical_name):
-        return None, "canonical_name_match"
-    if any(_norm(a) == n for a in big.merged_surface_forms):
-        return None, "parent_merged_form_match"
-    for p in big.paths:
-        if _norm(p.label) == n:
-            return p.id, "path_label_match"
-        if any(_norm(a) == n for a in p.known_aliases):
-            return p.id, "path_known_alias_match"
-        if any(_norm(o) == n for o in p.merged_surface_forms):
-            return p.id, "path_merged_form_match"
-    return None, ""
+EMBED_THRESHOLD = 0.90
+SAMPLE_FACTS_FOR_LLM = 3
+SAMPLE_FACTS_STORED = 10
+MAX_QDRANT_CANDIDATES = 8
 
 
 _MULTIPLEX_SYSTEM = """\
-You are disambiguating incoming surface forms against an existing big-seed in a
-knowledge graph.
+You are maintaining a knowledge-graph deduplication registry. Every
+"big-seed" represents ONE real-world entity or concept. A big-seed may be
+flat (single concept) or disambiguated (a surface form shared by several
+distinct real-world entities, split into named paths like "John (actor)"
+vs "John (scientist)").
 
-A big-seed has a canonical name plus N disambiguation paths. Each path is ONE
-real-world entity/concept sharing the surface form with the others.
+An incoming surface form has surfaced one or more candidate big-seeds/paths
+via exact alias lookup and/or embedding similarity. You must decide what
+happens to the incoming seed.
 
-Given the canonical + existing paths (with sample facts) + an INCOMING name
-(with sample facts), decide exactly one action:
+KEY PRINCIPLE
+- Alias or embedding similarity is an AMBIGUITY SIGNAL, not a merge signal.
+- Merge ONLY when two names refer to the IDENTICAL real-world thing
+  (synonyms, acronym expansion, singular/plural, spelling variant).
+- When two names share surface form but refer to DIFFERENT real-world
+  things, split into disambiguated paths. Every new path MUST have an
+  unambiguous label (e.g. "Nate Silver (statistician)").
 
-- "merge_path": incoming refers to the SAME entity as an existing path → merge into that path_id
-- "alias_to_parent": incoming is a surface variant of the canonical itself (not a separate sub-entity)
-- "new_path": incoming is a distinct entity/concept that happens to share the surface form → create new path
-- "reject": incoming is actually a DIFFERENT concept that should not live under this big-seed at all
+HARD RULES — never merge the following (split into paths or birth new bigseed):
+- Practitioner vs practice/discipline ("homeopath" ≠ "homeopathy")
+- Tool vs user ("hammer" ≠ "carpenter")
+- Instance vs category ("Apollo 11" ≠ "space mission")
+- Part vs whole ("wheel" ≠ "car")
+- Organization vs member ("NASA" ≠ "astronaut")
+- Parent concept vs specialization
 
-Output JSON exactly:
-{"action": "merge_path|alias_to_parent|new_path|reject",
- "path_id": "..." or null,
- "new_label": "..." or null,
- "reason": "short justification"}
+ACTIONS (pick exactly one):
+
+1. "merge_into_big_seed"
+   Use when candidate big-seed is flat AND incoming is literally the same
+   concept. Incoming aliases/embeddings/facts append to the flat big-seed.
+   Response: {"action": "merge_into_big_seed", "target_big_seed_id": "..."}
+
+2. "merge_into_path"
+   Use when candidate big-seed is already disambiguated AND incoming is
+   literally the same entity as one of its existing paths.
+   Response: {"action": "merge_into_path",
+              "target_big_seed_id": "...", "target_path_id": "..."}
+
+3. "split_big_seed"
+   Use when candidate big-seed was flat BUT incoming reveals it was
+   actually ambiguous. Produce TWO or more disambiguated paths: partition
+   the existing big-seed's aliases into those paths, and add incoming as
+   a new path. Each path needs an unambiguous label.
+   Response: {"action": "split_big_seed",
+              "target_big_seed_id": "...",
+              "paths": [
+                {"label": "Name (role)",
+                 "from_parent_aliases": [<subset of parent aliases>]},
+                ...
+              ],
+              "incoming_goes_to_label": "Name (role)"  (which of the new paths)
+             }
+
+4. "new_disambig_path"
+   Use when candidate big-seed is already disambiguated AND incoming is a
+   NEW distinct entity that shares the surface form.
+   Response: {"action": "new_disambig_path",
+              "target_big_seed_id": "...",
+              "disambig_label": "Name (role)"}
+
+Pick only ONE candidate big-seed when multiple surfaced. Prefer the one
+with the closest semantic match. If genuinely none match the incoming,
+still return one of the above; the orchestration layer will take it as
+signal. Output JSON only.
 """
-
-
-def _build_multiplex_user(big: BigSeed, name: str, facts: list[Fact]) -> str:
-    lines: list[str] = []
-    lines.append(f'Canonical: "{big.canonical_name}" (node_type={big.node_type})')
-    lines.append(f"Parent merged surface forms: {big.merged_surface_forms or '[]'}")
-    lines.append("")
-    lines.append(f"Existing paths ({len(big.paths)}):")
-    if not big.paths:
-        lines.append("  (none)")
-    for p in big.paths:
-        lines.append(f'  - path_id={p.id}  label="{p.label}"')
-        lines.append(f"    known aliases: {p.known_aliases or '[]'}")
-        lines.append(f"    merged surface forms: {p.merged_surface_forms or '[]'}")
-        for f in p.facts[:SAMPLE_FACTS_FOR_LLM]:
-            lines.append(f"    • {f.content[:240]}")
-    lines.append("")
-    lines.append(f'INCOMING: "{name}"')
-    lines.append("Incoming sample facts:")
-    for f in facts[:SAMPLE_FACTS_FOR_LLM]:
-        lines.append(f"  • {f.content[:240]}")
-    lines.append("")
-    lines.append("Return JSON only.")
-    return "\n".join(lines)
-
-
-async def _score_embeddings(
-    big: BigSeed,
-    incoming_vec: list[float],
-) -> tuple[dict[str, float], float, str | None]:
-    """Return {path_label: score}, best_score, best_path_id."""
-    scores: dict[str, float] = {}
-    best_score = 0.0
-    best_id: str | None = None
-    for p in big.paths:
-        if not p.embedding:
-            continue
-        s = cosine(incoming_vec, p.embedding)
-        scores[p.label] = s
-        if s > best_score:
-            best_score = s
-            best_id = p.id
-    return scores, best_score, best_id
 
 
 def _fact_samples(facts: list[Fact]) -> list[str]:
     return [f.content[:240] for f in facts[:SAMPLE_FACTS_FOR_LLM] if f.content.strip()]
 
 
-async def admit(
-    big: BigSeed,
+def _build_multiplex_user(
+    incoming_name: str,
+    incoming_aliases: list[str],
+    facts: list[Fact],
+    candidates: list[tuple[BigSeed, Candidate]],
+) -> str:
+    lines: list[str] = []
+    lines.append(f'INCOMING: "{incoming_name}"')
+    lines.append(f"Generated aliases: {incoming_aliases or '[]'}")
+    lines.append("Incoming sample facts:")
+    for f in facts[:SAMPLE_FACTS_FOR_LLM]:
+        lines.append(f"  • {f.content[:240]}")
+    lines.append("")
+    lines.append(f"CANDIDATE big-seeds / paths ({len(candidates)}):")
+    seen: set[str] = set()
+    for big, cand in candidates:
+        if big.id in seen:
+            continue
+        seen.add(big.id)
+        lines.append(
+            f'- big_seed_id={big.id}  canonical="{big.canonical_name}"  '
+            f"node_type={big.node_type}  ambiguous={big.ambiguous}"
+        )
+        lines.append(f"    aliases: {big.aliases or '[]'}")
+        if big.paths:
+            for p in big.paths:
+                lines.append(f'    path_id={p.id}  label="{p.label}"  aliases={p.aliases}')
+                for f in p.facts[:SAMPLE_FACTS_FOR_LLM]:
+                    lines.append(f"      • {f.content[:200]}")
+        else:
+            for f in big.facts[:SAMPLE_FACTS_FOR_LLM]:
+                lines.append(f"    • {f.content[:200]}")
+        lines.append(f"    matched via: {cand.via} (score={cand.score:.3f})")
+    lines.append("")
+    lines.append("Return JSON only. Follow the HARD RULES.")
+    return "\n".join(lines)
+
+
+async def _embed_with_aliases(
+    runner: LLMRunner, name: str, aliases: list[str]
+) -> list[NamedVec]:
+    """Embed the canonical + each alias. Cached — cheap on re-runs."""
+    out = [NamedVec(source_name=name, vec=await runner.embed(name))]
+    for a in aliases:
+        if a.strip() and a.strip().lower() != name.strip().lower():
+            out.append(NamedVec(source_name=a, vec=await runner.embed(a)))
+    return out
+
+
+async def _index_many(
+    qi: QdrantIndex,
+    *,
+    big_seed_id: str,
+    path_id: str | None,
+    canonical_name: str,
+    path_label: str | None,
+    vecs: list[NamedVec],
+) -> None:
+    for nv in vecs:
+        await qi.upsert(
+            big_seed_id=big_seed_id,
+            path_id=path_id,
+            canonical_name=canonical_name,
+            path_label=path_label,
+            source_name=nv.source_name,
+            vec=nv.vec,
+        )
+
+
+async def intake(
     name: str,
     facts: list[Fact],
+    node_type: str,
     *,
+    registry: Registry,
     runner: LLMRunner,
+    qdrant: QdrantIndex,
     step: int,
 ) -> Decision:
-    """Admit one incoming surface form. Mutates big. Returns decision record."""
-
-    decision = Decision(
+    d = Decision(
         step=step,
         incoming_name=name,
         incoming_fact_count=len(facts),
         incoming_fact_samples=_fact_samples(facts),
     )
 
-    # ── 1. Alias match ────────────────────────────────────────────────
-    path_id, reason = _alias_hit(name, big)
-    if reason:
-        decision.kind = "alias_match"
-        decision.alias_gate = reason
-        decision.reason = reason
-        if path_id:
-            p = big.find_path(path_id)
-            if p:
-                decision.routed_to_path_id = p.id
-                decision.routed_to_path_label = p.label
-                _absorb_into_path(p, name, facts)
-        else:
-            _absorb_into_parent(big, name)
-        return decision
+    # ── 1. alias_gen ────────────────────────────────────────────────
+    aliases, alias_usage, alias_resp = await generate_aliases(name, facts, runner=runner)
+    d.incoming_aliases = aliases
+    d.alias_gen_usage = alias_usage
+    d.alias_gen_response = alias_resp
 
-    # ── 2. Embedding distance ─────────────────────────────────────────
-    vec = await runner.embed(name)
-    scores, best_score, best_id = await _score_embeddings(big, vec)
-    decision.embed_scores = scores
-    decision.best_embed_score = best_score
+    # ── 2. embed ────────────────────────────────────────────────────
+    vecs = await _embed_with_aliases(runner, name, aliases)
 
-    if big.paths and best_score < EMBED_REJECT_FLOOR:
-        decision.kind = "embed_reject"
-        decision.reason = f"best embed {best_score:.3f} < floor {EMBED_REJECT_FLOOR}"
-        return decision
+    # ── 3. reverse alias ────────────────────────────────────────────
+    hit_candidates: dict[tuple[str, str | None], Candidate] = {}
+    for matched, bs_id, path_id in registry.lookup_aliases([name, *aliases]):
+        big = registry.find_big_seed(bs_id)
+        if big is None:
+            continue
+        p = big.find_path(path_id) if path_id else None
+        hit_candidates[(bs_id, path_id)] = Candidate(
+            big_seed_id=bs_id,
+            path_id=path_id,
+            canonical_name=big.canonical_name,
+            path_label=p.label if p else None,
+            score=1.0,
+            via="alias",
+            matched_alias=matched,
+        )
+    d.reverse_alias_hits = list(hit_candidates.values())
 
-    if best_id and best_score >= EMBED_AUTO_ROUTE:
-        p = big.find_path(best_id)
-        if p and _surface_compatible(name, p):
-            decision.kind = "embed_auto_route"
-            decision.routed_to_path_id = p.id
-            decision.routed_to_path_label = p.label
-            decision.reason = f"embed {best_score:.3f} >= {EMBED_AUTO_ROUTE}"
-            _absorb_into_path(p, name, facts)
-            return decision
+    # ── 4. qdrant search (use canonical vec as query) ───────────────
+    all_hits = await qdrant.search(vecs[0].vec, threshold=EMBED_THRESHOLD, limit=MAX_QDRANT_CANDIDATES)
+    # diagnostic: lower-threshold scan so we can show "near misses" in report
+    diag = await qdrant.search(vecs[0].vec, threshold=0.70, limit=20)
+    d.all_embed_scores = [(h.path_label or h.canonical_name, h.score) for h in diag]
 
-    # ── 3. LLM multiplexer ────────────────────────────────────────────
-    user = _build_multiplex_user(big, name, facts)
+    for h in all_hits:
+        key = (h.big_seed_id, h.path_id)
+        if key in hit_candidates:
+            existing = hit_candidates[key]
+            existing.via = "both" if existing.via == "alias" else existing.via
+            existing.score = max(existing.score, h.score)
+            existing.matched_source_name = h.source_name
+            continue
+        big = registry.find_big_seed(h.big_seed_id)
+        if big is None:
+            continue
+        hit_candidates[key] = Candidate(
+            big_seed_id=h.big_seed_id,
+            path_id=h.path_id,
+            canonical_name=h.canonical_name,
+            path_label=h.path_label,
+            score=h.score,
+            via="embedding",
+            matched_source_name=h.source_name,
+        )
+    d.embed_candidates = [c for c in hit_candidates.values() if c.via != "alias"]
+
+    # ── 5. decide ───────────────────────────────────────────────────
+    candidates = list(hit_candidates.values())
+    if not candidates:
+        _apply_genesis(registry, d, name, node_type, aliases, facts, vecs)
+        await _index_big_seed(qdrant, registry.find_big_seed(d.target_big_seed_id))  # type: ignore[arg-type]
+        _register_aliases_for_big_seed(registry, d.target_big_seed_id)  # type: ignore[arg-type]
+        return d
+
+    # hand candidates to LLM
+    cand_pairs: list[tuple[BigSeed, Candidate]] = []
+    for c in candidates:
+        big = registry.find_big_seed(c.big_seed_id)
+        if big:
+            cand_pairs.append((big, c))
+
+    user = _build_multiplex_user(name, aliases, facts, cand_pairs)
     response, usage = await runner.call_json(
         kind="multiplex",
         system_prompt=_MULTIPLEX_SYSTEM,
         user_content=user,
-        max_tokens=400,
+        max_tokens=600,
     )
-    decision.multiplex_usage = usage
-    decision.multiplex_response = response if isinstance(response, dict) else {}
+    d.multiplex_usage = usage
+    d.multiplex_response = response if isinstance(response, dict) else {}
 
-    action = str(response.get("action", "reject")) if isinstance(response, dict) else "reject"
-    llm_reason = str(response.get("reason", "")) if isinstance(response, dict) else ""
-    llm_path_id = response.get("path_id") if isinstance(response, dict) else None
-    new_label = response.get("new_label") if isinstance(response, dict) else None
-
-    decision.reason = llm_reason or action
-
-    if action == "merge_path" and llm_path_id:
-        p = big.find_path(str(llm_path_id))
-        if p:
-            decision.kind = "llm_merge_path"
-            decision.routed_to_path_id = p.id
-            decision.routed_to_path_label = p.label
-            _absorb_into_path(p, name, facts)
-            return decision
-        # fall through to new_path if id invalid
-
-    if action == "alias_to_parent":
-        decision.kind = "llm_alias_to_parent"
-        _absorb_into_parent(big, name)
-        return decision
-
-    if action == "reject":
-        decision.kind = "llm_reject"
-        return decision
-
-    # new_path — create, generate aliases, embed label
-    label = str(new_label).strip() if isinstance(new_label, str) and new_label.strip() else name
-    new_path = Path.new(label=label)
-    new_path.merged_surface_forms.append(name)
-    new_path.facts.extend(facts[:SAMPLE_FACTS_STORED])
-    new_path.embedding = await runner.embed(label)
-
-    aliases, alias_usage, alias_resp = await generate_aliases(label, facts, runner=runner)
-    new_path.known_aliases = aliases
-    new_path.alias_gen_usage = alias_usage
-    new_path.alias_gen_response = alias_resp
-
-    big.paths.append(new_path)
-
-    decision.kind = "llm_new_path"
-    decision.routed_to_path_id = new_path.id
-    decision.routed_to_path_label = new_path.label
-    decision.alias_gen_usage = alias_usage
-    decision.alias_gen_response = alias_resp
-    return decision
+    await _apply_llm_decision(
+        registry=registry,
+        qdrant=qdrant,
+        decision=d,
+        incoming_name=name,
+        node_type=node_type,
+        aliases=aliases,
+        facts=facts,
+        vecs=vecs,
+        response=d.multiplex_response or {},
+    )
+    return d
 
 
-def _is_more_specific(new: str, old: str) -> bool:
-    """Longer-wins heuristic: new is more specific iff strictly longer AND
-    contains old as whole-word substring. Fixes prod's short-canonical bug.
-    """
-    n = new.strip()
-    o = old.strip()
-    if len(n) <= len(o) + 2:
-        return False
-    nl = n.lower()
-    ol = o.lower()
-    if ol not in nl:
-        return False
-    idx = nl.find(ol)
-    before_ok = idx == 0 or not nl[idx - 1].isalnum()
-    end = idx + len(ol)
-    after_ok = end == len(nl) or not nl[end].isalnum()
-    return before_ok and after_ok
+# ── application helpers ────────────────────────────────────────────
+
+def _apply_genesis(
+    registry: Registry,
+    d: Decision,
+    name: str,
+    node_type: str,
+    aliases: list[str],
+    facts: list[Fact],
+    vecs: list[NamedVec],
+) -> None:
+    big = BigSeed.new(canonical=name, node_type=node_type)
+    big.aliases = list(dict.fromkeys([name, *aliases]))
+    big.embeddings = vecs
+    big.facts.extend(facts[:SAMPLE_FACTS_STORED])
+    big.alias_gen_usage = d.alias_gen_usage
+    big.alias_gen_response = d.alias_gen_response
+    registry.big_seeds.append(big)
+    d.kind = "genesis"
+    d.target_big_seed_id = big.id
+    d.target_big_seed_canonical = big.canonical_name
+    d.reason = "no candidates above threshold — new flat big-seed"
 
 
-def _absorb_into_path(p: Path, name: str, facts: list[Fact]) -> None:
-    if name not in p.merged_surface_forms and _norm(name) != _norm(p.label):
-        p.merged_surface_forms.append(name)
+def _register_aliases_for_big_seed(registry: Registry, bs_id: str | None) -> None:
+    if not bs_id:
+        return
+    big = registry.find_big_seed(bs_id)
+    if not big:
+        return
+    if big.paths:
+        for p in big.paths:
+            registry.register_alias(p.label, big.id, p.id)
+            for a in p.aliases:
+                registry.register_alias(a, big.id, p.id)
+    else:
+        registry.register_alias(big.canonical_name, big.id, None)
+        for a in big.aliases:
+            registry.register_alias(a, big.id, None)
+
+
+async def _index_big_seed(qdrant: QdrantIndex, big: BigSeed | None) -> None:
+    if not big:
+        return
+    if big.paths:
+        for p in big.paths:
+            await _index_many(
+                qdrant,
+                big_seed_id=big.id,
+                path_id=p.id,
+                canonical_name=big.canonical_name,
+                path_label=p.label,
+                vecs=p.embeddings,
+            )
+    else:
+        await _index_many(
+            qdrant,
+            big_seed_id=big.id,
+            path_id=None,
+            canonical_name=big.canonical_name,
+            path_label=None,
+            vecs=big.embeddings,
+        )
+
+
+async def _apply_llm_decision(
+    *,
+    registry: Registry,
+    qdrant: QdrantIndex,
+    decision: Decision,
+    incoming_name: str,
+    node_type: str,
+    aliases: list[str],
+    facts: list[Fact],
+    vecs: list[NamedVec],
+    response: dict,
+) -> None:
+    action = str(response.get("action", "")).strip()
+    target_id = str(response.get("target_big_seed_id", "")).strip()
+    big = registry.find_big_seed(target_id) if target_id else None
+
+    # fallback: if LLM gave bad bigseed id, pick best candidate ourselves
+    if big is None and (decision.embed_candidates or decision.reverse_alias_hits):
+        pool = decision.reverse_alias_hits + decision.embed_candidates
+        pool.sort(key=lambda c: -c.score)
+        big = registry.find_big_seed(pool[0].big_seed_id)
+
+    if big is None:
+        # LLM gave us nothing actionable — fall back to genesis
+        _apply_genesis(registry, decision, incoming_name, node_type, aliases, facts, vecs)
+        await _index_big_seed(qdrant, registry.find_big_seed(decision.target_big_seed_id))  # type: ignore[arg-type]
+        _register_aliases_for_big_seed(registry, decision.target_big_seed_id)
+        decision.reason = "LLM target invalid — fell back to genesis"
+        return
+
+    decision.target_big_seed_id = big.id
+    decision.target_big_seed_canonical = big.canonical_name
+    decision.reason = str(response.get("reason", "")) or action
+
+    if action == "merge_into_big_seed":
+        _merge_flat(big, incoming_name, aliases, facts, vecs)
+        decision.kind = "merge_into_big_seed"
+
+    elif action == "merge_into_path":
+        target_path_id = str(response.get("target_path_id", "")).strip()
+        p = big.find_path(target_path_id)
+        if p is None and big.paths:
+            p = big.paths[0]
+        if p is None:
+            # bigseed not actually split — fall back to flat merge
+            _merge_flat(big, incoming_name, aliases, facts, vecs)
+            decision.kind = "merge_into_big_seed"
+            decision.reason += " | fallback: target_path missing, merged flat"
+        else:
+            _merge_path(p, incoming_name, aliases, facts, vecs)
+            decision.kind = "merge_into_path"
+            decision.target_path_id = p.id
+            decision.target_path_label = p.label
+
+    elif action == "split_big_seed":
+        new_paths = _split_big_seed(
+            big, incoming_name, aliases, facts, vecs, response, runner_vecs=vecs
+        )
+        decision.kind = "split_big_seed"
+        decision.split_paths = [
+            {"id": p.id, "label": p.label, "aliases": p.aliases} for p in new_paths
+        ]
+        # which path the incoming ended up on
+        goes = str(response.get("incoming_goes_to_label", "")).strip().lower()
+        for p in new_paths:
+            if p.label.strip().lower() == goes:
+                decision.target_path_id = p.id
+                decision.target_path_label = p.label
+                break
+
+    elif action == "new_disambig_path":
+        label = str(response.get("disambig_label", "")).strip() or f"{incoming_name} (variant)"
+        p = _new_disambig_path(big, label, incoming_name, aliases, facts, vecs)
+        decision.kind = "new_disambig_path"
+        decision.target_path_id = p.id
+        decision.target_path_label = p.label
+        decision.disambig_label = label
+
+    else:
+        # unknown action — treat as merge_into_big_seed as a safe default
+        _merge_flat(big, incoming_name, aliases, facts, vecs)
+        decision.kind = "merge_into_big_seed"
+        decision.reason += f" | unknown action={action!r}, merged flat"
+
+    await _index_big_seed(qdrant, big)
+    _register_aliases_for_big_seed(registry, big.id)
+
+
+def _merge_flat(
+    big: BigSeed, name: str, aliases: list[str], facts: list[Fact], vecs: list[NamedVec]
+) -> None:
+    for n in [name, *aliases]:
+        if n.strip() and n.strip().lower() not in {a.strip().lower() for a in big.aliases}:
+            big.aliases.append(n)
+    existing_srcs = {nv.source_name.strip().lower() for nv in big.embeddings}
+    for nv in vecs:
+        if nv.source_name.strip().lower() not in existing_srcs:
+            big.embeddings.append(nv)
+    remaining = SAMPLE_FACTS_STORED - len(big.facts)
+    if remaining > 0:
+        big.facts.extend(facts[:remaining])
+
+
+def _merge_path(
+    p: Path, name: str, aliases: list[str], facts: list[Fact], vecs: list[NamedVec]
+) -> None:
+    for n in [name, *aliases]:
+        if n.strip() and n.strip().lower() not in {a.strip().lower() for a in p.aliases}:
+            p.aliases.append(n)
+    existing_srcs = {nv.source_name.strip().lower() for nv in p.embeddings}
+    for nv in vecs:
+        if nv.source_name.strip().lower() not in existing_srcs:
+            p.embeddings.append(nv)
     remaining = SAMPLE_FACTS_STORED - len(p.facts)
     if remaining > 0:
         p.facts.extend(facts[:remaining])
-    if _is_more_specific(name, p.label):
-        # demote old label into merged_surface_forms
-        if p.label not in p.merged_surface_forms:
-            p.merged_surface_forms.insert(0, p.label)
-        p.label = name
 
 
-def _absorb_into_parent(big: BigSeed, name: str) -> None:
-    if _norm(name) == _norm(big.canonical_name):
-        return
-    lowered = {a.strip().lower() for a in big.merged_surface_forms}
-    if _is_more_specific(name, big.canonical_name):
-        old = big.canonical_name
-        big.canonical_name = name
-        if old.lower() not in lowered:
-            big.merged_surface_forms.append(old)
-        return
-    if name.strip().lower() not in lowered:
-        big.merged_surface_forms.append(name)
-
-
-def _surface_compatible(name: str, p: Path) -> bool:
-    n = _norm(name)
-    if n == _norm(p.label):
-        return True
-    for a in p.known_aliases + p.merged_surface_forms:
-        if _norm(a) == n:
-            return True
-    lbl = _norm(p.label)
-    if len(n) >= 4 and (n in lbl or lbl in n):
-        return True
-    return False
-
-
-async def seed_from_first(
-    canonical_name: str,
-    node_type: str,
-    facts: list[Fact],
+def _split_big_seed(
+    big: BigSeed,
+    incoming_name: str,
+    incoming_aliases: list[str],
+    incoming_facts: list[Fact],
+    incoming_vecs: list[NamedVec],
+    response: dict,
     *,
-    runner: LLMRunner,
-) -> tuple[BigSeed, Decision]:
-    """Initialize a BigSeed from its first member. Runs alias_gen once."""
-    big = BigSeed(canonical_name=canonical_name, node_type=node_type)
-    first_path = Path.new(label=canonical_name)
-    first_path.facts.extend(facts[:SAMPLE_FACTS_STORED])
-    first_path.embedding = await runner.embed(canonical_name)
+    runner_vecs: list[NamedVec],
+) -> list[Path]:
+    """Partition flat big-seed into paths per LLM directive."""
+    raw_paths = response.get("paths") or []
+    goes = str(response.get("incoming_goes_to_label", "")).strip().lower()
 
-    aliases, alias_usage, alias_resp = await generate_aliases(canonical_name, facts, runner=runner)
-    first_path.known_aliases = aliases
-    first_path.alias_gen_usage = alias_usage
-    first_path.alias_gen_response = alias_resp
-    big.paths.append(first_path)
+    src_aliases = {a.strip().lower(): a for a in big.aliases}
+    src_embeddings = {nv.source_name.strip().lower(): nv for nv in big.embeddings}
 
-    dec = Decision(
-        step=0,
-        incoming_name=canonical_name,
-        incoming_fact_count=len(facts),
-        incoming_fact_samples=_fact_samples(facts),
-        kind="seed_init",
-        routed_to_path_id=first_path.id,
-        routed_to_path_label=first_path.label,
-        reason="seed initialized from first family member",
-        alias_gen_usage=alias_usage,
-        alias_gen_response=alias_resp,
-    )
-    big.history.append(dec)
-    return big, dec
+    new_paths: list[Path] = []
+    for raw in raw_paths:
+        if not isinstance(raw, dict):
+            continue
+        label = str(raw.get("label", "")).strip()
+        if not label:
+            continue
+        p = Path.new(label=label)
+        for a in raw.get("from_parent_aliases", []) or []:
+            if not isinstance(a, str):
+                continue
+            key = a.strip().lower()
+            if key in src_aliases:
+                p.aliases.append(src_aliases[key])
+                if key in src_embeddings:
+                    p.embeddings.append(src_embeddings[key])
+        # If label isn't already an alias, keep it discoverable
+        if not any(a.strip().lower() == label.strip().lower() for a in p.aliases):
+            p.aliases.insert(0, label)
+        new_paths.append(p)
+
+    # Fallback: if LLM returned zero usable paths, synthesize two-way split
+    if not new_paths:
+        p1 = Path.new(label=big.canonical_name)
+        p1.aliases = list(big.aliases)
+        p1.embeddings = list(big.embeddings)
+        p1.facts = list(big.facts)
+        p2 = Path.new(label=incoming_name)
+        new_paths = [p1, p2]
+
+    # Place the incoming into the labelled target path (or the last new path)
+    target: Path | None = None
+    for p in new_paths:
+        if p.label.strip().lower() == goes:
+            target = p
+            break
+    if target is None:
+        # find path whose aliases don't include the incoming canonical — treat as new branch
+        target = new_paths[-1]
+    _merge_path(target, incoming_name, incoming_aliases, incoming_facts, incoming_vecs)
+
+    # Distribute parent facts: each path gets facts whose content mentions any of
+    # its aliases (cheap heuristic). Unassigned parent facts go to first path.
+    unassigned: list[Fact] = []
+    for f in big.facts:
+        placed = False
+        low = f.content.lower()
+        for p in new_paths:
+            if any(a.strip().lower() in low for a in p.aliases if a.strip()):
+                if len(p.facts) < SAMPLE_FACTS_STORED and f not in p.facts:
+                    p.facts.append(f)
+                placed = True
+                break
+        if not placed:
+            unassigned.append(f)
+    if unassigned and new_paths:
+        for f in unassigned:
+            if len(new_paths[0].facts) < SAMPLE_FACTS_STORED and f not in new_paths[0].facts:
+                new_paths[0].facts.append(f)
+
+    # Commit: flatten parent; paths take over
+    big.paths = new_paths
+    big.aliases = []
+    big.embeddings = []
+    big.facts = []
+    return new_paths
 
 
-__all__ = ["admit", "seed_from_first", "EMBED_REJECT_FLOOR", "EMBED_AUTO_ROUTE"]
+def _new_disambig_path(
+    big: BigSeed,
+    label: str,
+    incoming_name: str,
+    aliases: list[str],
+    facts: list[Fact],
+    vecs: list[NamedVec],
+) -> Path:
+    p = Path.new(label=label)
+    p.aliases.append(label)
+    if incoming_name.strip().lower() != label.strip().lower():
+        p.aliases.append(incoming_name)
+    for a in aliases:
+        if a.strip() and a.strip().lower() not in {x.strip().lower() for x in p.aliases}:
+            p.aliases.append(a)
+    p.embeddings = vecs
+    p.facts.extend(facts[:SAMPLE_FACTS_STORED])
+    big.paths.append(p)
+    return p
+
+
+__all__ = ["intake", "EMBED_THRESHOLD"]
+
+
+_ = json  # silence unused import warning
