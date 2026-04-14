@@ -43,18 +43,19 @@ def _point_id(big_seed_id: str, path_id: str | None, source_name: str) -> str:
 
 
 class QdrantIndex:
-    def __init__(self) -> None:
+    def __init__(self, collection_name: str = COLLECTION_NAME) -> None:
         self._client = get_qdrant_client()
         self._dim = get_settings().embedding_dimensions
+        self._collection = collection_name
 
     async def ensure(self, *, reset: bool = False) -> None:
         existing = {c.name for c in (await self._client.get_collections()).collections}
-        if reset and COLLECTION_NAME in existing:
-            await self._client.delete_collection(COLLECTION_NAME)
-            existing.discard(COLLECTION_NAME)
-        if COLLECTION_NAME not in existing:
+        if reset and self._collection in existing:
+            await self._client.delete_collection(self._collection)
+            existing.discard(self._collection)
+        if self._collection not in existing:
             await self._client.create_collection(
-                collection_name=COLLECTION_NAME,
+                collection_name=self._collection,
                 vectors_config=VectorParams(size=self._dim, distance=Distance.COSINE),
             )
 
@@ -80,17 +81,17 @@ class QdrantIndex:
             vector=vec,
             payload=payload,
         )
-        await self._client.upsert(collection_name=COLLECTION_NAME, points=[point])
+        await self._client.upsert(collection_name=self._collection, points=[point])
 
     async def delete_for(self, big_seed_id: str, path_id: str | None, source_name: str) -> None:
         await self._client.delete(
-            collection_name=COLLECTION_NAME,
+            collection_name=self._collection,
             points_selector=[_point_id(big_seed_id, path_id, source_name)],
         )
 
     async def search(self, vec: list[float], *, threshold: float, limit: int = 20) -> list[QdrantHit]:
         result = await self._client.query_points(
-            collection_name=COLLECTION_NAME,
+            collection_name=self._collection,
             query=vec,
             limit=limit,
             score_threshold=threshold,
