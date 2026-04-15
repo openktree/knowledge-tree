@@ -243,6 +243,19 @@ async def store_seeds_from_extracted_nodes(
             except Exception:
                 logger.debug("Fact link failed", exc_info=True)
 
+    # 3.5 Route facts on ambiguous parents to specific child paths
+    # via embedding distance. Ambiguous parents are routing hubs, not
+    # storage — every fact on them should end up at a concrete path.
+    try:
+        await _reroute_facts_on_ambiguous_parents(
+            remapped_links,
+            all_facts,
+            write_seed_repo,
+            embedding_service,
+        )
+    except Exception:
+        logger.debug("Re-routing facts on ambiguous parents failed", exc_info=True)
+
     # 4. Refresh fact_count
     all_linked_keys = list({lnk["seed_key"] for lnk in remapped_links})
     if all_linked_keys:
@@ -280,6 +293,116 @@ async def store_seeds_from_extracted_nodes(
                     )
 
     return total_links, list(representatives.keys())
+
+
+async def _reroute_facts_on_ambiguous_parents(
+    remapped_links: list[dict[str, Any]],
+    all_facts: list,
+    write_seed_repo: WriteSeedRepository,
+    embedding_service: object,
+) -> None:
+    """For any seed_key in remapped_links that is an ambiguous parent,
+    re-route each fact to the closest child path via embedding distance.
+
+    Modifies link rows in DB: deletes parent link, creates child link.
+    """
+    if not remapped_links or embedding_service is None:
+        return
+
+    # Build a fact_id -> content map for embedding
+    fact_content_by_id = {str(f.id): getattr(f, "content", "") or "" for f in all_facts}
+
+    # Group links by parent seed_key, then check status
+    keys_in_batch = {lnk["seed_key"] for lnk in remapped_links}
+    seeds_by_key = await write_seed_repo.get_seeds_by_keys_batch(list(keys_in_batch))
+    ambiguous_keys = {k for k, s in seeds_by_key.items() if s and s.status == "ambiguous"}
+    if not ambiguous_keys:
+        return
+
+    # Pre-load routes per ambiguous parent (and embed each child key once)
+    parent_routes: dict[str, list] = {}
+    child_vec_cache: dict[str, list[float]] = {}
+    for parent_key in ambiguous_keys:
+        try:
+            routes = await write_seed_repo.get_routes_for_parent(parent_key)
+        except Exception:
+            routes = []
+        if not routes:
+            continue
+        parent_routes[parent_key] = routes
+        for r in routes:
+            if r.child_seed_key in child_vec_cache:
+                continue
+            try:
+                vec = await embedding_service.embed_text(r.label or r.child_seed_key)  # type: ignore[attr-defined]
+                child_vec_cache[r.child_seed_key] = vec
+            except Exception:
+                logger.debug("Failed to embed path label '%s'", r.label, exc_info=True)
+
+    if not parent_routes:
+        return
+
+    # Reassign each fact link landing on an ambiguous parent
+    rerouted = 0
+    for lnk in remapped_links:
+        parent_key = lnk["seed_key"]
+        if parent_key not in parent_routes:
+            continue
+        routes = parent_routes[parent_key]
+        fact_id = lnk["fact_id"]
+        content = fact_content_by_id.get(str(fact_id), "")
+        if not content:
+            continue
+        try:
+            fvec = await embedding_service.embed_text(content[:500])  # type: ignore[attr-defined]
+        except Exception:
+            continue
+
+        # Pick best child by cosine similarity
+        best_key = None
+        best_sim = -1.0
+        for r in routes:
+            cv = child_vec_cache.get(r.child_seed_key)
+            if cv is None:
+                continue
+            sim = _cosine_sim(fvec, cv)
+            if sim > best_sim:
+                best_sim = sim
+                best_key = r.child_seed_key
+
+        if best_key is None or best_key == parent_key:
+            continue
+
+        # Move the link: link to child, unlink from parent
+        try:
+            async with write_seed_repo._session.begin_nested():
+                await write_seed_repo.link_fact(
+                    best_key,
+                    fact_id,
+                    extraction_context=lnk.get("extraction_context"),
+                )
+                await write_seed_repo.unlink_fact(parent_key, fact_id)
+            rerouted += 1
+        except Exception:
+            logger.debug(
+                "Failed to reroute fact %s from parent '%s' to child '%s'",
+                fact_id, parent_key, best_key, exc_info=True,
+            )
+
+    if rerouted:
+        logger.info(
+            "Re-routed %d facts from ambiguous parents to disambig paths",
+            rerouted,
+        )
+
+
+def _cosine_sim(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
 
 
 async def dedup_seeds_batch(

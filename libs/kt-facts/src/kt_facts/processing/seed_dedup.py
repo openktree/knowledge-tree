@@ -156,13 +156,15 @@ You route facts to the correct disambiguation path of a name.
 
 Given a canonical name N, a list of disambiguation paths (each
 labelled e.g. "N (role)"), and facts mentioning N, assign each
-fact to the path it is actually about. Use only the fact content.
+fact to the path it is actually about.
+
+STRONGLY PREFER assigning every fact to its best matching path.
+Ambiguous parent seeds are routing hubs, NOT storage — every fact
+should end up at a specific disambiguation. Only return null when
+the fact is genuinely contentless or contradicts every path.
 
 Return JSON exactly:
 {"assignments": [{"fact_id": "...", "path_label": "..."}, ...]}
-
-If a fact does not fit any path, set "path_label" to null — that
-fact will remain at the parent level.
 """
 
 
@@ -251,6 +253,7 @@ async def deduplicate_seed(
             node_type=node_type,
             write_seed_repo=write_seed_repo,
             model_gateway=model_gateway,
+            embedding_service=embedding_service,
         )
         return seed_key
 
@@ -364,6 +367,7 @@ async def _promote_and_genesis_disambig(
     node_type: str,
     write_seed_repo: WriteSeedRepository,
     model_gateway: ModelGateway | None,
+    embedding_service: EmbeddingService | None = None,
 ) -> None:
     """Promote a pending seed to active and run genesis disambiguation.
 
@@ -398,6 +402,17 @@ async def _promote_and_genesis_disambig(
     fact_assignments: dict[str, str | None] = {}
     if facts:
         fact_assignments = await _route_facts_to_paths(name, paths, facts, model_gateway)
+        # Embedding fallback: fill unassigned facts with closest path by
+        # cosine similarity of fact content vs. path label. Every fact
+        # must end up at a specific path — the parent is a routing hub,
+        # not a storage bucket.
+        if embedding_service is not None:
+            await _fill_unassigned_via_embedding(
+                paths=paths,
+                facts=facts,
+                assignments=fact_assignments,
+                embedding_service=embedding_service,
+            )
 
     # 4. Create WriteSeedRoute children per path label
     await _create_seed_routes_with_facts(
@@ -408,6 +423,55 @@ async def _promote_and_genesis_disambig(
         write_seed_repo=write_seed_repo,
     )
     await write_seed_repo.set_status(seed_key, "ambiguous")
+
+
+async def _fill_unassigned_via_embedding(
+    paths: list[str],
+    facts: list[tuple],  # (fact_id, content)
+    assignments: dict[str, str | None],
+    embedding_service: EmbeddingService,
+) -> None:
+    """For facts that have no path assignment (None or missing), pick the
+    closest path by cosine similarity between fact content and path label.
+    Mutates `assignments` in place.
+    """
+    # Collect facts still needing an assignment
+    unassigned = [
+        (str(fid), content)
+        for fid, content in facts
+        if not assignments.get(str(fid))
+    ]
+    if not unassigned or not paths:
+        return
+
+    try:
+        path_vecs = [await embedding_service.embed_text(p) for p in paths]
+        for fid, content in unassigned:
+            try:
+                fvec = await embedding_service.embed_text(str(content)[:500])
+            except Exception:
+                logger.debug("embed fact fallback failed for fid=%s", fid, exc_info=True)
+                continue
+            # cosine similarity
+            best_idx = 0
+            best_sim = -1.0
+            for i, pv in enumerate(path_vecs):
+                sim = _cosine(fvec, pv)
+                if sim > best_sim:
+                    best_sim = sim
+                    best_idx = i
+            assignments[fid] = paths[best_idx]
+    except Exception:
+        logger.debug("Embedding fallback for unassigned facts failed", exc_info=True)
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
 
 
 async def _suggest_disambig(name: str, model_gateway: ModelGateway) -> list[str]:

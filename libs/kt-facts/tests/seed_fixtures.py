@@ -71,6 +71,7 @@ def make_seed_repo_mock(**overrides: object) -> MagicMock:
     repo.get_seeds_by_keys_batch = AsyncMock(return_value={})
     repo.split_seed = AsyncMock()
     repo.link_fact = AsyncMock(return_value=True)
+    repo.unlink_fact = AsyncMock(return_value=1)
     repo.link_facts_batch = AsyncMock(return_value=0)
     repo.refresh_fact_counts = AsyncMock()
     repo.upsert_edge_candidate = AsyncMock()

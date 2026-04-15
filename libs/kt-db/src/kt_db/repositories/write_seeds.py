@@ -206,6 +206,17 @@ class WriteSeedRepository:
         result = await self._session.execute(stmt)
         return result.rowcount > 0  # type: ignore[return-value]
 
+    async def unlink_fact(self, seed_key: str, fact_id: uuid.UUID) -> int:
+        """Remove a fact link from a seed. Returns number of rows deleted."""
+        from sqlalchemy import delete as _delete
+        result = await self._session.execute(
+            _delete(WriteSeedFact).where(
+                WriteSeedFact.seed_key == seed_key,
+                WriteSeedFact.fact_id == fact_id,
+            )
+        )
+        return result.rowcount or 0  # type: ignore[return-value]
+
     async def get_mentioned_facts_for_seed(self, seed_key: str) -> list[uuid.UUID]:
         """Get fact IDs for a seed, excluding source_attribution links."""
         result = await self._session.execute(
