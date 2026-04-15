@@ -21,35 +21,39 @@ class BenchItem:
 # must_include — aliases the model should emit (partial list, not exhaustive)
 # must_exclude — aliases the model should NOT emit
 ALIAS_CASES: list[BenchItem] = [
+    # `aliases` is the full whitelist of equally-valid aliases (all have
+    # the same epistemological weight — acronym, expansion, spelling
+    # variant, etc.). Each model scores = count of emitted ∈ aliases.
+    # `must_exclude` fails the item if any are emitted (bad aliases).
     BenchItem("FBI",
-              {"must_include": ["Federal Bureau of Investigation"],
+              {"aliases": ["Federal Bureau of Investigation", "F.B.I."],
                "must_exclude": ["CIA", "police"]}),
     BenchItem("United Nations",
-              {"must_include": ["UN"],
+              {"aliases": ["UN", "United Nations Organization", "U.N.", "UNO"],
                "must_exclude": ["WHO", "UNICEF"]}),
     BenchItem("homeopathy",
-              {"must_include": ["homoeopathy"],
+              {"aliases": ["homoeopathy"],
                "must_exclude": ["homeopath", "homeopathic medicine"]}),
     BenchItem("neural network",
-              {"must_include": ["neural networks"],
+              {"aliases": ["neural networks", "neural net"],
                "must_exclude": ["artificial intelligence", "machine learning"]}),
     BenchItem("iPhone",
-              {"must_include": [],
+              {"aliases": [],
                "must_exclude": ["smartphone", "phone"]}),
     BenchItem("Trends",
-              {"must_include": [],
+              {"aliases": [],
                "must_exclude": ["Trends in Cell Biology", "Trends in Neurosciences"]}),
     BenchItem("JFK",
-              {"must_include": ["John F. Kennedy"],
+              {"aliases": ["John F. Kennedy", "John Fitzgerald Kennedy", "J.F.K."],
                "must_exclude": ["John F. Kennedy Jr.", "Kennedy"]}),
     BenchItem("method",
-              {"must_include": ["methods"],
+              {"aliases": ["methods"],
                "must_exclude": ["approach", "way"]}),
     BenchItem("CRISPR",
-              {"must_include": [],
+              {"aliases": ["Clustered Regularly Interspaced Short Palindromic Repeats"],
                "must_exclude": ["gene editing", "Cas9"]}),
     BenchItem("Einstein",
-              {"must_include": [],
+              {"aliases": [],
                "must_exclude": ["Albert Einstein Jr.", "physicist"]}),
 ]
 
@@ -73,21 +77,28 @@ SHELL_CASES: list[BenchItem] = [
 # ── Suggest disambig ──────────────────────────────────────────────
 # expected: {"ambiguous": bool, "must_include_any": [list of path-label substrings]}
 DISAMBIG_CASES: list[BenchItem] = [
+    # must_include_any: substrings at least one emitted path-label must
+    # contain (case-insensitive) for the item to score correct.
+    # acceptable_extra: additional substrings that are equally valid if
+    # a model emits a third/fourth sense beyond the core needles.
     BenchItem("Mercury",
               {"ambiguous": True,
                "must_include_any": ["planet", "element", "god"]}),
     BenchItem("Apollo",
               {"ambiguous": True,
-               "must_include_any": ["NASA", "god", "program"]}),
+               "must_include_any": ["NASA", "god", "program"],
+               "acceptable_extra": ["theatre", "theater"]}),
     BenchItem("Java",
               {"ambiguous": True,
-               "must_include_any": ["programming", "island"]}),
+               "must_include_any": ["programming", "island"],
+               "acceptable_extra": ["coffee"]}),
     BenchItem("Jaguar",
               {"ambiguous": True,
                "must_include_any": ["animal", "car"]}),
     BenchItem("Python",
               {"ambiguous": True,
-               "must_include_any": ["programming", "snake"]}),
+               "must_include_any": ["programming", "snake"],
+               "acceptable_extra": ["genus", "animal", "mythology"]}),
     BenchItem("Einstein",
               {"ambiguous": False, "must_include_any": []}),
     BenchItem("homeopathy",

@@ -17,8 +17,9 @@ models:
     label: step-3.5-flash:nitro (min-think)
     force_json_object: false                # DeepInfra provider rejects response_format for stepfun
     reasoning: {effort: "minimal"}          # step-3.5-flash is a reasoning model; cap think tokens
-  - id: openrouter/minimax/MiniMax-M2.7:nitro
-    label: minimax-m2.7:nitro
+  - id: openrouter/xiaomi/mimo-v2-flash:nitro
+    label: mimo-v2-flash:nitro (no-think)
+    reasoning: {enabled: false}
   - id: openrouter/qwen/qwen3.5-flash-02-23:nitro
     label: qwen3.5-flash:nitro
   - id: openrouter/google/gemma-4-26b-a4b-it:nitro
@@ -42,9 +43,9 @@ pricing:
   "openrouter/stepfun/step-3.5-flash:nitro":
     input: 0.10
     output: 0.30
-  "openrouter/minimax/MiniMax-M2.7:nitro":
-    input: 0.20
-    output: 1.10
+  "openrouter/xiaomi/mimo-v2-flash:nitro":
+    input: 0.10
+    output: 0.30
   "openrouter/qwen/qwen3.5-flash-02-23:nitro":
     input: 0.1
     output: 0.40

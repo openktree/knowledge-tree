@@ -29,6 +29,7 @@ def _bar(pct: float, color: str, width_px: int = 160) -> str:
 def _aggregate(results: list) -> dict:
     correct = sum(1 for r in results if r.correct)
     errors = sum(1 for r in results if r.error)
+    total_score = sum(getattr(r, "score", 0.0) for r in results)
     total = len(results)
     total_prompt = sum(r.prompt_tokens for r in results)
     total_compl = sum(r.completion_tokens for r in results)
@@ -39,6 +40,7 @@ def _aggregate(results: list) -> dict:
         "correct": correct,
         "errors": errors,
         "accuracy": 100.0 * correct / total if total else 0.0,
+        "score": total_score,
         "prompt_tokens": total_prompt,
         "completion_tokens": total_compl,
         "cost_usd": total_cost,
@@ -98,6 +100,9 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
                  f"{len(results_by_model)} model(s) · "
                  f"{sum(len(v) for v in results_by_model.values())} total calls</div>")
 
+    # Max score across models for normalization
+    max_score = max((_aggregate(v)["score"] for v in results_by_model.values()), default=0.0) or 1.0
+
     # ── Overall summary table ─────────────────────────────────────
     parts.append("<div class='section'><h2>Summary (per model)</h2><table>")
     parts.append(
@@ -107,6 +112,7 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
         "<th class='num'>Correct</th>"
         "<th class='num'>Errors</th>"
         "<th>Accuracy</th>"
+        "<th>Score (normalized)</th>"
         "<th>Cost</th>"
         "<th>Avg latency</th>"
         "<th class='num'>Prompt tok</th>"
@@ -117,9 +123,11 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
     for label, results in results_by_model.items():
         agg = _aggregate(results)
         rows_for_sort.append((label, agg))
-    rows_for_sort.sort(key=lambda x: -x[1]["accuracy"])
+    rows_for_sort.sort(key=lambda x: -x[1]["score"])
     for label, agg in rows_for_sort:
         acc_color = "#16a34a" if agg["accuracy"] >= 80 else "#f59e0b" if agg["accuracy"] >= 60 else "#dc2626"
+        norm = 100.0 * agg["score"] / max_score
+        score_color = "#16a34a" if norm >= 80 else "#f59e0b" if norm >= 60 else "#dc2626"
         cost_pct = 100.0 * agg["cost_usd"] / max_cost
         lat_pct = 100.0 * agg["avg_latency_ms"] / max_lat
         parts.append(
@@ -129,6 +137,7 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
             f"<td class='num good'>{agg['correct']}</td>"
             f"<td class='num'>{agg['errors']}</td>"
             f"<td>{_bar(agg['accuracy'], acc_color)} <b>{agg['accuracy']:.1f}%</b></td>"
+            f"<td>{_bar(max(0, norm), score_color)} <b>{agg['score']:.1f}</b> ({norm:.0f}%)</td>"
             f"<td>{_bar(cost_pct, '#0ea5e9', 80)} ${agg['cost_usd']:.4f}</td>"
             f"<td>{_bar(lat_pct, '#f59e0b', 80)} {agg['avg_latency_ms']:.0f}ms</td>"
             f"<td class='num'>{agg['prompt_tokens']:,}</td>"
