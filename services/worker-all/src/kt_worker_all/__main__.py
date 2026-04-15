@@ -35,6 +35,16 @@ def main() -> None:
     except Exception:
         pass
 
+    # LiteLLM's aembedding/acompletion use loop.run_in_executor(None, ...)
+    # which shares the default thread pool. Increase it so LLM calls don't
+    # queue behind each other and starve Hatchet's task scheduling.
+    import asyncio
+    import concurrent.futures
+
+    asyncio.get_event_loop().set_default_executor(
+        concurrent.futures.ThreadPoolExecutor(max_workers=64)
+    )
+
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
     from kt_worker_bottomup.bottom_up import (

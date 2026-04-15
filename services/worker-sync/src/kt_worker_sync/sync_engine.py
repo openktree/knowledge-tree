@@ -18,6 +18,7 @@ Resilience features:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -119,6 +120,11 @@ class SyncEngine:
         t0 = time.monotonic()
         counts: dict[str, int] = {}
 
+        # Fast path: skip entire cycle when nothing changed since last sync.
+        if not await self._has_pending_changes():
+            logger.debug("Sync cycle: no pending changes, skipping")
+            return counts
+
         tables = [
             ("write_raw_sources", self._sync_raw_sources),
             ("write_prohibited_chunks", self._sync_prohibited_chunks),
@@ -133,6 +139,7 @@ class SyncEngine:
         ]
 
         for table_name, sync_fn in tables:
+            await asyncio.sleep(0)  # yield to event loop between tables
             table_t0 = time.monotonic()
             try:
                 counts[table_name] = await sync_fn()
@@ -185,6 +192,72 @@ class SyncEngine:
             )
         )
         await write_session.execute(stmt)
+
+    async def _has_pending_changes(self) -> bool:
+        """Quick check: any work to do across all tables?
+
+        Two queries total:
+        1. UNION ALL of MAX(updated_at) from every write table, compared
+           against stored watermarks.
+        2. EXISTS check on sync_failures for pending retries.
+
+        Returns False when nothing changed since the last sync, letting
+        sync_cycle() skip the full 10-table walk (saves ~20 DB queries
+        on empty cycles that run every minute).
+        """
+        async with self._write_sf() as ws:
+            # All watermarks for this graph in one query
+            wm_rows = (
+                await ws.execute(
+                    select(SyncWatermark.table_name, SyncWatermark.last_synced_at).where(
+                        SyncWatermark.graph_slug == self._graph_slug,
+                    )
+                )
+            ).all()
+            watermarks = {r.table_name: r.last_synced_at for r in wm_rows}
+
+            # MAX(updated_at) from all 10 tables in one round-trip
+            result = await ws.execute(
+                sa_text(
+                    """
+                    SELECT table_name, max_ts FROM (
+                        SELECT 'write_raw_sources' AS table_name, MAX(updated_at) AS max_ts FROM write_raw_sources
+                        UNION ALL SELECT 'write_prohibited_chunks', MAX(updated_at) FROM write_prohibited_chunks
+                        UNION ALL SELECT 'write_facts', MAX(updated_at) FROM write_facts WHERE dedup_status = 'ready'
+                        UNION ALL SELECT 'write_nodes', MAX(updated_at) FROM write_nodes
+                        UNION ALL SELECT 'write_edges', MAX(updated_at) FROM write_edges
+                        UNION ALL SELECT 'write_dimensions', MAX(updated_at) FROM write_dimensions
+                        UNION ALL SELECT 'write_convergence_reports', MAX(updated_at) FROM write_convergence_reports
+                        UNION ALL SELECT 'write_node_counters', MAX(updated_at) FROM write_node_counters
+                        UNION ALL SELECT 'write_node_versions', MAX(updated_at) FROM write_node_versions
+                        UNION ALL SELECT 'write_llm_usage', MAX(updated_at) FROM write_llm_usage
+                    ) sub
+                    """
+                )
+            )
+            for row in result:
+                wm = watermarks.get(row.table_name, _EPOCH)
+                if row.max_ts is not None and row.max_ts > wm:
+                    return True
+
+            # Check for pending retries whose backoff has elapsed
+            now = datetime.now(UTC).replace(tzinfo=None)
+            retry_exists = (
+                await ws.execute(
+                    sa_text(
+                        """
+                        SELECT EXISTS(
+                            SELECT 1 FROM sync_failures
+                             WHERE status = 'pending'
+                               AND next_retry_at <= :now
+                               AND graph_slug = :graph_slug
+                        )
+                        """
+                    ),
+                    {"now": now, "graph_slug": self._graph_slug},
+                )
+            ).scalar_one()
+            return bool(retry_exists)
 
     # ── Denormalized stat refresh ────────────────────────────────────────
 

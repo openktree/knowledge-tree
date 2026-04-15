@@ -50,19 +50,31 @@ def map_task_summary(task: Any, *, has_children: bool = False) -> dict[str, Any]
 
 
 async def annotate_has_children(items: list[dict[str, Any]], *, since: datetime | None = None) -> list[dict[str, Any]]:
-    """Probe each item's ``task_id`` for spawned child workflow runs in parallel.
+    """Probe every item (and its nested children) for spawned child workflow runs in parallel.
 
-    Mutates ``has_children`` in place and returns the same list.
+    Walks the tree so deep expansion works: an item with SDK-native children
+    that itself spawns further workflow runs still gets ``has_children`` set.
+    Mutates in place and returns the same list.
     """
     from kt_hatchet.client import has_child_runs
+
+    def _flatten(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for n in nodes:
+            out.append(n)
+            kids = n.get("children") or []
+            if kids:
+                out.extend(_flatten(kids))
+        return out
 
     async def _probe(item: dict[str, Any]) -> None:
         if item.get("has_children"):
             return
         item["has_children"] = await has_child_runs(item["task_id"], since=since)
 
-    if items:
-        await asyncio.gather(*(_probe(i) for i in items))
+    flat = _flatten(items)
+    if flat:
+        await asyncio.gather(*(_probe(i) for i in flat))
     return items
 
 

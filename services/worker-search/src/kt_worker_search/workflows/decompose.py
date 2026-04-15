@@ -354,6 +354,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                 is_image=False,
                 message_id=input.message_id,
                 conversation_id=input.conversation_id,
+                graph_id=input.graph_id,
             ),
         )
         for sid in text_source_ids
@@ -396,6 +397,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                     source_authors=source_authors,
                     message_id=input.message_id,
                     conversation_id=input.conversation_id,
+                    graph_id=input.graph_id,
                 ),
             )
             entity_output = EntityExtractionOutput.model_validate(entity_result)
@@ -418,6 +420,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                         source_authors=source_authors if i == 0 else [],
                         message_id=input.message_id,
                         conversation_id=input.conversation_id,
+                        graph_id=input.graph_id,
                     ),
                 )
                 for i, chunk in enumerate(fact_chunks)
@@ -647,6 +650,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
                 concept=input.concept,
                 query_context=input.query_context,
                 force=True,
+                graph_id=input.graph_id,
             ),
         )
 

@@ -29,6 +29,7 @@ b16f10 murine melanoma:
     - B16F10
     - B16-F10
     - B16F10 mouse melanoma
+    - B16-F10 murine melanoma
     must_exclude:
     - B16F10 melanoma
     - B16F10 murine melanoma cell line
@@ -42,8 +43,11 @@ bcl2:
     aliases:
     - BCL-2
     - B-cell lymphoma 2
+    - Bcl-2
+    - B-cell leukemia/lymphoma 2
     must_exclude:
     - BCL2 protein
+    - BCL2 gene
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -52,7 +56,8 @@ bcl2:
 belur math:
   alias_gen:
     aliases:
-    - Ramakrishna Math, Belur
+    - Belur Mutt
+    - Belurmath
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -60,6 +65,10 @@ belur math:
     ambiguous: false
     must_include_any: []
 bishnu charan ghosh:
+  alias_gen:
+    aliases:
+    - B. C. Ghosh
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -98,6 +107,7 @@ cellular prion protein:
     - PrP^C
     - PrPC
     - PrP
+    - cellular prion proteins
     must_exclude:
     - cellular prion protein (PrP^C)
     - prion protein
@@ -142,7 +152,10 @@ complementary health care:
   alias_gen:
     aliases:
     - complementary healthcare
-    must_exclude: []
+    must_exclude:
+    - CAM
+    - complementary and alternative medicine
+    - complementary medicine
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -176,6 +189,9 @@ cox-1:
     - cyclooxygenase-1
     - COX1
     - PTGS1
+    - Cyclooxygenase-1
+    - cyclooxygenase 1
+    - prostaglandin-endoperoxide synthase 1
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -192,7 +208,9 @@ crispr:
   alias_gen:
     aliases:
     - Clustered Regularly Interspaced Short Palindromic Repeats
-    must_exclude: []
+    must_exclude:
+    - CRISPR-Cas9
+    - CRISPR/Cas9
 devil’s claw:
   alias_gen:
     aliases:
@@ -200,7 +218,10 @@ devil’s claw:
     - devils claw
     - Harpagophytum
     - Devil's Claw
-    must_exclude: []
+    - devil's-claw
+    - devil claw
+    must_exclude:
+    - Harpagophytum zeyheri
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -220,6 +241,7 @@ dr. christie:
   alias_gen:
     aliases:
     - Doctor Christie
+    - Dr Christie
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -228,7 +250,8 @@ dr. christie:
     must_include_any: []
 'dynamic universal approximation theory: the basic theory for transformer-based large language models':
   alias_gen:
-    aliases: []
+    aliases:
+    - Dynamic Universal Approximation Theory
     must_exclude:
     - Dynamic Universal Approximation Theory
   shell_classify:
@@ -246,6 +269,8 @@ effector t cells:
   alias_gen:
     aliases:
     - effector T cell
+    - T effector cells
+    - Teff cells
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -272,11 +297,15 @@ epidermal growth factor receptors:
 facebook:
   alias_gen:
     aliases:
-    - Meta
     - FB
     - TheFacebook
     - Facebook, Inc.
-    must_exclude: []
+    must_exclude:
+    - Meta
+    - Meta Platforms
+    - Meta Platforms, Inc.
+    - Meta (Facebook)
+    - Meta Platforms, Inc. (Facebook)
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -291,14 +320,25 @@ four bodily humors:
   alias_gen:
     aliases:
     - four humors
+    - four humours
+    - four bodily humours
+    - the four bodily humors
     must_exclude:
     - the four bodily humors
+    - four temperaments
+    - humoral theory
+    - humoralism
   shell_classify:
     is_shell: false
   suggest_disambig:
     ambiguous: false
     must_include_any: []
 general anesthesia:
+  alias_gen:
+    aliases:
+    - general anaesthesia
+    - GA
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -322,6 +362,8 @@ granzyme b:
     aliases:
     - GzmB
     - GrB
+    - GZMB
+    - granzyme-B
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -334,6 +376,7 @@ gravitational space-time:
     - gravitational spacetime
     must_exclude:
     - space-time
+    - spacetime
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -358,6 +401,8 @@ hematopoietic stem cell transplantation:
     - hematopoietic stem cell transplant
     - bone marrow transplant
     - BMT
+    - haematopoietic stem cell transplantation
+    - hematopoietic stem-cell transplantation
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -370,6 +415,7 @@ higher-order theories:
     - Higher Order Theories
     - HOTs
     - Higher-Order Theory
+    - HOT
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -404,8 +450,10 @@ ieee ethically aligned design:
     - IEEE EAD
     - IEEE Ethically-Aligned Design
     - Ethically Aligned Design (IEEE)
-    must_exclude:
+    - EAD
     - Ethically Aligned Design
+    - IEEE - Ethically Aligned Design
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -429,6 +477,7 @@ influenza infection:
     - Flu
     - flu infection
     - The flu
+    - Influenza
     must_exclude:
     - Influenza
     - Influenza virus infection
@@ -452,10 +501,11 @@ itai shani:
 jewish summer camp:
   alias_gen:
     aliases:
+    - Jewish summer camps
+    must_exclude:
+    - Jewish camps
     - Jewish overnight camp
     - Jewish overnight camps
-    - Jewish camps
-    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -465,8 +515,12 @@ k. pattabhi jois:
   alias_gen:
     aliases:
     - K. P. Jois
-    must_exclude:
     - Pattabhi Jois
+    - K Pattabhi Jois
+    - K. Pattabhi-Jois
+    - Krishna Pattabhi Jois
+    must_exclude:
+    - Krishnamacharya Pattabhi Jois
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -474,16 +528,21 @@ k. pattabhi jois:
     must_include_any: []
 klebsiella:
   alias_gen:
-    aliases: []
+    aliases:
+    - Klebsiella spp.
     must_exclude:
     - Klebsiella pneumoniae
-    - Klebsiella spp.
   shell_classify:
     is_shell: false
   suggest_disambig:
     ambiguous: false
     must_include_any: []
 l melloni:
+  alias_gen:
+    aliases:
+    - Lucia Melloni
+    - L. Melloni
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -493,6 +552,8 @@ large language model agents:
   alias_gen:
     aliases:
     - LLM agents
+    - large language model agent
+    - large-language-model agents
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -505,8 +566,13 @@ linear mixed-effects model:
     - LMM
     - LME model
     - linear mixed effects model
-    must_exclude:
+    - LMEM
+    - LME
+    - linear mixed effect model
+    - linear mixed effect models
+    - linear mixed-effects models
     - linear mixed model
+    must_exclude:
     - mixed model
     - mixed-effects model
   shell_classify:
@@ -518,6 +584,8 @@ low energy levels:
   alias_gen:
     aliases:
     - low energy states
+    - low energy level
+    - low-energy levels
     must_exclude:
     - low energy
   shell_classify:
@@ -542,6 +610,8 @@ mcl-1:
     - Myeloid cell leukemia 1
     - myeloid cell leukemia-1
     - BCL2L3
+    - Mcl1
+    - Myeloid cell leukemia-1
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -552,6 +622,8 @@ metastatic prostatic carcinoma:
   alias_gen:
     aliases:
     - metastatic prostate cancer
+    - metastatic prostate carcinoma
+    - metastatic prostatic cancer
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -577,6 +649,10 @@ mirna sponges:
     ambiguous: false
     must_include_any: []
 mitochondrial function:
+  alias_gen:
+    aliases:
+    - mitochondrial functions
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -586,6 +662,7 @@ mosaicml:
   alias_gen:
     aliases:
     - Mosaic ML
+    - MosaicML, Inc.
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -612,8 +689,11 @@ myd88 adapter-like (mal) protein:
     - MyD88 adaptor-like protein
     - TIRAP
     - Toll-interleukin-1 receptor domain-containing adapter protein
-    must_exclude:
+    - MAL
+    - MAL protein
     - MyD88-adapter-like protein
+    - TIR domain-containing adapter protein
+    must_exclude:
     - MyD88-like adapter protein
   shell_classify:
     is_shell: false
@@ -626,8 +706,10 @@ national institutes of health national center for complementary and integrative 
     - NCCIH
     - NIH NCCIH
     - National Center for Complementary and Integrative Health (NCCIH)
-    must_exclude:
     - National Center for Complementary and Integrative Health
+    - National Institutes of Health National Center for Complementary & Integrative
+      Health
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -652,6 +734,7 @@ neuro-functional model:
   alias_gen:
     aliases:
     - neurofunctional model
+    - neuro functional model
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -670,6 +753,10 @@ neurofibrillary tangles:
     ambiguous: false
     must_include_any: []
 neuronal activity:
+  alias_gen:
+    aliases:
+    - neural activity
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -694,6 +781,8 @@ nlrp3 protein:
     - NLR family pyrin domain containing 3
     - NACHT, LRR and PYD domains-containing protein 3
     - CIAS1
+    - NOD-like receptor family pyrin domain containing 3
+    - NOD-like receptor family pyrin domain containing 3 protein
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -711,6 +800,11 @@ normativity:
     ambiguous: false
     must_include_any: []
 north atlantic books:
+  alias_gen:
+    aliases:
+    - North Atlantic Books, Inc.
+    - North Atlantic Books,Inc.
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -731,6 +825,10 @@ osteopathic manipulation:
     aliases:
     - osteopathic manipulative treatment
     - OMT
+    - OMM
+    - osteopathic manipulative medicine
+    - osteopathic manipulative therapy
+    - osteopathic manipulation treatment
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -743,6 +841,10 @@ pd-1 inhibitors:
     - PD-1 inhibitor
     - programmed death-1 inhibitors
     - programmed cell death protein 1 inhibitors
+    - programmed death 1 inhibitors
+    - programmed cell death protein 1 inhibitor
+    - PD1 inhibitors
+    - programmed death-1 inhibitor
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -767,6 +869,10 @@ pgc-1α:
     - PPAR gamma coactivator 1-alpha
     - PGC1α
     - PGC-1alpha
+    - peroxisome proliferator-activated receptor gamma coactivator 1-alpha
+    - PGC-1a
+    - PGC1-α
+    - peroxisome proliferator-activated receptor gamma coactivator 1 alpha
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -784,8 +890,9 @@ physical medicine:
     aliases:
     - PM&R
     - physiatry
-    must_exclude:
     - Physical Medicine and Rehabilitation
+    - physical medicine and rehabilitation
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -796,6 +903,7 @@ pico framework:
     aliases:
     - Population, Intervention, Comparison, Outcome framework
     - PICO model
+    - PICO
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -806,6 +914,7 @@ polyphenolic compounds:
   alias_gen:
     aliases:
     - polyphenols
+    - polyphenolic compound
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -816,6 +925,9 @@ prenatal stress:
   alias_gen:
     aliases:
     - stress during pregnancy
+    - prenatal stresses
+    - pre-natal stress
+    - antenatal stress
     must_exclude:
     - prenatal stress exposure
   shell_classify:
@@ -839,6 +951,9 @@ propensity score model:
     - PS model
     must_exclude:
     - Propensity model
+    - propensity score
+    - Propensity score analysis
+    - Propensity score matching
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -860,6 +975,7 @@ radiation induced xerostomia:
   alias_gen:
     aliases:
     - radiation-induced xerostomia
+    - radiotherapy-induced xerostomia
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -872,6 +988,7 @@ radioactive isotopes:
     - Radioisotopes
     - radionuclides
     - radioactive nuclides
+    - radioactive isotope
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -883,8 +1000,9 @@ rené descartes:
     aliases:
     - Rene Descartes
     - Cartesius
-    must_exclude:
+    - Renatus Cartesius
     - Descartes
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -894,6 +1012,10 @@ rudolf hermann lotze:
   alias_gen:
     aliases:
     - Rudolf Lotze
+    - Hermann Lotze
+    - R. Hermann Lotze
+    - Rudolf H. Lotze
+    - Rudolph Hermann Lotze
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -920,6 +1042,8 @@ soy phytoestrogens:
   alias_gen:
     aliases:
     - soy phytoestrogen
+    - soybean phytoestrogens
+    - soy phyto-oestrogens
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -931,6 +1055,7 @@ spin-up:
     aliases:
     - spinup
     - spin up
+    - spin-ups
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -948,6 +1073,11 @@ sri sankaracarya:
     - Śrī Śankarācārya
     - Adi Shankara
     - Adi Shankaracharya
+    - Sankaracharya
+    - Sri Shankaracarya
+    - Sri Sankaracharya
+    - Sankaracarya
+    - Sri Sankaraacharya
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -958,7 +1088,9 @@ testosterone:
   alias_gen:
     aliases:
     - androst-4-en-17β-ol-3-one
-    must_exclude: []
+    - T
+    must_exclude:
+    - androgen
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -975,8 +1107,8 @@ the force:
     aliases:
     - Force
     - Force (Star Wars)
-    must_exclude:
     - The Force (Star Wars)
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -984,7 +1116,10 @@ the force:
     must_include_any: []
 trustllm benchmark:
   alias_gen:
-    aliases: []
+    aliases:
+    - TrustLLM
+    - Trust LLM benchmark
+    - Trust-LLM benchmark
     must_exclude:
     - TrustLLM
   shell_classify:
@@ -1015,8 +1150,9 @@ vision-and-language models:
     - vision and language models
     - VLMs
     - V&L models
-    must_exclude:
     - vision language models
+    - Vision-Language Models
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -1039,6 +1175,8 @@ zmpste24-/- mice:
     aliases:
     - Zmpste24 knockout mice
     - Zmpste24-deficient mice
+    - Zmpste24 knock-out mice
+    - Zmpste24 null mice
     must_exclude: []
   shell_classify:
     is_shell: false

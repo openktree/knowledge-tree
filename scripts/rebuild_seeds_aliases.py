@@ -49,8 +49,11 @@ async def backfill(session: AsyncSession, dry_run: bool) -> None:
     # Build winner → extra aliases map
     winner_extras: dict[str, set[str]] = {}
     for m in merges:
-        loser_key = m.loser_key
-        winner_key = m.winner_key
+        # operation="merge": source_seed_key=loser, target_seed_key=winner
+        if m.operation != "merge":
+            continue
+        loser_key = m.source_seed_key
+        winner_key = m.target_seed_key
         if not loser_key or not winner_key or loser_key == winner_key:
             continue
         winner_extras.setdefault(winner_key, set()).add(loser_key)

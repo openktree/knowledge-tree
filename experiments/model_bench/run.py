@@ -271,14 +271,24 @@ def _score(task: str, expected: dict, response: dict | None) -> tuple[bool, floa
 
     if task == "alias_gen":
         raw = response.get("aliases", []) if isinstance(response, dict) else []
-        emitted = {str(a).strip().lower() for a in raw if isinstance(a, str) and str(a).strip()}
+        # Strip the seed itself from emissions — models sometimes echo it.
+        seed_name = (expected.get("_seed_name") or "").strip().lower()
+        emitted = {
+            str(a).strip().lower() for a in raw
+            if isinstance(a, str) and str(a).strip()
+            and str(a).strip().lower() != seed_name
+        }
         valid = {s.lower() for s in expected.get("aliases", [])}
         bad = {s.lower() for s in expected.get("must_exclude", [])}
         # Uncurated — neither whitelist nor blacklist; can't judge.
         if not valid and not bad:
             return None, 0.0
         hits_valid = len(emitted & valid)
-        hits_bad = len(emitted & bad)
+        # Strict scoring: every non-whitelisted emission counts as a false
+        # positive (-1). Reflects the production cost: wrong aliases cause
+        # bad seed merges → graph corruption, which is worse than missed
+        # aliases (recoverable via dedup).
+        hits_bad = len(emitted - valid)
         score = float(hits_valid - hits_bad)
         if hits_bad > 0:
             return False, score
@@ -485,7 +495,8 @@ async def _call_batch(
             error=error,
         )
         if error is None:
-            correct, score = _score(task, it.expected, scored_resp)
+            expected_with_seed = {**it.expected, "_seed_name": it.name}
+            correct, score = _score(task, expected_with_seed, scored_resp)
             r.correct = correct
             r.score = score
         else:

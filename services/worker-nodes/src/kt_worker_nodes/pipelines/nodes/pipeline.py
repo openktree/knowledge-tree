@@ -59,11 +59,13 @@ class NodeCreationPipeline:
                     t.embedding = emb
             except Exception:
                 logger.exception("Batch embedding failed, falling back to individual")
-                for t in active_tasks:
+                for i, t in enumerate(active_tasks):
                     try:
                         t.embedding = await ctx.embedding_service.embed_text(t.name)
                     except Exception:
                         logger.debug("Individual embed failed for '%s'", t.name, exc_info=True)
+                    if i % 10 == 9:
+                        await asyncio.sleep(0)  # yield to event loop periodically
 
         # Sequential classify: dedup check + pool search (fast DB reads)
         # Track tasks already seen in this batch so we don't create duplicates

@@ -188,7 +188,7 @@ async def run_workflow(
             input=json.dumps(input),
             options=options,
         )
-        return ref.result()
+        return await ref.aio_result()
     except Exception as exc:
         logger.error("Failed to run workflow %s: %s", workflow_name, exc)
         raise RuntimeError(

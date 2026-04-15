@@ -176,8 +176,8 @@ synthesis:
 node_pipeline:
   dimension_fact_limit: 100
   dimension_saturation_ratio: 0.9
-#   dimension_model: ""
-#   dimension_thinking_level: ""
+  dimension_model: "openrouter/xiaomi/mimo-v2-flash:nitro"
+  dimension_thinking_level: ""
 #   dimension_pool_multiplier: 2
 #   definition_model: ""
 #   definition_thinking_level: ""

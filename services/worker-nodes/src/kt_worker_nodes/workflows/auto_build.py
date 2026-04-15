@@ -6,6 +6,7 @@ candidate-based resolver in the node pipeline (no co-occurrence shortcut).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import cast
@@ -191,6 +192,8 @@ async def _promote_seeds(state: WorkerState, settings: object, ctx: Context) -> 
                 except Exception:
                     logger.warning("Error promoting seed %s", seed.key, exc_info=True)
 
+                await asyncio.sleep(0)  # yield to event loop between seeds
+
             await ws.commit()
 
         promoted += batch_promoted
@@ -333,6 +336,8 @@ async def _absorb_merged_nodes(state: WorkerState, settings: object, ctx: Contex
             except Exception:
                 logger.debug("Error absorbing seed %s", loser_seed.key, exc_info=True)
 
+            await asyncio.sleep(0)  # yield to event loop between absorptions
+
         await ws.commit()
 
     logger.info("Absorbed %d merged nodes", absorbed)
@@ -372,8 +377,6 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
             except Exception:
                 logger.debug("Error preparing dispatch for %s", entry.get("promoted_node_key"), exc_info=True)
 
-    import asyncio
-
     batch_size = settings.graph_build_auto_recalculate_batch_size  # type: ignore[attr-defined]
 
     async def _dispatch_one(node_key: str, node_uuid: str, entry: dict) -> bool:
@@ -397,6 +400,7 @@ async def _check_fact_stale_nodes(state: WorkerState, settings: object, ctx: Con
         batch = dispatch_entries[i : i + batch_size]
         results = await asyncio.gather(*(_dispatch_one(nk, nu, e) for nk, nu, e in batch))
         dispatched += sum(1 for r in results if r)
+        await asyncio.sleep(0)  # yield to event loop between dispatch batches
 
     logger.info("Dispatched %d fact-stale node pipeline tasks", dispatched)
     return dispatched

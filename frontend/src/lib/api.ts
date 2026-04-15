@@ -1243,13 +1243,13 @@ export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
 }
 
 export async function getWorkflowProgress(workflowRunId: string) {
-  return graphRequest<PipelineSnapshotResponse>(
+  return request<PipelineSnapshotResponse>(
     `/workflows/${encodeURIComponent(workflowRunId)}/progress`
   );
 }
 
 export async function getTaskChildren(workflowRunId: string, taskId: string) {
-  return graphRequest<TaskChildrenResponse>(
+  return request<TaskChildrenResponse>(
     `/workflows/${encodeURIComponent(workflowRunId)}/tasks/${encodeURIComponent(taskId)}/children`
   );
 }

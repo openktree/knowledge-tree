@@ -73,6 +73,10 @@ _CSS = """
   table { border-collapse:collapse; width:100%; margin:8px 0; font-size:0.87em; }
   th,td { border:1px solid #e2e8f0; padding:5px 8px; text-align:left; vertical-align:middle; }
   th { background:#f1f5f9; font-weight:600; }
+  th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+  th.sortable:hover { background:#e2e8f0; }
+  th.sort-asc::after  { content:' ▲'; font-size:0.75em; color:#64748b; }
+  th.sort-desc::after { content:' ▼'; font-size:0.75em; color:#64748b; }
   tr:hover td { background:#f8fafc; }
   .num { text-align:right; font-variant-numeric:tabular-nums; }
   .neutral { color:#94a3b8; }
@@ -88,6 +92,41 @@ _CSS = """
   .pill { display:inline-block; padding:1px 6px; border-radius:8px;
           font-size:0.75em; font-family:ui-monospace,Consolas,monospace; }
   .err  { color:#dc2626; font-size:0.78em; }
+"""
+
+_SORT_JS = """
+<script>
+(function(){
+  function parseVal(td) {
+    var t = td.dataset.val !== undefined ? td.dataset.val : td.innerText.trim();
+    var n = parseFloat(t.replace(/[^0-9.\\-]/g, ''));
+    return isNaN(n) ? t.toLowerCase() : n;
+  }
+  document.querySelectorAll('th.sortable').forEach(function(th) {
+    th.addEventListener('click', function() {
+      var table = th.closest('table');
+      var idx = Array.from(th.parentNode.children).indexOf(th);
+      var asc = th.classList.contains('sort-asc') ? false : true;
+      table.querySelectorAll('th.sortable').forEach(function(h) {
+        h.classList.remove('sort-asc','sort-desc');
+      });
+      th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+      var tbody = table.querySelector('tbody') || table;
+      var rows = Array.from(tbody.querySelectorAll('tr')).filter(function(r){
+        return r.querySelector('td');
+      });
+      rows.sort(function(a,b){
+        var av = parseVal(a.children[idx]);
+        var bv = parseVal(b.children[idx]);
+        if (av < bv) return asc ? -1 : 1;
+        if (av > bv) return asc ? 1 : -1;
+        return 0;
+      });
+      rows.forEach(function(r){ tbody.appendChild(r); });
+    });
+  });
+})();
+</script>
 """
 
 
@@ -113,16 +152,17 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
     parts.append("<div class='section'><h2>Summary (per model)</h2><table>")
     parts.append(
         "<tr>"
-        "<th>Model</th>"
-        "<th class='num'>N</th>"
-        "<th class='num'>Correct</th>"
-        "<th class='num'>Errors</th>"
-        "<th>Accuracy</th>"
-        "<th>Score (normalized)</th>"
-        "<th>Cost</th>"
-        "<th>Avg latency</th>"
-        "<th class='num'>Prompt tok</th>"
-        "<th class='num'>Compl tok</th>"
+        "<th class='sortable'>Model</th>"
+        "<th class='sortable num'>N</th>"
+        "<th class='sortable num'>Correct</th>"
+        "<th class='sortable num'>Errors</th>"
+        "<th class='sortable'>Accuracy</th>"
+        "<th class='sortable'>Score (normalized)</th>"
+        "<th class='sortable'>Cost</th>"
+        "<th class='sortable'>Avg latency</th>"
+        "<th class='sortable num'>Prompt tok</th>"
+        "<th class='sortable num'>Compl tok</th>"
+        "<th class='sortable num'>Cost/point</th>"
         "</tr>"
     )
     rows_for_sort = []
@@ -136,18 +176,22 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
         score_color = "#16a34a" if norm >= 80 else "#f59e0b" if norm >= 60 else "#dc2626"
         cost_pct = 100.0 * agg["cost_usd"] / max_cost
         lat_pct = 100.0 * agg["avg_latency_ms"] / max_lat
+        cost_per_point = agg["cost_usd"] / agg["score"] if agg["score"] > 0 else None
+        cpp_str = f"${cost_per_point:.4f}" if cost_per_point is not None else "N/A"
+        cpp_val = f"{cost_per_point:.6f}" if cost_per_point is not None else "9999"
         parts.append(
             "<tr>"
             f"<td class='mono'>{_esc(label)}</td>"
             f"<td class='num'>{agg['n']}</td>"
             f"<td class='num good'>{agg['correct']}</td>"
             f"<td class='num'>{agg['errors']}</td>"
-            f"<td>{_bar(agg['accuracy'], acc_color)} <b>{agg['accuracy']:.1f}%</b></td>"
-            f"<td>{_bar(max(0, norm), score_color)} <b>{agg['score']:.1f}</b> ({norm:.0f}%)</td>"
-            f"<td>{_bar(cost_pct, '#0ea5e9', 80)} ${agg['cost_usd']:.4f}</td>"
-            f"<td>{_bar(lat_pct, '#f59e0b', 80)} {agg['avg_latency_ms']:.0f}ms</td>"
+            f"<td data-val='{agg['accuracy']:.2f}'>{_bar(agg['accuracy'], acc_color)} <b>{agg['accuracy']:.1f}%</b></td>"
+            f"<td data-val='{agg['score']:.2f}'>{_bar(max(0, norm), score_color)} <b>{agg['score']:.1f}</b> ({norm:.0f}%)</td>"
+            f"<td data-val='{agg['cost_usd']:.6f}'>{_bar(cost_pct, '#0ea5e9', 80)} ${agg['cost_usd']:.4f}</td>"
+            f"<td data-val='{agg['avg_latency_ms']:.0f}'>{_bar(lat_pct, '#f59e0b', 80)} {agg['avg_latency_ms']:.0f}ms</td>"
             f"<td class='num'>{agg['prompt_tokens']:,}</td>"
             f"<td class='num'>{agg['completion_tokens']:,}</td>"
+            f"<td class='num' data-val='{cpp_val}'>{cpp_str}</td>"
             "</tr>"
         )
     parts.append("</table></div>")
@@ -250,6 +294,7 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
             parts.append("</table></details>")
         parts.append("</details>")
 
+    parts.append(_SORT_JS)
     parts.append("</body></html>")
     out_path.write_text("\n".join(parts), encoding="utf-8")
     print(f"HTML report written: {out_path}")

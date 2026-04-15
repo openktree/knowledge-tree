@@ -79,6 +79,32 @@ function formatDuration(ms: number): string {
   return `${mins}m${remSecs}s`;
 }
 
+function useNow(active: boolean, intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [active, intervalMs]);
+  return now;
+}
+
+function TaskRuntime({ task }: { task: PipelineTaskItem }) {
+  const isRunning = task.status.toUpperCase() === "RUNNING";
+  const now = useNow(isRunning);
+  let ms: number | null = task.duration_ms ?? null;
+  if (isRunning && task.started_at) {
+    const started = Date.parse(task.started_at);
+    if (!Number.isNaN(started)) ms = Math.max(0, now - started);
+  }
+  if (ms == null) return null;
+  return (
+    <span className="text-xs tabular-nums text-muted-foreground">
+      {formatDuration(ms)}
+    </span>
+  );
+}
+
 function statusIcon(status: NodeStatus) {
   switch (status) {
     case "completed":
@@ -164,11 +190,7 @@ function TaskRow({ task, depth, workflowRunId, nodeType }: TaskRowProps) {
             {children.length}
           </Badge>
         )}
-        {task.duration_ms != null && (
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {formatDuration(task.duration_ms)}
-          </span>
-        )}
+        <TaskRuntime task={task} />
       </div>
       {expanded && (
         <>

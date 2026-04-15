@@ -55,19 +55,12 @@ async def _build_task_items(details: object) -> list[PipelineTaskItem]:
     return [PipelineTaskItem(**i) for i in items]
 
 
-@router.get(
-    "/conversations/{conversation_id}/messages/{message_id}/progress",
-    response_model=ProgressResponse,
-)
-async def get_message_progress(
+async def _get_message_progress_impl(
     conversation_id: str,
     message_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession,
 ) -> ProgressResponse:
-    """Get live progress for a workflow attached to a conversation message.
-
-    Merges database message state with Hatchet task tree status.
-    """
+    """Shared implementation for message progress lookup."""
     conv_repo = ConversationRepository(session)
     msg = await conv_repo.get_message(uuid.UUID(message_id))
     if msg is None:
@@ -112,6 +105,19 @@ async def get_message_progress(
         created_edges=msg.created_edges,
         tasks=task_items,
     )
+
+
+@router.get(
+    "/conversations/{conversation_id}/messages/{message_id}/progress",
+    response_model=ProgressResponse,
+)
+async def get_message_progress(
+    conversation_id: str,
+    message_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> ProgressResponse:
+    """Get live progress for a workflow attached to a conversation message."""
+    return await _get_message_progress_impl(conversation_id, message_id, session)
 
 
 @router.get(

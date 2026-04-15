@@ -19,7 +19,20 @@ models:
   - id: openrouter/google/gemma-4-26b-a4b-it:nitro
     label: gemma-4-26b-a4b:nitro
   - id: openrouter/openai/gpt-oss-120b:nitro
+    reasoning: {effort: "minimal"}
     label: gpt-oss-120b:nitro
+  - id: openrouter/anthropic/claude-haiku-4.5
+    label: claude-haiku-4.5 (no-think)
+    reasoning: {effort: "minimal"}
+  - id: openrouter/google/gemini-3-flash-preview
+    label: gemini-3-flash-preview (no-think)
+    reasoning: {effort: "minimal"}
+  - id: openrouter/openai/gpt-5.4-mini
+    label: gpt-5.4-mini (no-think)
+    reasoning: {effort: "minimal"}
+  - id: openrouter/qwen/qwen3.6-plus
+    label: qwen3.6-plus (no-think)
+    reasoning: {effort: "minimal"}
 
 # Pricing overrides — $ per 1M tokens. If a model isn't listed here, the
 # bench falls back to LiteLLM's built-in completion_cost() (may be stale).
@@ -49,6 +62,18 @@ pricing:
   "openrouter/openai/gpt-oss-120b:nitro":
     input: 0.09
     output: 0.36
+  "openrouter/anthropic/claude-haiku-4.5":
+    input: 1.0
+    output: 5.0
+  "openrouter/google/gemini-3-flash-preview":
+    input: 0.5
+    output: 3.0
+  "openrouter/openai/gpt-5.4-mini":
+    input: 0.75
+    output: 4.5
+  "openrouter/qwen/qwen3.6-plus":
+    input: 0.5
+    output: 3.0
 
 tasks:
   - alias_gen

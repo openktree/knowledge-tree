@@ -299,7 +299,14 @@ async def run_bench(config_path: Path) -> None:
 
     cache = Cache(here / str(config.get("cache_file", "bench_cache.jsonl")))
     embedder = EmbeddingService()
+    emb_cache_path = here / str(config.get("emb_cache_file", "emb_cache.json"))
     emb_cache: dict[str, list[float]] = {}
+    if emb_cache_path.exists():
+        try:
+            emb_cache = json.loads(emb_cache_path.read_text(encoding="utf-8"))
+            print(f"Loaded {len(emb_cache)} cached embeddings from {emb_cache_path.name}")
+        except Exception:
+            emb_cache = {}
 
     models = config.get("models", []) or []
     pricing_map = config.get("pricing", {}) or {}
@@ -349,6 +356,9 @@ async def run_bench(config_path: Path) -> None:
         results_by_model.setdefault(r.model, []).append(r)
         status = f"{len(r.hits)}✓/{len(good)}  -{len(r.blacklist_hits)}✗" if r.error is None else "ERR"
         print(f"  [{r.model[:30]:30}] src{r.source_id:2}  {r.title[:35]:35}  {status:12}  ${r.cost_usd:.5f}  {r.latency_ms:5d}ms")
+
+    emb_cache_path.write_text(json.dumps(emb_cache), encoding="utf-8")
+    print(f"Saved {len(emb_cache)} embeddings to {emb_cache_path.name}")
 
     out_path = here / str(config.get("output_html", "report.html"))
     generate_report(config, results_by_model, gt_by_id, out_path)

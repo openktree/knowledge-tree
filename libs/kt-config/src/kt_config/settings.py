@@ -547,7 +547,7 @@ class Settings(BaseSettings):
     entity_extraction_batch_size: int = 10
     entity_extraction_concurrency: int = 4
     synthesis_model: str = ""
-    dimension_model: str = ""
+    dimension_model: str = "openrouter/xiaomi/mimo-v2-flash:nitro"
     chat_model: str = ""
     orchestrator_model: str = ""
     scope_model: str = ""  # empty = use orchestrator_model
@@ -560,7 +560,7 @@ class Settings(BaseSettings):
     # Per-role thinking/reasoning effort (empty string = don't send parameter)
     # Valid values: "none", "low", "medium", "high" (model-dependent)
     default_thinking_level: str = ""
-    decomposition_thinking_level: str = "low"
+    decomposition_thinking_level: str = ""
     file_decomposition_thinking_level: str = ""
     synthesis_thinking_level: str = ""
     dimension_thinking_level: str = ""

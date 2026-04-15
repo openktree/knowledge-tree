@@ -272,7 +272,8 @@ async def dedup_pending_facts(
 
         return results
 
-    # Run searches in parallel batches
+    # Run searches in parallel batches, yielding between each to avoid
+    # starving the event loop when there are many batches.
     for batch_start in range(0, n, batch_size):
         batch_end = min(batch_start + batch_size, n)
         batch_results = await asyncio.gather(*[_search_one(i) for i in range(batch_start, batch_end)])
@@ -284,40 +285,53 @@ async def dedup_pending_facts(
                 else:
                     edges.append((i_idx, j_idx))
 
+        await asyncio.sleep(0)
+
     components = union_find_components(n, edges)
     ctx.log(f"dedup({graph_slug}): search done — {len(edges)} edges, {len(components)} components")
 
     # ── 5. Merge per component ───────────────────────────────────────
+    # Batch all merges into a single session, committing every
+    # _MERGE_COMMIT_EVERY components to checkpoint progress and
+    # yield to the event loop between phases.
+    _MERGE_COMMIT_EVERY = 50
     surviving_canonicals: list[uuid.UUID] = []
     merged_count = 0
     loser_ids: list[uuid.UUID] = []
 
-    for component in components:
-        member_ids = [snapshot[i][0] for i in component]
+    async with write_session_factory() as merge_session:  # type: ignore[misc]
+        for comp_idx, component in enumerate(components):
+            member_ids = [snapshot[i][0] for i in component]
 
-        # Check if any member matched an existing ready fact
-        canonical: uuid.UUID | None = None
-        for idx in component:
-            if idx in ready_matches:
-                canonical = ready_matches[idx]
-                break
+            # Check if any member matched an existing ready fact
+            canonical: uuid.UUID | None = None
+            for idx in component:
+                if idx in ready_matches:
+                    canonical = ready_matches[idx]
+                    break
 
-        if canonical is None:
-            # Deterministic tiebreaker: smallest UUID in the component.
-            canonical = min(member_ids)
+            if canonical is None:
+                # Deterministic tiebreaker: smallest UUID in the component.
+                canonical = min(member_ids)
 
-        # Merge all non-canonical members
-        async with write_session_factory() as merge_session:  # type: ignore[misc]
+            # Merge all non-canonical members
             for member_id in member_ids:
                 if member_id == canonical:
                     continue
                 await merge_into_fast(merge_session, member_id, canonical)
                 loser_ids.append(member_id)
                 merged_count += 1
-            await merge_session.commit()
 
-        if canonical in snapshot_ids_set:
-            surviving_canonicals.append(canonical)
+            if canonical in snapshot_ids_set:
+                surviving_canonicals.append(canonical)
+
+            # Periodic commit + yield to avoid starving the event loop
+            if (comp_idx + 1) % _MERGE_COMMIT_EVERY == 0:
+                await merge_session.commit()
+                await asyncio.sleep(0)
+
+        # Final commit for remaining components
+        await merge_session.commit()
 
     ctx.log(f"dedup({graph_slug}): merged {merged_count}, {len(surviving_canonicals)} surviving")
 
