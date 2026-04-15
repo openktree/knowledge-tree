@@ -41,9 +41,7 @@ def main() -> None:
     import asyncio
     import concurrent.futures
 
-    asyncio.get_event_loop().set_default_executor(
-        concurrent.futures.ThreadPoolExecutor(max_workers=64)
-    )
+    asyncio.get_event_loop().set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
 
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan

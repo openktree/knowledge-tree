@@ -31,9 +31,9 @@ async def main() -> None:
 
     async with engine.connect() as conn:
         await conn.execute(text(f"SET search_path TO {SCHEMA}"))
-        result = await conn.execute(text(
-            "SELECT id, concept FROM nodes WHERE concept NOT IN :roots"
-        ).bindparams(roots=tuple(ROOT_CONCEPTS)))
+        result = await conn.execute(
+            text("SELECT id, concept FROM nodes WHERE concept NOT IN :roots").bindparams(roots=tuple(ROOT_CONCEPTS))
+        )
         nodes = [(str(row[0]), row[1]) for row in result.fetchall()]
 
     await engine.dispose()

@@ -39,7 +39,5 @@ async def auto_build_graph_scoped(
     """Dispatch auto-build on a specific graph."""
     from kt_api.dispatch import dispatch_with_graph
 
-    run_id = await dispatch_with_graph(
-        "auto_build_graph", {}, graph_id=str(ctx.graph.id)
-    )
+    run_id = await dispatch_with_graph("auto_build_graph", {}, graph_id=str(ctx.graph.id))
     return {"status": "started", "workflow_run_id": run_id, "graph": ctx.graph.slug}

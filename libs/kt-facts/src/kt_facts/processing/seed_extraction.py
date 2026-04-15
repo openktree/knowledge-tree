@@ -60,8 +60,8 @@ async def store_seeds_from_extracted_nodes(
 
     # Pass 1: collect per-seed data grouped by key
     seed_data: dict[str, dict[str, Any]] = {}  # key -> {name, node_type, aliases, ...}
-    seed_links: list[dict[str, Any]] = []       # [{seed_key, fact_id, ...}]
-    fact_to_seeds: dict[object, list[str]] = {} # fact_id -> [seed_keys]
+    seed_links: list[dict[str, Any]] = []  # [{seed_key, fact_id, ...}]
+    fact_to_seeds: dict[object, list[str]] = {}  # fact_id -> [seed_keys]
 
     for node in extracted_nodes:
         name = node.get("name")
@@ -100,12 +100,14 @@ async def store_seeds_from_extracted_nodes(
                 continue
             fact = all_facts[idx - 1]
             fact_id = fact.id
-            seed_links.append({
-                "seed_key": seed_key,
-                "fact_id": fact_id,
-                "extraction_context": (fact.content[:500] if hasattr(fact, "content") and fact.content else None),
-                "extraction_role": extraction_role,
-            })
+            seed_links.append(
+                {
+                    "seed_key": seed_key,
+                    "fact_id": fact_id,
+                    "extraction_context": (fact.content[:500] if hasattr(fact, "content") and fact.content else None),
+                    "extraction_role": extraction_role,
+                }
+            )
             fact_to_seeds.setdefault(fact_id, []).append(seed_key)
 
     if not seed_data:
@@ -270,7 +272,7 @@ async def store_seeds_from_extracted_nodes(
     for fact_id, seed_keys_in_fact in remapped_fact_to_seeds.items():
         unique_keys = list(dict.fromkeys(seed_keys_in_fact))
         for i, key_a in enumerate(unique_keys):
-            for key_b in unique_keys[i + 1:]:
+            for key_b in unique_keys[i + 1 :]:
                 a, b = sorted([key_a, key_b])
                 edge_candidates.append({"seed_key_a": a, "seed_key_b": b, "fact_id": str(fact_id)})
 
@@ -284,12 +286,16 @@ async def store_seeds_from_extracted_nodes(
                 try:
                     async with write_seed_repo._session.begin_nested():
                         await write_seed_repo.upsert_edge_candidate(
-                            ec["seed_key_a"], ec["seed_key_b"], ec["fact_id"],
+                            ec["seed_key_a"],
+                            ec["seed_key_b"],
+                            ec["fact_id"],
                         )
                 except Exception:
                     logger.debug(
                         "Edge candidate upsert failed for %s<->%s",
-                        ec["seed_key_a"], ec["seed_key_b"], exc_info=True,
+                        ec["seed_key_a"],
+                        ec["seed_key_b"],
+                        exc_info=True,
                     )
 
     return total_links, list(representatives.keys())
@@ -386,7 +392,10 @@ async def _reroute_facts_on_ambiguous_parents(
         except Exception:
             logger.debug(
                 "Failed to reroute fact %s from parent '%s' to child '%s'",
-                fact_id, parent_key, best_key, exc_info=True,
+                fact_id,
+                parent_key,
+                best_key,
+                exc_info=True,
             )
 
     if rerouted:

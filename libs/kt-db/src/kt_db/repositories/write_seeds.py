@@ -209,6 +209,7 @@ class WriteSeedRepository:
     async def unlink_fact(self, seed_key: str, fact_id: uuid.UUID) -> int:
         """Remove a fact link from a seed. Returns number of rows deleted."""
         from sqlalchemy import delete as _delete
+
         result = await self._session.execute(
             _delete(WriteSeedFact).where(
                 WriteSeedFact.seed_key == seed_key,
@@ -1533,9 +1534,7 @@ class WriteSeedRepository:
     async def set_status(self, seed_key: str, status: str) -> None:
         """Update a seed's status field."""
         await self._session.execute(
-            update(WriteSeed)
-            .where(WriteSeed.key == seed_key)
-            .values(status=status, updated_at=func.now())
+            update(WriteSeed).where(WriteSeed.key == seed_key).values(status=status, updated_at=func.now())
         )
 
     async def find_seeds_by_keys_or_aliases(

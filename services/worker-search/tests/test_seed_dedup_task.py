@@ -49,7 +49,7 @@ async def test_seed_dedup_processes_pending_seeds(mock_session: AsyncMock) -> No
         ) as mock_dedup,
     ):
         mock_dedup.side_effect = [
-            "key_a",       # Alpha: no merge
+            "key_a",  # Alpha: no merge
             "key_winner",  # Beta: merged into key_winner
         ]
 

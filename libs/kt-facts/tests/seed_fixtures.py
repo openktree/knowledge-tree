@@ -78,9 +78,7 @@ def make_seed_repo_mock(**overrides: object) -> MagicMock:
     repo.upsert_edge_candidates_batch = AsyncMock()
     repo._session = MagicMock()
     repo._session.execute = AsyncMock()
-    repo._session.begin_nested = MagicMock(
-        return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
-    )
+    repo._session.begin_nested = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock()))
     for key, val in overrides.items():
         setattr(repo, key, val)
     return repo

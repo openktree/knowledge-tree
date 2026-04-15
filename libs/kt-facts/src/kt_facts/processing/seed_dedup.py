@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 # ── Pydantic output schemas (enforced via json_schema response_format) ──
 
+
 class MultiplexDecision(BaseModel):
     """Structured output for seed dedup multiplex LLM call."""
 
@@ -322,10 +323,17 @@ async def deduplicate_seed(
                     "merge_into_path: target '%s' has no routes, falling back to merge_into_seed",
                     target_key,
                 )
-                winner = await _merge_pair(seed_key, target_key, write_seed_repo, reason=f"llm_multiplex:merge_into_path_flat_fallback:{reason}")
+                winner = await _merge_pair(
+                    seed_key,
+                    target_key,
+                    write_seed_repo,
+                    reason=f"llm_multiplex:merge_into_path_flat_fallback:{reason}",
+                )
                 return winner
         logger.info("Merging '%s' into path '%s' of '%s' (reason: %s)", name, path_key, target_key, reason)
-        winner = await _merge_pair(seed_key, path_key, write_seed_repo, reason=f"llm_multiplex:merge_into_path:{reason}")
+        winner = await _merge_pair(
+            seed_key, path_key, write_seed_repo, reason=f"llm_multiplex:merge_into_path:{reason}"
+        )
         return winner
 
     elif action == "new_disambig_path" and target is not None:
@@ -348,7 +356,10 @@ async def deduplicate_seed(
         # seed still promoted to active but no merge/disambig happened.
         logger.warning(
             "Multiplex unknown action '%s' for '%s' (candidates=%d) — no merge (fallback). response=%s",
-            action, name, len(all_candidates), response,
+            action,
+            name,
+            len(all_candidates),
+            response,
         )
         await _promote_pending(seed_key, write_seed_repo)
         return seed_key
@@ -436,11 +447,7 @@ async def _fill_unassigned_via_embedding(
     Mutates `assignments` in place.
     """
     # Collect facts still needing an assignment
-    unassigned = [
-        (str(fid), content)
-        for fid, content in facts
-        if not assignments.get(str(fid))
-    ]
+    unassigned = [(str(fid), content) for fid, content in facts if not assignments.get(str(fid))]
     if not unassigned or not paths:
         return
 
@@ -506,9 +513,7 @@ async def _route_facts_to_paths(
     settings = get_settings()
     model_id = settings.seed_dedup_llm_model or settings.decomposition_model
     label_lines = "\n".join(f"  [{i + 1}] {p}" for i, p in enumerate(path_labels))
-    fact_lines = "\n".join(
-        f"  F{i + 1} (id={fid}): {content[:400]}" for i, (fid, content) in enumerate(facts)
-    )
+    fact_lines = "\n".join(f"  F{i + 1} (id={fid}): {content[:400]}" for i, (fid, content) in enumerate(facts))
     user = (
         f'Canonical name: "{name}"\n\nPaths:\n{label_lines}\n\nFacts:\n{fact_lines}\n\n'
         'Return JSON: {"assignments": [{"fact_id": "...", "path_label": "..."}, ...]}.'
@@ -566,20 +571,24 @@ async def _create_seed_routes_with_facts(
     for fact_id, _ in all_facts:
         assigned_label = fact_assignments.get(str(fact_id))
         if assigned_label and assigned_label in path_fact_ids:
-            path_fact_ids[assigned_label].append(fact_id if isinstance(fact_id, _uuid.UUID) else _uuid.UUID(str(fact_id)))
+            path_fact_ids[assigned_label].append(
+                fact_id if isinstance(fact_id, _uuid.UUID) else _uuid.UUID(str(fact_id))
+            )
 
     # Create child seeds via split_seed
     new_seeds = []
     fact_assignments_by_key: dict[str, list[_uuid.UUID]] = {}
     for label in path_labels:
         child_key = make_seed_key(label)
-        new_seeds.append({
-            "key": child_key,
-            "name": label,
-            "node_type": parent_seed.node_type,
-            "entity_subtype": parent_seed.entity_subtype,
-            "label": label,
-        })
+        new_seeds.append(
+            {
+                "key": child_key,
+                "name": label,
+                "node_type": parent_seed.node_type,
+                "entity_subtype": parent_seed.entity_subtype,
+                "label": label,
+            }
+        )
         fact_assignments_by_key[child_key] = path_fact_ids.get(label, [])
 
     try:
@@ -620,7 +629,7 @@ async def _llm_multiplex(
     if incoming_facts:
         lines.append("Incoming sample facts:")
         for i, (_, content) in enumerate(incoming_facts[:3], 1):
-            lines.append(f'  [{i}] {str(content)[:240]}')
+            lines.append(f"  [{i}] {str(content)[:240]}")
     lines.append("")
 
     lines.append(f"CANDIDATES ({len(candidates)}):")
@@ -690,13 +699,15 @@ async def _apply_disambig_path(
             existing_child_key = make_seed_key(existing_label or target_seed.name)
             await write_seed_repo.split_seed(
                 original_key=target_key,
-                new_seeds=[{
-                    "key": existing_child_key,
-                    "name": existing_label or target_seed.name,
-                    "node_type": target_seed.node_type,
-                    "entity_subtype": target_seed.entity_subtype,
-                    "label": existing_label or target_seed.name,
-                }],
+                new_seeds=[
+                    {
+                        "key": existing_child_key,
+                        "name": existing_label or target_seed.name,
+                        "node_type": target_seed.node_type,
+                        "entity_subtype": target_seed.entity_subtype,
+                        "label": existing_label or target_seed.name,
+                    }
+                ],
                 fact_assignments={existing_child_key: existing_facts},
                 reason="multiplex_new_disambig_path:promote_existing",
             )
@@ -709,13 +720,15 @@ async def _apply_disambig_path(
         # Create the child seed for incoming and move its facts there
         await write_seed_repo.split_seed(
             original_key=target_key,
-            new_seeds=[{
-                "key": incoming_child_key,
-                "name": incoming_label,
-                "node_type": (incoming_seed.node_type if incoming_seed else target_seed.node_type),
-                "entity_subtype": (incoming_seed.entity_subtype if incoming_seed else None),
-                "label": incoming_label,
-            }],
+            new_seeds=[
+                {
+                    "key": incoming_child_key,
+                    "name": incoming_label,
+                    "node_type": (incoming_seed.node_type if incoming_seed else target_seed.node_type),
+                    "entity_subtype": (incoming_seed.entity_subtype if incoming_seed else None),
+                    "label": incoming_label,
+                }
+            ],
             fact_assignments={incoming_child_key: incoming_facts},
             reason="multiplex_new_disambig_path:incoming",
         )
@@ -800,9 +813,7 @@ async def _merge_pair(
         logger.info("Merged seed '%s' → '%s' (reason: %s)", loser_key, winner_key, reason)
         return winner_key
     except Exception:
-        logger.warning(
-            "Merge failed for '%s'→'%s', skipping", loser_key, winner_key, exc_info=True
-        )
+        logger.warning("Merge failed for '%s'→'%s', skipping", loser_key, winner_key, exc_info=True)
         return incoming_key
 
 

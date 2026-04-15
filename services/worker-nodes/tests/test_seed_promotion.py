@@ -110,9 +110,7 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(
-            name="Obscure Topic", node_type="concept", seed_key=make_seed_key("Obscure Topic")
-        )
+        task = CreateNodeTask(name="Obscure Topic", node_type="concept", seed_key=make_seed_key("Obscure Topic"))
         task.embedding = [0.1] * 10
         seed_key = make_seed_key("Obscure Topic")
 
@@ -155,9 +153,7 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(
-            name="No Write Session", node_type="concept", seed_key=make_seed_key("No Write Session")
-        )
+        task = CreateNodeTask(name="No Write Session", node_type="concept", seed_key=make_seed_key("No Write Session"))
         task.embedding = [0.1] * 10
 
         await pipeline._classify_task(task, state)
@@ -190,9 +186,7 @@ class TestSeedAwareClassification:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(
-            name="Merged Topic", node_type="concept", seed_key=make_seed_key("Merged Topic")
-        )
+        task = CreateNodeTask(name="Merged Topic", node_type="concept", seed_key=make_seed_key("Merged Topic"))
         task.embedding = [0.1] * 10
         seed_key = make_seed_key("Merged Topic")
 
@@ -246,9 +240,7 @@ class TestSeedPromotion:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(
-            name="Quantum Physics", node_type="concept", seed_key=make_seed_key("Quantum Physics")
-        )
+        task = CreateNodeTask(name="Quantum Physics", node_type="concept", seed_key=make_seed_key("Quantum Physics"))
         task.pool_facts = [_make_fact() for _ in range(3)]
 
         node = MagicMock()
@@ -274,9 +266,7 @@ class TestSeedPromotion:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(
-            name="Resilient Node", node_type="concept", seed_key=make_seed_key("Resilient Node")
-        )
+        task = CreateNodeTask(name="Resilient Node", node_type="concept", seed_key=make_seed_key("Resilient Node"))
         task.pool_facts = [_make_fact()]
 
         node = MagicMock()
@@ -302,9 +292,7 @@ class TestSeedPromotion:
         pipeline = NodeCreationPipeline(ctx)
         state = _make_state()
 
-        task = CreateNodeTask(
-            name="No Session Node", node_type="concept", seed_key=make_seed_key("No Session Node")
-        )
+        task = CreateNodeTask(name="No Session Node", node_type="concept", seed_key=make_seed_key("No Session Node"))
         task.pool_facts = [_make_fact()]
 
         node = MagicMock()

@@ -565,7 +565,6 @@ async def _decompose_ingest_impl(
     )
 
 
-
 async def _bottom_up_prepare_impl(
     session: AsyncSession,
     body: BottomUpPrepareRequest,
@@ -665,7 +664,6 @@ async def _get_bottom_up_proposals_impl(
         source_urls=source_urls,
         agent_select_status=metadata.get("agent_select_status"),
     )
-
 
 
 async def _get_research_summary_impl(
@@ -772,7 +770,6 @@ async def decompose_ingest(
     return await _decompose_ingest_impl(session, conversation_id, body, user)
 
 
-
 @router.post("/research/bottom-up/prepare", response_model=ConversationResponse)
 async def bottom_up_prepare(
     body: BottomUpPrepareRequest,
@@ -790,7 +787,6 @@ async def get_bottom_up_proposals(
 ) -> BottomUpPrepareResponse:
     """Fetch Phase 1 results (proposed nodes) from completed prepare workflow."""
     return await _get_bottom_up_proposals_impl(session, conversation_id)
-
 
 
 @router.get("/research/{conversation_id}/summary", response_model=ResearchSummaryResponse)

@@ -36,9 +36,7 @@ async def main(graph_slug: str) -> None:
 
     async with sf() as session:
         # Schema name validated by regex above (just graph_slug prefix)
-        result = await session.execute(
-            text(f"SELECT key FROM {schema}.write_seeds WHERE status = 'pending'")
-        )
+        result = await session.execute(text(f"SELECT key FROM {schema}.write_seeds WHERE status = 'pending'"))
         keys = [row[0] for row in result.all()]
 
     logger.info("Found %d pending seeds in schema %s", len(keys), schema)
@@ -51,6 +49,7 @@ async def main(graph_slug: str) -> None:
 
     # Resolve graph UUID by slug from the graph-db
     from sqlalchemy.ext.asyncio import create_async_engine as _cae
+
     graph_engine = _cae(settings.database_url)
     async with graph_engine.connect() as conn:
         result = await conn.execute(
@@ -69,6 +68,7 @@ async def main(graph_slug: str) -> None:
     logger.info("Resolved graph_id=%s for slug=%s", graph_id, graph_slug)
 
     import json
+
     h = get_hatchet()
 
     for i, chunk in enumerate(chunks):
@@ -76,11 +76,13 @@ async def main(graph_slug: str) -> None:
             # Fire-and-forget (don't wait for result)
             await h._client.admin.aio_run_workflow(
                 workflow_name="seed_dedup_batch",
-                input=json.dumps({
-                    "seed_keys": chunk,
-                    "scope_id": f"manual-dedup-{i}",
-                    "graph_id": graph_id,
-                }),
+                input=json.dumps(
+                    {
+                        "seed_keys": chunk,
+                        "scope_id": f"manual-dedup-{i}",
+                        "graph_id": graph_id,
+                    }
+                ),
             )
             logger.info("Dispatched chunk %d/%d (%d seeds)", i + 1, len(chunks), len(chunk))
         except Exception:

@@ -637,6 +637,7 @@ class ModelGateway:
         # decoder state). List is configurable via settings.
         try:
             from kt_config.settings import get_settings
+
             blocklist_raw = get_settings().json_schema_unsupported_models or ""
             blocklist = [s.strip().lower() for s in blocklist_raw.split(",") if s.strip()]
             if any(b in model_id.lower() for b in blocklist):

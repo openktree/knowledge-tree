@@ -40,9 +40,7 @@ async def backfill(session: AsyncSession, dry_run: bool) -> None:
 
     # ── Step 1: From merge history ─────────────────────────────────────────
     logger.info("Step 1: propagate loser aliases from write_seed_merges")
-    merges_result = await session.execute(
-        select(WriteSeedMerge).order_by(WriteSeedMerge.created_at)
-    )
+    merges_result = await session.execute(select(WriteSeedMerge).order_by(WriteSeedMerge.created_at))
     merges = merges_result.scalars().all()
 
     # Build winner → extra aliases map
@@ -116,9 +114,7 @@ async def backfill(session: AsyncSession, dry_run: bool) -> None:
     # ── Step 3: Activate null-status seeds ────────────────────────────────
     logger.info("Step 3: set status='active' for seeds with null/blank status")
     null_status_result = await session.execute(
-        select(WriteSeed).where(
-            (WriteSeed.status.is_(None)) | (WriteSeed.status == "")
-        )
+        select(WriteSeed).where((WriteSeed.status.is_(None)) | (WriteSeed.status == ""))
     )
     null_seeds = null_status_result.scalars().all()
     null_fixed = 0

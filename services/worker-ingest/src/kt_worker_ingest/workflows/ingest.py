@@ -1020,10 +1020,7 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                         explore_used=0,
                         nav_budget=len(proposed_nodes),
                         nav_used=len(created_node_ids),
-                        scope_summaries=[
-                            f"Built {len(created_node_ids)} nodes, "
-                            f"{len(created_edge_ids)} edges"
-                        ],
+                        scope_summaries=[f"Built {len(created_node_ids)} nodes, {len(created_edge_ids)} edges"],
                         total_prompt_tokens=0,
                         total_completion_tokens=0,
                         total_cost_usd=0.0,

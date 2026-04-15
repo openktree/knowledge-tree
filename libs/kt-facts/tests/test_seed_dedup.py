@@ -32,15 +32,19 @@ from kt_facts.processing.seed_dedup import (
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _seed_map(*seeds):
     """Build {key: seed} side_effect for get_seed_by_key."""
     m = {s.key: s for s in seeds}
+
     async def _get(k):
         return m.get(k)
+
     return _get
 
 
 # ── deduplicate_seed ─────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 class TestDeduplicateSeed:
@@ -71,11 +75,13 @@ class TestDeduplicateSeed:
         repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
 
-        gw = make_model_gateway_mock({
-            "action": "merge_into_seed",
-            "target_seed_key": "albert-einstein",
-            "reason": "same person",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "merge_into_seed",
+                "target_seed_key": "albert-einstein",
+                "reason": "same person",
+            }
+        )
 
         result = await deduplicate_seed(
             "a-einstein",
@@ -99,14 +105,14 @@ class TestDeduplicateSeed:
         repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[])
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming_stub))
 
-        qdrant = make_qdrant_seed_repo_mock(
-            hits=[make_qdrant_match("homeopathy", 0.92)]
+        qdrant = make_qdrant_seed_repo_mock(hits=[make_qdrant_match("homeopathy", 0.92)])
+        gw = make_model_gateway_mock(
+            {
+                "action": "merge_into_seed",
+                "target_seed_key": "homeopathy",
+                "reason": "synonym",
+            }
         )
-        gw = make_model_gateway_mock({
-            "action": "merge_into_seed",
-            "target_seed_key": "homeopathy",
-            "reason": "synonym",
-        })
 
         result = await deduplicate_seed(
             "homeopathic-medicine",
@@ -131,13 +137,15 @@ class TestDeduplicateSeed:
         repo.get_facts_for_seed = AsyncMock(return_value=[uuid.uuid4()])
         repo.get_routes_for_parent = AsyncMock(return_value=[])
 
-        gw = make_model_gateway_mock({
-            "action": "new_disambig_path",
-            "target_seed_key": "mercury",
-            "incoming_disambig_label": "Mercury (planet)",
-            "existing_disambig_label": "Mercury (element)",
-            "reason": "different referents",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "new_disambig_path",
+                "target_seed_key": "mercury",
+                "incoming_disambig_label": "Mercury (planet)",
+                "existing_disambig_label": "Mercury (element)",
+                "reason": "different referents",
+            }
+        )
 
         result = await deduplicate_seed(
             "mercury-2",
@@ -183,11 +191,13 @@ class TestDeduplicateSeed:
         repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[existing])
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
 
-        gw = make_model_gateway_mock({
-            "action": "merge_into_seed",
-            "target_seed_key": "nonexistent-key",
-            "reason": "test",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "merge_into_seed",
+                "target_seed_key": "nonexistent-key",
+                "reason": "test",
+            }
+        )
 
         result = await deduplicate_seed(
             "a-einstein",
@@ -212,11 +222,13 @@ class TestDeduplicateSeed:
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
 
         qdrant = make_qdrant_seed_repo_mock(hits=[make_qdrant_match("albert-einstein", 0.94)])
-        gw = make_model_gateway_mock({
-            "action": "merge_into_seed",
-            "target_seed_key": "albert-einstein",
-            "reason": "same",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "merge_into_seed",
+                "target_seed_key": "albert-einstein",
+                "reason": "same",
+            }
+        )
 
         result = await deduplicate_seed(
             "a-einstein",
@@ -265,13 +277,15 @@ class TestDeduplicateSeed:
         repo.get_facts_for_seed = AsyncMock(return_value=[])
         repo.get_routes_for_parent = AsyncMock(return_value=[])
 
-        gw = make_model_gateway_mock({
-            "action": "new_disambig_path",
-            "target_seed_key": "homeopathy",
-            "incoming_disambig_label": "Homeopath (practitioner)",
-            "existing_disambig_label": "Homeopathy (practice)",
-            "reason": "practitioner vs practice",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "new_disambig_path",
+                "target_seed_key": "homeopathy",
+                "incoming_disambig_label": "Homeopath (practitioner)",
+                "existing_disambig_label": "Homeopathy (practice)",
+                "reason": "practitioner vs practice",
+            }
+        )
 
         result = await deduplicate_seed(
             "homeopath",
@@ -299,20 +313,27 @@ class TestDeduplicateSeed:
         repo = make_seed_repo_mock()
         repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[parent])
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(parent, child_planet, child_element, incoming))
-        repo.get_routes_for_parent = AsyncMock(return_value=[
-            make_route("mercury", "mercury-planet", "Mercury (planet)"),
-            make_route("mercury", "mercury-element", "Mercury (element)"),
-        ])
+        repo.get_routes_for_parent = AsyncMock(
+            return_value=[
+                make_route("mercury", "mercury-planet", "Mercury (planet)"),
+                make_route("mercury", "mercury-element", "Mercury (element)"),
+            ]
+        )
 
-        gw = make_model_gateway_mock({
-            "action": "merge_into_path",
-            "target_seed_key": "mercury",
-            "target_path_key": "mercury-element",
-            "reason": "Hg is the chemical symbol for mercury (element)",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "merge_into_path",
+                "target_seed_key": "mercury",
+                "target_path_key": "mercury-element",
+                "reason": "Hg is the chemical symbol for mercury (element)",
+            }
+        )
 
         result = await deduplicate_seed(
-            "hg", "Hg", "concept", repo,
+            "hg",
+            "Hg",
+            "concept",
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
             model_gateway=gw,
@@ -331,19 +352,26 @@ class TestDeduplicateSeed:
         repo = make_seed_repo_mock()
         repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[parent])
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(parent, child, incoming))
-        repo.get_routes_for_parent = AsyncMock(return_value=[
-            make_route("mercury", "mercury-planet", "Mercury (planet)"),
-        ])
+        repo.get_routes_for_parent = AsyncMock(
+            return_value=[
+                make_route("mercury", "mercury-planet", "Mercury (planet)"),
+            ]
+        )
 
-        gw = make_model_gateway_mock({
-            "action": "merge_into_path",
-            "target_seed_key": "mercury",
-            "target_path_key": "nonexistent-child-key",
-            "reason": "test",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "merge_into_path",
+                "target_seed_key": "mercury",
+                "target_path_key": "nonexistent-child-key",
+                "reason": "test",
+            }
+        )
 
         result = await deduplicate_seed(
-            "hg", "Hg", "concept", repo,
+            "hg",
+            "Hg",
+            "concept",
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
             model_gateway=gw,
@@ -361,15 +389,20 @@ class TestDeduplicateSeed:
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(parent, incoming))
         repo.get_routes_for_parent = AsyncMock(return_value=[])
 
-        gw = make_model_gateway_mock({
-            "action": "merge_into_path",
-            "target_seed_key": "mercury",
-            "target_path_key": "mercury-element",
-            "reason": "test",
-        })
+        gw = make_model_gateway_mock(
+            {
+                "action": "merge_into_path",
+                "target_seed_key": "mercury",
+                "target_path_key": "mercury-element",
+                "reason": "test",
+            }
+        )
 
         result = await deduplicate_seed(
-            "hg", "Hg", "concept", repo,
+            "hg",
+            "Hg",
+            "concept",
+            repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
             model_gateway=gw,
@@ -399,6 +432,7 @@ class TestDeduplicateSeed:
 
 
 # ── _merge_pair ──────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 class TestMergePair:
@@ -433,9 +467,7 @@ class TestMergePair:
         repo = make_seed_repo_mock()
         repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(winner, loser))
 
-        await _merge_pair(
-            "american-broadcasting-company", "abc", repo, reason="test"
-        )
+        await _merge_pair("american-broadcasting-company", "abc", repo, reason="test")
 
         repo.rename_seed.assert_called_once_with("abc", "American Broadcasting Company")
 
@@ -466,14 +498,13 @@ class TestMergePair:
 
 # ── _promote_and_genesis_disambig ────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestPromoteAndGenesis:
     async def test_skips_active_seed(self):
         """Already active seeds skip the genesis path entirely."""
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            return_value=make_seed("mars", "Mars", "concept", status="active")
-        )
+        repo.get_seed_by_key = AsyncMock(return_value=make_seed("mars", "Mars", "concept", status="active"))
 
         await _promote_and_genesis_disambig("mars", "Mars", "concept", repo, model_gateway=None)
 
@@ -490,9 +521,7 @@ class TestPromoteAndGenesis:
     async def test_promotes_pending_to_active_no_llm(self):
         """Pending seed promoted to active when no model_gateway."""
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            return_value=make_seed("mars", "Mars", "concept", status="pending")
-        )
+        repo.get_seed_by_key = AsyncMock(return_value=make_seed("mars", "Mars", "concept", status="pending"))
 
         await _promote_and_genesis_disambig("mars", "Mars", "concept", repo, model_gateway=None)
 
@@ -501,20 +530,20 @@ class TestPromoteAndGenesis:
     async def test_single_word_polysemous_name_creates_routes(self):
         """LLM returns 2+ paths → split_seed called to create child routes."""
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            return_value=make_seed("mercury", "Mercury", "concept", status="pending")
-        )
+        repo.get_seed_by_key = AsyncMock(return_value=make_seed("mercury", "Mercury", "concept", status="pending"))
         repo.get_facts_with_content_for_seed = AsyncMock(
             return_value=[(uuid.uuid4(), "Mercury is the closest planet to the Sun.")]
         )
 
         gw = MagicMock()
-        gw.generate_json_schema = AsyncMock(side_effect=[
-            # suggest_disambig call
-            {"paths": ["Mercury (planet)", "Mercury (element)", "Mercury (Roman god)"]},
-            # route_facts_to_paths call
-            {"assignments": []},
-        ])
+        gw.generate_json_schema = AsyncMock(
+            side_effect=[
+                # suggest_disambig call
+                {"paths": ["Mercury (planet)", "Mercury (element)", "Mercury (Roman god)"]},
+                # route_facts_to_paths call
+                {"assignments": []},
+            ]
+        )
 
         with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
             s = MagicMock()
@@ -553,9 +582,7 @@ class TestPromoteAndGenesis:
     async def test_suggest_disambig_disabled_by_setting(self):
         """seed_suggest_disambig_enabled=False → active only, no LLM call."""
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            return_value=make_seed("mars", "Mars", "concept", status="pending")
-        )
+        repo.get_seed_by_key = AsyncMock(return_value=make_seed("mars", "Mars", "concept", status="pending"))
         gw = MagicMock()
 
         with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
@@ -571,6 +598,7 @@ class TestPromoteAndGenesis:
 
 
 # ── embed_and_upsert_seed ─────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 class TestEmbedAndUpsertSeed:
