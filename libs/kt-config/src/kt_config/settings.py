@@ -532,11 +532,17 @@ class Settings(BaseSettings):
     relation_dedup_threshold: float = 0.15
     default_model: str = "openrouter/x-ai/grok-4.1-fast"
 
+    # Models that mishandle response_format=json_schema (return decoder
+    # state or unparseable wrapping). generate_json_schema skips
+    # json_schema for these and uses json_object directly. Comma-separated
+    # substring match on model_id (case-insensitive).
+    json_schema_unsupported_models: str = "gemini"
+
     # Per-agent model overrides (empty string = use default_model)
     file_decomposition_model: str = ""
-    decomposition_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
+    decomposition_model: str = "openrouter/google/gemma-4-26b-a4b-it:nitro"
     entity_extractor: str = "spacy"  # "spacy" or "llm"
-    entity_extraction_model: str = ""  # empty = use decomposition_model (llm extractor only)
+    entity_extraction_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
     entity_extraction_thinking_level: str = ""
     entity_extraction_batch_size: int = 10
     entity_extraction_concurrency: int = 4

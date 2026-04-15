@@ -633,6 +633,28 @@ class ModelGateway:
             msgs.append({"role": "system", "content": system_prompt})
         msgs.extend(messages)
 
+        # Skip json_schema for providers that mishandle it (e.g. Gemini leaks
+        # decoder state). List is configurable via settings.
+        try:
+            from kt_config.settings import get_settings
+            blocklist_raw = get_settings().json_schema_unsupported_models or ""
+            blocklist = [s.strip().lower() for s in blocklist_raw.split(",") if s.strip()]
+            if any(b in model_id.lower() for b in blocklist):
+                logger.debug(
+                    "Model '%s' in json_schema_unsupported_models — using json_object",
+                    model_id,
+                )
+                return await self.generate_json(
+                    model_id=model_id,
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    reasoning_effort=reasoning_effort,
+                )
+        except Exception:
+            pass
+
         try:
             raw_schema = schema_model.model_json_schema()
         except Exception:
