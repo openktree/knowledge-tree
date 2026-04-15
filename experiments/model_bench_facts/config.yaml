@@ -1,0 +1,41 @@
+# Fact-extraction bench config. Reuses the model set from model_bench;
+# pricing copied verbatim. See experiments/model_bench/config.yaml.
+
+models:
+  - id: openrouter/google/gemini-3.1-flash-lite-preview:nitro
+    label: gemini-3.1-flash-lite:nitro
+  - id: openrouter/x-ai/grok-4.1-fast:nitro
+    label: grok-4.1-fast:nitro
+  - id: openrouter/openai/gpt-5-nano:nitro
+    label: gpt-5-nano:nitro (no-think)
+    reasoning: {effort: "minimal"}
+  - id: openrouter/xiaomi/mimo-v2-flash:nitro
+    label: mimo-v2-flash:nitro (no-think)
+    reasoning: {enabled: false}
+  - id: openrouter/google/gemma-4-26b-a4b-it:nitro
+    label: gemma-4-26b-a4b:nitro
+  - id: openrouter/openai/gpt-oss-120b:nitro
+    label: gpt-oss-120b:nitro
+
+pricing:
+  "openrouter/google/gemini-3.1-flash-lite-preview:nitro": {input: 0.25, output: 1.5}
+  "openrouter/x-ai/grok-4.1-fast:nitro":                   {input: 0.20, output: 0.50}
+  "openrouter/openai/gpt-5-nano:nitro":                    {input: 0.05, output: 0.40}
+  "openrouter/xiaomi/mimo-v2-flash:nitro":                 {input: 0.10, output: 0.30}
+  "openrouter/google/gemma-4-26b-a4b-it:nitro":            {input: 0.08, output: 0.35}
+  "openrouter/openai/gpt-oss-120b:nitro":                  {input: 0.09, output: 0.36}
+
+max_tokens: 3000     # facts responses are long
+temperature: 0.0
+timeout_seconds: 180
+concurrency: 3
+
+# Embedding-similarity threshold for counting a fact as a match against GT.
+hit_threshold: 0.95
+# Below this threshold to mark a fact as blacklist-hit
+blacklist_threshold: 0.92
+
+output_html: report.html
+cache_file: bench_cache.jsonl
+sources_fixture: fixtures/sources_10.json
+ground_truth: fixtures/ground_truth.yaml

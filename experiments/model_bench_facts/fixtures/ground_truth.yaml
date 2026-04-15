@@ -1,0 +1,153 @@
+# Hand-curated ground truth for the fact-extraction bench.
+# Authored by Claude (the largest model in this session). DO NOT auto-generate.
+#
+# Per source:
+#   good_facts: self-explanatory factual statements that a knowledge graph
+#               would benefit from. Must stand alone without ambiguous
+#               pronouns, missing referents, or source-dependence.
+#   bad_facts:  examples of facts models tend to emit that FAIL the
+#               self-explanation test (vague, incomplete, meta-commentary,
+#               scraping artifacts). Treated as blacklist — emitting any
+#               semantically-close variant costs a point.
+
+sources:
+
+  - id: 1
+    title: "Autobiography of a Yogi 75th anniversary Princeton panel"
+    good_facts:
+      - "Paramahansa Yogananda's book 'Autobiography of a Yogi' was published in 1946 and had its 75th anniversary in December 2021."
+      - "Princeton University's Hindu Life Program hosted a virtual seminar on 'Autobiography of a Yogi' titled 'Its Light and Legacy, 75 Years Later'."
+      - "Vineet Chander is assistant dean of Princeton University's Office of Religious Life."
+      - "Philip Goldberg authored 'The Life of Yogananda: The Story of the Yogi Who Became the First Modern Guru'."
+      - "Brother Kamalananda is a monk of the Self-Realization Fellowship."
+      - "Paramahansa Yogananda wrote that utopia must spring in the private bosom before it can flower in civic virtue."
+    bad_facts:
+      - "The book is a spiritual classic."
+      - "It has been influential."
+      - "The seminar discussed various themes."
+      - "It was streamed recently."
+
+  - id: 2
+    title: "In Search of Brahman blog post on Advaita Vision"
+    good_facts:
+      - "The traditional Advaita Vedanta position is that Brahman is not an object that can be lost or found."
+      - "Advaita Vedanta holds that 'I = Brahman is the one true reality' and Brahman is the one without a second."
+      - "Traditional Advaita Vedanta asserts that a seeker must trust the word of the scriptures rather than rely on proof of Brahman."
+    bad_facts:
+      - "The author is new to the blog."
+      - "The author is a skeptic."
+      - "Many spiritual traditions have scriptures."
+      - "The author enjoys hearing reactions."
+
+  - id: 3
+    title: "Thymic Epithelial Cell alterations in MHCII deficiency (Frontiers in Immunology 2021)"
+    good_facts:
+      - "MHC class II deficiency, also known as Bare Lymphocyte Syndrome (BLS), is a rare combined immunodeficiency caused by mutations in genes regulating expression of MHCII molecules."
+      - "MHCII deficiency results in impaired cellular and humoral immune responses, leading to severe infections and autoimmunity."
+      - "In MHCII−/− mice, impaired lymphostromal cross-talk in the thymus affects medullary thymic epithelial cell (mTEC) maturation and promiscuous gene expression and causes defects of central tolerance."
+      - "The article 'Thymic Epithelial Cell Alterations and Defective Thymopoiesis Lead to Central and Peripheral Tolerance Perturbation in MHCII Deficiency' was published in Frontiers in Immunology on 2021-06-15."
+      - "DOI 10.3389/fimmu.2021.669943 identifies the Ferrua et al. study on MHCII deficiency and thymic epithelial cell alterations."
+    bad_facts:
+      - "The authors performed in-depth characterization."
+      - "Several alterations were revealed."
+      - "The study has findings."
+      - "Transcriptomic and proteomic profiling was done."
+
+  - id: 4
+    title: "Yoga in America 10 Things (Smithsonian APA blog)"
+    good_facts:
+      - "The word 'yoga' is derived from Sanskrit 'yoga' meaning 'union'."
+      - "Henry David Thoreau practiced meditative yoga in his Walden home from 1845 to 1849."
+      - "Swami Vivekananda brought meditative yoga to the World Parliament of Religions in Chicago in 1893."
+      - "Pierre Bernard founded the Clarkston Country Club yoga school in Nyack, New York in 1919, teaching Hatha yoga."
+      - "Indra Devi brought Hatha yoga to Los Angeles in 1947."
+      - "Margaret Woodrow Wilson, daughter of President Woodrow Wilson, joined Aurobindo's Ashram in India in 1938."
+      - "Aurobindo developed Integral yoga, teaching that humans would eventually evolve into supreme beings."
+      - "As of July 2012, 15 million Americans were reported to practice yoga, 72.2% female and 27.8% male."
+      - "The 1937 film 'Lost Horizon' told a story similar to Theos Bernard's adventures in India learning yoga postures and philosophy."
+    bad_facts:
+      - "Yoga has a long history in America."
+      - "Many Americans practice yoga."
+      - "Yoga evolved over time."
+      - "The author is an intern."
+
+  - id: 5
+    title: "Near-Death Experiences: Cultural Insights (Scribd summary of Shushan article)"
+    good_facts:
+      - "Gregory Shushan authored an article exploring the diversity and similarities of near-death experiences (NDEs) across different cultures and historical contexts."
+      - "Shushan's article argues for a multifaceted understanding of near-death experiences incorporating universal, cultural, and individual factors."
+    bad_facts:
+      - "The document is 8 pages."
+      - "0% of readers found this document useful."
+      - "63 views have been recorded."
+      - "The article discusses implications."
+
+  - id: 6
+    title: "Winship/Emory study on childhood cancer survivorship care plans"
+    good_facts:
+      - "A Winship Cancer Institute of Emory University and Children's Healthcare of Atlanta study found that childhood cancer survivors who received a survivorship care plan had a 38% lower risk of death over 10 years compared with those who did not."
+      - "The survivorship care plan study followed 3,366 childhood and adolescent cancer survivors diagnosed between 2002 and 2016 for up to 10 years."
+      - "55.9% of patients in the Winship childhood cancer survivorship study received a survivorship care plan (SCP)."
+      - "Xu Ji, PhD, MSPH, is a researcher at Winship Cancer Institute and associate professor in the Department of Pediatrics at Emory University School of Medicine."
+      - "Sharon M. Castellino, MD, MSc, is a professor and pediatric oncologist at the Aflac Cancer and Blood Disorders Center of Children's Healthcare of Atlanta."
+      - "The Winship survivorship-care-plan study was published in the Journal of the National Cancer Institute."
+    bad_facts:
+      - "The study has findings."
+      - "Results were significant."
+      - "The research is important."
+      - "Survivorship care plans are beneficial."
+
+  - id: 7
+    title: "Ethical Concerns of Generative AI and Mitigation Strategies (arXiv 2502.00015)"
+    good_facts:
+      - "The paper 'Ethical Concerns of Generative AI and Mitigation Strategies: A Systematic Mapping Study' conducted a systematic mapping study reviewing 39 studies on ethical concerns and mitigation strategies related to LLMs."
+      - "The systematic mapping study on LLM ethics analyzed ethical concerns using five ethical dimensions extracted from existing guidelines and frameworks."
+      - "The paper 'Ethical Concerns of Generative AI' was first submitted to arXiv on 8 January 2025 as 2502.00015."
+      - "Chetan Arora is one of the authors of the arXiv paper 'Ethical Concerns of Generative AI and Mitigation Strategies'."
+    bad_facts:
+      - "The paper is important."
+      - "Challenges still remain."
+      - "The paper was reviewed."
+      - "Various concerns were identified."
+
+  - id: 8
+    title: "Advaita Vedanta (Scribd summary document)"
+    good_facts:
+      - "In Advaita Vedanta, the term 'Advaita' translates to 'non-duality', emphasizing the indivisible unity of all existence."
+      - "Advaita Vedanta holds that Brahman (ultimate reality) and Atman (individual self) are fundamentally identical."
+      - "Brahman in Advaita Vedanta is described as sat-cit-ananda — pure existence, consciousness, and bliss."
+      - "The Upanishadic mahavakya 'Tat Tvam Asi' ('Thou art That') articulates the identity of Atman and Brahman in Advaita Vedanta."
+      - "Avidya (ignorance) in Advaita Vedanta is said to veil the true nature of the self and cause the perception of separation between Atman and Brahman."
+      - "Maya in Advaita Vedanta is the cosmic illusion that creates the appearance of duality and multiplicity in the world."
+      - "Advaita Vedanta distinguishes three levels of reality: Paramarthika (absolute), Vyavaharika (empirical), and Prabhasika (illusory)."
+      - "Moksha in Advaita Vedanta is liberation attained by realizing the non-dual nature of Brahman through jnana (knowledge)."
+      - "Sakshin in Advaita Vedanta is the witnessing consciousness that remains untouched by the mind-body complex."
+      - "Adi Shankaracharya formulated Advaita Vedanta extensively."
+    bad_facts:
+      - "Advaita Vedanta has central tenets."
+      - "Various practices are described."
+      - "The text discusses philosophy."
+      - "Consciousness is important."
+
+  - id: 9
+    title: "Harvard HMS page (bot-block error page)"
+    good_facts: []
+    bad_facts:
+      - "The page requires cookies and JavaScript."
+      - "Users may be blocked by the website."
+      - "Browser plugins can prevent JavaScript."
+      - "The website detected bot behavior."
+
+  - id: 10
+    title: "Kriya Yoga Path of Meditation Overview (SRF)"
+    good_facts:
+      - "Paramahansa Yogananda referred to the Kriya Yoga path as 'the highway to the Infinite'."
+      - "Kriya Yoga is described as containing the distilled essence of Raja Yoga."
+      - "Paramahansa Yogananda received the Kriya Yoga teaching from a lineage of gurus including Mahavatar Babaji, Lahiri Mahasaya, and Swami Sri Yukteswar."
+      - "The Self-Realization Fellowship (SRF) teaches Paramahansa Yogananda's Kriya Yoga path."
+      - "Rajarsi Janakananda served as the second president of SRF/YSS."
+    bad_facts:
+      - "Meditation brings inner peace."
+      - "Seekers can transform themselves."
+      - "There is a goal of Bliss."
+      - "Joy outlasts everything."
