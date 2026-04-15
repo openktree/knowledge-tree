@@ -1,0 +1,43 @@
+# Model bench config. Edit the `models` list to add / remove candidates and
+# rerun. The bench runs each model across three tasks (alias_gen,
+# shell_classify, suggest_disambig) using the bench dataset in datasets.py.
+#
+# Model IDs are passed verbatim to LiteLLM/OpenRouter — a model that is
+# unavailable on OpenRouter will be reported as an error row, not a crash.
+
+models:
+  - id: openrouter/google/gemini-3.1-flash-lite-preview:nitro
+    label: gemini-3.1-flash-lite:nitro
+  - id: openrouter/x-ai/grok-4.1-fast:nitro
+    label: grok-4.1-fast:nitro
+  - id: openrouter/openai/gpt-5-nano:nitro
+    label: gpt-5-nano:nitro
+  - id: openrouter/stepfun/step-3.5-flash:nitro
+    label: step-3.5-flash:nitro
+  - id: openrouter/minimax/MiniMax-M2.7:nitro
+    label: minimax-m2.7:nitro
+  - id: openrouter/qwen/qwen3.5-flash-02-23:nitro
+    label: qwen3.5-flash:nitro
+  - id: openrouter/google/gemma-4-26b-a4b-it:nitro
+    label: gemma-4-26b-a4b:nitro
+  - id: openrouter/openai/gpt-oss-120b:nitro
+    label: gpt-oss-120b:nitro
+
+tasks:
+  - alias_gen
+  - shell_classify
+  - suggest_disambig
+
+# Per-call tunables
+# One call processes `batch_size` items at once; a task's items are chunked
+# into batches of this size, and up to `concurrency` batches run in parallel
+# per (model, task).
+batch_size: 10
+temperature: 0.0
+timeout_seconds: 120
+concurrency: 3  # across batches
+max_tokens_per_item: 80  # scaled by batch_size to total max_tokens
+
+# Output paths relative to this config file
+output_html: report.html
+cache_file: bench_cache.jsonl
