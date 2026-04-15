@@ -77,7 +77,13 @@ class DecompositionPipeline:
         )
 
     def _make_extractor(self) -> EntityExtractor:
-        """Create entity extractor based on settings."""
+        """Create entity extractor based on settings.
+
+        Built-in extractors: "llm", "spacy".
+        Plugin-provided extractors are resolved via the PluginRegistry
+        (e.g. "hybrid" from backend-engine-hybrid-extractor).
+        Unknown names fall back to spaCy with a warning.
+        """
         from kt_config.settings import get_settings
 
         settings = get_settings()
@@ -86,6 +92,22 @@ class DecompositionPipeline:
 
             return LlmEntityExtractor(self._gateway)
 
+        if settings.entity_extractor == "spacy":
+            from kt_facts.processing.spacy_extractor import SpacyEntityExtractor
+
+            return SpacyEntityExtractor()
+
+        # Plugin dispatch
+        from kt_config.plugin import plugin_registry
+
+        extractor = plugin_registry.get_entity_extractor(settings.entity_extractor, self._gateway)
+        if extractor is not None:
+            return extractor
+
+        logger.warning(
+            "Unknown entity_extractor %r — falling back to spacy",
+            settings.entity_extractor,
+        )
         from kt_facts.processing.spacy_extractor import SpacyEntityExtractor
 
         return SpacyEntityExtractor()
@@ -274,15 +296,49 @@ class DecompositionPipeline:
                 from kt_facts.processing.extractor_base import ExtractedEntity
 
                 extractor = self._make_extractor()
-                raw_entities: list[ExtractedEntity] = await extractor.extract(all_facts, scope=concept) or []
+
+                # Detect hybrid extractor to capture shell candidates.
+                _shells: list = []
+                try:
+                    from kt_plugin_be_hybrid_extractor.extractor import (
+                        HybridEntityExtractor as _HybridEntityExtractor,
+                    )
+
+                    if isinstance(extractor, _HybridEntityExtractor):
+                        raw_entities, _shells = await extractor.extract_with_shells(
+                            all_facts, scope=concept
+                        )
+                    else:
+                        raw_entities = await extractor.extract(all_facts, scope=concept) or []
+                except ImportError:
+                    raw_entities = await extractor.extract(all_facts, scope=concept) or []
+
                 extracted_nodes = [
                     {
                         "name": e.name,
                         "fact_indices": e.fact_indices,
                         "aliases": e.aliases,
                     }
-                    for e in raw_entities
+                    for e in (raw_entities or [])
                 ]
+
+                # Persist shell candidates to plugin DB (non-fatal).
+                if _shells and write_session is not None:
+                    try:
+                        from kt_plugin_be_hybrid_extractor.repository import (
+                            ShellCandidateRepository,
+                        )
+
+                        shell_repo = ShellCandidateRepository(write_session)
+                        await shell_repo.bulk_insert(_shells, scope=concept)
+                        await write_session.commit()
+                    except Exception:
+                        logger.warning("Shell candidate persistence failed (non-fatal)", exc_info=True)
+                        try:
+                            await write_session.rollback()
+                        except Exception:
+                            pass
+
             except Exception:
                 logger.exception("Entity extraction failed (non-fatal)")
 

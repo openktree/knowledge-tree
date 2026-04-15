@@ -210,6 +210,8 @@ _register(
         "entity_extraction_thinking_level": "entity_extraction_thinking_level",
         "entity_extraction_batch_size": "entity_extraction_batch_size",
         "entity_extraction_concurrency": "entity_extraction_concurrency",
+        "hybrid_extractor_validation_batch_size": "hybrid_validation_batch_size",
+        "hybrid_extractor_validation_model": "hybrid_validation_model",
         "fact_pool_threshold": "fact_pool_threshold",
         "default_max_content_tokens": "max_content_tokens",
         "default_stale_after_days": "stale_after_days",
@@ -535,11 +537,13 @@ class Settings(BaseSettings):
     # Per-agent model overrides (empty string = use default_model)
     file_decomposition_model: str = ""
     decomposition_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
-    entity_extractor: str = "spacy"  # "spacy" or "llm"
+    entity_extractor: str = "spacy"  # "spacy", "llm", or plugin name (e.g. "hybrid")
     entity_extraction_model: str = ""  # empty = use decomposition_model (llm extractor only)
     entity_extraction_thinking_level: str = ""
     entity_extraction_batch_size: int = 10
     entity_extraction_concurrency: int = 4
+    hybrid_extractor_validation_batch_size: int = 30  # spaCy candidates per LLM validation call
+    hybrid_extractor_validation_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
     synthesis_model: str = ""
     dimension_model: str = ""
     chat_model: str = ""

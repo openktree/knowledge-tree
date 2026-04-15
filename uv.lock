@@ -21,6 +21,7 @@ members = [
     "kt-mcp",
     "kt-models",
     "kt-ontology",
+    "kt-plugin-be-hybrid-extractor",
     "kt-providers",
     "kt-qdrant",
     "kt-rbac",
@@ -2093,6 +2094,29 @@ requires-dist = [
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "redis", specifier = ">=5.0.0" },
+]
+
+[[package]]
+name = "kt-plugin-be-hybrid-extractor"
+version = "0.1.0"
+source = { editable = "plugins/backend-engine-hybrid-extractor" }
+dependencies = [
+    { name = "alembic" },
+    { name = "kt-config" },
+    { name = "kt-facts" },
+    { name = "kt-models" },
+    { name = "spacy" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13" },
+    { name = "kt-config", editable = "libs/kt-config" },
+    { name = "kt-facts", editable = "libs/kt-facts" },
+    { name = "kt-models", editable = "libs/kt-models" },
+    { name = "spacy", specifier = ">=3.8" },
+    { name = "sqlalchemy", specifier = ">=2" },
 ]
 
 [[package]]

@@ -1,0 +1,31 @@
+[project]
+name = "kt-plugin-be-hybrid-extractor"
+version = "0.1.0"
+description = "Backend-engine plugin: hybrid spaCy+LLM entity extractor for Knowledge Tree"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-config",
+    "kt-facts",
+    "kt-models",
+    "sqlalchemy>=2",
+    "spacy>=3.8",
+    "alembic>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-config = { workspace = true }
+kt-facts = { workspace = true }
+kt-models = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_plugin_be_hybrid_extractor"]

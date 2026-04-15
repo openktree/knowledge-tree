@@ -226,6 +226,12 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
 
     default_graph_id = await _resolve_default_graph_id(session_factory)
 
+    # Run plugin DB migrations (idempotent — Alembic tracks applied versions).
+    # Plugins must be registered before worker.start() for this to take effect.
+    from kt_config.plugin import plugin_registry
+
+    await plugin_registry.run_database_migrations(settings.write_database_url)
+
     yield WorkerState(
         session_factory=session_factory,
         write_session_factory=write_session_factory,

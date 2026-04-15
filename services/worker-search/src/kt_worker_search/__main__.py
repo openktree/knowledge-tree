@@ -29,6 +29,11 @@ def main() -> None:
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    # Register plugins that extend the decomposition pipeline.
+    from kt_facts.register_plugins import register_kt_facts_plugins
+
+    register_kt_facts_plugins()
+
     hatchet = get_hatchet()
     worker = hatchet.worker(
         "search",

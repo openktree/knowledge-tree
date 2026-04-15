@@ -5,7 +5,7 @@ description = "Knowledge Tree monorepo workspace"
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["libs/*", "services/*"]
+members = ["libs/*", "services/*", "plugins/*"]
 
 [tool.uv]
 dev-dependencies = [
@@ -43,7 +43,7 @@ token = { env = "GH_TOKEN" }
 [tool.ruff]
 target-version = "py312"
 line-length = 120
-src = ["libs/*/src", "services/*/src"]
+src = ["libs/*/src", "services/*/src", "plugins/*/src"]
 extend-exclude = ["experiments"]
 
 [tool.ruff.lint]

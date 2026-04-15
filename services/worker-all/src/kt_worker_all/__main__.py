@@ -35,6 +35,11 @@ def main() -> None:
     except Exception:
         pass
 
+    # Register plugins that extend the decomposition pipeline.
+    from kt_facts.register_plugins import register_kt_facts_plugins
+
+    register_kt_facts_plugins()
+
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
     from kt_worker_bottomup.bottom_up import (
