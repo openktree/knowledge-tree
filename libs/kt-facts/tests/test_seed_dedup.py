@@ -1,7 +1,15 @@
-"""Tests for seed deduplication."""
+"""Tests for seed deduplication — pending-first pipeline.
+
+Pipeline under test:
+  1. DB text search (find_seeds_by_keys_or_aliases)
+  2. Qdrant embedding search (find_similar)
+  3. LLM multiplex → merge_into_seed | new_disambig_path
+  4. Genesis path (no candidates) → promote pending + suggest_disambig
+"""
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,35 +21,36 @@ from seed_fixtures import (
     make_route,
     make_seed,
     make_seed_repo_mock,
-    make_write_fact_repo_mock,
 )
 
 from kt_facts.processing.seed_dedup import (
-    _llm_confirm_merge,
     _merge_pair,
+    _promote_and_genesis_disambig,
     deduplicate_seed,
-)
-from kt_facts.processing.seed_heuristics import (
-    differs_only_by_digit_or_initial,
-    has_academic_initials,
-    is_acronym_match,
-    is_containment_mismatch,
-    is_prefix_disambiguation_candidate,
-    is_safe_auto_merge,
-    text_search_route,
+    embed_and_upsert_seed,
 )
 
-# Backward-compat aliases used in test names
-_is_acronym_match = is_acronym_match
-_is_containment_mismatch = is_containment_mismatch
-_is_prefix_disambiguation_candidate = is_prefix_disambiguation_candidate
-_text_search_route = text_search_route
 
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _seed_map(*seeds):
+    """Build {key: seed} side_effect for get_seed_by_key."""
+    m = {s.key: s for s in seeds}
+    async def _get(k):
+        return m.get(k)
+    return _get
+
+
+# ── deduplicate_seed ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 class TestDeduplicateSeed:
-    async def test_no_matches_returns_same_key(self):
+    async def test_no_candidates_returns_same_key(self):
+        """No text or embedding candidates → genesis path, same key returned."""
         repo = make_seed_repo_mock()
+        pending = make_seed("albert-einstein", "Albert Einstein", "entity", status="pending")
+        repo.get_seed_by_key = AsyncMock(return_value=pending)
+
         result = await deduplicate_seed(
             "albert-einstein",
             "Albert Einstein",
@@ -50,13 +59,24 @@ class TestDeduplicateSeed:
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        assert result == "albert-einstein"
 
-    async def test_trigram_alone_does_not_merge(self):
-        """Trigram-only similarity should NOT merge when embedding finds no match."""
+        assert result == "albert-einstein"
+        repo.set_status.assert_called_once_with("albert-einstein", "active")
+
+    async def test_text_candidate_merge_via_llm(self):
+        """Text search finds candidate → LLM says merge → merge_seeds called."""
+        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=10)
+        incoming = make_seed("a-einstein", "A. Einstein", "entity", status="pending", fact_count=1)
+
         repo = make_seed_repo_mock()
-        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=5)
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[existing])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
+
+        gw = make_model_gateway_mock({
+            "action": "merge_into_seed",
+            "target_seed_key": "albert-einstein",
+            "reason": "same person",
+        })
 
         result = await deduplicate_seed(
             "a-einstein",
@@ -65,1528 +85,427 @@ class TestDeduplicateSeed:
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=gw,
         )
-        # Embedding found no match → trigram alone does NOT merge
-        assert result == "a-einstein"
-        repo.merge_seeds.assert_not_called()
 
-    async def test_trigram_with_embedding_merges(self):
-        """When embedding service confirms similarity, merge happens."""
-        repo = make_seed_repo_mock()
-        # Trigram finds no alias match (names don't match exactly)
-        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=5)
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "a-einstein": make_seed("a-einstein", "A. Einstein", "entity", fact_count=1),
-                "albert-einstein": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        embedding_service = MagicMock()
-        embedding_service.embed_text = AsyncMock(return_value=[0.1] * 10)
-
-        qdrant_repo = MagicMock()
-        qdrant_repo.upsert = AsyncMock()
-        match_result = make_qdrant_match("albert-einstein", 0.92)
-        qdrant_repo.find_similar = AsyncMock(return_value=[match_result])
-
-        result = await deduplicate_seed(
-            "a-einstein",
-            "A. Einstein",
-            "entity",
-            repo,
-            embedding_service=embedding_service,
-            qdrant_seed_repo=qdrant_repo,
-        )
         assert result == "albert-einstein"
         repo.merge_seeds.assert_called_once()
 
-    async def test_alias_match_merges(self):
+    async def test_embedding_candidate_merge_via_llm(self):
+        """Embedding search finds candidate (text search empty) → LLM merges."""
+        existing = make_seed("homeopathy", "Homeopathy", "concept", fact_count=5)
+        incoming_stub = make_seed("homeopathic-medicine", "Homeopathic Medicine", "concept", status="pending")
+
         repo = make_seed_repo_mock()
-        existing = make_seed(
-            "karl-marx",
-            "Karl Marx",
-            "entity",
-            fact_count=3,
-            metadata_={"aliases": ["K. Marx", "Karl Heinrich Marx"]},
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming_stub))
+
+        qdrant = make_qdrant_seed_repo_mock(
+            hits=[make_qdrant_match("homeopathy", 0.92)]
         )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "k-marx": make_seed("k-marx", "K. Marx", "entity", fact_count=1),
-                "karl-marx": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
+        gw = make_model_gateway_mock({
+            "action": "merge_into_seed",
+            "target_seed_key": "homeopathy",
+            "reason": "synonym",
+        })
 
         result = await deduplicate_seed(
-            "k-marx",
-            "K. Marx",
+            "homeopathic-medicine",
+            "Homeopathic Medicine",
+            "concept",
+            repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=qdrant,
+            model_gateway=gw,
+        )
+
+        assert result == "homeopathy"
+
+    async def test_llm_new_disambig_path_action(self):
+        """LLM says new_disambig_path → _apply_disambig_path called, key unchanged."""
+        existing = make_seed("mercury", "Mercury", "concept", fact_count=8)
+        incoming = make_seed("mercury-2", "Mercury", "concept", status="pending", fact_count=1)
+
+        repo = make_seed_repo_mock()
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[existing])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
+        repo.get_facts_for_seed = AsyncMock(return_value=[uuid.uuid4()])
+        repo.get_routes_for_parent = AsyncMock(return_value=[])
+
+        gw = make_model_gateway_mock({
+            "action": "new_disambig_path",
+            "target_seed_key": "mercury",
+            "incoming_disambig_label": "Mercury (planet)",
+            "existing_disambig_label": "Mercury (element)",
+            "reason": "different referents",
+        })
+
+        result = await deduplicate_seed(
+            "mercury-2",
+            "Mercury",
+            "concept",
+            repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=gw,
+        )
+
+        assert result == "mercury-2"
+        repo.split_seed.assert_called()
+
+    async def test_no_llm_with_candidates_merges_into_best(self):
+        """No model_gateway + candidates → default merge into highest fact_count."""
+        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=10)
+        incoming = make_seed("a-einstein", "A. Einstein", "entity", status="pending")
+
+        repo = make_seed_repo_mock()
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[existing])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
+
+        result = await deduplicate_seed(
+            "a-einstein",
+            "A. Einstein",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=None,
         )
-        assert result == "karl-marx"
 
-    async def test_merged_seed_skipped(self):
+        assert result == "albert-einstein"
+        repo.merge_seeds.assert_called_once()
+
+    async def test_llm_invalid_target_falls_back_to_best_candidate(self):
+        """LLM returns unknown target_seed_key → fall back to highest fact_count candidate."""
+        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=10)
+        incoming = make_seed("a-einstein", "A. Einstein", "entity", status="pending")
+
         repo = make_seed_repo_mock()
-        merged = make_seed("old", "Old Name", "entity", status="merged")
-        repo.find_similar_seeds = AsyncMock(return_value=[merged])
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[existing])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
+
+        gw = make_model_gateway_mock({
+            "action": "merge_into_seed",
+            "target_seed_key": "nonexistent-key",
+            "reason": "test",
+        })
 
         result = await deduplicate_seed(
-            "new",
+            "a-einstein",
+            "A. Einstein",
+            "entity",
+            repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=gw,
+        )
+
+        # Fell back to best candidate
+        assert result == "albert-einstein"
+
+    async def test_text_search_error_falls_through_to_embedding(self):
+        """Text search failure → pipeline continues with embedding candidates."""
+        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=5)
+        incoming = make_seed("a-einstein", "A. Einstein", "entity", status="pending")
+
+        repo = make_seed_repo_mock()
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(side_effect=Exception("DB error"))
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(existing, incoming))
+
+        qdrant = make_qdrant_seed_repo_mock(hits=[make_qdrant_match("albert-einstein", 0.94)])
+        gw = make_model_gateway_mock({
+            "action": "merge_into_seed",
+            "target_seed_key": "albert-einstein",
+            "reason": "same",
+        })
+
+        result = await deduplicate_seed(
+            "a-einstein",
+            "A. Einstein",
+            "entity",
+            repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=qdrant,
+            model_gateway=gw,
+        )
+
+        assert result == "albert-einstein"
+
+    async def test_merged_qdrant_hit_excluded(self):
+        """Qdrant hit with status=merged is excluded from candidates."""
+        merged = make_seed("old-key", "Old Name", "entity", status="merged")
+        incoming = make_seed("new-key", "New Name", "entity", status="pending")
+
+        repo = make_seed_repo_mock()
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(merged, incoming))
+
+        qdrant = make_qdrant_seed_repo_mock(hits=[make_qdrant_match("old-key", 0.95)])
+
+        result = await deduplicate_seed(
+            "new-key",
             "New Name",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            qdrant_seed_repo=qdrant,
         )
-        assert result == "new"
-        repo.merge_seeds.assert_not_called()
 
-    async def test_self_match_skipped(self):
+        # merged seed filtered → no candidates → genesis
+        assert result == "new-key"
+        repo.set_status.assert_called_with("new-key", "active")
+
+    async def test_practitioner_vs_practice_no_merge(self):
+        """Homeopath ≠ Homeopathy — LLM must fire and return disambig, not merge."""
+        homeopathy = make_seed("homeopathy", "Homeopathy", "concept", fact_count=20)
+        incoming = make_seed("homeopath", "Homeopath", "concept", status="pending")
+
         repo = make_seed_repo_mock()
-        self_seed = make_seed("test", "Test", "entity", fact_count=5)
-        repo.find_similar_seeds = AsyncMock(return_value=[self_seed])
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[homeopathy])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(homeopathy, incoming))
+        repo.get_facts_for_seed = AsyncMock(return_value=[])
+        repo.get_routes_for_parent = AsyncMock(return_value=[])
+
+        gw = make_model_gateway_mock({
+            "action": "new_disambig_path",
+            "target_seed_key": "homeopathy",
+            "incoming_disambig_label": "Homeopath (practitioner)",
+            "existing_disambig_label": "Homeopathy (practice)",
+            "reason": "practitioner vs practice",
+        })
 
         result = await deduplicate_seed(
-            "test",
-            "Test",
+            "homeopath",
+            "Homeopath",
+            "concept",
+            repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=gw,
+        )
+
+        # merge_seeds is called internally to fold incoming into its labelled child,
+        # but NOT to merge homeopath into homeopathy (different referents)
+        merge_calls = [str(c) for c in repo.merge_seeds.call_args_list]
+        assert not any("homeopathy" in c and "homeopath" in c and "multiplex_fold" not in c for c in merge_calls)
+        assert result == "homeopath"
+
+    async def test_aliases_passed_to_text_search(self):
+        """aliases kwarg is forwarded to find_seeds_by_keys_or_aliases as extra keys."""
+        repo = make_seed_repo_mock()
+        pending = make_seed("nate-silver", "Nate Silver", "entity", status="pending")
+        repo.get_seed_by_key = AsyncMock(return_value=pending)
+
+        await deduplicate_seed(
+            "nate-silver",
+            "Nate Silver",
             "entity",
             repo,
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "test"
-        repo.merge_seeds.assert_not_called()
-
-    async def test_embedding_dedup(self):
-        repo = make_seed_repo_mock()
-        repo.find_similar_seeds = AsyncMock(return_value=[])  # No trigram match
-
-        embedding_service = MagicMock()
-        embedding_service.embed_text = AsyncMock(return_value=[0.1] * 10)
-
-        qdrant_repo = MagicMock()
-        qdrant_repo.upsert = AsyncMock()
-
-        match_result = make_qdrant_match("albert-einstein", 0.95)
-        qdrant_repo.find_similar = AsyncMock(return_value=[match_result])
-
-        existing = make_seed("albert-einstein", "Albert Einstein", "entity", fact_count=5)
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "einstein": make_seed("einstein", "Einstein", "entity", fact_count=1),
-                "albert-einstein": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        result = await deduplicate_seed(
-            "einstein",
-            "Einstein",
-            "entity",
-            repo,
-            embedding_service=embedding_service,
-            qdrant_seed_repo=qdrant_repo,
-        )
-        assert result == "albert-einstein"
-
-    async def test_alias_error_continues_to_embedding(self):
-        """When trigram/alias search fails, embedding dedup still runs."""
-        repo = make_seed_repo_mock()
-        repo.find_similar_seeds = AsyncMock(side_effect=Exception("DB error"))
-
-        embedding_service = MagicMock()
-        embedding_service.embed_text = AsyncMock(return_value=[0.1] * 10)
-
-        qdrant_repo = MagicMock()
-        qdrant_repo.upsert = AsyncMock()
-        qdrant_repo.find_similar = AsyncMock(return_value=[])
-
-        result = await deduplicate_seed(
-            "test",
-            "Test",
-            "entity",
-            repo,
-            embedding_service=embedding_service,
-            qdrant_seed_repo=qdrant_repo,
-        )
-        assert result == "test"
-        # Should have attempted embedding dedup after alias/trigram failure
-        embedding_service.embed_text.assert_called_once()
-
-    async def test_trigram_high_embedding_low_no_merge(self):
-        """Arizona scenario: trigram finds candidate but embedding finds no match → no merge."""
-        repo = make_seed_repo_mock()
-        # Trigram finds a candidate (high character overlap)
-        existing = make_seed(
-            "university-of-arizona",
-            "The University of Arizona",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-
-        # Embedding finds no match → should NOT merge on trigram alone
-        result = await deduplicate_seed(
-            "arizona-state-university",
-            "Arizona State University",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "arizona-state-university"
-        repo.merge_seeds.assert_not_called()
-
-    async def test_phonetic_with_embedding_floor_merges(self):
-        """Phonetic match with embedding above typo floor → merge."""
-        repo = make_seed_repo_mock()
-        repo.find_similar_seeds = AsyncMock(return_value=[])  # No alias match
-
-        existing = make_seed(
-            "democratic-party",
-            "Democratic Party",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_by_phonetic = AsyncMock(return_value=[existing])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "democrtic-party": make_seed(
-                    "democrtic-party",
-                    "Democrtic Party",
-                    "entity",
-                    fact_count=1,
-                ),
-                "democratic-party": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        embedding_service = MagicMock()
-        embedding_service.embed_text = AsyncMock(return_value=[0.1] * 10)
-
-        qdrant_repo = MagicMock()
-        qdrant_repo.upsert = AsyncMock()
-
-        # Single find_similar call at typo_floor threshold returns sub-threshold match
-        # (below 0.82 merge threshold but above 0.75 typo floor)
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("democratic-party", 0.80),
-            ]
+            aliases=["nathaniel-silver"],
         )
 
-        # Phonetic trigram confirmation
-        trigram_for_phonetic = make_seed(
-            "democratic-party",
-            "Democratic Party",
-            "entity",
-            fact_count=5,
-        )
-        # find_similar_seeds is called twice: once for alias, once for phonetic confirmation
-        repo.find_similar_seeds = AsyncMock(
-            side_effect=[
-                [],  # Alias search — no match
-                [trigram_for_phonetic],  # Phonetic trigram confirmation
-            ]
-        )
+        call_args = repo.find_seeds_by_keys_or_aliases.call_args
+        assert "nathaniel-silver" in call_args.kwargs.get("keys", call_args.args[0] if call_args.args else [])
 
-        with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
-            s = MagicMock()
-            s.seed_dedup_trigram_threshold = 0.50
-            s.seed_dedup_embedding_threshold = 0.82
-            s.seed_dedup_typo_floor = 0.75
-            s.seed_phonetic_trigram_threshold = 0.40
-            mock_settings.return_value = s
 
-            result = await deduplicate_seed(
-                "democrtic-party",
-                "Democrtic Party",
-                "entity",
-                repo,
-                embedding_service=embedding_service,
-                qdrant_seed_repo=qdrant_repo,
-            )
-
-        assert result == "democratic-party"
-        repo.merge_seeds.assert_called_once()
-
-    async def test_phonetic_with_embedding_below_floor_skips(self):
-        """Phonetic match with embedding below typo floor → no merge."""
-        repo = make_seed_repo_mock()
-        repo.find_similar_seeds = AsyncMock(return_value=[])  # No alias match
-
-        existing = make_seed(
-            "bank-of-england",
-            "Bank of England",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_by_phonetic = AsyncMock(return_value=[existing])
-
-        embedding_service = MagicMock()
-        embedding_service.embed_text = AsyncMock(return_value=[0.1] * 10)
-
-        qdrant_repo = MagicMock()
-        qdrant_repo.upsert = AsyncMock()
-
-        # Single find_similar call at typo_floor — no matches
-        qdrant_repo.find_similar = AsyncMock(return_value=[])
-
-        with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
-            s = MagicMock()
-            s.seed_dedup_trigram_threshold = 0.50
-            s.seed_dedup_embedding_threshold = 0.82
-            s.seed_dedup_typo_floor = 0.75
-            s.seed_phonetic_trigram_threshold = 0.40
-            mock_settings.return_value = s
-
-            result = await deduplicate_seed(
-                "bank-of-america",
-                "Bank of America",
-                "entity",
-                repo,
-                embedding_service=embedding_service,
-                qdrant_seed_repo=qdrant_repo,
-            )
-
-        # Should NOT merge — embedding too low for phonetic to take effect
-        assert result == "bank-of-america"
-        repo.merge_seeds.assert_not_called()
-
-    async def test_invalid_name_skips_dedup(self):
-        """Seeds with invalid names (initials, et al.) should skip dedup entirely."""
-        repo = make_seed_repo_mock()
-
-        # Pure initials — should return immediately without any dedup attempt
-        result = await deduplicate_seed(
-            "k-m-a",
-            "K. M. A.",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "k-m-a"
-        repo.find_similar_seeds.assert_not_called()
-        repo.merge_seeds.assert_not_called()
-
-    async def test_et_al_name_skips_dedup(self):
-        """Seeds with 'et al.' citation artifacts skip dedup."""
-        repo = make_seed_repo_mock()
-
-        result = await deduplicate_seed(
-            "smith-et-al",
-            "Smith et al.",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "smith-et-al"
-        repo.find_similar_seeds.assert_not_called()
-
-    async def test_valid_seed_not_attracted_to_garbage(self):
-        """A valid seed should NOT merge into a garbage seed."""
-        garbage_seed = make_seed("some-garbage", "K. M. A.", "entity", fact_count=50)
-        garbage_seed.status = "garbage"
-
-        repo = make_seed_repo_mock()
-        # Trigram returns garbage seed — but it should be skipped (status not active/promoted)
-        repo.find_similar_seeds = AsyncMock(return_value=[garbage_seed])
-
-        result = await deduplicate_seed(
-            "albert-einstein",
-            "Albert Einstein",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "albert-einstein"
-        repo.merge_seeds.assert_not_called()
-
+# ── _merge_pair ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 class TestMergePair:
-    async def test_winner_has_more_facts(self):
+    async def test_higher_fact_count_wins(self):
+        """Seed with more facts wins."""
+        winner = make_seed("alpha", "Alpha", "concept", fact_count=10)
+        loser = make_seed("beta", "Beta", "concept", fact_count=2)
+
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "a": make_seed("a", "A", "entity", fact_count=10),
-                "b": make_seed("b", "B", "entity", fact_count=2),
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(winner, loser))
 
-        result = await _merge_pair("b", "a", repo, reason="test")
-        assert result == "a"
-        # Loser should be "b" (fewer facts)
-        repo.merge_seeds.assert_called_once_with("b", "a", reason="test")
+        result = await _merge_pair("beta", "alpha", repo, reason="test")
+        assert result == "alpha"
+        repo.merge_seeds.assert_called_once()
 
-    async def test_tie_prefers_existing(self):
+    async def test_incoming_wins_when_more_facts(self):
+        """Incoming beats existing when incoming has more facts."""
+        incoming = make_seed("alpha", "Alpha", "concept", fact_count=20)
+        existing = make_seed("beta", "Beta", "concept", fact_count=2)
+
         repo = make_seed_repo_mock()
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "incoming": make_seed("incoming", "Incoming", "entity", fact_count=5),
-                "existing": make_seed("existing", "Existing", "entity", fact_count=5),
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(incoming, existing))
 
-        result = await _merge_pair("incoming", "existing", repo, reason="test")
-        assert result == "existing"
+        result = await _merge_pair("alpha", "beta", repo, reason="test")
+        assert result == "alpha"
+
+    async def test_longest_name_wins_canonical(self):
+        """Winner adopts loser's name when loser name is longer."""
+        winner = make_seed("abc", "ABC", "concept", fact_count=10)
+        loser = make_seed("american-broadcasting-company", "American Broadcasting Company", "concept", fact_count=2)
+
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(winner, loser))
+
+        await _merge_pair(
+            "american-broadcasting-company", "abc", repo, reason="test"
+        )
+
+        repo.rename_seed.assert_called_once_with("abc", "American Broadcasting Company")
+
+    async def test_loser_aliases_propagate_to_winner(self):
+        """Loser key + loser aliases all added to winner aliases."""
+        winner = make_seed("alpha", "Alpha", "concept", fact_count=10, aliases=["al"])
+        loser = make_seed("beta", "Beta", "concept", fact_count=2, aliases=["b"])
+
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(winner, loser))
+
+        await _merge_pair("beta", "alpha", repo, reason="test")
+
+        call_args = repo.merge_aliases_into_winner.call_args
+        extra = call_args.args[1] if call_args.args else call_args.kwargs.get("extra_aliases", [])
+        assert "beta" in extra
+        assert "b" in extra
 
     async def test_missing_seed_returns_incoming(self):
+        """If either seed not found, no merge, return incoming."""
         repo = make_seed_repo_mock()
         repo.get_seed_by_key = AsyncMock(return_value=None)
 
-        result = await _merge_pair("incoming", "missing", repo, reason="test")
-        assert result == "incoming"
-        repo.merge_seeds.assert_not_called()
-
-
-class TestContainmentMismatch:
-    """Tests for the containment guard that prevents merging distinct entities."""
-
-    def test_identical_names_ok(self):
-        assert _is_containment_mismatch("albert einstein", "albert einstein") is False
-
-    def test_minor_variation_ok(self):
-        # Single short extra word (e.g., article) — allow merge
-        assert _is_containment_mismatch("quantum mechanics", "quantum mechanics") is False
-
-    def test_epstein_vs_lawyer(self):
-        # "jeffrey epstein" is contained in "jeffrey epstein's lawyer" with extra "lawyer"
-        assert _is_containment_mismatch("jeffrey epstein", "jeffrey epstein's lawyer") is True
-
-    def test_committee_vs_democrats_on_committee(self):
-        assert (
-            _is_containment_mismatch(
-                "house oversight committee",
-                "democrats on the house oversight committee",
-            )
-            is True
-        )
-
-    def test_subset_with_short_extra_word_ok(self):
-        # Only adds "a" — too short to be meaningful
-        assert _is_containment_mismatch("big cat", "a big cat") is False
-
-    def test_no_containment_different_words(self):
-        # Neither is a subset of the other, no substring containment
-        assert _is_containment_mismatch("albert einstein", "niels bohr") is False
-
-    def test_substring_containment_with_significant_extra(self):
-        # "mars" is a substring of "mars rover" — different entity
-        assert _is_containment_mismatch("mars", "mars rover") is True
-
-    def test_symmetric(self):
-        # Order shouldn't matter
-        assert _is_containment_mismatch("jeffrey epstein's lawyer", "jeffrey epstein") is True
-
-    # ── Distinguishing-word swap tests (Case 2) ──────────────────
-    def test_world_war_1_vs_2(self):
-        assert _is_containment_mismatch("world war 1", "world war 2") is True
-
-    def test_bank_of_america_vs_england(self):
-        assert _is_containment_mismatch("bank of america", "bank of england") is True
-
-    def test_new_york_times_vs_post(self):
-        assert _is_containment_mismatch("new york times", "new york post") is True
-
-    def test_university_of_california_vs_michigan(self):
-        assert _is_containment_mismatch("university of california", "university of michigan") is True
-
-    def test_different_jurisdictions(self):
-        assert (
-            _is_containment_mismatch(
-                "u.s. attorney for southern district of new york",
-                "u.s. attorney's office for southern district of florida",
-            )
-            is True
-        )
-
-    def test_different_arrest_dates(self):
-        assert (
-            _is_containment_mismatch(
-                "2006 arrest of jeffrey epstein",
-                "july 6 2019 arrest of jeffrey epstein",
-            )
-            is True
-        )
-
-    def test_supreme_court_different_country(self):
-        assert (
-            _is_containment_mismatch(
-                "supreme court of the united states",
-                "supreme court of canada",
-            )
-            is True
-        )
-
-    def test_title_prefix_ok(self):
-        # "barack obama" vs "president barack obama" — just a title, should merge
-        assert _is_containment_mismatch("barack obama", "president barack obama") is True
-
-    def test_article_prefix_ok(self):
-        # "miami herald" vs "the miami herald" — article only, should allow
-        assert _is_containment_mismatch("miami herald", "the miami herald") is False
-
-    def test_punctuation_only_ok(self):
-        # Same words, different punctuation
-        assert _is_containment_mismatch("mcdonalds", "mcdonalds") is False
-
-
-class TestAcronymMatch:
-    """Tests for the acronym detection heuristic."""
-
-    # ── Positive cases ──────────────────────────────────────────────
-    def test_fbi(self):
-        assert _is_acronym_match("FBI", "Federal Bureau of Investigation") is True
-
-    def test_cia(self):
-        assert _is_acronym_match("CIA", "Central Intelligence Agency") is True
-
-    def test_nasa(self):
-        assert _is_acronym_match("NASA", "National Aeronautics and Space Administration") is True
-
-    def test_nato(self):
-        assert _is_acronym_match("NATO", "North Atlantic Treaty Organization") is True
-
-    def test_usa(self):
-        assert _is_acronym_match("USA", "United States of America") is True
-
-    def test_nyse(self):
-        assert _is_acronym_match("NYSE", "New York Stock Exchange") is True
-
-    def test_who(self):
-        assert _is_acronym_match("WHO", "World Health Organization") is True
-
-    def test_sec(self):
-        assert _is_acronym_match("SEC", "Securities and Exchange Commission") is True
-
-    def test_gdp(self):
-        assert _is_acronym_match("GDP", "Gross Domestic Product") is True
-
-    def test_dotted_acronym(self):
-        assert _is_acronym_match("J.F.K.", "John F. Kennedy") is True
-
-    def test_reversed_order(self):
-        assert _is_acronym_match("Federal Bureau of Investigation", "FBI") is True
-
-    def test_ibm(self):
-        assert _is_acronym_match("IBM", "International Business Machines") is True
-
-    def test_bbc(self):
-        assert _is_acronym_match("BBC", "British Broadcasting Corporation") is True
-
-    def test_eu(self):
-        assert _is_acronym_match("EU", "European Union") is True
-
-    def test_imf(self):
-        assert _is_acronym_match("IMF", "International Monetary Fund") is True
-
-    def test_ai(self):
-        assert _is_acronym_match("AI", "Artificial Intelligence") is True
-
-    # ── Negative cases ──────────────────────────────────────────────
-    def test_two_acronyms(self):
-        assert _is_acronym_match("FBI", "CIA") is False
-
-    def test_valid_alternate_expansion(self):
-        # FBI matches "Food and Beverage Industry" initials — the heuristic
-        # correctly identifies this as an acronym match. Disambiguation of
-        # which entity "FBI" refers to is handled by Phase 5 (ambiguity).
-        assert _is_acronym_match("FBI", "Food and Beverage Industry") is True
-
-    def test_both_long_names(self):
-        assert _is_acronym_match("Albert Einstein", "Niels Bohr") is False
-
-    def test_single_char(self):
-        assert _is_acronym_match("A", "Albert") is False
-
-    def test_too_long_acronym(self):
-        assert _is_acronym_match("ABCDEFGH", "A B C D E F G H") is False
-
-    def test_matching_initials_different_entity(self):
-        # MIT matches "Ministry of Information Technology" initials — that's correct!
-        # Disambiguation handles which entity wins, not the acronym heuristic.
-        assert _is_acronym_match("MIT", "Ministry of Information Technology") is True
-
-    def test_wrong_initials(self):
-        # FBI doesn't match "Food and Drug Administration" → FDA
-        assert _is_acronym_match("FBI", "Food and Drug Administration") is False
-
-    def test_nato_vs_nafta(self):
-        assert _is_acronym_match("NATO", "NAFTA") is False
-
-    def test_empty_strings(self):
-        assert _is_acronym_match("", "") is False
-
-    def test_number_in_acronym(self):
-        assert _is_acronym_match("G7", "Group of Seven") is False
-
-    def test_who_vs_band(self):
-        # "The Who" has only 2 words but "WHO" initials would be "TW"
-        assert _is_acronym_match("WHO", "The Who") is False
-
-
-@pytest.mark.asyncio
-class TestAcronymMatchIntegration:
-    async def test_acronym_merges_via_trigram(self):
-        """Acronym match found via trigram candidate search → merge."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "federal-bureau-of-investigation",
-            "Federal Bureau of Investigation",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "fbi": make_seed("fbi", "FBI", "entity", fact_count=1),
-                "federal-bureau-of-investigation": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        result = await deduplicate_seed(
-            "fbi",
-            "FBI",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "federal-bureau-of-investigation"
-        repo.merge_seeds.assert_called_once()
-
-    async def test_wrong_initials_no_merge(self):
-        """Acronym whose initials don't match the candidate → no merge."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "food-and-drug-administration",
-            "Food and Drug Administration",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-
-        result = await deduplicate_seed(
-            "fbi",
-            "FBI",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        # FBI vs FDA — initials don't match
-        assert result == "fbi"
-        repo.merge_seeds.assert_not_called()
-
-    async def test_non_acronym_candidate_not_merged(self):
-        """Non-acronym trigram candidate without exact name match → no merge."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "federal-aviation-administration",
-            "Federal Aviation Administration",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-
-        result = await deduplicate_seed(
-            "fbi",
-            "FBI",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        # FBI != FAA initials, no exact name match → no merge
-        assert result == "fbi"
-        repo.merge_seeds.assert_not_called()
-
-
-@pytest.mark.asyncio
-class TestReverseAliasLookup:
-    async def test_reverse_alias_merges(self):
-        """Incoming seed 'FBI' merges with existing seed that has 'FBI' as alias."""
-        repo = make_seed_repo_mock()
-        repo.find_similar_seeds = AsyncMock(return_value=[])  # No trigram match
-
-        existing = make_seed(
-            "federal-bureau-of-investigation",
-            "Federal Bureau of Investigation",
-            "entity",
-            fact_count=5,
-            metadata_={"aliases": ["FBI"]},
-        )
-        repo.find_seeds_by_alias = AsyncMock(return_value=[existing])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "fbi": make_seed("fbi", "FBI", "entity", fact_count=1),
-                "federal-bureau-of-investigation": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        result = await deduplicate_seed(
-            "fbi",
-            "FBI",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "federal-bureau-of-investigation"
-        repo.merge_seeds.assert_called_once()
-
-    async def test_reverse_alias_no_match(self):
-        """No reverse alias match → no merge from that signal."""
-        repo = make_seed_repo_mock()
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.find_seeds_by_alias = AsyncMock(return_value=[])
-
-        result = await deduplicate_seed(
-            "fbi",
-            "FBI",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "fbi"
-        repo.merge_seeds.assert_not_called()
-
-
-@pytest.mark.asyncio
-class TestMultiMatchAmbiguity:
-    async def test_single_alias_candidate_merges(self):
-        """Single alias candidate → direct merge (no ambiguity)."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "federal-bureau-of-investigation",
-            "Federal Bureau of Investigation",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "fbi": make_seed("fbi", "FBI", "entity", fact_count=1),
-                "federal-bureau-of-investigation": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        result = await deduplicate_seed(
-            "fbi",
-            "FBI",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "federal-bureau-of-investigation"
-
-    async def test_multi_match_shared_ancestor_merges(self):
-        """Two candidates that share a merged ancestor → merge into ancestor."""
-        repo = make_seed_repo_mock()
-        # Candidate A: merged into ancestor
-        candidate_a = make_seed(
-            "cand-a",
-            "Candidate A",
-            "entity",
-            fact_count=3,
-            metadata_={"aliases": ["Alias X"]},
-        )
-        # Candidate B: also merged into same ancestor (via reverse alias)
-        candidate_b = make_seed(
-            "cand-b",
-            "Candidate B",
-            "entity",
-            fact_count=2,
-            metadata_={"aliases": ["Alias X"]},
-        )
-        # Both candidates found via trigram
-        repo.find_similar_seeds = AsyncMock(return_value=[candidate_a, candidate_b])
-
-        # Merge chain: A → merged into ancestor, B → merged into ancestor
-        ancestor = make_seed(
-            "ancestor",
-            "Ancestor",
-            "entity",
-            status="active",
-            fact_count=10,
-        )
-        merged_a = make_seed(
-            "cand-a",
-            "Candidate A",
-            "entity",
-            status="merged",
-            fact_count=3,
-        )
-        merged_a.merged_into_key = "ancestor"
-        merged_b = make_seed(
-            "cand-b",
-            "Candidate B",
-            "entity",
-            status="merged",
-            fact_count=2,
-        )
-        merged_b.merged_into_key = "ancestor"
-
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "incoming": make_seed("incoming", "Alias X", "entity", fact_count=1),
-                "cand-a": merged_a,
-                "cand-b": merged_b,
-                "ancestor": ancestor,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        result = await deduplicate_seed(
-            "incoming",
-            "Alias X",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "ancestor"
-
-    async def test_multi_match_distinct_entities_marks_ambiguous(self):
-        """Two candidates from different signals → mark as ambiguous."""
-        repo = make_seed_repo_mock()
-        # Candidate A found via trigram alias match
-        candidate_a = make_seed(
-            "securities-and-exchange-commission",
-            "Securities and Exchange Commission",
-            "entity",
-            fact_count=5,
-            metadata_={"aliases": ["SEC"]},
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[candidate_a])
-
-        # Candidate B found via reverse alias lookup (different entity also has "SEC" as alias)
-        candidate_b = make_seed(
-            "southeastern-conference",
-            "Southeastern Conference",
-            "entity",
-            fact_count=3,
-            metadata_={"aliases": ["SEC"]},
-        )
-        repo.find_seeds_by_alias = AsyncMock(return_value=[candidate_b])
-
-        # Neither is merged — they're independent
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "sec": make_seed("sec", "SEC", "entity", fact_count=1),
-                "securities-and-exchange-commission": candidate_a,
-                "southeastern-conference": candidate_b,
-            }.get(k)
-        )
-
-        result = await deduplicate_seed(
-            "sec",
-            "SEC",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        # Should return own key (marked as ambiguous)
-        assert result == "sec"
-        # Should have created routes to both candidates
-        assert repo.create_route.call_count == 2
-
-
-@pytest.mark.asyncio
-class TestContainmentGuardIntegration:
-    async def test_trigram_match_with_containment_skipped(self):
-        """Trigram match that fails containment guard should not merge."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "jeffrey-epstein",
-            "Jeffrey Epstein",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-
-        result = await deduplicate_seed(
-            "jeffrey-epstein-s-lawyer",
-            "Jeffrey Epstein's Lawyer",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        # Should NOT merge — containment mismatch blocks alias, embedding finds nothing
-        assert result == "jeffrey-epstein-s-lawyer"
-        repo.merge_seeds.assert_not_called()
-
-    async def test_committee_containment_skipped(self):
-        """Contained committee name should not merge."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "democrats-on-the-house-oversight-committee",
-            "Democrats on the House Oversight Committee",
-            "entity",
-            fact_count=3,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[existing])
-
-        result = await deduplicate_seed(
-            "house-oversight-committee",
-            "House Oversight Committee",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
-        )
-        assert result == "house-oversight-committee"
-        repo.merge_seeds.assert_not_called()
-
-
-@pytest.mark.asyncio
-class TestLLMConfirmMerge:
-    async def test_llm_confirms_same_concept(self):
-        """LLM says same entity → merge + specificity upgrade."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "photosynthesis",
-            "photosynthesis",
-            "concept",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "oxygenic-photosynthesis": make_seed(
-                    "oxygenic-photosynthesis",
-                    "oxygenic photosynthesis",
-                    "concept",
-                    fact_count=1,
-                ),
-                "photosynthesis": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-        repo.get_facts_for_seed = AsyncMock(return_value=[])
-        repo.rename_seed = AsyncMock()
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("photosynthesis", 0.92),
-            ]
-        )
-
-        model_gw = make_model_gateway_mock({"same_entity": True, "preferred_name": "oxygenic photosynthesis"})
-        write_fact_repo = make_write_fact_repo_mock()
-
-        result = await deduplicate_seed(
-            "oxygenic-photosynthesis",
-            "oxygenic photosynthesis",
-            "concept",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-            model_gateway=model_gw,
-            write_fact_repo=write_fact_repo,
-        )
-        assert result == "photosynthesis"
-        repo.merge_seeds.assert_called_once()
-        repo.rename_seed.assert_called_once_with("photosynthesis", "oxygenic photosynthesis")
-
-    async def test_auto_merge_skips_llm_for_high_similarity(self):
-        """Very high embedding + string guards pass → auto-merge without LLM."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "posttraumatic-growth",
-            "posttraumatic growth",
-            "concept",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "post-traumatic-growth": make_seed(
-                    "post-traumatic-growth",
-                    "post-traumatic growth",
-                    "concept",
-                    fact_count=1,
-                ),
-                "posttraumatic-growth": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("posttraumatic-growth", 0.987),
-            ]
-        )
-
-        model_gw = make_model_gateway_mock({"same_entity": True, "preferred_name": None})
-        write_fact_repo = make_write_fact_repo_mock()
-
-        result = await deduplicate_seed(
-            "post-traumatic-growth",
-            "post-traumatic growth",
-            "concept",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-            model_gateway=model_gw,
-            write_fact_repo=write_fact_repo,
-        )
-        assert result == "posttraumatic-growth"
-        repo.merge_seeds.assert_called_once()
-        # LLM should NOT have been called
-        model_gw.generate_json.assert_not_called()
-
-    async def test_auto_merge_blocked_by_digit_guard(self):
-        """High embedding but digit-only difference → still uses LLM."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "apvac1",
-            "APVAC1",
-            "event",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "apvac2": make_seed("apvac2", "APVAC2", "event", fact_count=1),
-                "apvac1": existing,
-            }.get(k)
-        )
-        repo.get_facts_for_seed = AsyncMock(return_value=[])
-        repo.split_seed = AsyncMock(return_value=[])
-        repo.create_route = AsyncMock()
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("apvac1", 0.96),
-            ]
-        )
-
-        model_gw = make_model_gateway_mock({"same_entity": False, "preferred_name": None})
-        write_fact_repo = make_write_fact_repo_mock()
-
-        await deduplicate_seed(
-            "apvac2",
-            "APVAC2",
-            "event",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-            model_gateway=model_gw,
-            write_fact_repo=write_fact_repo,
-        )
-        # LLM SHOULD have been called (digit guard blocks auto-merge)
-        model_gw.generate_json.assert_called_once()
-
-    async def test_auto_merge_blocked_by_academic_initials(self):
-        """High embedding but academic initials → still uses LLM."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "ana-r-p-silva",
-            "Ana R. P. Silva",
-            "entity",
-            fact_count=5,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "ana-r-s-silva": make_seed("ana-r-s-silva", "Ana R. S. Silva", "entity", fact_count=1),
-                "ana-r-p-silva": existing,
-            }.get(k)
-        )
-        repo.get_facts_for_seed = AsyncMock(return_value=[])
-        repo.split_seed = AsyncMock(return_value=[])
-        repo.create_route = AsyncMock()
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("ana-r-p-silva", 0.982),
-            ]
-        )
-
-        model_gw = make_model_gateway_mock({"same_entity": False, "preferred_name": None})
-        write_fact_repo = make_write_fact_repo_mock()
-
-        await deduplicate_seed(
-            "ana-r-s-silva",
-            "Ana R. S. Silva",
-            "entity",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-            model_gateway=model_gw,
-            write_fact_repo=write_fact_repo,
-        )
-        # LLM SHOULD have been called (academic initials guard blocks auto-merge)
-        model_gw.generate_json.assert_called_once()
-
-    async def test_llm_rejects_skips_without_disambiguation(self):
-        """LLM says different → seeds kept separate, no disambiguation tree."""
-        repo = make_seed_repo_mock()
-        existing = make_seed(
-            "light-dependent-reactions",
-            "light-dependent reactions",
-            "concept",
-            fact_count=3,
-        )
-        incoming = make_seed(
-            "light-independent-reactions",
-            "light-independent reactions",
-            "concept",
-            fact_count=1,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "light-dependent-reactions": existing,
-                "light-independent-reactions": incoming,
-            }.get(k)
-        )
-        repo.get_facts_for_seed = AsyncMock(return_value=[])
-        repo.split_seed = AsyncMock(return_value=[])
-        repo.create_route = AsyncMock()
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("light-dependent-reactions", 0.90),
-            ]
-        )
-
-        model_gw = make_model_gateway_mock({"same_entity": False, "preferred_name": None})
-        write_fact_repo = make_write_fact_repo_mock()
-
-        result = await deduplicate_seed(
-            "light-independent-reactions",
-            "light-independent reactions",
-            "concept",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-            model_gateway=model_gw,
-            write_fact_repo=write_fact_repo,
-        )
-        # Should NOT have merged
-        repo.merge_seeds.assert_not_called()
-        # Should NOT create disambiguation tree — just skip
-        repo.split_seed.assert_not_called()
-        repo.create_route.assert_not_called()
-
-    async def test_llm_unavailable_auto_merges(self):
-        """Without model_gateway, Signal 1 auto-merges (backward compat)."""
-        repo = make_seed_repo_mock()
-        existing = make_seed("photo", "photosynthesis", "concept", fact_count=5)
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "photo-new": make_seed("photo-new", "photosynthesis process", "concept", fact_count=1),
-                "photo": existing,
-            }.get(k)
-        )
-        repo.merge_seeds = AsyncMock(return_value=MagicMock())
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("photo", 0.92),
-            ]
-        )
-
-        result = await deduplicate_seed(
-            "photo-new",
-            "photosynthesis process",
-            "concept",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-            # No model_gateway or write_fact_repo
-        )
-        assert result == "photo"
-        repo.merge_seeds.assert_called_once()
-
-    async def test_llm_error_defaults_no_merge(self):
-        """LLM error → default to no-merge for safety."""
-        repo = make_seed_repo_mock()
-        existing = make_seed("a", "concept A", "concept", fact_count=3)
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "b": make_seed("b", "concept B", "concept", fact_count=1),
-                "a": existing,
-            }.get(k)
-        )
-        repo.get_facts_for_seed = AsyncMock(return_value=[])
-        repo.split_seed = AsyncMock(return_value=[])
-        repo.create_route = AsyncMock()
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("a", 0.90),
-            ]
-        )
-
-        model_gw = MagicMock()
-        model_gw.generate_json = AsyncMock(side_effect=Exception("API error"))
-        write_fact_repo = make_write_fact_repo_mock()
-
-        result = await deduplicate_seed(
-            "b",
-            "concept B",
-            "concept",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-            model_gateway=model_gw,
-            write_fact_repo=write_fact_repo,
-        )
-        # Error → no merge (safety)
-        repo.merge_seeds.assert_not_called()
-
-    async def test_no_facts_names_only(self):
-        """LLM gate works with just names when no facts are available."""
-        repo = make_seed_repo_mock()
-        repo.get_facts_for_seed = AsyncMock(return_value=[])
-
-        model_gw = make_model_gateway_mock({"same_entity": True, "preferred_name": None})
-        write_fact_repo = make_write_fact_repo_mock()
-
-        confirmed, preferred = await _llm_confirm_merge(
-            "Calvin cycle",
-            "calvin-cycle",
-            "Calvin-Benson cycle",
-            "calvin-benson-cycle",
-            repo,
-            write_fact_repo,
-            model_gw,
-        )
-        assert confirmed is True
-        model_gw.generate_json.assert_called_once()
-
-    async def test_anchor_skipped_on_recheck(self):
-        """Ambiguous anchor seed is skipped by Signal 1 (status != active/promoted)."""
-        repo = make_seed_repo_mock()
-        ambiguous = make_seed(
-            "light-dependent-reactions",
-            "light-dependent reactions",
-            "concept",
-            status="ambiguous",
-            fact_count=3,
-        )
-        repo.find_similar_seeds = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "new-light-concept": make_seed(
-                    "new-light-concept",
-                    "new light concept",
-                    "concept",
-                    fact_count=1,
-                ),
-                "light-dependent-reactions": ambiguous,
-            }.get(k)
-        )
-
-        qdrant_repo = make_qdrant_seed_repo_mock()
-        qdrant_repo.find_similar = AsyncMock(
-            return_value=[
-                make_qdrant_match("light-dependent-reactions", 0.88),
-            ]
-        )
-
-        result = await deduplicate_seed(
-            "new-light-concept",
-            "new light concept",
-            "concept",
-            repo,
-            embedding_service=make_embedding_service_mock(),
-            qdrant_seed_repo=qdrant_repo,
-        )
-        assert result == "new-light-concept"
-        repo.merge_seeds.assert_not_called()
-
-
-class TestPrefixDisambiguation:
-    def test_light_dependent_vs_independent(self):
-        assert _is_prefix_disambiguation_candidate("light-dependent reactions", "light-independent reactions") is True
-
-    def test_north_korea_vs_north_macedonia(self):
-        assert _is_prefix_disambiguation_candidate("North Korea", "North Macedonia") is True
-
-    def test_unrelated_names(self):
-        assert _is_prefix_disambiguation_candidate("photosynthesis", "dark reactions") is False
-
-    def test_prefix_too_short(self):
-        assert _is_prefix_disambiguation_candidate("cat", "car") is False
-
-    def test_one_is_pure_prefix(self):
-        # "photo" is a pure prefix of "photosynthesis" → containment, not disambiguation
-        assert _is_prefix_disambiguation_candidate("photo", "photosynthesis") is False
-
-    def test_identical_names(self):
-        assert _is_prefix_disambiguation_candidate("same", "same") is False
-
-    def test_endothermic_vs_exothermic(self):
-        # Share "e" prefix only — too short for match at word boundary
-        # These don't share a long enough prefix
-        assert _is_prefix_disambiguation_candidate("endothermic reaction", "exothermic reaction") is False
-
-
-class TestTextSearchRoute:
-    def test_fact_contains_seed_name(self):
-        routes = [
-            make_route("", "light-dep:disambig", "light-dependent reactions", "embedding"),
-            make_route("", "light-indep", "light-independent reactions", "embedding"),
-        ]
-        result = _text_search_route(
-            "The light-dependent reactions occur in the thylakoid membrane",
-            routes,
-        )
-        assert result == "light-dep:disambig"
-
-    def test_fact_contains_neither(self):
-        routes = [
-            make_route("", "a", "light-dependent reactions", "embedding"),
-            make_route("", "b", "light-independent reactions", "embedding"),
-        ]
-        result = _text_search_route("Chloroplasts are organelles", routes)
-        assert result is None
-
-    def test_fact_contains_both(self):
-        routes = [
-            make_route("", "a", "light-dependent reactions", "embedding"),
-            make_route("", "b", "light-independent reactions", "embedding"),
-        ]
-        result = _text_search_route(
-            "Both light-dependent reactions and light-independent reactions occur in chloroplasts",
-            routes,
-        )
-        assert result is None  # Ambiguous — both match
-
-
-class TestCascadingRouting:
-    """Tests for _resolve_through_pipes multi-step routing."""
-
-    @pytest.mark.asyncio
-    async def test_cascading_two_level_routing(self):
-        """A(ambiguous) → B(ambiguous) → C(active). Fact reaches C."""
-        from kt_facts.processing.seed_routing import _resolve_through_pipes
-
-        seed_a = make_seed("a", "A", "concept", status="ambiguous")
-        seed_b = make_seed("b", "B", "concept", status="ambiguous")
-        seed_c = make_seed("c", "C", "concept", status="active")
-
-        route_a_b = make_route("a", "b", "B", "text")
-        route_b_c = make_route("b", "c", "C", "text")
-
-        repo = make_seed_repo_mock()
-        # _route_through_pipe looks up routes for parent
-        repo.get_routes_for_parent = AsyncMock(
-            side_effect=lambda k: {
-                "a": [route_a_b],
-                "b": [route_b_c],
-            }.get(k, [])
-        )
-        repo.get_seed_by_key = AsyncMock(
-            side_effect=lambda k: {
-                "a": seed_a,
-                "b": seed_b,
-                "c": seed_c,
-            }.get(k)
-        )
-
-        result = await _resolve_through_pipes(
-            "a",
-            seed_a,
-            "some fact",
-            repo,
-        )
-        assert result == "c"
-
-    @pytest.mark.asyncio
-    async def test_routing_stops_at_max_depth(self):
-        """Chain of 6 ambiguous seeds — stops at MAX_ROUTE_DEPTH (5)."""
-        from kt_facts.processing.seed_routing import MAX_ROUTE_DEPTH, _resolve_through_pipes
-
-        # Build chain: seed_0 → seed_1 → ... → seed_6 (all ambiguous)
-        seeds = {}
-        routes = {}
-        for i in range(7):
-            key = f"s{i}"
-            seeds[key] = make_seed(key, f"S{i}", "concept", status="ambiguous")
-            if i < 6:
-                routes[key] = [make_route(key, f"s{i + 1}", f"S{i + 1}", "text")]
-            else:
-                routes[key] = []
-
-        repo = make_seed_repo_mock()
-        repo.get_routes_for_parent = AsyncMock(side_effect=lambda k: routes.get(k, []))
-        repo.get_seed_by_key = AsyncMock(side_effect=lambda k: seeds.get(k))
-
-        result = await _resolve_through_pipes(
-            "s0",
-            seeds["s0"],
-            "some fact",
-            repo,
-        )
-        # Should stop at depth 5: concept:s5 (0-indexed from s0 through 5 iterations)
-        assert result == f"s{MAX_ROUTE_DEPTH}"
-
-    @pytest.mark.asyncio
-    async def test_routing_stops_on_same_key(self):
-        """_route_through_pipe returns same key → no infinite loop."""
-        from kt_facts.processing.seed_routing import _resolve_through_pipes
-
-        seed_a = make_seed("a", "A", "concept", status="ambiguous")
-
-        repo = make_seed_repo_mock()
-        # Only one route that points back to itself (edge case)
-        repo.get_routes_for_parent = AsyncMock(return_value=[])
-        repo.get_seed_by_key = AsyncMock(return_value=seed_a)
-
-        result = await _resolve_through_pipes(
-            "a",
-            seed_a,
-            "some fact",
-            repo,
-        )
-        # No routes → _route_through_pipe returns None → stops at parent
+        result = await _merge_pair("a", "b", repo, reason="test")
         assert result == "a"
+        repo.merge_seeds.assert_not_called()
 
 
-class TestDiffersOnlyByDigitOrInitial:
-    """Tests for the digit/initial guard used in tiered auto-merge."""
+# ── _promote_and_genesis_disambig ────────────────────────────────────────────
 
-    def test_numbered_protocols(self):
-        assert differs_only_by_digit_or_initial("APVAC1", "APVAC2") is True
-
-    def test_numbered_protocols_multi_digit(self):
-        assert differs_only_by_digit_or_initial("ParvOryx01 protocol", "ParvOryx02 protocol") is True
-
-    def test_roman_numerals(self):
-        assert differs_only_by_digit_or_initial("Phase I trial", "Phase II trial") is True
-
-    def test_person_initials(self):
-        assert differs_only_by_digit_or_initial("Ana R. S. Silva", "Ana R. P. Silva") is True
-
-    def test_person_initials_multi(self):
-        assert differs_only_by_digit_or_initial("Maria J. P. Silva", "Maria J. S. Silva") is True
-
-    def test_completely_different_names(self):
-        assert differs_only_by_digit_or_initial("photosynthesis", "cell division") is False
-
-    def test_synonyms(self):
-        assert differs_only_by_digit_or_initial("post-traumatic growth", "posttraumatic growth") is False
-
-    def test_singular_plural(self):
-        assert differs_only_by_digit_or_initial("biofield devices", "biofield device") is False
-
-    def test_identical(self):
-        assert differs_only_by_digit_or_initial("same name", "same name") is False
-
-
-class TestHasAcademicInitials:
-    def test_standard_initials(self):
-        assert has_academic_initials("Ana R. P. Silva") is True
-
-    def test_single_initial(self):
-        assert has_academic_initials("J. Smith") is True
-
-    def test_no_initials(self):
-        assert has_academic_initials("photosynthesis") is False
-
-    def test_abbreviation_not_initial(self):
-        assert has_academic_initials("U.S. policy") is True  # still has initial pattern
-
-
-class TestIsSafeAutoMerge:
-    """Tests for the combined auto-merge gate."""
-
-    def test_high_score_synonyms_pass(self):
-        assert (
-            is_safe_auto_merge(
-                "post-traumatic growth",
-                "posttraumatic growth",
-                0.987,
-                0.95,
-            )
-            is True
+@pytest.mark.asyncio
+class TestPromoteAndGenesis:
+    async def test_skips_active_seed(self):
+        """Already active seeds skip the genesis path entirely."""
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(
+            return_value=make_seed("mars", "Mars", "concept", status="active")
         )
 
-    def test_high_score_digit_blocked(self):
-        assert (
-            is_safe_auto_merge(
-                "APVAC1",
-                "APVAC2",
-                0.96,
-                0.95,
-            )
-            is False
+        await _promote_and_genesis_disambig("mars", "Mars", "concept", repo, model_gateway=None)
+
+        repo.set_status.assert_not_called()
+
+    async def test_skips_missing_seed(self):
+        """Missing seed → no-op."""
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(return_value=None)
+
+        await _promote_and_genesis_disambig("x", "X", "concept", repo, model_gateway=None)
+        repo.set_status.assert_not_called()
+
+    async def test_promotes_pending_to_active_no_llm(self):
+        """Pending seed promoted to active when no model_gateway."""
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(
+            return_value=make_seed("mars", "Mars", "concept", status="pending")
         )
 
-    def test_high_score_initials_blocked(self):
-        assert (
-            is_safe_auto_merge(
-                "Ana R. S. Silva",
-                "Ana R. P. Silva",
-                0.98,
-                0.95,
-            )
-            is False
+        await _promote_and_genesis_disambig("mars", "Mars", "concept", repo, model_gateway=None)
+
+        repo.set_status.assert_called_once_with("mars", "active")
+
+    async def test_single_word_polysemous_name_creates_routes(self):
+        """LLM returns 2+ paths → split_seed called to create child routes."""
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(
+            return_value=make_seed("mercury", "Mercury", "concept", status="pending")
+        )
+        repo.get_facts_with_content_for_seed = AsyncMock(
+            return_value=[(uuid.uuid4(), "Mercury is the closest planet to the Sun.")]
         )
 
-    def test_below_threshold(self):
-        assert (
-            is_safe_auto_merge(
-                "post-traumatic growth",
-                "posttraumatic growth",
-                0.93,
-                0.95,
-            )
-            is False
+        gw = MagicMock()
+        gw.generate_json = AsyncMock(side_effect=[
+            # suggest_disambig call
+            {"paths": ["Mercury (planet)", "Mercury (element)", "Mercury (Roman god)"]},
+            # route_facts_to_paths call
+            {"assignments": []},
+        ])
+
+        with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
+            s = MagicMock()
+            s.seed_suggest_disambig_enabled = True
+            s.seed_dedup_llm_model = ""
+            s.decomposition_model = "test-model"
+            mock_settings.return_value = s
+
+            await _promote_and_genesis_disambig("mercury", "Mercury", "concept", repo, model_gateway=gw)
+
+        repo.split_seed.assert_called_once()
+        repo.set_status.assert_any_call("mercury", "ambiguous")
+
+    async def test_no_paths_returns_active_only(self):
+        """LLM returns empty paths → seed stays active, no routes."""
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(
+            return_value=make_seed("uniquename", "Uniquename", "concept", status="pending")
         )
 
-    def test_containment_blocked(self):
-        assert (
-            is_safe_auto_merge(
-                "adult cancer patients",
-                "adult cancer survivorship care",
-                0.96,
-                0.95,
-            )
-            is False
+        gw = MagicMock()
+        gw.generate_json = AsyncMock(return_value={"paths": []})
+
+        with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
+            s = MagicMock()
+            s.seed_suggest_disambig_enabled = True
+            s.seed_dedup_llm_model = ""
+            s.decomposition_model = "test-model"
+            mock_settings.return_value = s
+
+            await _promote_and_genesis_disambig("uniquename", "Uniquename", "concept", repo, model_gateway=gw)
+
+        repo.split_seed.assert_not_called()
+        repo.set_status.assert_called_with("uniquename", "active")
+
+    async def test_suggest_disambig_disabled_by_setting(self):
+        """seed_suggest_disambig_enabled=False → active only, no LLM call."""
+        repo = make_seed_repo_mock()
+        repo.get_seed_by_key = AsyncMock(
+            return_value=make_seed("mars", "Mars", "concept", status="pending")
+        )
+        gw = MagicMock()
+
+        with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
+            s = MagicMock()
+            s.seed_suggest_disambig_enabled = False
+            mock_settings.return_value = s
+
+            await _promote_and_genesis_disambig("mars", "Mars", "concept", repo, model_gateway=gw)
+
+        gw.generate_json.assert_not_called()
+        repo.set_status.assert_called_with("mars", "active")
+
+
+# ── embed_and_upsert_seed ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+class TestEmbedAndUpsertSeed:
+    async def test_embeds_and_upserts(self):
+        emb = make_embedding_service_mock([0.5] * 10)
+        qdrant = make_qdrant_seed_repo_mock()
+
+        await embed_and_upsert_seed(
+            seed_key="mars",
+            name="Mars",
+            node_type="concept",
+            embedding_service=emb,
+            qdrant_seed_repo=qdrant,
         )
 
-    def test_low_string_similarity_blocked(self):
-        assert (
-            is_safe_auto_merge(
-                "alpha brainwave bands",
-                "theta brain waves",
-                0.96,
-                0.95,
-            )
-            is False
-        )
+        emb.embed_text.assert_called_once_with("Mars")
+        qdrant.upsert.assert_called_once()
+
+    async def test_embed_failure_logs_warning(self):
+        """Embed failure should not raise — just log warning."""
+        emb = make_embedding_service_mock()
+        emb.embed_text = AsyncMock(side_effect=Exception("API error"))
+        qdrant = make_qdrant_seed_repo_mock()
+
+        # Should not raise
+        await embed_and_upsert_seed("mars", "Mars", "concept", emb, qdrant)
+        qdrant.upsert.assert_not_called()

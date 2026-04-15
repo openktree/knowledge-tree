@@ -4,10 +4,16 @@ Seeds are lightweight proto-nodes that track which entities and concepts are
 mentioned across facts. When enough facts accumulate for a seed, it can be
 promoted to a full node with pre-accumulated evidence.
 
-The pipeline is structured in three sub-phases for efficiency:
-  A. Pre-compute all data (pure Python, no DB)
-  B. Route seeds sequentially (DB-dependent, must be serial)
-  C. Batch write (single session, few SQL statements)
+Pipeline:
+  A. Pre-compute + in-memory dedup (pure Python, no DB)
+       - group by make_seed_key(name) — fold exact key duplicates
+       - alias DSU — fold seeds whose alias key matches another seed's canonical key
+       - longest-wins canonical within each group
+  B. Batch write (status=pending) + Qdrant embed
+       - upsert_seeds_batch_with_aliases(status='pending')
+       - embed canonical → Qdrant upsert
+       - link_facts_batch, upsert_edge_candidates_batch
+  Dedup runs separately after this function returns (called by caller).
 """
 
 from __future__ import annotations
@@ -50,14 +56,12 @@ async def store_seeds_from_extracted_nodes(
     if not extracted_nodes or not all_facts:
         return 0, []
 
-    # ── Sub-phase A: Pre-compute all data (pure Python) ──────────────
+    # ── Sub-phase A: Pre-compute + in-memory dedup (pure Python) ─────
 
-    # Collect per-seed data, grouped by key to handle duplicate mentions
-    seed_data: dict[str, dict[str, Any]] = {}  # key -> {name, node_type, ...}
-    seed_links: list[dict[str, Any]] = []  # [{seed_key, fact_id, extraction_context}]
-    fact_to_seeds: dict[object, list[str]] = {}  # fact_id -> [seed_keys]
-    seed_contexts: dict[str, str] = {}  # key -> fact_context for routing
-    seed_aliases: dict[str, list[str]] = {}  # key -> LLM-provided aliases
+    # Pass 1: collect per-seed data grouped by key
+    seed_data: dict[str, dict[str, Any]] = {}  # key -> {name, node_type, aliases, ...}
+    seed_links: list[dict[str, Any]] = []       # [{seed_key, fact_id, ...}]
+    fact_to_seeds: dict[object, list[str]] = {} # fact_id -> [seed_keys]
 
     for node in extracted_nodes:
         name = node.get("name")
@@ -67,174 +71,159 @@ async def store_seeds_from_extracted_nodes(
 
         seed_key = make_seed_key(name)
         fact_indices = node.get("fact_indices", [])
+        node_aliases: list[str] = node.get("aliases", [])  # from entity extractor
 
-        # Build fact context for routing
-        fact_contents: list[str] = []
-        for idx in fact_indices:
-            if isinstance(idx, int) and 1 <= idx <= len(all_facts):
-                fact = all_facts[idx - 1]
-                if hasattr(fact, "content") and fact.content:
-                    fact_contents.append(fact.content[:200])
-
-        # Collect LLM-provided aliases
-        node_aliases = node.get("aliases", [])
-
-        # Aggregate: if same key appears multiple times, merge fact_indices
         if seed_key in seed_data:
             seed_data[seed_key]["fact_count"] += 1
-            # Merge aliases from duplicate mentions
-            existing_aliases = set(seed_aliases.get(seed_key, []))
-            existing_aliases.update(node_aliases)
-            seed_aliases[seed_key] = list(existing_aliases)
+            # Merge aliases (dedup)
+            existing = set(seed_data[seed_key]["aliases"])
+            for a in node_aliases:
+                a_key = make_seed_key(a)
+                existing.add(a_key)
+            seed_data[seed_key]["aliases"] = list(existing)
+            # Longest-wins canonical within same key group
+            if len(name) > len(seed_data[seed_key]["name"]):
+                seed_data[seed_key]["name"] = name
         else:
             seed_data[seed_key] = {
                 "key": seed_key,
                 "name": name,
-                "node_type": "concept",
+                "node_type": node_type,
                 "entity_subtype": None,
                 "fact_count": 1,
+                "aliases": [make_seed_key(a) for a in node_aliases if a],
             }
-            seed_contexts[seed_key] = "; ".join(fact_contents) if fact_contents else name
-            if node_aliases:
-                seed_aliases[seed_key] = list(node_aliases)
 
-        # Collect fact links
         extraction_role = node.get("extraction_role", "mentioned")
         for idx in fact_indices:
             if not isinstance(idx, int) or idx < 1 or idx > len(all_facts):
                 continue
             fact = all_facts[idx - 1]
             fact_id = fact.id
-            seed_links.append(
-                {
-                    "seed_key": seed_key,
-                    "fact_id": fact_id,
-                    "extraction_context": (fact.content[:500] if hasattr(fact, "content") and fact.content else None),
-                    "extraction_role": extraction_role,
-                }
-            )
-            if fact_id not in fact_to_seeds:
-                fact_to_seeds[fact_id] = []
-            fact_to_seeds[fact_id].append(seed_key)
+            seed_links.append({
+                "seed_key": seed_key,
+                "fact_id": fact_id,
+                "extraction_context": (fact.content[:500] if hasattr(fact, "content") and fact.content else None),
+                "extraction_role": extraction_role,
+            })
+            fact_to_seeds.setdefault(fact_id, []).append(seed_key)
 
     if not seed_data:
         return 0, []
 
-    # ── Sub-phase B: Route seeds sequentially (DB-dependent) ─────────
-    # Routing can modify seed state (merge chains, disambiguation) so
-    # concurrent routing of the same key could conflict.
+    # Pass 2: alias DSU — fold seeds whose alias key matches another seed's canonical key
+    # Build index: alias_key -> seed_key that owns it
+    alias_to_canonical: dict[str, str] = {}
+    for sk, sdata in seed_data.items():
+        alias_to_canonical[sk] = sk  # canonical maps to itself
+        for ak in sdata["aliases"]:
+            if ak not in alias_to_canonical:
+                alias_to_canonical[ak] = sk
 
-    key_remap: dict[str, str] = {}  # original_key -> resolved_key
-    routed_seeds: dict[str, dict[str, Any]] = {}  # resolved_key -> seed_data
-    phonetic_codes: dict[str, str] = {}  # seed_key -> phonetic_code
+    # DSU
+    dsu: dict[str, str] = {sk: sk for sk in seed_data}
 
-    for seed_key, sdata in seed_data.items():
-        name = sdata["name"]
-        node_type = sdata["node_type"]
-        fact_context = seed_contexts.get(seed_key, name)
+    def _find(x: str) -> str:
+        while dsu.get(x, x) != x:
+            dsu[x] = dsu.get(dsu[x], dsu[x])
+            x = dsu[x]
+        return x
 
-        resolved_key = seed_key
-        try:
-            from kt_facts.processing.seed_routing import (
-                compute_phonetic_code,
-                route_seed,
-            )
+    def _union(a: str, b: str) -> None:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            # Longest-wins: keep longer name's key as root
+            name_a = seed_data.get(ra, {}).get("name", ra)
+            name_b = seed_data.get(rb, {}).get("name", rb)
+            if len(name_b) > len(name_a):
+                dsu[ra] = rb
+            else:
+                dsu[rb] = ra
 
-            async with write_seed_repo._session.begin_nested():
-                resolved_key = await route_seed(
-                    name,
-                    fact_context,
-                    write_seed_repo,
-                    embedding_service=embedding_service,  # type: ignore[arg-type]
-                    qdrant_seed_repo=qdrant_seed_repo,  # type: ignore[arg-type]
-                    model_gateway=model_gateway,  # type: ignore[arg-type]
-                )
-                if resolved_key != seed_key:
-                    # Store original name as alias on resolved seed
-                    resolved_seed = await write_seed_repo.get_seed_by_key(resolved_key)
-                    if resolved_seed:
-                        meta = resolved_seed.metadata_ or {}
-                        aliases = meta.get("aliases", [])
-                        if name not in aliases:
-                            aliases.append(name)
-                            meta["aliases"] = aliases
-                            from sqlalchemy import update as sa_update
+    # If any seed's alias key matches another seed's canonical key → union them
+    for sk, sdata in seed_data.items():
+        for ak in sdata["aliases"]:
+            if ak in seed_data and ak != sk:
+                _union(sk, ak)
 
-                            from kt_db.write_models import WriteSeed
+    # Build representative groups
+    groups: dict[str, list[str]] = {}
+    for sk in seed_data:
+        root = _find(sk)
+        groups.setdefault(root, []).append(sk)
 
-                            await write_seed_repo._session.execute(
-                                sa_update(WriteSeed).where(WriteSeed.key == resolved_key).values(metadata_=meta)
-                            )
-                else:
-                    phonetic_code = compute_phonetic_code(name)
-                    if phonetic_code:
-                        phonetic_codes[seed_key] = phonetic_code
-        except Exception:
-            logger.debug("Routing failed for '%s', will batch-upsert", name, exc_info=True)
+    # Merge group members into representative
+    representatives: dict[str, dict[str, Any]] = {}
+    key_remap: dict[str, str] = {}  # original_key -> representative_key
 
-        key_remap[seed_key] = resolved_key
+    for root, members in groups.items():
+        # Pick representative: highest fact_count; on tie, longest name
+        rep_key = max(
+            members,
+            key=lambda k: (seed_data[k]["fact_count"], len(seed_data[k]["name"])),
+        )
+        rep_data = dict(seed_data[rep_key])
+        merged_aliases: set[str] = set(rep_data["aliases"])
+        for m in members:
+            if m != rep_key:
+                merged_aliases.add(m)  # member's own key becomes an alias
+                merged_aliases.update(seed_data[m]["aliases"])
+                rep_data["fact_count"] += seed_data[m]["fact_count"]
+                if len(seed_data[m]["name"]) > len(rep_data["name"]):
+                    rep_data["name"] = seed_data[m]["name"]
+        rep_data["aliases"] = list(merged_aliases - {rep_key})  # exclude self from aliases
+        representatives[rep_key] = rep_data
+        for m in members:
+            key_remap[m] = rep_key
 
-        # Aggregate into routed_seeds (resolved key may differ)
-        if resolved_key in routed_seeds:
-            routed_seeds[resolved_key]["fact_count"] += sdata["fact_count"]
-        else:
-            routed_seeds[resolved_key] = {**sdata, "key": resolved_key}
-
-    # Apply key remap to links and fact_to_seeds
+    # Remap links and fact_to_seeds to representatives
     remapped_links: list[dict[str, Any]] = []
     remapped_fact_to_seeds: dict[object, list[str]] = {}
     for lnk in seed_links:
         resolved = key_remap.get(lnk["seed_key"], lnk["seed_key"])
         remapped_links.append({**lnk, "seed_key": resolved})
-
     for fact_id, keys in fact_to_seeds.items():
-        remapped = [key_remap.get(k, k) for k in keys]
-        remapped_fact_to_seeds[fact_id] = remapped
+        remapped_fact_to_seeds[fact_id] = [key_remap.get(k, k) for k in keys]
 
-    # ── Sub-phase C: Batch write ─────────────────────────────────────
+    # ── Sub-phase B: Batch write (status=pending) + Qdrant embed ──────
 
-    # 1. Batch upsert seeds (single INSERT ... ON CONFLICT)
+    # 1. Upsert seeds as pending with aliases column
+    seeds_to_upsert = list(representatives.values())
     try:
         async with write_seed_repo._session.begin_nested():
-            await write_seed_repo.upsert_seeds_batch(list(routed_seeds.values()))
+            await write_seed_repo.upsert_seeds_batch_with_aliases(seeds_to_upsert, status="pending")
     except Exception:
-        logger.exception("Batch seed upsert failed, falling back to sequential")
-        for sdata in routed_seeds.values():
+        logger.exception("Batch seed upsert (pending) failed, falling back to sequential")
+        for sdata in seeds_to_upsert:
             try:
                 async with write_seed_repo._session.begin_nested():
-                    await write_seed_repo.upsert_seed(
+                    await write_seed_repo.upsert_seed_with_aliases(
                         sdata["key"],
                         sdata["name"],
                         sdata["node_type"],
                         sdata.get("entity_subtype"),
+                        sdata.get("aliases", []),
+                        status="pending",
                     )
             except Exception:
                 logger.exception("Error upserting seed '%s'", sdata["key"])
 
-    # 1b. Batch update LLM-provided aliases on seeds
-    if seed_aliases:
-        alias_updates: list[tuple[str, list[str]]] = []
-        for orig_key, aliases_list in seed_aliases.items():
-            resolved = key_remap.get(orig_key, orig_key)
-            if aliases_list:
-                alias_updates.append((resolved, aliases_list))
-        if alias_updates:
-            try:
-                async with write_seed_repo._session.begin_nested():
-                    await write_seed_repo.update_aliases_batch(alias_updates)
-            except Exception:
-                logger.debug("Alias batch update failed", exc_info=True)
+    # 2. Embed each canonical name → Qdrant upsert (one point per seed)
+    from kt_facts.processing.seed_dedup import embed_and_upsert_seed
 
-    # 2. Batch phonetic updates
-    for seed_key, code in phonetic_codes.items():
-        resolved = key_remap.get(seed_key, seed_key)
+    for sdata in seeds_to_upsert:
         try:
-            async with write_seed_repo._session.begin_nested():
-                await write_seed_repo.update_phonetic_code(resolved, code)
+            await embed_and_upsert_seed(
+                seed_key=sdata["key"],
+                name=sdata["name"],
+                node_type=sdata["node_type"],
+                embedding_service=embedding_service,  # type: ignore[arg-type]
+                qdrant_seed_repo=qdrant_seed_repo,  # type: ignore[arg-type]
+            )
         except Exception:
-            logger.debug("Phonetic update failed for '%s'", resolved, exc_info=True)
+            logger.debug("embed_and_upsert_seed failed for '%s'", sdata["key"], exc_info=True)
 
-    # 3. Batch link facts (single INSERT ... ON CONFLICT DO NOTHING)
+    # 3. Link facts
     total_links = 0
     try:
         async with write_seed_repo._session.begin_nested():
@@ -254,7 +243,7 @@ async def store_seeds_from_extracted_nodes(
             except Exception:
                 logger.debug("Fact link failed", exc_info=True)
 
-    # 3b. Refresh fact_count from actual WriteSeedFact rows
+    # 4. Refresh fact_count
     all_linked_keys = list({lnk["seed_key"] for lnk in remapped_links})
     if all_linked_keys:
         try:
@@ -263,20 +252,14 @@ async def store_seeds_from_extracted_nodes(
         except Exception:
             logger.debug("Fact count refresh failed", exc_info=True)
 
-    # 4. Batch edge candidates from co-occurring seeds
+    # 5. Edge candidates from co-occurring seeds
     edge_candidates: list[dict[str, Any]] = []
     for fact_id, seed_keys_in_fact in remapped_fact_to_seeds.items():
         unique_keys = list(dict.fromkeys(seed_keys_in_fact))
         for i, key_a in enumerate(unique_keys):
-            for key_b in unique_keys[i + 1 :]:
+            for key_b in unique_keys[i + 1:]:
                 a, b = sorted([key_a, key_b])
-                edge_candidates.append(
-                    {
-                        "seed_key_a": a,
-                        "seed_key_b": b,
-                        "fact_id": str(fact_id),
-                    }
-                )
+                edge_candidates.append({"seed_key_a": a, "seed_key_b": b, "fact_id": str(fact_id)})
 
     if edge_candidates:
         try:
@@ -288,21 +271,15 @@ async def store_seeds_from_extracted_nodes(
                 try:
                     async with write_seed_repo._session.begin_nested():
                         await write_seed_repo.upsert_edge_candidate(
-                            ec["seed_key_a"],
-                            ec["seed_key_b"],
-                            ec["fact_id"],
+                            ec["seed_key_a"], ec["seed_key_b"], ec["fact_id"],
                         )
                 except Exception:
                     logger.debug(
                         "Edge candidate upsert failed for %s<->%s",
-                        ec["seed_key_a"],
-                        ec["seed_key_b"],
-                        exc_info=True,
+                        ec["seed_key_a"], ec["seed_key_b"], exc_info=True,
                     )
 
-    all_seed_keys = list(routed_seeds.keys())
-
-    return total_links, all_seed_keys
+    return total_links, list(representatives.keys())
 
 
 async def dedup_seeds_batch(

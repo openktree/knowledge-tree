@@ -318,7 +318,7 @@ async def _phonetic_route(
                     name,
                     "concept",
                     limit=1,
-                    threshold=settings.seed_phonetic_trigram_threshold,
+                    threshold=getattr(settings, "seed_phonetic_trigram_threshold", 0.40),
                 )
                 trigram_confirmed = any(s.key == candidate.key for s in similar_seeds)
             except Exception:

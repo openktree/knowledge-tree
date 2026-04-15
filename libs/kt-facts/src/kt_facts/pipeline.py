@@ -296,10 +296,9 @@ class DecompositionPipeline:
                 )
                 from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
-                if qdrant_client is None:
-                    raise RuntimeError("Qdrant client is required for seed extraction but was not provided")
-                if embedding_service is None:
-                    raise RuntimeError("Embedding service is required for seed extraction but was not provided")
+                if qdrant_client is None or embedding_service is None:
+                    logger.debug("Skipping seed extraction — qdrant_client or embedding_service not provided")
+                    extracted_nodes = []
 
                 write_seed_repo = WriteSeedRepository(write_session)
                 qdrant_seed_repo = QdrantSeedRepository(qdrant_client)
