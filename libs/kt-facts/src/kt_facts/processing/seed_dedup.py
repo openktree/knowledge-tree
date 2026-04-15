@@ -1,14 +1,17 @@
-"""Seed deduplication — detects and merges duplicate seeds.
+"""Seed deduplication — pending-first pipeline.
 
-Signals (in order):
-0. Key collision — handled automatically by make_seed_key() determinism
-1. Alias match — exact name/alias string match via trigram candidate discovery
-2. Embedding similarity — embed seed name, search Qdrant (PRIMARY merge signal)
-3. Phonetic + trigram typo catch — requires embedding floor confirmation
-4. Disambiguation trigger — confusable pair logging (no merge)
+Pipeline (per seed, after all batch writes complete):
+  1. DB text search — exact key + GIN alias array overlap
+  2. Qdrant embedding search — single threshold (0.90), mandatory LLM above it
+  3. LLM multiplex — merge_into_seed | new_disambig_path
+  4. Genesis path (no candidates) — promote pending→active + suggest_disambig
 
-When a match is found, the losing seed (fewer facts or less canonical name)
-is merged into the winner.
+Dropped vs old design:
+  - Signal cascade (trigram → alias match → phonetic → auto-merge)
+  - Phonetic + trigram merge signals
+  - Auto-merge at 0.95 (skipped LLM)
+  - _llm_confirm_merge (per-pair binary gate)
+  - _handle_multi_match (replaced by multiplex)
 """
 
 from __future__ import annotations
@@ -17,16 +20,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from kt_config.settings import get_settings
-from kt_facts.processing.seed_heuristics import (
-    edit_distance,
-    is_acronym_match,
-    is_containment_mismatch,
-    is_prefix_disambiguation_candidate,
-    is_safe_auto_merge,
-)
 
 if TYPE_CHECKING:
-    from kt_db.repositories.write_facts import WriteFactRepository
     from kt_db.repositories.write_seeds import WriteSeedRepository
     from kt_models.embeddings import EmbeddingService
     from kt_models.gateway import ModelGateway
@@ -35,22 +30,97 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Backward-compat aliases for private names
-_is_acronym_match = is_acronym_match
-_is_containment_mismatch = is_containment_mismatch
-_is_prefix_disambiguation_candidate = is_prefix_disambiguation_candidate
-_edit_distance = edit_distance
+# ── Multiplex prompt (ported from experiments/big_seed_dedup/multiplex.py) ──
 
+_MULTIPLEX_SYSTEM = """\
+You are maintaining a knowledge-graph deduplication registry. Every
+"seed" represents ONE real-world entity or concept.
 
-class _MergeCandidate:
-    """A potential merge target discovered by a dedup signal."""
+An incoming surface form has surfaced one or more candidate seeds
+via exact alias lookup and/or embedding similarity. You must decide
+what happens to the incoming seed.
 
-    __slots__ = ("key", "name", "reason")
+KEY PRINCIPLE
+- Alias or embedding similarity is an AMBIGUITY SIGNAL, not a merge signal.
+- Merge ONLY when two names refer to the IDENTICAL real-world thing
+  (synonyms, acronym expansion, singular/plural, spelling variant).
+- When two names share surface form but refer to DIFFERENT real-world
+  things, split into disambiguated paths. Every new path MUST have an
+  unambiguous label (e.g. "Nate Silver (statistician)").
 
-    def __init__(self, key: str, name: str, reason: str) -> None:
-        self.key = key
-        self.name = name
-        self.reason = reason
+HARD RULES — never merge the following (split or birth new seed):
+- Practitioner vs practice/discipline ("homeopath" ≠ "homeopathy")
+- Tool vs user ("hammer" ≠ "carpenter")
+- Instance vs category ("Apollo 11" ≠ "space mission")
+- Part vs whole ("wheel" ≠ "car")
+- Organization vs member ("NASA" ≠ "astronaut")
+- Parent concept vs specialization
+
+ACTIONS (pick exactly one):
+
+1. "merge_into_seed"
+   Use when incoming is literally the same concept as the candidate.
+   Response: {"action": "merge_into_seed", "target_seed_key": "...", "reason": "..."}
+
+2. "new_disambig_path"
+   Use when the incoming reveals a distinct concept sharing a surface
+   form with the candidate seed. Provide unambiguous labels for both.
+   If the target seed is still flat, also provide existing_disambig_label
+   so the system can promote it into a sibling path.
+   Response: {"action": "new_disambig_path",
+              "target_seed_key": "...",
+              "incoming_disambig_label": "Name (role-for-incoming)",
+              "existing_disambig_label": "Name (role-for-existing)",
+              "reason": "..."}
+
+Output JSON only. Follow the HARD RULES.
+"""
+
+# ── Suggest-disambig prompt (ported from experiments/big_seed_dedup/alias_gen.py) ──
+
+_SUGGEST_DISAMBIG_SYSTEM = """\
+NATURAL AMBIGUITY RULE
+
+Given a bare name, list canonical disambiguation labels if the name
+is a naturally ambiguous term that commonly refers to multiple
+distinct real-world entities or concepts. Use only world knowledge
+about the name itself — no context.
+
+Examples:
+  Mercury     → ["Mercury (planet)", "Mercury (element)", "Mercury (Roman god)"]
+  Apollo      → ["Apollo (Greek god)", "Apollo (NASA program)", "Apollo (theatre)"]
+  Java        → ["Java (programming language)", "Java (island)"]
+  Jaguar      → ["Jaguar (animal)", "Jaguar (car brand)"]
+  Newton      → ["Newton (physicist)", "Newton (unit of force)"]
+  Python      → ["Python (programming language)", "Python (snake)", "Python (mythology)"]
+  Paris       → ["Paris (France)", "Paris (Greek myth)"]
+  Amazon      → ["Amazon (company)", "Amazon (river)", "Amazon (rainforest)"]
+
+Multi-token names are typically NOT naturally ambiguous — emit
+empty list for them.
+
+Default: empty list. When unsure, empty list. Missing ambiguity is
+cheap (downstream multiplex catches late cases); wrongly pre-
+disambiguating a single-meaning name is expensive.
+
+Output JSON exactly: {"paths": ["Label1", ...]}
+"""
+
+# ── Route-facts prompt (ported from experiments/big_seed_dedup/multiplex.py) ──
+
+_ROUTE_FACTS_SYSTEM = """\
+You route facts to the correct disambiguation path of a name.
+
+Given a canonical name N, a list of disambiguation paths (each
+labelled e.g. "N (role)"), and facts mentioning N, assign each
+fact to the path it is actually about. Use only the fact content.
+
+Return JSON exactly:
+{"assignments": [{"fact_id": "...", "path_label": "..."}, ...]}
+
+If a fact does not fit any path, set "path_label" to null — that
+fact will remain at the parent level.
+"""
 
 
 async def deduplicate_seed(
@@ -61,359 +131,400 @@ async def deduplicate_seed(
     embedding_service: EmbeddingService,
     qdrant_seed_repo: QdrantSeedRepository,
     model_gateway: ModelGateway | None = None,
-    write_fact_repo: WriteFactRepository | None = None,
+    write_fact_repo: object | None = None,  # kept for call-site compat, unused
+    aliases: list[str] | None = None,
 ) -> str:
-    """Check for duplicates of a seed and merge if found.
+    """Deduplicate a seed using text search → embedding → LLM multiplex.
 
-    Returns the surviving seed key (may be different from input if merged).
+    Returns the surviving seed key (may differ if merged).
+    Promotes pending seeds to active and runs genesis disambiguation
+    when no candidates are found.
 
-    Uses a collect-then-decide pattern: all signals contribute candidates,
-    then the decision logic handles single match (merge), multi-match with
-    shared ancestor (merge into ancestor), or multi-match with distinct
-    entities (mark as ambiguous).
-
-    Dedup signals (in order):
-    0. Alias matching — exact name/alias string match via trigram candidate discovery
-    0b. Reverse alias lookup — existing seed has incoming name as alias
-    1. Embedding similarity — Qdrant vector search (PRIMARY merge signal)
-    2. Phonetic + trigram typo catch — requires embedding floor confirmation
-    3. Disambiguation trigger — confusable pair logging (no merge)
+    aliases: slugified keys from entity extractor (make_seed_key(alias)).
     """
-    # Skip dedup entirely for seeds with invalid names — prevents junk seeds
-    # from merging with good seeds and amplifying the corruption cascade.
     from kt_facts.processing.entity_extraction import _is_valid_entity_name
 
     if not _is_valid_entity_name(name):
         logger.debug("Skipping dedup for invalid seed name: '%s'", name)
         return seed_key
 
-    settings = get_settings()
+    alias_keys: list[str] = list(aliases or [])
 
-    # Collect all merge candidates from alias/acronym signals
-    alias_candidates: list[_MergeCandidate] = []
-
-    # Track best embedding score for disambiguation logging
-    best_embedding_score: float = 0.0
-    trigram_candidates_found: list[str] = []
-
-    # ── Signal 0: Alias match (trigram finds candidates, exact match merges) ──
+    # ── Step 1: DB text search (exact key + GIN alias overlap) ──────────
+    text_candidates = []
     try:
-        similar_seeds = await write_seed_repo.find_similar_seeds(
-            name,
-            node_type,
-            limit=5,
-            threshold=settings.seed_dedup_trigram_threshold,
+        text_candidates = await write_seed_repo.find_seeds_by_keys_or_aliases(
+            keys=[seed_key] + alias_keys,
+            exclude_key=seed_key,
+            node_type=node_type,
         )
-        for candidate in similar_seeds:
-            if candidate.key == seed_key:
-                continue
-            if candidate.status not in ("active", "promoted"):
-                continue
-
-            # Track trigram candidate for disambiguation logging
-            trigram_candidates_found.append(candidate.name)
-
-            # Check alias match — exact name or alias string match
-            meta = candidate.metadata_ or {}
-            aliases = meta.get("aliases", [])
-            name_lower = name.lower().strip()
-            candidate_name_lower = candidate.name.lower().strip()
-            aliases_lower = [a.lower() for a in aliases]
-
-            # Acronym heuristic: "FBI" <-> "Federal Bureau of Investigation"
-            is_acronym = _is_acronym_match(name, candidate.name)
-
-            if name_lower == candidate_name_lower or name_lower in aliases_lower or is_acronym:
-                # Containment guard — skip for acronym matches since acronyms
-                # are inherently much shorter than their expansions
-                if not is_acronym and _is_containment_mismatch(name_lower, candidate_name_lower):
-                    logger.debug(
-                        "Skipping alias match '%s' <-> '%s' — containment mismatch",
-                        name,
-                        candidate.name,
-                    )
-                    continue
-                reason = (
-                    "acronym match"
-                    if is_acronym and name_lower != candidate_name_lower and name_lower not in aliases_lower
-                    else "alias match"
-                )
-                alias_candidates.append(_MergeCandidate(candidate.key, candidate.name, reason))
     except Exception:
-        logger.debug("Alias/trigram candidate search failed for seed '%s'", name, exc_info=True)
+        logger.debug("Text candidate search failed for '%s'", name, exc_info=True)
 
-    # ── Signal 0b: Reverse alias lookup ──────────────────────────────
-    try:
-        reverse_matches = await write_seed_repo.find_seeds_by_alias(name, node_type)
-        for candidate in reverse_matches:
-            if candidate.key == seed_key:
-                continue
-            if candidate.status not in ("active", "promoted"):
-                continue
-            # Skip if already collected
-            if any(c.key == candidate.key for c in alias_candidates):
-                continue
-            # Containment guard
-            name_lower = name.lower().strip()
-            candidate_name_lower = candidate.name.lower().strip()
-            if _is_containment_mismatch(name_lower, candidate_name_lower):
-                continue
-            alias_candidates.append(_MergeCandidate(candidate.key, candidate.name, "reverse alias match"))
-    except Exception:
-        logger.debug("Reverse alias lookup failed for seed '%s'", name, exc_info=True)
-
-    # ── Decide on alias/acronym candidates ──────────────────────────
-    if alias_candidates:
-        # Deduplicate by key
-        seen_keys: set[str] = set()
-        unique_candidates: list[_MergeCandidate] = []
-        for c in alias_candidates:
-            if c.key not in seen_keys:
-                seen_keys.add(c.key)
-                unique_candidates.append(c)
-
-        if len(unique_candidates) == 1:
-            # Single match — merge directly
-            return await _merge_pair(
-                seed_key, unique_candidates[0].key, write_seed_repo, reason=unique_candidates[0].reason
-            )
-        else:
-            # Multiple distinct candidates — check if they share a merged ancestor
-            result = await _handle_multi_match(seed_key, unique_candidates, write_seed_repo)
-            if result is not None:
-                return result
-
-    # ── Signal 1: Embedding similarity (PRIMARY merge signal) ──
+    # ── Step 2: Qdrant embedding search ─────────────────────────────────
+    settings = get_settings()
+    embed_candidates = []
+    embedding = None
     try:
         embedding = await embedding_service.embed_text(name)
-    except Exception:
-        logger.warning(
-            "Embedding API failed for seed '%s' — skipping embedding dedup",
-            name,
-            exc_info=True,
+        raw_hits = await qdrant_seed_repo.find_similar(
+            embedding=embedding,
+            node_type=node_type,
+            limit=8,
+            score_threshold=settings.seed_dedup_embedding_threshold,
+            exclude_keys={seed_key},
         )
-        embedding = None
+        # Verify each hit is still an active/ambiguous/promoted seed
+        for hit in raw_hits:
+            seed = await write_seed_repo.get_seed_by_key(hit.seed_key)
+            if seed and seed.status not in ("merged", "pending", "garbage"):
+                embed_candidates.append(seed)
+    except Exception:
+        logger.debug("Embedding candidate search failed for '%s'", name, exc_info=True)
 
-    if embedding is not None:
-        try:
-            # Upsert this seed's embedding to Qdrant
-            await qdrant_seed_repo.upsert(
-                seed_key=seed_key,
-                embedding=embedding,
-                name=name,
-                node_type=node_type,
-            )
+    # Merge + deduplicate candidates by key (text first, then embedding)
+    seen_keys: set[str] = set()
+    all_candidates = []
+    for c in text_candidates + embed_candidates:
+        if c.key not in seen_keys:
+            seen_keys.add(c.key)
+            all_candidates.append(c)
 
-            # Search for similar seeds — use typo_floor as threshold to get
-            # sub-threshold matches in a single query (avoids second Qdrant call)
-            all_similar = await qdrant_seed_repo.find_similar(
-                embedding=embedding,
-                node_type=node_type,
-                limit=5,
-                score_threshold=settings.seed_dedup_typo_floor,
-                exclude_keys={seed_key},
-            )
+    if not all_candidates:
+        # Genesis path: no candidates → promote pending + suggest disambig
+        await _promote_and_genesis_disambig(
+            seed_key=seed_key,
+            name=name,
+            node_type=node_type,
+            write_seed_repo=write_seed_repo,
+            model_gateway=model_gateway,
+        )
+        return seed_key
 
-            # Split into merge candidates (above threshold) and sub-threshold
-            similar = [m for m in all_similar if m.score >= settings.seed_dedup_embedding_threshold]
-            if all_similar:
-                best_embedding_score = max(m.score for m in all_similar)
+    # ── Step 3: LLM multiplex ────────────────────────────────────────────
+    if model_gateway is None:
+        # No LLM available — merge into highest-fact candidate (safe default)
+        best = max(all_candidates, key=lambda s: s.fact_count)
+        logger.info("No LLM — default merge: '%s' → '%s'", name, best.name)
+        return await _merge_pair(seed_key, best.key, write_seed_repo, reason="no_llm_default_merge")
 
-            for match in similar:
-                if match.seed_key == seed_key:
-                    continue
-                # Verify the matched seed still exists and is active
-                matched_seed = await write_seed_repo.get_seed_by_key(match.seed_key)
-                if matched_seed is None or matched_seed.status not in ("active", "promoted"):
-                    continue
+    response = await _llm_multiplex(name, all_candidates, model_gateway)
+    action = response.get("action", "")
+    target_key = str(response.get("target_seed_key", "")).strip()
+    reason = str(response.get("reason", action))
 
-                # ── Tiered merge decision ──
-                # Tier 1: Very high embedding + string guards → auto-merge (skip LLM)
-                if is_safe_auto_merge(
-                    name,
-                    matched_seed.name,
-                    embedding_score=match.score,
-                    auto_merge_threshold=settings.seed_dedup_auto_merge_threshold,
-                ):
-                    preferred_name = None
-                    reason = f"embedding auto-merge (score={match.score:.3f})"
-                    logger.info(
-                        "Auto-merge (skipped LLM): '%s' vs '%s' (score=%.3f)",
-                        name,
-                        matched_seed.name,
-                        match.score,
-                    )
-                # Tier 2: Moderate embedding → LLM confirmation required
-                elif model_gateway is not None and write_fact_repo is not None:
-                    confirmed, preferred_name = await _llm_confirm_merge(
-                        incoming_name=name,
-                        incoming_key=seed_key,
-                        candidate_name=matched_seed.name,
-                        candidate_key=match.seed_key,
-                        write_seed_repo=write_seed_repo,
-                        write_fact_repo=write_fact_repo,
-                        model_gateway=model_gateway,
-                    )
-                    if not confirmed:
-                        # LLM says different — just skip. Disambiguation trees
-                        # are reserved for genuine homonyms detected by fact
-                        # clustering in seed_disambiguation.py.
-                        logger.info(
-                            "LLM merge gate rejected: '%s' vs '%s' — keeping separate",
-                            name,
-                            matched_seed.name,
-                        )
-                        continue  # try next candidate
+    # Validate target key points to a real candidate
+    target = next((c for c in all_candidates if c.key == target_key), None)
+    if target is None and all_candidates:
+        # LLM returned bad ID — use best candidate
+        target = max(all_candidates, key=lambda s: s.fact_count)
+        target_key = target.key
+        reason += " | fallback: LLM target invalid"
 
-                    reason = f"embedding + LLM confirmed (score={match.score:.3f})"
-                else:
-                    preferred_name = None
-                    reason = f"embedding similarity (score={match.score:.3f})"
+    if action == "merge_into_seed" and target is not None:
+        winner = await _merge_pair(seed_key, target_key, write_seed_repo, reason=f"llm_multiplex:{reason}")
+        return winner
 
-                winner_key = await _merge_pair(
-                    seed_key,
-                    match.seed_key,
-                    write_seed_repo,
-                    reason=reason,
-                )
+    elif action == "new_disambig_path" and target is not None:
+        incoming_label = str(response.get("incoming_disambig_label", f"{name} (variant)")).strip()
+        existing_label = str(response.get("existing_disambig_label", target.name)).strip()
+        await _apply_disambig_path(
+            incoming_key=seed_key,
+            target_key=target_key,
+            incoming_label=incoming_label,
+            existing_label=existing_label,
+            write_seed_repo=write_seed_repo,
+        )
+        # Promote incoming from pending → active (it stays as its own seed)
+        await _promote_pending(seed_key, write_seed_repo)
+        return seed_key
 
-                # Specificity upgrade: rename winner to the more specific name
-                if preferred_name and winner_key:
-                    await write_seed_repo.rename_seed(winner_key, preferred_name)
-
-                return winner_key
-
-        except Exception:
-            logger.warning(
-                "Qdrant search failed for seed '%s' — skipping embedding dedup",
-                name,
-                exc_info=True,
-            )
-
-    # ── Signal 2: Phonetic + trigram typo catch (requires embedding floor) ──
-    if best_embedding_score >= settings.seed_dedup_typo_floor:
-        try:
-            from kt_facts.processing.seed_heuristics import compute_phonetic_code
-
-            phonetic_code = compute_phonetic_code(name)
-            if phonetic_code:
-                phonetic_matches = await write_seed_repo.find_by_phonetic(
-                    phonetic_code,
-                    node_type,
-                    limit=5,
-                )
-                for candidate in phonetic_matches:
-                    if candidate.key == seed_key:
-                        continue
-                    if candidate.status not in ("active", "promoted"):
-                        continue
-                    # Containment guard — block merges where names differ
-                    # by distinguishing words (e.g. "Kim Jong-un" vs "Kim Jong-il")
-                    if _is_containment_mismatch(name.lower(), candidate.name.lower()):
-                        logger.debug(
-                            "Phonetic match '%s' <-> '%s' blocked by containment guard",
-                            name,
-                            candidate.name,
-                        )
-                        continue
-                    # Require moderate trigram confirmation
-                    try:
-                        trigram_matches = await write_seed_repo.find_similar_seeds(
-                            name,
-                            node_type,
-                            limit=1,
-                            threshold=settings.seed_phonetic_trigram_threshold,
-                        )
-                        if any(m.key == candidate.key for m in trigram_matches):
-                            return await _merge_pair(
-                                seed_key,
-                                candidate.key,
-                                write_seed_repo,
-                                reason=f"phonetic + trigram match (code={phonetic_code}, emb={best_embedding_score:.3f})",
-                            )
-                    except Exception:
-                        pass
-        except Exception:
-            logger.debug("Phonetic dedup failed for seed '%s'", name, exc_info=True)
-
-    # ── Signal 3: Disambiguation trigger (awareness logging, no merge) ──
-    if trigram_candidates_found and best_embedding_score < settings.seed_dedup_embedding_threshold:
-        # Trigram found high-similarity candidates but embedding score was low —
-        # these are confusable names for different entities.
-        if best_embedding_score > 0:
-            logger.info(
-                "Confusable pair detected: '%s' vs trigram candidates %s "
-                "(best_embedding_score=%.3f, below threshold=%.2f)",
-                name,
-                trigram_candidates_found,
-                best_embedding_score,
-                settings.seed_dedup_embedding_threshold,
-            )
-
-    return seed_key
+    else:
+        # Unknown action or no target — safe fallback: no merge
+        logger.info(
+            "Multiplex unknown action '%s' for '%s' — no merge (fallback)", action, name
+        )
+        await _promote_pending(seed_key, write_seed_repo)
+        return seed_key
 
 
-async def _handle_multi_match(
+async def _promote_pending(seed_key: str, write_seed_repo: WriteSeedRepository) -> None:
+    """Promote a seed from pending → active if currently pending."""
+    seed = await write_seed_repo.get_seed_by_key(seed_key)
+    if seed and seed.status == "pending":
+        await write_seed_repo.set_status(seed_key, "active")
+
+
+async def _promote_and_genesis_disambig(
     seed_key: str,
-    candidates: list[_MergeCandidate],
+    name: str,
+    node_type: str,
     write_seed_repo: WriteSeedRepository,
-) -> str | None:
-    """Handle multiple merge candidates for an incoming seed.
+    model_gateway: ModelGateway | None,
+) -> None:
+    """Promote a pending seed to active and run genesis disambiguation.
 
-    If candidates share a merged ancestor (one was merged into the other),
-    merge into the common survivor. If candidates are genuinely distinct
-    entities, mark the incoming seed as ambiguous and create routes.
-
-    Returns the surviving key if resolved, or None to fall through to
-    embedding-based dedup.
+    Only runs for seeds with status=pending. Skips silently for active seeds
+    (they've already been through genesis on a previous dedup pass).
     """
-    # Follow merge chains to find ultimate ancestors
-    ancestor_map: dict[str, str] = {}  # candidate_key -> ultimate_ancestor_key
-    for c in candidates:
-        ancestor = await _follow_merge_chain(c.key, write_seed_repo)
-        ancestor_map[c.key] = ancestor
+    settings = get_settings()
+    seed = await write_seed_repo.get_seed_by_key(seed_key)
+    if seed is None or seed.status != "pending":
+        return
 
-    unique_ancestors = set(ancestor_map.values())
+    # 1. Promote: pending → active
+    await write_seed_repo.set_status(seed_key, "active")
+    logger.debug("Promoted seed '%s' ('%s') from pending to active", seed_key, name)
 
-    if len(unique_ancestors) == 1:
-        # All candidates share a common ancestor — merge into that ancestor
-        ancestor_key = next(iter(unique_ancestors))
-        return await _merge_pair(
-            seed_key,
-            ancestor_key,
-            write_seed_repo,
-            reason=f"multi-match resolved to common ancestor ({len(candidates)} candidates)",
-        )
+    # 2. Suggest disambiguation (world-knowledge, fact-free)
+    if not settings.seed_suggest_disambig_enabled or model_gateway is None:
+        return
 
-    # Genuinely different entities — mark incoming seed as ambiguous
-    logger.info(
-        "Ambiguous seed detected: '%s' matches %d distinct entities: %s",
-        seed_key,
-        len(unique_ancestors),
-        [(c.key, c.name) for c in candidates],
-    )
+    paths = await _suggest_disambig(name, model_gateway)
+    if not paths or len(paths) < 2:
+        return
 
-    # Mark as ambiguous and create routes to each candidate
+    logger.info("Genesis disambig: '%s' → %d paths %s", name, len(paths), paths)
+
+    # 3. Route existing facts to paths (if any)
     try:
-        from sqlalchemy import update as sa_update
+        facts = await write_seed_repo.get_facts_with_content_for_seed(seed_key)
+    except Exception:
+        facts = []
 
-        from kt_db.write_models import WriteSeed
+    fact_assignments: dict[str, str | None] = {}
+    if facts:
+        fact_assignments = await _route_facts_to_paths(name, paths, facts, model_gateway)
 
-        await write_seed_repo._session.execute(
-            sa_update(WriteSeed).where(WriteSeed.key == seed_key).values(status="ambiguous")
+    # 4. Create WriteSeedRoute children per path label
+    await _create_seed_routes_with_facts(
+        parent_key=seed_key,
+        path_labels=paths,
+        fact_assignments=fact_assignments,
+        all_facts=facts,
+        write_seed_repo=write_seed_repo,
+    )
+    await write_seed_repo.set_status(seed_key, "ambiguous")
+
+
+async def _suggest_disambig(name: str, model_gateway: ModelGateway) -> list[str]:
+    """Ask LLM if name is naturally polysemous. Returns path labels or []."""
+    settings = get_settings()
+    model_id = settings.seed_dedup_llm_model or settings.decomposition_model
+    user = f'Name: "{name}"\n\nReturn JSON: {{"paths": [...]}}. Only the JSON.'
+    try:
+        result = await model_gateway.generate_json(
+            model_id=model_id,
+            messages=[{"role": "user", "content": user}],
+            system=_SUGGEST_DISAMBIG_SYSTEM,
+            temperature=0.0,
+        )
+        if isinstance(result, dict):
+            raw = result.get("paths", [])
+            return [str(p).strip() for p in raw if isinstance(p, str) and str(p).strip()]
+    except Exception:
+        logger.debug("suggest_disambig failed for '%s'", name, exc_info=True)
+    return []
+
+
+async def _route_facts_to_paths(
+    name: str,
+    path_labels: list[str],
+    facts: list[tuple],  # (fact_id, content)
+    model_gateway: ModelGateway,
+) -> dict[str, str | None]:
+    """Ask LLM to assign each fact to a path label. Returns fact_id → path_label | None."""
+    settings = get_settings()
+    model_id = settings.seed_dedup_llm_model or settings.decomposition_model
+    label_lines = "\n".join(f"  [{i + 1}] {p}" for i, p in enumerate(path_labels))
+    fact_lines = "\n".join(
+        f"  F{i + 1} (id={fid}): {content[:400]}" for i, (fid, content) in enumerate(facts)
+    )
+    user = (
+        f'Canonical name: "{name}"\n\nPaths:\n{label_lines}\n\nFacts:\n{fact_lines}\n\n'
+        'Return JSON: {"assignments": [{"fact_id": "...", "path_label": "..."}, ...]}.'
+    )
+    try:
+        result = await model_gateway.generate_json(
+            model_id=model_id,
+            messages=[{"role": "user", "content": user}],
+            system=_ROUTE_FACTS_SYSTEM,
+            temperature=0.0,
+        )
+        if isinstance(result, dict):
+            assignments: dict[str, str | None] = {}
+            valid = {p.strip().lower(): p for p in path_labels}
+            for a in result.get("assignments", []):
+                if not isinstance(a, dict):
+                    continue
+                fid = str(a.get("fact_id", "")).strip()
+                lab = a.get("path_label")
+                if not fid:
+                    continue
+                if isinstance(lab, str) and lab.strip().lower() in valid:
+                    assignments[fid] = valid[lab.strip().lower()]
+                else:
+                    assignments[fid] = None
+            return assignments
+    except Exception:
+        logger.debug("route_facts_to_paths failed for '%s'", name, exc_info=True)
+    return {}
+
+
+async def _create_seed_routes_with_facts(
+    parent_key: str,
+    path_labels: list[str],
+    fact_assignments: dict[str, str | None],
+    all_facts: list[tuple],  # (fact_id, content)
+    write_seed_repo: WriteSeedRepository,
+) -> None:
+    """Create WriteSeedRoute children for each path label.
+
+    Moves assigned facts to the appropriate child seed via split_seed.
+    """
+    from kt_db.keys import make_seed_key
+
+    parent_seed = await write_seed_repo.get_seed_by_key(parent_key)
+    if parent_seed is None:
+        return
+
+    import uuid as _uuid
+
+    # Build fact assignment map: path_label → [fact_id]
+    path_fact_ids: dict[str, list[_uuid.UUID]] = {label: [] for label in path_labels}
+    for fact_id, _ in all_facts:
+        assigned_label = fact_assignments.get(str(fact_id))
+        if assigned_label and assigned_label in path_fact_ids:
+            path_fact_ids[assigned_label].append(fact_id if isinstance(fact_id, _uuid.UUID) else _uuid.UUID(str(fact_id)))
+
+    # Create child seeds via split_seed
+    new_seeds = []
+    fact_assignments_by_key: dict[str, list[_uuid.UUID]] = {}
+    for label in path_labels:
+        child_key = make_seed_key(label)
+        new_seeds.append({
+            "key": child_key,
+            "name": label,
+            "node_type": parent_seed.node_type,
+            "entity_subtype": parent_seed.entity_subtype,
+            "label": label,
+        })
+        fact_assignments_by_key[child_key] = path_fact_ids.get(label, [])
+
+    try:
+        await write_seed_repo.split_seed(
+            original_key=parent_key,
+            new_seeds=new_seeds,
+            fact_assignments=fact_assignments_by_key,
+            reason="genesis_disambig",
+        )
+    except Exception:
+        logger.warning("split_seed failed for genesis disambig on '%s'", parent_key, exc_info=True)
+
+
+async def _llm_multiplex(
+    incoming_name: str,
+    candidates: list,  # list[WriteSeed]
+    model_gateway: ModelGateway,
+) -> dict:
+    """Call LLM multiplex to decide what to do with an incoming seed + candidates."""
+    settings = get_settings()
+    model_id = settings.seed_dedup_llm_model or settings.decomposition_model
+
+    lines: list[str] = [f'INCOMING: "{incoming_name}"', ""]
+    lines.append(f"CANDIDATES ({len(candidates)}):")
+    for c in candidates[:5]:  # cap at 5 to keep prompt size manageable
+        lines.append(
+            f'- seed_key="{c.key}"  name="{c.name}"  '
+            f"node_type={c.node_type}  fact_count={c.fact_count}"
+        )
+    lines.append("")
+    lines.append("Return JSON only. Follow the HARD RULES.")
+    user = "\n".join(lines)
+
+    try:
+        result = await model_gateway.generate_json(
+            model_id=model_id,
+            messages=[{"role": "user", "content": user}],
+            system=_MULTIPLEX_SYSTEM,
+            temperature=0.0,
+        )
+        if isinstance(result, dict):
+            return result
+    except Exception:
+        logger.debug("LLM multiplex failed for '%s'", incoming_name, exc_info=True)
+    return {}
+
+
+async def _apply_disambig_path(
+    incoming_key: str,
+    target_key: str,
+    incoming_label: str,
+    existing_label: str,
+    write_seed_repo: WriteSeedRepository,
+) -> None:
+    """Create disambiguation routes between incoming and target seeds.
+
+    If target is still flat (no routes), auto-promotes its content into a
+    sibling path labelled existing_label and creates the incoming path.
+    If target already has routes, just create an incoming path route.
+    """
+    from kt_db.keys import make_seed_key
+
+    target_seed = await write_seed_repo.get_seed_by_key(target_key)
+    if target_seed is None:
+        return
+
+    existing_routes = await write_seed_repo.get_routes_for_parent(target_key)
+
+    try:
+        if not existing_routes:
+            # Target is flat — promote existing content into sibling path
+            existing_facts = await write_seed_repo.get_facts_for_seed(target_key)
+            existing_child_key = make_seed_key(existing_label or target_seed.name)
+            await write_seed_repo.split_seed(
+                original_key=target_key,
+                new_seeds=[{
+                    "key": existing_child_key,
+                    "name": existing_label or target_seed.name,
+                    "node_type": target_seed.node_type,
+                    "entity_subtype": target_seed.entity_subtype,
+                    "label": existing_label or target_seed.name,
+                }],
+                fact_assignments={existing_child_key: existing_facts},
+                reason="multiplex_new_disambig_path:promote_existing",
+            )
+
+        # Add incoming as a new child route of the target
+        incoming_child_key = make_seed_key(incoming_label)
+        incoming_seed = await write_seed_repo.get_seed_by_key(incoming_key)
+        incoming_facts = await write_seed_repo.get_facts_for_seed(incoming_key)
+
+        # Create the child seed for incoming and move its facts there
+        await write_seed_repo.split_seed(
+            original_key=target_key,
+            new_seeds=[{
+                "key": incoming_child_key,
+                "name": incoming_label,
+                "node_type": (incoming_seed.node_type if incoming_seed else target_seed.node_type),
+                "entity_subtype": (incoming_seed.entity_subtype if incoming_seed else None),
+                "label": incoming_label,
+            }],
+            fact_assignments={incoming_child_key: incoming_facts},
+            reason="multiplex_new_disambig_path:incoming",
         )
 
-        for c in candidates:
-            ancestor = ancestor_map[c.key]
-            await write_seed_repo.create_route(
-                parent_key=seed_key,
-                child_key=ancestor,
-                label=c.name,
-            )
-    except Exception:
-        logger.debug("Failed to mark seed '%s' as ambiguous", seed_key, exc_info=True)
+        # Mark target as ambiguous
+        await write_seed_repo.set_status(target_key, "ambiguous")
 
-    return seed_key  # Return own key (now marked ambiguous, won't be merged)
+        # Merge incoming seed into its labelled child (incoming_key → incoming_child_key)
+        if incoming_seed and incoming_child_key != incoming_key:
+            await write_seed_repo.merge_seeds(
+                incoming_key, incoming_child_key, reason="multiplex_fold_incoming_into_path"
+            )
+
+    except Exception:
+        logger.warning("_apply_disambig_path failed for '%s'→'%s'", incoming_key, target_key, exc_info=True)
 
 
 async def _follow_merge_chain(
@@ -421,10 +532,7 @@ async def _follow_merge_chain(
     write_seed_repo: WriteSeedRepository,
     max_depth: int = 10,
 ) -> str:
-    """Follow the merge chain to find the ultimate surviving ancestor.
-
-    Returns the final key (may be the input key if no merges).
-    """
+    """Follow the merge chain to find the ultimate surviving ancestor."""
     current = seed_key
     for _ in range(max_depth):
         seed = await write_seed_repo.get_seed_by_key(current)
@@ -440,7 +548,7 @@ async def _merge_pair(
     write_seed_repo: WriteSeedRepository,
     reason: str,
 ) -> str:
-    """Merge two seeds, keeping the one with more facts as the winner.
+    """Merge two seeds. Winner = more facts. Loser aliases propagate to winner.
 
     Returns the winning key.
     """
@@ -450,18 +558,22 @@ async def _merge_pair(
     if incoming is None or existing is None:
         return incoming_key
 
-    # Winner has more facts; on tie, prefer the existing (more canonical)
+    # Winner: more facts; on tie, prefer existing (already established)
     if incoming.fact_count > existing.fact_count:
         winner_key, loser_key = incoming_key, existing_key
+        winner, loser = incoming, existing
     else:
         winner_key, loser_key = existing_key, incoming_key
+        winner, loser = existing, incoming
 
-    # Advisory lock on winner key to prevent concurrent merges into the
-    # same target from corrupting state.
+    # Longest-wins canonical: if loser name is longer, rename winner
+    winner_name = winner.name
+    if len(loser.name) > len(winner.name):
+        winner_name = loser.name
+
     from sqlalchemy import text
 
     session = write_seed_repo._session
-
     try:
         async with session.begin_nested():
             await session.execute(
@@ -469,246 +581,23 @@ async def _merge_pair(
                 {"key": winner_key},
             )
             await write_seed_repo.merge_seeds(loser_key, winner_key, reason=reason)
-        logger.info(
-            "Merged seed '%s' into '%s' (reason: %s)",
-            loser_key,
-            winner_key,
-            reason,
-        )
+
+            # Propagate loser's aliases to winner
+            loser_aliases = [loser_key] + list(loser.aliases or [])
+            if loser_aliases:
+                await write_seed_repo.merge_aliases_into_winner(winner_key, loser_aliases)
+
+            # Apply longest-wins rename if needed
+            if winner_name != winner.name:
+                await write_seed_repo.rename_seed(winner_key, winner_name)
+
+        logger.info("Merged seed '%s' → '%s' (reason: %s)", loser_key, winner_key, reason)
         return winner_key
     except Exception:
-        # Deadlock or other DB error — savepoint rolled back,
-        # session stays usable. Skip this merge.
         logger.warning(
-            "Merge failed (deadlock?) for '%s' into '%s', skipping",
-            loser_key,
-            winner_key,
-            exc_info=True,
+            "Merge failed for '%s'→'%s', skipping", loser_key, winner_key, exc_info=True
         )
         return incoming_key
-
-
-def _is_prefix_disambiguation_candidate(name_a: str, name_b: str) -> bool:
-    """Check if two names share a significant common prefix.
-
-    Returns True if both names start identically up to a word boundary
-    and then diverge with distinguishing words.
-
-    Examples:
-        "light-dependent reactions" vs "light-independent reactions" -> True
-        "North Korea" vs "North Macedonia" -> True
-        "light-dependent reactions" vs "dark reactions" -> False
-    """
-    a_lower = name_a.lower().strip()
-    b_lower = name_b.lower().strip()
-
-    if a_lower == b_lower:
-        return False
-
-    # Find common prefix length
-    prefix_len = 0
-    for i, (ca, cb) in enumerate(zip(a_lower, b_lower)):
-        if ca != cb:
-            break
-        prefix_len = i + 1
-    else:
-        # One is a pure prefix of the other — containment, not disambiguation
-        if len(a_lower) != len(b_lower):
-            return False
-
-    if prefix_len < 4:
-        return False
-
-    # Check that the prefix ends at a word/separator boundary
-    prefix = a_lower[:prefix_len]
-    if prefix[-1] not in (" ", "-", "_") and prefix_len < len(a_lower) and prefix_len < len(b_lower):
-        # Back up to last word boundary
-        for j in range(prefix_len - 1, 0, -1):
-            if a_lower[j] in (" ", "-", "_"):
-                prefix_len = j + 1
-                break
-        else:
-            return False
-
-    # Both must have distinguishing content after the prefix
-    suffix_a = a_lower[prefix_len:].strip()
-    suffix_b = b_lower[prefix_len:].strip()
-
-    if not suffix_a or not suffix_b:
-        return False  # One is a pure prefix of the other
-
-    return True
-
-
-async def _llm_confirm_merge(
-    incoming_name: str,
-    incoming_key: str,
-    candidate_name: str,
-    candidate_key: str,
-    write_seed_repo: WriteSeedRepository,
-    write_fact_repo: WriteFactRepository,
-    model_gateway: ModelGateway,
-) -> tuple[bool, str | None]:
-    """Ask LLM if two embedding-similar seeds are the same concept.
-
-    Returns (should_merge, preferred_name_or_None).
-    On failure -> (False, None) — never false-merge.
-    """
-    settings = get_settings()
-    model_id = settings.seed_dedup_llm_model or settings.decomposition_model
-
-    # Fetch up to 3 facts per seed for context
-    incoming_facts_text: list[str] = []
-    candidate_facts_text: list[str] = []
-
-    try:
-        incoming_fact_ids = await write_seed_repo.get_facts_for_seed(incoming_key)
-        if incoming_fact_ids:
-            facts = await write_fact_repo.get_by_ids(incoming_fact_ids[:3])
-            incoming_facts_text = [f.content[:300] for f in facts if f.content]
-    except Exception:
-        pass
-
-    try:
-        candidate_fact_ids = await write_seed_repo.get_facts_for_seed(candidate_key)
-        if candidate_fact_ids:
-            facts = await write_fact_repo.get_by_ids(candidate_fact_ids[:3])
-            candidate_facts_text = [f.content[:300] for f in facts if f.content]
-    except Exception:
-        pass
-
-    # Build prompt
-    facts_a_str = "\n".join(f"  - {f}" for f in incoming_facts_text) if incoming_facts_text else "  (no facts yet)"
-    facts_b_str = "\n".join(f"  - {f}" for f in candidate_facts_text) if candidate_facts_text else "  (no facts yet)"
-
-    # Compute string similarity to give LLM context on how close the names are
-    d = edit_distance(incoming_name.lower(), candidate_name.lower())
-    max_len = max(len(incoming_name), len(candidate_name))
-    string_sim_pct = int((1.0 - d / max_len) * 100) if max_len else 100
-
-    prompt = (
-        "Two knowledge-graph seeds matched by high embedding similarity. "
-        f"Their names are {string_sim_pct}% identical by edit distance. "
-        "Determine whether they refer to the SAME concept/entity.\n\n"
-        "MERGE (same_entity=true) when:\n"
-        '- Singular/plural forms ("neural network" / "neural networks")\n'
-        '- Synonyms or abbreviations ("LLM" / "large language model")\n'
-        '- Grammatical variants ("photosynthesis" / "photosynthetic process")\n'
-        '- Same concept at different specificity ("ML" / "machine learning")\n\n'
-        "DO NOT MERGE (same_entity=false) when:\n"
-        "- Distinct processes sharing terminology "
-        '("light-dependent reactions" / "light-independent reactions")\n'
-        '- Different subdisciplines ("deep learning" / "reinforcement learning")\n'
-        '- Different entities with the same name ("Mercury" planet vs element)\n\n'
-        f'Seed A: "{incoming_name}"\n'
-        f"Facts:\n{facts_a_str}\n\n"
-        f'Seed B: "{candidate_name}"\n'
-        f"Facts:\n{facts_b_str}\n\n"
-        'JSON: {"same_entity": bool, "preferred_name": "more canonical form or null"}'
-    )
-
-    try:
-        result = await model_gateway.generate_json(
-            model_id=model_id,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-        )
-        if isinstance(result, dict):
-            same = bool(result.get("same_entity", False))
-            preferred = result.get("preferred_name")
-            if preferred and not isinstance(preferred, str):
-                preferred = None
-            logger.info(
-                "LLM merge gate: '%s' vs '%s' -> same=%s preferred=%s",
-                incoming_name,
-                candidate_name,
-                same,
-                preferred,
-            )
-            return same, preferred if same else None
-    except Exception:
-        logger.debug(
-            "LLM merge gate failed for '%s' vs '%s' — defaulting to no-merge",
-            incoming_name,
-            candidate_name,
-            exc_info=True,
-        )
-
-    return False, None
-
-
-async def _create_embedding_disambiguation(
-    incoming_key: str,
-    existing_key: str,
-    existing_name: str,
-    write_seed_repo: WriteSeedRepository,
-) -> None:
-    """Convert existing seed into disambiguation anchor with typed routes.
-
-    The existing seed becomes ambiguous. Its facts transfer to a new
-    disambiguated child. The incoming seed becomes the other child route.
-    Both routes are typed as 'embedding' so routing uses text-search-first.
-    """
-    existing_seed = await write_seed_repo.get_seed_by_key(existing_key)
-    if not existing_seed or existing_seed.status == "ambiguous":
-        return  # already split or missing
-
-    existing_facts = await write_seed_repo.get_facts_for_seed(existing_key)
-
-    # The child gets the same name — it IS the specific form
-    child_key = f"{existing_key}:disambig"
-    try:
-        await write_seed_repo.split_seed(
-            original_key=existing_key,
-            new_seeds=[
-                {
-                    "key": child_key,
-                    "name": existing_name,
-                    "node_type": existing_seed.node_type,
-                    "entity_subtype": existing_seed.entity_subtype,
-                    "label": existing_name,
-                },
-            ],
-            fact_assignments={child_key: existing_facts},
-            reason=f"embedding disambiguation: '{existing_name}' vs incoming",
-        )
-
-        # Update the route created by split_seed to use embedding ambiguity type
-        from sqlalchemy import update as sa_update
-
-        from kt_db.write_models import WriteSeedRoute
-
-        await write_seed_repo._session.execute(
-            sa_update(WriteSeedRoute)
-            .where(
-                WriteSeedRoute.parent_seed_key == existing_key,
-                WriteSeedRoute.child_seed_key == child_key,
-            )
-            .values(ambiguity_type="embedding")
-        )
-
-        # Add route from anchor to incoming seed
-        incoming_seed = await write_seed_repo.get_seed_by_key(incoming_key)
-        incoming_label = incoming_seed.name if incoming_seed else incoming_key
-        await write_seed_repo.create_route(
-            parent_key=existing_key,
-            child_key=incoming_key,
-            label=incoming_label,
-            ambiguity_type="embedding",
-        )
-
-        logger.info(
-            "Created embedding disambiguation anchor '%s' -> ['%s', '%s']",
-            existing_key,
-            child_key,
-            incoming_key,
-        )
-    except Exception:
-        logger.debug(
-            "Failed to create embedding disambiguation for '%s'",
-            existing_key,
-            exc_info=True,
-        )
 
 
 async def embed_and_upsert_seed(

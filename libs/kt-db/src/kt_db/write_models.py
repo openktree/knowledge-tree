@@ -347,12 +347,16 @@ class WriteSeed(WriteBase):
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     node_type: Mapped[str] = mapped_column(String(20), nullable=False)
     entity_subtype: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # status lifecycle: pending | active | ambiguous | promoted | merged
+    # 'pending' = inserted by extraction, not yet deduped
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     merged_into_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     promoted_node_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     fact_count: Mapped[int] = mapped_column(Integer, default=0)
     phonetic_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # aliases: slugified keys of all merged surface forms (GIN-indexed for fast overlap queries)
+    aliases: Mapped[list[str]] = mapped_column(ARRAY(String(500)), nullable=False, default=list, server_default="{}")
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

@@ -75,6 +75,11 @@ class SeedStub:
     entity_subtype: str | None = None
     phonetic_code: str | None = None
     seed_uuid: str | None = None
+    aliases: list = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.aliases is None:
+            self.aliases = []
 
 
 @dataclass

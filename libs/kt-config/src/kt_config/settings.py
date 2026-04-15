@@ -347,17 +347,13 @@ _register(
     "seeds",
     {
         "seed_dedup_embedding_threshold": "dedup_embedding_threshold",
-        "seed_dedup_trigram_threshold": "dedup_trigram_threshold",
         "seed_disambiguation_fact_threshold": "disambiguation_fact_threshold",
-        "seed_disambiguation_cluster_threshold": "disambiguation_cluster_threshold",
         "seed_promotion_min_facts": "promotion_min_facts",
         "seed_routing_embedding_threshold": "routing_embedding_threshold",
         "seed_routing_llm_ambiguity_margin": "routing_llm_ambiguity_margin",
-        "seed_phonetic_trigram_threshold": "phonetic_trigram_threshold",
-        "seed_dedup_typo_floor": "dedup_typo_floor",
         "seed_re_embed_thresholds": "re_embed_thresholds",
-        "seed_dedup_auto_merge_threshold": "dedup_auto_merge_threshold",
         "seed_dedup_llm_model": "dedup_llm_model",
+        "seed_suggest_disambig_enabled": "suggest_disambig_enabled",
     },
 )
 
@@ -709,18 +705,14 @@ class Settings(BaseSettings):
     dedup_search_batch_size: int = 20
 
     # Seeds
-    seed_dedup_embedding_threshold: float = 0.82
-    seed_dedup_trigram_threshold: float = 0.50
+    seed_dedup_embedding_threshold: float = 0.90  # single threshold; always LLM multiplex above this
     seed_disambiguation_fact_threshold: int = 10
-    seed_disambiguation_cluster_threshold: float = 0.85
     seed_promotion_min_facts: int = 10
     seed_routing_embedding_threshold: float = 0.80
     seed_routing_llm_ambiguity_margin: float = 0.05
-    seed_phonetic_trigram_threshold: float = 0.40
-    seed_dedup_typo_floor: float = 0.75  # min embedding sim for phonetic+trigram typo merges
     seed_re_embed_thresholds: str = "5,15,50,100"
-    seed_dedup_auto_merge_threshold: float = 0.95  # above this + guards → skip LLM
     seed_dedup_llm_model: str = ""  # empty = use decomposition_model (cheapest)
+    seed_suggest_disambig_enabled: bool = True  # run suggest_disambig at genesis
 
     # Wave pipeline
     default_wave_count: int = 2
