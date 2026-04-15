@@ -879,7 +879,12 @@ export interface PipelineTaskItem {
   started_at: string | null;
   wave_number?: number | null; // Only set for explore_scope tasks
   node_type?: string | null; // "concept" | "entity" | "event" | "perspective" etc.
+  has_children: boolean;
   children: PipelineTaskItem[];
+}
+
+export interface TaskChildrenResponse {
+  tasks: PipelineTaskItem[];
 }
 
 export interface PipelineSnapshotResponse {
@@ -891,6 +896,7 @@ export interface PipelineSnapshotResponse {
 
 export interface ProgressResponse {
   message_id: string;
+  workflow_run_id: string | null;
   status: string; // "pending" | "running" | "completed" | "failed"
   content: string; // answer text (empty while running)
   error: string | null;
