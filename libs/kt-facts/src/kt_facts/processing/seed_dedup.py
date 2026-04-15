@@ -188,7 +188,15 @@ async def deduplicate_seed(
     from kt_facts.processing.entity_extraction import _is_valid_entity_name
 
     if not _is_valid_entity_name(name):
-        logger.debug("Skipping dedup for invalid seed name: '%s'", name)
+        # Invalid names (citation artifacts, measurements, mostly-digits)
+        # don't benefit from dedup/multiplex, but must still exit pending
+        # so they stop being reprocessed. Mark as 'garbage' — auto_build
+        # filters on status='active', so these won't leak into nodes.
+        logger.info("Invalid seed name '%s' — marking as garbage", name)
+        try:
+            await write_seed_repo.set_status(seed_key, "garbage")
+        except Exception:
+            logger.debug("Failed to mark invalid seed as garbage", exc_info=True)
         return seed_key
 
     alias_keys: list[str] = list(aliases or [])
