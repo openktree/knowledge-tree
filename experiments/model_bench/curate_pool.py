@@ -63,8 +63,8 @@ def _load_pool(pool_path: Path) -> list[str]:
     return [s["name"] for s in doc.get("seeds", []) if isinstance(s, dict) and s.get("name")]
 
 
-# Simple substitution-test heuristic filters
 _SUFFIX_DERIVED = re.compile(r"(ic|al|ist|ism|ive|ize|ise|ed|ing|ly)$", re.IGNORECASE)
+_ACRONYM = re.compile(r"^[A-Z][A-Z0-9-]{1,7}$")
 
 
 def _is_valid_alias_candidate(candidate: str, seed: str) -> bool:
@@ -72,22 +72,53 @@ def _is_valid_alias_candidate(candidate: str, seed: str) -> bool:
     s = seed.strip().lower()
     if not c or c == s:
         return False
-    # Reject case variants (same string lowercased) — already covered
-    # Reject if one is substring containing additional words (likely specialization)
     if c != s and (c in s or s in c):
-        # Exception: singular/plural differing by trailing s/es
         if c.rstrip("s") == s.rstrip("s"):
-            return True
-        # Exception: acronym vs expansion (short vs long)
+            return True  # plural/singular
         if len(c) <= 6 or len(s) <= 6:
-            return True
+            return True  # acronym vs expansion
         return False
-    # Reject derived-adjective forms (seed is noun, candidate ends in -ic/-al/etc)
     if not _SUFFIX_DERIVED.search(s) and _SUFFIX_DERIVED.search(c):
-        # But allow if just plural (-s)
         if not c.endswith("s"):
             return False
     return True
+
+
+def _is_trusted_single_model(candidate: str, seed: str) -> bool:
+    """Patterns safe enough to accept from a single model without consensus:
+    - Acronym form (ALL CAPS, 2-8 chars) when seed is a longer phrase
+    - Expansion from acronym seed to longer proper-noun candidate
+    - Clean plural/singular (seed+s or seed-s)
+    - Diacritic-removed variant (accented seed → ASCII)
+    """
+    c = candidate.strip()
+    s = seed.strip()
+    cl, sl = c.lower(), s.lower()
+    if not cl or cl == sl:
+        return False
+    # Acronym of a multi-word seed
+    if _ACRONYM.match(c) and " " in s and len(c) <= 8 and len(s) > 6:
+        # Check first letters of seed words roughly match acronym
+        seed_initials = "".join(w[0].upper() for w in re.findall(r"[A-Za-z][A-Za-z-]*", s))
+        if c.replace("-", "").replace(".", "").upper() == seed_initials[:len(c)]:
+            return True
+    # Expansion: seed is short all-caps (acronym), candidate is longer proper phrase
+    if _ACRONYM.match(s) and len(cl) > len(sl) + 3:
+        cand_initials = "".join(w[0].upper() for w in re.findall(r"[A-Za-z][A-Za-z-]*", c))
+        if s.upper().replace("-", "").replace(".", "") == cand_initials[:len(s)]:
+            return True
+    # Clean plural/singular
+    if cl.rstrip("s") == sl.rstrip("s") and cl != sl:
+        return True
+    # Diacritic-only difference
+    import unicodedata
+    def _strip_diacritics(x: str) -> str:
+        return "".join(ch for ch in unicodedata.normalize("NFD", x) if not unicodedata.combining(ch))
+    if _strip_diacritics(cl) == _strip_diacritics(sl) and cl != sl:
+        return True
+    if _strip_diacritics(cl) == sl or cl == _strip_diacritics(sl):
+        return True
+    return False
 
 
 def _propose_aliases(per_model: dict[str, dict], seed: str) -> list[str]:
@@ -107,10 +138,11 @@ def _propose_aliases(per_model: dict[str, dict], seed: str) -> list[str]:
             display.setdefault(k, a.strip())
     proposed: list[str] = []
     for key, count in counter.most_common():
-        if count < 2:
-            continue
         cand = display[key]
-        if _is_valid_alias_candidate(cand, seed):
+        if count >= 2 and _is_valid_alias_candidate(cand, seed):
+            proposed.append(cand)
+        elif count == 1 and _is_trusted_single_model(cand, seed):
+            # High-confidence pattern (acronym/plural/diacritic) — accept single-model
             proposed.append(cand)
     return proposed
 

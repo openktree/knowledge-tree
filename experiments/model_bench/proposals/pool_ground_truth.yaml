@@ -68,6 +68,10 @@ brain organoids:
     ambiguous: false
     must_include_any: []
 buddhist traditions:
+  alias_gen:
+    aliases:
+    - Buddhist tradition
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -133,6 +137,10 @@ computational irreducibility:
     ambiguous: false
     must_include_any: []
 courts:
+  alias_gen:
+    aliases:
+    - court
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -197,6 +205,10 @@ ecosystem development:
     ambiguous: false
     must_include_any: []
 effector t cells:
+  alias_gen:
+    aliases:
+    - effector T cell
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -249,6 +261,7 @@ global neuronal workspace theory:
   alias_gen:
     aliases:
     - GNWT
+    - GNW
     must_exclude: []
   shell_classify:
     is_shell: false
@@ -307,12 +320,20 @@ higher-order theories:
     ambiguous: false
     must_include_any: []
 hormonal imbalances:
+  alias_gen:
+    aliases:
+    - hormonal imbalance
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
     ambiguous: false
     must_include_any: []
 human infants:
+  alias_gen:
+    aliases:
+    - human infant
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -475,6 +496,10 @@ mosaicml:
     ambiguous: false
     must_include_any: []
 music-based interventions:
+  alias_gen:
+    aliases:
+    - music-based intervention
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -520,6 +545,10 @@ neuro-functional model:
     ambiguous: false
     must_include_any: []
 neurofibrillary tangles:
+  alias_gen:
+    aliases:
+    - neurofibrillary tangle
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -662,6 +691,10 @@ prognostics:
     - engineering
     - medicine
 propensity score model:
+  alias_gen:
+    aliases:
+    - propensity score models
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -701,6 +734,10 @@ radioactive isotopes:
     ambiguous: false
     must_include_any: []
 rené descartes:
+  alias_gen:
+    aliases:
+    - Rene Descartes
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -723,12 +760,20 @@ social bias risk mitigation:
     ambiguous: false
     must_include_any: []
 social interaction:
+  alias_gen:
+    aliases:
+    - social interactions
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
     ambiguous: false
     must_include_any: []
 soy phytoestrogens:
+  alias_gen:
+    aliases:
+    - soy phytoestrogen
+    must_exclude: []
   shell_classify:
     is_shell: false
   suggest_disambig:
@@ -752,6 +797,7 @@ sri sankaracarya:
     - Shankaracharya
     - Sri Shankaracharya
     - Shankara
+    - Śrī Śankarācārya
     must_exclude: []
   shell_classify:
     is_shell: false
