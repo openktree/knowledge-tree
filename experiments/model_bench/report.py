@@ -27,19 +27,25 @@ def _bar(pct: float, color: str, width_px: int = 160) -> str:
 
 
 def _aggregate(results: list) -> dict:
-    correct = sum(1 for r in results if r.correct)
+    # Only curated items (correct is bool) count for accuracy. Uncurated
+    # pool items (correct is None) contribute score but not correct/total
+    # for accuracy%.
+    judged = [r for r in results if r.correct is not None]
+    correct = sum(1 for r in judged if r.correct)
     errors = sum(1 for r in results if r.error)
     total_score = sum(getattr(r, "score", 0.0) for r in results)
     total = len(results)
+    n_judged = len(judged)
     total_prompt = sum(r.prompt_tokens for r in results)
     total_compl = sum(r.completion_tokens for r in results)
     total_cost = sum(r.cost_usd for r in results)
     total_lat = sum(r.latency_ms for r in results)
     return {
         "n": total,
+        "n_judged": n_judged,
         "correct": correct,
         "errors": errors,
-        "accuracy": 100.0 * correct / total if total else 0.0,
+        "accuracy": 100.0 * correct / n_judged if n_judged else 0.0,
         "score": total_score,
         "prompt_tokens": total_prompt,
         "completion_tokens": total_compl,
@@ -146,9 +152,22 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
         )
     parts.append("</table></div>")
 
-    # ── Per-task breakdown ────────────────────────────────────────
+    # ── Per-task breakdown (binary accuracy + score-based) ──────
     tasks = config.get("tasks", [])
-    parts.append("<div class='section'><h2>Per-task accuracy</h2><table>")
+
+    # Max score per task for normalization
+    max_task_score: dict[str, float] = {}
+    for t in tasks:
+        max_task_score[t] = 0.0
+        for _, results in results_by_model.items():
+            sub = [r for r in results if r.task == t]
+            s = sum(getattr(r, "score", 0.0) for r in sub)
+            if s > max_task_score[t]:
+                max_task_score[t] = s
+        if max_task_score[t] == 0:
+            max_task_score[t] = 1.0
+
+    parts.append("<div class='section'><h2>Per-task — binary accuracy</h2><table>")
     parts.append("<tr><th>Model</th>" + "".join(f"<th>{_esc(t)}</th>" for t in tasks) + "</tr>")
     for label, results in results_by_model.items():
         by_t = _by_task(results)
@@ -164,18 +183,45 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
         parts.append("</tr>")
     parts.append("</table></div>")
 
-    # ── Per-model detail (collapsible) ────────────────────────────
+    parts.append("<div class='section'><h2>Per-task — score (+1 per valid hit, −1 per blacklist)</h2><table>")
+    parts.append("<tr><th>Model</th>" + "".join(f"<th>{_esc(t)}</th>" for t in tasks) + "</tr>")
     for label, results in results_by_model.items():
         by_t = _by_task(results)
-        parts.append(f"<div class='section'><h2>Model: <span class='mono'>{_esc(label)}</span></h2>")
+        parts.append(f"<tr><td class='mono'>{_esc(label)}</td>")
+        for t in tasks:
+            sub = by_t.get(t, [])
+            score = sum(getattr(r, "score", 0.0) for r in sub)
+            norm = 100.0 * score / max_task_score[t]
+            color = "#16a34a" if norm >= 80 else "#f59e0b" if norm >= 50 else "#dc2626"
+            parts.append(
+                f"<td>{_bar(max(0, norm), color, 110)} "
+                f"<b>{score:.1f}</b> / {max_task_score[t]:.1f} ({norm:.0f}%)</td>"
+            )
+        parts.append("</tr>")
+    parts.append("</table></div>")
+
+    # ── Per-model detail (each model + each task collapsed) ──────
+    for label, results in results_by_model.items():
+        by_t = _by_task(results)
+        agg_all = _aggregate(results)
+        parts.append(
+            f"<details class='section'><summary style='cursor:pointer;font-size:1.1em'>"
+            f"<b>Model: <span class='mono'>{_esc(label)}</span></b> · "
+            f"{agg_all['correct']}/{agg_all['n']} correct · "
+            f"score={agg_all['score']:.1f} · ${agg_all['cost_usd']:.4f} · "
+            f"{agg_all['avg_latency_ms']:.0f}ms/call</summary>"
+        )
         for t in tasks:
             sub = by_t.get(t, [])
             if not sub:
                 continue
             agg = _aggregate(sub)
-            parts.append(f"<h3>{_esc(t)} — {agg['correct']}/{agg['n']} ({agg['accuracy']:.0f}%)"
-                         f" · {agg['errors']} errors · ${agg['cost_usd']:.5f}"
-                         f" · avg {agg['avg_latency_ms']:.0f}ms</h3>")
+            parts.append(
+                f"<details><summary style='cursor:pointer;margin:6px 0;font-weight:600'>"
+                f"{_esc(t)} — {agg['correct']}/{agg['n']} ({agg['accuracy']:.0f}%)"
+                f" · score={agg['score']:.1f} · {agg['errors']} errors · ${agg['cost_usd']:.5f}"
+                f" · avg {agg['avg_latency_ms']:.0f}ms</summary>"
+            )
             parts.append("<table>")
             parts.append(
                 "<tr><th>Name</th><th>Expected</th><th>Got</th>"
@@ -201,8 +247,8 @@ def generate_report(config: dict, results_by_model: dict[str, list], out_path: P
                     f"<td>{ok_html}</td>"
                     "</tr>"
                 )
-            parts.append("</table>")
-        parts.append("</div>")
+            parts.append("</table></details>")
+        parts.append("</details>")
 
     parts.append("</body></html>")
     out_path.write_text("\n".join(parts), encoding="utf-8")

@@ -29,7 +29,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 import litellm  # noqa: E402
 from kt_config.settings import get_settings  # noqa: E402
 
-from .datasets import TASKS, BenchItem  # noqa: E402
+from .datasets import TASKS, BenchItem, build_task_items  # noqa: E402
 from .report import generate_report  # noqa: E402
 
 
@@ -265,29 +265,41 @@ def _score(task: str, expected: dict, response: dict | None) -> tuple[bool, floa
     """
     if response is None:
         return False, 0.0
+    # Items with empty/uncurated ground truth score 0 — no credit until
+    # a human-approved whitelist entry is added in datasets.POOL_GROUND_TRUTH.
+    # Deterministic and monotonic across iterations.
+
     if task == "alias_gen":
         raw = response.get("aliases", []) if isinstance(response, dict) else []
         emitted = {str(a).strip().lower() for a in raw if isinstance(a, str) and str(a).strip()}
         valid = {s.lower() for s in expected.get("aliases", [])}
         bad = {s.lower() for s in expected.get("must_exclude", [])}
+        # Uncurated — neither whitelist nor blacklist; can't judge.
+        if not valid and not bad:
+            return None, 0.0
         hits_valid = len(emitted & valid)
         hits_bad = len(emitted & bad)
         score = float(hits_valid - hits_bad)
-        # correct: at least one valid hit and no blacklist leak; OR valid empty + no blacklist leak
         if hits_bad > 0:
             return False, score
         if not valid:
-            return True, score
+            return True, 0.0
         return hits_valid > 0, score
 
     if task == "shell_classify":
         got = bool(response.get("is_shell", False)) if isinstance(response, dict) else False
+        if "is_shell" not in expected:
+            # Not yet curated — can't judge. correct=None, score=0.
+            return None, 0.0
         ok = got == bool(expected.get("is_shell"))
         return ok, 1.0 if ok else 0.0
 
     if task == "suggest_disambig":
         raw = response.get("paths", []) if isinstance(response, dict) else []
         emitted = [str(p).strip() for p in raw if isinstance(p, str) and str(p).strip()]
+        if "ambiguous" not in expected:
+            # Not yet curated
+            return None, 0.0
         expect_ambig = bool(expected.get("ambiguous", False))
         got_ambig = len(emitted) >= 2
         if got_ambig != expect_ambig:
@@ -503,6 +515,7 @@ async def run_bench(config_path: Path) -> None:
     pricing_map = config.get("pricing", {}) or {}
 
     # Build (model, task, batch) jobs
+    dataset = str(config.get("dataset", "curated"))
     jobs: list[tuple[str, str, str, list[BenchItem], dict | None, dict | None, bool]] = []
     for m in models:
         mid = m["id"]
@@ -511,7 +524,7 @@ async def run_bench(config_path: Path) -> None:
         price = pricing_map.get(mid)
         force_json = bool(m.get("force_json_object", True))
         for task in tasks:
-            items = TASKS[task]
+            items = build_task_items(task, dataset)
             for i in range(0, len(items), batch_size):
                 batch = items[i : i + batch_size]
                 jobs.append((mid, label, task, batch, reasoning, price, force_json))

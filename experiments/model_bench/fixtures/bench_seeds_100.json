@@ -1,0 +1,506 @@
+{
+  "n": 100,
+  "min_facts": 2,
+  "seeds": [
+    {
+      "name": "L Melloni",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "hormonal imbalances",
+      "node_type": "concept",
+      "fact_count": 8
+    },
+    {
+      "name": "effector T cells",
+      "node_type": "concept",
+      "fact_count": 7
+    },
+    {
+      "name": "microbial diversity",
+      "node_type": "concept",
+      "fact_count": 17
+    },
+    {
+      "name": "large language model agents",
+      "node_type": "concept",
+      "fact_count": 10
+    },
+    {
+      "name": "Bishnu Charan Ghosh",
+      "node_type": "concept",
+      "fact_count": 11
+    },
+    {
+      "name": "mitochondrial function",
+      "node_type": "concept",
+      "fact_count": 9
+    },
+    {
+      "name": "PICO framework",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "quackery",
+      "node_type": "concept",
+      "fact_count": 5
+    },
+    {
+      "name": "dielectric resonance microscope",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "music-based interventions",
+      "node_type": "concept",
+      "fact_count": 12
+    },
+    {
+      "name": "IEEE Ethically Aligned Design",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "apparent motion",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Sri Sankaracarya",
+      "node_type": "concept",
+      "fact_count": 7
+    },
+    {
+      "name": "competition",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "miRNA sponges",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "personhood",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "MosaicML",
+      "node_type": "concept",
+      "fact_count": 5
+    },
+    {
+      "name": "National Institutes of Health National Center for Complementary and Integrative Health",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "community engagement",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "vision-and-language models",
+      "node_type": "concept",
+      "fact_count": 6
+    },
+    {
+      "name": "courts",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Higher-Order Theories",
+      "node_type": "concept",
+      "fact_count": 22
+    },
+    {
+      "name": "spin-up",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "Polyphenolic compounds",
+      "node_type": "concept",
+      "fact_count": 6
+    },
+    {
+      "name": "prenatal stress",
+      "node_type": "concept",
+      "fact_count": 19
+    },
+    {
+      "name": "Zmpste24-/- mice",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "low energy levels",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "Jewish summer camp",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Mangostins",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "Dr. Christie",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "North Atlantic Books",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "social bias risk mitigation",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "adhyāropa",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "Dynamic Universal Approximation Theory: The Basic Theory for Transformer-based Large Language Models",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Rudolf Hermann Lotze",
+      "node_type": "concept",
+      "fact_count": 7
+    },
+    {
+      "name": "general anesthesia",
+      "node_type": "concept",
+      "fact_count": 36
+    },
+    {
+      "name": "TrustLLM benchmark",
+      "node_type": "concept",
+      "fact_count": 6
+    },
+    {
+      "name": "K. Pattabhi Jois",
+      "node_type": "concept",
+      "fact_count": 18
+    },
+    {
+      "name": "adolescent mental health",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "gravitational space-time",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "phosphorylation",
+      "node_type": "concept",
+      "fact_count": 20
+    },
+    {
+      "name": "brain organoids",
+      "node_type": "concept",
+      "fact_count": 30
+    },
+    {
+      "name": "The Archive Thief: the Man Who Salvaged French Jewish History in the Wake of the Holocaust",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "epidermal growth factor receptors",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "computational irreducibility",
+      "node_type": "concept",
+      "fact_count": 9
+    },
+    {
+      "name": "Indian subcontinent",
+      "node_type": "concept",
+      "fact_count": 13
+    },
+    {
+      "name": "neurofibrillary tangles",
+      "node_type": "concept",
+      "fact_count": 13
+    },
+    {
+      "name": "human infants",
+      "node_type": "concept",
+      "fact_count": 7
+    },
+    {
+      "name": "PD-1 inhibitors",
+      "node_type": "concept",
+      "fact_count": 10
+    },
+    {
+      "name": "osteopathic manipulation",
+      "node_type": "concept",
+      "fact_count": 6
+    },
+    {
+      "name": "impaired consciousness",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "inventory management",
+      "node_type": "concept",
+      "fact_count": 9
+    },
+    {
+      "name": "granzyme B",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "COX-1",
+      "node_type": "concept",
+      "fact_count": 53
+    },
+    {
+      "name": "neuronal activity",
+      "node_type": "concept",
+      "fact_count": 23
+    },
+    {
+      "name": "Operative Standards for Cancer Surgery",
+      "node_type": "concept",
+      "fact_count": 8
+    },
+    {
+      "name": "ecosystem development",
+      "node_type": "concept",
+      "fact_count": 7
+    },
+    {
+      "name": "metastatic prostatic carcinoma",
+      "node_type": "concept",
+      "fact_count": 23
+    },
+    {
+      "name": "cancer detection",
+      "node_type": "concept",
+      "fact_count": 46
+    },
+    {
+      "name": "MyD88 adapter-like (Mal) protein",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "criminal liability",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "greenhouse gases",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "psychosocial care",
+      "node_type": "concept",
+      "fact_count": 15
+    },
+    {
+      "name": "Buddhist traditions",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "physical medicine",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "radiation induced xerostomia",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "BCL2",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "video tokenizer",
+      "node_type": "concept",
+      "fact_count": 30
+    },
+    {
+      "name": "PGC-1α",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Belur Math",
+      "node_type": "concept",
+      "fact_count": 6
+    },
+    {
+      "name": "social interaction",
+      "node_type": "concept",
+      "fact_count": 13
+    },
+    {
+      "name": "René Descartes",
+      "node_type": "concept",
+      "fact_count": 66
+    },
+    {
+      "name": "Unfactual training data",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "Global Neuronal Workspace Theory",
+      "node_type": "concept",
+      "fact_count": 239
+    },
+    {
+      "name": "complementary health care",
+      "node_type": "concept",
+      "fact_count": 5
+    },
+    {
+      "name": "neuro-functional model",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Itai Shani",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "NHANES",
+      "node_type": "concept",
+      "fact_count": 5
+    },
+    {
+      "name": "soy phytoestrogens",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "four bodily humors",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "hematopoietic stem cell transplantation",
+      "node_type": "concept",
+      "fact_count": 23
+    },
+    {
+      "name": "Facebook",
+      "node_type": "concept",
+      "fact_count": 25
+    },
+    {
+      "name": "devil’s claw",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "testosterone",
+      "node_type": "concept",
+      "fact_count": 12
+    },
+    {
+      "name": "linear mixed-effects model",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "cellular prion protein",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "Christianity",
+      "node_type": "concept",
+      "fact_count": 120
+    },
+    {
+      "name": "B16F10 murine melanoma",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "normativity",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "Influenza infection",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Nautilus",
+      "node_type": "concept",
+      "fact_count": 3
+    },
+    {
+      "name": "NLRP3 protein",
+      "node_type": "concept",
+      "fact_count": 6
+    },
+    {
+      "name": "Klebsiella",
+      "node_type": "concept",
+      "fact_count": 4
+    },
+    {
+      "name": "Prognostics",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "propensity score model",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "radioactive isotopes",
+      "node_type": "concept",
+      "fact_count": 5
+    },
+    {
+      "name": "the Force",
+      "node_type": "concept",
+      "fact_count": 2
+    },
+    {
+      "name": "Mcl-1",
+      "node_type": "concept",
+      "fact_count": 5
+    },
+    {
+      "name": "workforce",
+      "node_type": "concept",
+      "fact_count": 3
+    }
+  ]
+}
