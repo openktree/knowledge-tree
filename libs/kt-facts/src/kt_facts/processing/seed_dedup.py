@@ -277,8 +277,11 @@ async def deduplicate_seed(
 
     else:
         # Unknown action or no target — safe fallback: no merge
-        logger.info(
-            "Multiplex unknown action '%s' for '%s' — no merge (fallback)", action, name
+        # NOTE: WARNING because this means the LLM decision was lost;
+        # seed still promoted to active but no merge/disambig happened.
+        logger.warning(
+            "Multiplex unknown action '%s' for '%s' (candidates=%d) — no merge (fallback). response=%s",
+            action, name, len(all_candidates), response,
         )
         await _promote_pending(seed_key, write_seed_repo)
         return seed_key
@@ -487,8 +490,9 @@ async def _llm_multiplex(
         )
         if isinstance(result, dict):
             return result
+        logger.warning("LLM multiplex returned non-dict for '%s': %r", incoming_name, result)
     except Exception:
-        logger.debug("LLM multiplex failed for '%s'", incoming_name, exc_info=True)
+        logger.warning("LLM multiplex call raised for '%s'", incoming_name, exc_info=True)
     return {}
 
 
