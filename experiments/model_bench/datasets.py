@@ -1,12 +1,17 @@
-"""Hand-curated bench datasets with ground truth.
+"""Bench datasets. Two sources:
+  - curated: hand-picked with ground truth in ALIAS_CASES/SHELL_CASES/DISAMBIG_CASES
+  - random: names from fixtures/random_seeds.json, empty ground truth.
+    Scoring on random items is emission-count based (no correctness
+    judgment until whitelist is curated in a later iteration).
 
-Each task is a list of BenchItem with expected outputs. Scoring is done
-against these expected values.
+Select via config.yaml `dataset: curated | random | both`.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -14,6 +19,7 @@ class BenchItem:
     name: str
     expected: dict
     notes: str = ""
+    is_curated: bool = True
 
 
 # ── Alias-gen ──────────────────────────────────────────────────────
@@ -117,3 +123,66 @@ TASKS = {
     "shell_classify": SHELL_CASES,
     "suggest_disambig": DISAMBIG_CASES,
 }
+
+
+# ── Permanent 100-seed pool ──
+# Snapshotted from local write-db once. Acts as a stable test set.
+# Ground truth starts empty per item; expand via iterative curation —
+# the user/researcher pair adds aliases / is_shell / disambig paths as
+# each round surfaces valid model emissions. Results become deterministic
+# because the seed list never changes.
+
+_POOL_PATH = Path(__file__).resolve().parent / "fixtures" / "bench_seeds_100.json"
+
+
+def _load_pool() -> list[str]:
+    if not _POOL_PATH.exists():
+        return []
+    doc = json.loads(_POOL_PATH.read_text(encoding="utf-8"))
+    return [s["name"] for s in doc.get("seeds", []) if isinstance(s, dict) and s.get("name")]
+
+
+# Per-task ground-truth overrides for pool items. Start empty; curators
+# add entries here as iterations surface valid aliases / shell verdicts /
+# disambig path labels. Keys are lowercased names for case-insensitive lookup.
+POOL_GROUND_TRUTH: dict[str, dict[str, dict]] = {
+    # example (post-curation):
+    # "large language model agents": {
+    #   "alias_gen": {"aliases": ["LLM agents"], "must_exclude": []},
+    #   "shell_classify": {"is_shell": False},
+    #   "suggest_disambig": {"ambiguous": False, "must_include_any": []},
+    # },
+}
+
+
+def _pool_expected(name: str, task: str) -> dict:
+    """Ground truth for a pool seed. Empty until curated."""
+    entry = POOL_GROUND_TRUTH.get(name.strip().lower(), {})
+    gt = entry.get(task)
+    if gt is not None:
+        return gt
+    # Default per-task skeletons so scoring has shape to branch on
+    if task == "alias_gen":
+        return {"aliases": [], "must_exclude": []}
+    if task == "shell_classify":
+        return {}
+    if task == "suggest_disambig":
+        return {}
+    return {}
+
+
+def build_task_items(task: str, dataset: str) -> list[BenchItem]:
+    """dataset: "curated" | "pool" | "both"."""
+    curated = TASKS.get(task, [])
+    if dataset == "curated":
+        return list(curated)
+    pool_items = [
+        BenchItem(name=n, expected=_pool_expected(n, task), notes="bench_seeds_100",
+                  is_curated=True)  # now "curated" in the iterative sense — stable, with growing GT
+        for n in _load_pool()
+    ]
+    if dataset == "pool":
+        return pool_items
+    if dataset == "both":
+        return list(curated) + pool_items
+    return list(curated)
