@@ -512,7 +512,7 @@ class TestPromoteAndGenesis:
         )
 
         gw = MagicMock()
-        gw.generate_json = AsyncMock(side_effect=[
+        gw.generate_json_schema = AsyncMock(side_effect=[
             # suggest_disambig call
             {"paths": ["Mercury (planet)", "Mercury (element)", "Mercury (Roman god)"]},
             # route_facts_to_paths call
@@ -539,7 +539,7 @@ class TestPromoteAndGenesis:
         )
 
         gw = MagicMock()
-        gw.generate_json = AsyncMock(return_value={"paths": []})
+        gw.generate_json_schema = AsyncMock(return_value={"paths": []})
 
         with patch("kt_facts.processing.seed_dedup.get_settings") as mock_settings:
             s = MagicMock()
@@ -568,7 +568,8 @@ class TestPromoteAndGenesis:
 
             await _promote_and_genesis_disambig("mars", "Mars", "concept", repo, model_gateway=gw)
 
-        gw.generate_json.assert_not_called()
+        assert not gw.generate_json.called
+        assert not getattr(gw, "generate_json_schema", MagicMock()).called
         repo.set_status.assert_called_with("mars", "active")
 
 

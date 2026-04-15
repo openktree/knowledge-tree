@@ -17,7 +17,9 @@ Dropped vs old design:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+
+from pydantic import BaseModel, Field
 
 from kt_config.settings import get_settings
 
@@ -28,6 +30,34 @@ if TYPE_CHECKING:
     from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
 logger = logging.getLogger(__name__)
+
+
+# ── Pydantic output schemas (enforced via json_schema response_format) ──
+
+class MultiplexDecision(BaseModel):
+    """Structured output for seed dedup multiplex LLM call."""
+
+    action: Literal["merge_into_seed", "merge_into_path", "new_disambig_path"]
+    target_seed_key: str
+    target_path_key: str = ""  # only for merge_into_path
+    incoming_disambig_label: str = ""  # only for new_disambig_path
+    existing_disambig_label: str = ""  # only for new_disambig_path (when target is flat)
+    reason: str = ""
+
+
+class SuggestDisambigOutput(BaseModel):
+    """Structured output for suggest_disambig LLM call."""
+
+    paths: list[str] = Field(default_factory=list)
+
+
+class FactPathAssignment(BaseModel):
+    fact_id: str
+    path_label: str | None = None
+
+
+class RouteFactsOutput(BaseModel):
+    assignments: list[FactPathAssignment] = Field(default_factory=list)
 
 
 # ── Multiplex prompt (ported from experiments/big_seed_dedup/multiplex.py) ──
@@ -177,6 +207,7 @@ async def deduplicate_seed(
     # ── Step 2: Qdrant embedding search ─────────────────────────────────
     settings = get_settings()
     embed_candidates = []
+    embed_scores: dict[str, float] = {}
     embedding = None
     try:
         embedding = await embedding_service.embed_text(name)
@@ -192,6 +223,7 @@ async def deduplicate_seed(
             seed = await write_seed_repo.get_seed_by_key(hit.seed_key)
             if seed and seed.status not in ("merged", "pending", "garbage"):
                 embed_candidates.append(seed)
+                embed_scores[seed.key] = float(getattr(hit, "score", 0.0))
     except Exception:
         logger.debug("Embedding candidate search failed for '%s'", name, exc_info=True)
 
@@ -221,7 +253,31 @@ async def deduplicate_seed(
         logger.info("No LLM — default merge: '%s' → '%s'", name, best.name)
         return await _merge_pair(seed_key, best.key, write_seed_repo, reason="no_llm_default_merge")
 
-    response = await _llm_multiplex(name, all_candidates, model_gateway)
+    # Gather per-candidate routes (only for ambiguous targets — mostly no-op)
+    candidate_routes: dict[str, list] = {}
+    for c in all_candidates:
+        if getattr(c, "status", "") == "ambiguous":
+            try:
+                candidate_routes[c.key] = await write_seed_repo.get_routes_for_parent(c.key)
+            except Exception:
+                candidate_routes[c.key] = []
+
+    # Gather a few sample facts for the incoming seed (helps LLM disambiguate)
+    incoming_facts_ctx: list[tuple] = []
+    try:
+        incoming_facts_ctx = await write_seed_repo.get_facts_with_content_for_seed(seed_key, limit=3)
+    except Exception:
+        pass
+
+    response = await _llm_multiplex(
+        name,
+        all_candidates,
+        model_gateway,
+        incoming_aliases=alias_keys,
+        incoming_facts=incoming_facts_ctx,
+        embed_scores=embed_scores,
+        candidate_routes=candidate_routes,
+    )
     action = response.get("action", "")
     target_key = str(response.get("target_seed_key", "")).strip()
     reason = str(response.get("reason", action))
@@ -352,17 +408,19 @@ async def _suggest_disambig(name: str, model_gateway: ModelGateway) -> list[str]
     model_id = settings.seed_dedup_llm_model or settings.decomposition_model
     user = f'Name: "{name}"\n\nReturn JSON: {{"paths": [...]}}. Only the JSON.'
     try:
-        result = await model_gateway.generate_json(
+        result = await model_gateway.generate_json_schema(
             model_id=model_id,
             messages=[{"role": "user", "content": user}],
-            system=_SUGGEST_DISAMBIG_SYSTEM,
+            schema_model=SuggestDisambigOutput,
+            system_prompt=_SUGGEST_DISAMBIG_SYSTEM,
             temperature=0.0,
+            max_tokens=400,
         )
         if isinstance(result, dict):
             raw = result.get("paths", [])
             return [str(p).strip() for p in raw if isinstance(p, str) and str(p).strip()]
     except Exception:
-        logger.debug("suggest_disambig failed for '%s'", name, exc_info=True)
+        logger.warning("suggest_disambig failed for '%s'", name, exc_info=True)
     return []
 
 
@@ -384,11 +442,13 @@ async def _route_facts_to_paths(
         'Return JSON: {"assignments": [{"fact_id": "...", "path_label": "..."}, ...]}.'
     )
     try:
-        result = await model_gateway.generate_json(
+        result = await model_gateway.generate_json_schema(
             model_id=model_id,
             messages=[{"role": "user", "content": user}],
-            system=_ROUTE_FACTS_SYSTEM,
+            schema_model=RouteFactsOutput,
+            system_prompt=_ROUTE_FACTS_SYSTEM,
             temperature=0.0,
+            max_tokens=min(2000, 60 * max(1, len(facts))),
         )
         if isinstance(result, dict):
             assignments: dict[str, str | None] = {}
@@ -406,7 +466,7 @@ async def _route_facts_to_paths(
                     assignments[fid] = None
             return assignments
     except Exception:
-        logger.debug("route_facts_to_paths failed for '%s'", name, exc_info=True)
+        logger.warning("route_facts_to_paths failed for '%s'", name, exc_info=True)
     return {}
 
 
@@ -465,28 +525,62 @@ async def _llm_multiplex(
     incoming_name: str,
     candidates: list,  # list[WriteSeed]
     model_gateway: ModelGateway,
+    incoming_aliases: list[str] | None = None,
+    incoming_facts: list[tuple] | None = None,  # list of (fact_id, content)
+    embed_scores: dict[str, float] | None = None,  # seed_key -> embedding similarity
+    candidate_routes: dict[str, list] | None = None,  # seed_key -> list[WriteSeedRoute]
 ) -> dict:
-    """Call LLM multiplex to decide what to do with an incoming seed + candidates."""
+    """Call LLM multiplex to decide what to do with an incoming seed + candidates.
+
+    Passes rich context (aliases, sample facts, embedding scores, path details)
+    so the LLM can apply HARD RULES accurately. Uses pydantic-enforced JSON.
+    """
     settings = get_settings()
     model_id = settings.seed_dedup_llm_model or settings.decomposition_model
+    embed_scores = embed_scores or {}
+    candidate_routes = candidate_routes or {}
+    incoming_aliases = incoming_aliases or []
+    incoming_facts = incoming_facts or []
 
-    lines: list[str] = [f'INCOMING: "{incoming_name}"', ""]
+    lines: list[str] = [f'INCOMING: "{incoming_name}"']
+    if incoming_aliases:
+        lines.append(f"Incoming aliases: {incoming_aliases}")
+    if incoming_facts:
+        lines.append("Incoming sample facts:")
+        for i, (_, content) in enumerate(incoming_facts[:3], 1):
+            lines.append(f'  [{i}] {str(content)[:240]}')
+    lines.append("")
+
     lines.append(f"CANDIDATES ({len(candidates)}):")
-    for c in candidates[:5]:  # cap at 5 to keep prompt size manageable
+    for c in candidates:
+        score = embed_scores.get(c.key)
+        score_str = f"  embed_score={score:.3f}" if score is not None else ""
+        routes = candidate_routes.get(c.key, [])
+        ambiguous = bool(routes) or getattr(c, "status", "") == "ambiguous"
+        c_aliases = list(getattr(c, "aliases", []) or [])
         lines.append(
             f'- seed_key="{c.key}"  name="{c.name}"  '
-            f"node_type={c.node_type}  fact_count={c.fact_count}"
+            f"node_type={c.node_type}  fact_count={c.fact_count}  "
+            f"ambiguous={ambiguous}{score_str}"
         )
+        if c_aliases:
+            lines.append(f"  aliases: {c_aliases[:8]}")
+        if routes:
+            lines.append(f"  paths ({len(routes)}):")
+            for r in routes[:6]:
+                lines.append(f'    - path_key="{r.child_seed_key}"  label="{r.label}"')
     lines.append("")
     lines.append("Return JSON only. Follow the HARD RULES.")
     user = "\n".join(lines)
 
     try:
-        result = await model_gateway.generate_json(
+        result = await model_gateway.generate_json_schema(
             model_id=model_id,
             messages=[{"role": "user", "content": user}],
-            system=_MULTIPLEX_SYSTEM,
+            schema_model=MultiplexDecision,
+            system_prompt=_MULTIPLEX_SYSTEM,
             temperature=0.0,
+            max_tokens=800,
         )
         if isinstance(result, dict):
             return result

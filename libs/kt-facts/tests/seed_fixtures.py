@@ -105,6 +105,7 @@ def make_model_gateway_mock(result: dict | None = None) -> MagicMock:
     gw = MagicMock()
     gw.default_model = "test-model"
     gw.generate_json = AsyncMock(return_value=result or {})
+    gw.generate_json_schema = AsyncMock(return_value=result or {})
     return gw
 
 
