@@ -864,6 +864,30 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                     exc_info=True,
                 )
 
+        # ── Post-job seed dedup ───────────────────────────────────
+        # store_seeds_from_extracted_nodes writes seeds as status=pending.
+        # Dispatch seed_dedup_batch to run text search → embedding → LLM
+        # multiplex → promote pending→active/merged/ambiguous. Without
+        # this, auto_build (which filters status=active) would skip all
+        # newly extracted seeds.
+        if decompose_output.seed_keys:
+            try:
+                from kt_hatchet.client import run_workflow
+
+                seed_dedup_input: dict[str, object] = {
+                    "seed_keys": list(decompose_output.seed_keys),
+                    "scope_id": input.conversation_id or "",
+                }
+                if input.graph_id:
+                    seed_dedup_input["graph_id"] = input.graph_id
+                await run_workflow("seed_dedup_batch", seed_dedup_input)
+                ctx.log(f"Seed dedup complete for {len(decompose_output.seed_keys)} seeds")
+            except Exception:
+                logger.warning(
+                    "Failed to run seed_dedup_batch during ingest decompose",
+                    exc_info=True,
+                )
+
         ctx.refresh_timeout("2h")
 
         # ── Build proposals directly from seeds ───────────────────
