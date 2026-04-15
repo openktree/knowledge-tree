@@ -14,11 +14,11 @@ models:
     label: gpt-5-nano:nitro (no-think)
     reasoning: {effort: "minimal"}   # OpenRouter → {reasoning: {effort: "..."}}. "none" or "minimal" to disable thinking.
   - id: openrouter/stepfun/step-3.5-flash:nitro
-    label: step-3.5-flash:nitro
-    force_json_object: false   # DeepInfra provider rejects response_format for stepfun
+    label: step-3.5-flash:nitro (min-think)
+    force_json_object: false                # DeepInfra provider rejects response_format for stepfun
+    reasoning: {effort: "minimal"}          # step-3.5-flash is a reasoning model; cap think tokens
   - id: openrouter/minimax/MiniMax-M2.7:nitro
-    label: minimax-m2.7:nitro (min-think)
-    reasoning: {effort: "minimal"}   # MiniMax has no "none" mode — minimal is the floor
+    label: minimax-m2.7:nitro
   - id: openrouter/qwen/qwen3.5-flash-02-23:nitro
     label: qwen3.5-flash:nitro
   - id: openrouter/google/gemma-4-26b-a4b-it:nitro
@@ -68,7 +68,7 @@ batch_size: 10
 temperature: 0.0
 timeout_seconds: 120
 concurrency: 3  # across batches
-max_tokens_per_item: 80  # scaled by batch_size to total max_tokens
+max_tokens_per_item: 150  # scaled by batch_size to total max_tokens (room for reasoning models)
 
 # Output paths relative to this config file
 output_html: report.html
