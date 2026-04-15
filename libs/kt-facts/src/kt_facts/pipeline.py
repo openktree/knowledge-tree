@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_db.models import Fact, RawSource
-from kt_facts.processing.extractor_base import EntityExtractor
 from kt_db.repositories.facts import FactRepository
 from kt_facts.author import (
     AuthorInfo,
@@ -31,6 +30,7 @@ from kt_facts.models import (
     _format_attribution,
 )
 from kt_facts.processing.dedup import insert_facts_pending
+from kt_facts.processing.extractor_base import EntityExtractor
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_providers.fetch import FileDataStore

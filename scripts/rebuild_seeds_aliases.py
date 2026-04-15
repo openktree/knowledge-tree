@@ -23,7 +23,7 @@ from pathlib import Path
 # Ensure monorepo packages are importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, text, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 
 async def backfill(session: AsyncSession, dry_run: bool) -> None:
-    settings = get_settings()
     logger.info("Starting aliases backfill (dry_run=%s)", dry_run)
 
     # ── Step 1: From merge history ─────────────────────────────────────────

@@ -30,7 +30,6 @@ from kt_facts.processing.seed_dedup import (
     embed_and_upsert_seed,
 )
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _seed_map(*seeds):
@@ -292,7 +291,6 @@ class TestDeduplicateSeed:
 
     async def test_merge_into_path_merges_into_child(self):
         """LLM says merge_into_path → incoming merged into specific child of ambiguous target."""
-        from seed_fixtures import make_route
         parent = make_seed("mercury", "Mercury", "concept", fact_count=8, status="ambiguous")
         child_planet = make_seed("mercury-planet", "Mercury (planet)", "concept", fact_count=5)
         child_element = make_seed("mercury-element", "Mercury (element)", "concept", fact_count=3)
@@ -326,7 +324,6 @@ class TestDeduplicateSeed:
 
     async def test_merge_into_path_invalid_key_uses_first_child(self):
         """Bad target_path_key → falls back to first child."""
-        from seed_fixtures import make_route
         parent = make_seed("mercury", "Mercury", "concept", fact_count=8, status="ambiguous")
         child = make_seed("mercury-planet", "Mercury (planet)", "concept", fact_count=5)
         incoming = make_seed("hg", "Hg", "concept", status="pending", fact_count=1)
