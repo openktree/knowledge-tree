@@ -24,25 +24,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, require_api_key
 from kt_api.schemas import (
-    AgentSelectRequest,
-    AgentSelectResponse,
-    AgentSelectStatusResponse,
     BottomUpPrepareRequest,
     BottomUpPrepareResponse,
     BottomUpProposedNodeResponse,
     BottomUpProposedPerspective,
     BottomUpSourceUrl,
-    ChunkInfoResponse,
     ConversationMessageResponse,
     ConversationResponse,
-    IngestBuildRequest,
-    IngestBuildResponse,
     IngestConfirmRequest,
     IngestDecomposeRequest,
     IngestDecomposeResponse,
     IngestPrepareResponse,
-    IngestProposalsResponse,
     IngestSourceResponse,
+    ProgressResponse,
     ProposedNodeAmbiguityResponse,
     ResearchSeedResponse,
     ResearchSummaryResponse,
@@ -318,14 +312,15 @@ async def _prepare_ingest_impl(
     processed = await process_ingest_sources(conv_id, session, file_data_store)
     await session.commit()
 
-    from kt_models.gateway import ModelGateway
-    from kt_worker_ingest.ingest.pipeline import build_chunk_list, review_chunks
-
-    chunk_list = build_chunk_list(processed)
-
-    api_key = require_api_key(user)
-    gateway = ModelGateway(api_key=api_key)
-    chunk_list = await review_chunks(chunk_list, gateway)
+    # Build per-source token estimates
+    source_token_map: dict[str, int] = {}
+    image_count = 0
+    for ps in processed:
+        if ps.is_image:
+            image_count += 1
+            continue
+        chars = sum(len(s) for s in ps.sections) if ps.sections else len(ps.full_text or "")
+        source_token_map[ps.source_id] = chars // 4
 
     source_responses: list[IngestSourceResponse] = []
     db_sources = await ingest_repo.get_by_conversation(conv_id)
@@ -340,41 +335,20 @@ async def _prepare_ingest_impl(
                 file_size=s.file_size,
                 section_count=s.section_count,
                 summary=s.summary,
+                token_estimate=source_token_map.get(str(s.id), 0),
                 status=s.status,
                 error=s.error,
                 created_at=s.created_at,
             )
         )
 
-    chunk_responses = [
-        ChunkInfoResponse(
-            source_id=c.source_id,
-            source_name=c.source_name,
-            chunk_index=c.chunk_index,
-            char_count=c.char_count,
-            preview=c.preview,
-            is_image=c.is_image,
-            recommended=c.recommended,
-            reason=c.reason,
-        )
-        for c in chunk_list
-    ]
-
-    image_count = sum(1 for c in chunk_list if c.is_image)
-    total_chunks = len(chunk_list) - image_count
-    recommended_count = sum(1 for c in chunk_list if c.recommended)
-    total_chars = sum(c.char_count for c in chunk_list if not c.is_image)
-    total_token_estimate = total_chars // 4
+    total_token_estimate = sum(source_token_map.values())
     suggested_nav_budget = max(10, total_token_estimate // 1000)
 
     return IngestPrepareResponse(
         conversation_id=conv_id_str,
         sources=source_responses,
-        chunks=chunk_responses,
-        total_chunks=total_chunks,
         image_count=image_count,
-        recommended_chunks=recommended_count,
-        estimated_decompose_calls=len(chunk_list),
         title=auto_title,
         suggested_nav_budget=suggested_nav_budget,
         total_token_estimate=total_token_estimate,
@@ -436,7 +410,6 @@ async def _confirm_ingest_impl(
     share_with_public_graph = body.share_with_public_graph and link_count > 0
     payload: dict[str, Any] = {
         "nav_budget": body.nav_budget,
-        "selected_chunks": body.selected_chunks,
         "conversation_id": conversation_id,
         "message_id": str(assistant_msg.id),
         "user_id": str(user.id),
@@ -569,7 +542,6 @@ async def _decompose_ingest_impl(
     payload: dict[str, Any] = {
         "conversation_id": conversation_id,
         "message_id": str(assistant_msg.id),
-        "selected_chunks": body.selected_chunks,
         "user_id": str(user.id),
         "share_with_public_graph": share_with_public_graph,
     }
@@ -590,135 +562,6 @@ async def _decompose_ingest_impl(
         conversation_id=conversation_id,
         message_id=str(assistant_msg.id),
         status="running",
-    )
-
-
-async def _get_ingest_proposals_impl(
-    session: AsyncSession,
-    conversation_id: str,
-) -> IngestProposalsResponse:
-    """Core logic for get_ingest_proposals."""
-    try:
-        conv_uuid = uuid.UUID(conversation_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
-
-    conv_repo = ConversationRepository(session)
-    conv = await conv_repo.get_by_id(conv_uuid)
-    if conv is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    if conv.mode != "ingest":
-        raise HTTPException(status_code=400, detail="Conversation is not an ingest")
-
-    messages = await conv_repo.get_messages(conv_uuid)
-    metadata = None
-    msg_id = None
-    for msg in reversed(messages):
-        if msg.role == "assistant" and msg.metadata_json:
-            metadata = msg.metadata_json
-            msg_id = str(msg.id)
-            break
-
-    if metadata is None:
-        raise HTTPException(status_code=404, detail="No proposals found — Phase 1 may still be running")
-
-    proposed_nodes = _parse_proposed_nodes(metadata.get("proposed_nodes", []))
-
-    return IngestProposalsResponse(
-        conversation_id=conversation_id,
-        message_id=msg_id or "",
-        fact_count=metadata.get("fact_count", 0),
-        proposed_nodes=proposed_nodes,
-        content_summary=metadata.get("content_summary", ""),
-        key_topics=metadata.get("key_topics", []),
-        fact_type_counts=metadata.get("fact_type_counts", {}),
-        agent_select_status=metadata.get("agent_select_status"),
-    )
-
-
-async def _build_ingest_impl(
-    session: AsyncSession,
-    conversation_id: str,
-    body: IngestBuildRequest,
-    user: User,
-    graph_id: str | None = None,
-) -> IngestBuildResponse:
-    """Core logic for build_ingest."""
-    try:
-        conv_uuid = uuid.UUID(conversation_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
-
-    conv_repo = ConversationRepository(session)
-    conv = await conv_repo.get_by_id(conv_uuid)
-    if conv is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    if conv.mode != "ingest":
-        raise HTTPException(status_code=400, detail="Conversation is not an ingest")
-    if not body.selected_nodes:
-        raise HTTPException(status_code=400, detail="No nodes selected")
-
-    next_turn = await conv_repo.get_next_turn_number(conv_uuid)
-    node_count = len(body.selected_nodes)
-
-    await conv_repo.add_message(
-        conversation_id=conv_uuid,
-        turn_number=next_turn,
-        role="user",
-        content=f"Build {node_count} selected node{'s' if node_count != 1 else ''}",
-    )
-    assistant_msg = await conv_repo.add_message(
-        conversation_id=conv_uuid,
-        turn_number=next_turn + 1,
-        role="assistant",
-        content="",
-        nav_budget=node_count,
-        explore_budget=0,
-        status="pending",
-    )
-    await session.commit()
-
-    from kt_api.dispatch import dispatch_with_graph
-    from kt_hatchet.models import ConfirmedNode, IngestBuildInput, ProposedPerspective
-
-    confirmed_nodes = [
-        ConfirmedNode(
-            name=n.name,
-            node_type=n.node_type,
-            entity_subtype=n.entity_subtype,
-            seed_key=n.seed_key,
-            existing_node_id=n.existing_node_id,
-            perspectives=[ProposedPerspective(claim=p.claim, antithesis=p.antithesis) for p in n.perspectives],
-        )
-        for n in body.selected_nodes
-    ]
-
-    require_api_key(user)
-    input_data = IngestBuildInput(
-        selected_nodes=confirmed_nodes,
-        conversation_id=str(conv_uuid),
-        message_id=str(assistant_msg.id),
-        user_id=str(user.id),
-    ).model_dump()
-
-    run_id = await dispatch_with_graph(
-        "ingest_build",
-        input_data,
-        graph_id=graph_id,
-        additional_metadata={
-            "conversation_id": str(conv_uuid),
-            "message_id": str(assistant_msg.id),
-        },
-    )
-    await conv_repo.update_message(assistant_msg.id, workflow_run_id=run_id)
-    await session.commit()
-
-    return IngestBuildResponse(
-        conversation_id=conversation_id,
-        message_id=str(assistant_msg.id),
-        node_count=node_count,
-        status="running",
-        workflow_run_id=run_id,
     )
 
 
@@ -821,121 +664,6 @@ async def _get_bottom_up_proposals_impl(
         source_urls=source_urls,
         agent_select_status=metadata.get("agent_select_status"),
     )
-
-
-async def _agent_select_impl(
-    session: AsyncSession,
-    conversation_id: str,
-    body: AgentSelectRequest,
-    user: User,
-    graph_id: str | None = None,
-) -> AgentSelectResponse:
-    """Core logic for agent_select."""
-    try:
-        conv_uuid = uuid.UUID(conversation_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
-
-    conv_repo = ConversationRepository(session)
-    conv = await conv_repo.get_by_id(conv_uuid)
-    if conv is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    messages = await conv_repo.get_messages(conv_uuid)
-    metadata = None
-    msg_id = None
-    for msg in reversed(messages):
-        if msg.role == "assistant" and msg.metadata_json:
-            metadata = dict(msg.metadata_json)
-            msg_id = str(msg.id)
-            break
-
-    if metadata is None or not metadata.get("proposed_nodes"):
-        raise HTTPException(status_code=404, detail="No proposed nodes found — Phase 1 may still be running")
-
-    from kt_hatchet.models import ProposedNode, ProposedPerspective
-
-    proposed_nodes = []
-    for n in metadata.get("proposed_nodes", []):
-        if not isinstance(n, dict) or not n.get("name"):
-            continue
-        perspectives = [
-            ProposedPerspective(claim=p["claim"], antithesis=p["antithesis"])
-            for p in n.get("perspectives", [])
-            if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
-        ]
-        proposed_nodes.append(
-            ProposedNode(
-                name=n["name"],
-                node_type=n.get("node_type", "concept"),
-                entity_subtype=n.get("entity_subtype"),
-                priority=n.get("priority", 5),
-                selected=n.get("selected", True),
-                seed_key=n.get("seed_key", ""),
-                existing_node_id=n.get("existing_node_id"),
-                perspectives=perspectives,
-            )
-        )
-
-    if not proposed_nodes:
-        raise HTTPException(status_code=400, detail="No valid proposed nodes found")
-
-    instructions = body.instructions
-    if not instructions:
-        instructions = conv.title or ""
-
-    metadata["agent_select_status"] = "running"
-    await conv_repo.update_message(uuid.UUID(msg_id), metadata_json=metadata)
-    await session.commit()
-
-    from kt_api.dispatch import dispatch_with_graph
-
-    require_api_key(user)
-    payload: dict[str, Any] = {
-        "proposed_nodes": proposed_nodes,
-        "max_select": body.max_select,
-        "instructions": instructions,
-        "conversation_id": str(conv_uuid),
-        "message_id": msg_id or "",
-        "user_id": str(user.id),
-    }
-
-    await dispatch_with_graph(
-        "agent_select",
-        payload,
-        graph_id=graph_id,
-        additional_metadata={
-            "conversation_id": str(conv_uuid),
-            "message_id": msg_id,
-        },
-    )
-
-    return AgentSelectResponse(
-        conversation_id=conversation_id,
-        message_id=msg_id or "",
-        status="running",
-    )
-
-
-async def _agent_select_status_impl(
-    session: AsyncSession,
-    conversation_id: str,
-) -> AgentSelectStatusResponse:
-    """Core logic for agent_select_status."""
-    try:
-        conv_uuid = uuid.UUID(conversation_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
-
-    conv_repo = ConversationRepository(session)
-    messages = await conv_repo.get_messages(conv_uuid)
-
-    for msg in reversed(messages):
-        if msg.role == "assistant" and msg.metadata_json:
-            status = msg.metadata_json.get("agent_select_status", "not_started")
-            return AgentSelectStatusResponse(status=status)
-
-    return AgentSelectStatusResponse(status="not_started")
 
 
 async def _get_research_summary_impl(
@@ -1042,26 +770,6 @@ async def decompose_ingest(
     return await _decompose_ingest_impl(session, conversation_id, body, user)
 
 
-@router.get("/research/{conversation_id}/proposals", response_model=IngestProposalsResponse)
-async def get_ingest_proposals(
-    conversation_id: str,
-    session: AsyncSession = Depends(get_db_session),
-) -> IngestProposalsResponse:
-    """Fetch Phase 1 results (proposed nodes) from completed decompose workflow."""
-    return await _get_ingest_proposals_impl(session, conversation_id)
-
-
-@router.post("/research/{conversation_id}/build", response_model=IngestBuildResponse)
-async def build_ingest(
-    conversation_id: str,
-    body: IngestBuildRequest,
-    user: User = Depends(require_auth),
-    session: AsyncSession = Depends(get_db_session),
-) -> IngestBuildResponse:
-    """Phase 2: Build user-confirmed nodes from document ingest."""
-    return await _build_ingest_impl(session, conversation_id, body, user)
-
-
 @router.post("/research/bottom-up/prepare", response_model=ConversationResponse)
 async def bottom_up_prepare(
     body: BottomUpPrepareRequest,
@@ -1081,26 +789,6 @@ async def get_bottom_up_proposals(
     return await _get_bottom_up_proposals_impl(session, conversation_id)
 
 
-@router.post("/research/{conversation_id}/agent-select", response_model=AgentSelectResponse)
-async def agent_select(
-    conversation_id: str,
-    body: AgentSelectRequest,
-    user: User = Depends(require_auth),
-    session: AsyncSession = Depends(get_db_session),
-) -> AgentSelectResponse:
-    """Dispatch agent-assisted node selection for proposed nodes."""
-    return await _agent_select_impl(session, conversation_id, body, user)
-
-
-@router.get("/research/{conversation_id}/agent-select/status", response_model=AgentSelectStatusResponse)
-async def agent_select_status(
-    conversation_id: str,
-    session: AsyncSession = Depends(get_db_session),
-) -> AgentSelectStatusResponse:
-    """Check agent-assisted node selection status."""
-    return await _agent_select_status_impl(session, conversation_id)
-
-
 @router.get("/research/{conversation_id}/summary", response_model=ResearchSummaryResponse)
 async def get_research_summary(
     conversation_id: str,
@@ -1108,3 +796,18 @@ async def get_research_summary(
 ) -> ResearchSummaryResponse:
     """Fetch research summary from completed prepare workflow."""
     return await _get_research_summary_impl(session, conversation_id)
+
+
+@router.get(
+    "/research/{conversation_id}/messages/{message_id}/progress",
+    response_model=ProgressResponse,
+)
+async def get_research_message_progress(
+    conversation_id: str,
+    message_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> ProgressResponse:
+    """Get live progress for a research workflow."""
+    from kt_api.progress import _get_message_progress_impl
+
+    return await _get_message_progress_impl(conversation_id, message_id, session)

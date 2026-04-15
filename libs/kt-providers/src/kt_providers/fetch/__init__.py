@@ -9,6 +9,7 @@ for the DI helper that wires it from settings.
 
 from kt_providers.fetch.base import ContentFetcherProvider
 from kt_providers.fetch.builder import build_fetch_registry
+from kt_providers.fetch.doi_enricher import DoiEnricher
 from kt_providers.fetch.file_data_store import FileDataStore
 from kt_providers.fetch.host_pref import (
     HostPreferenceStore,
@@ -32,6 +33,7 @@ __all__ = [
     "ALLOWED_SCHEMES",
     "MIN_EXTRACTED_LENGTH",
     "ContentFetcherProvider",
+    "DoiEnricher",
     "FetchAttempt",
     "FetchProviderRegistry",
     "FetchResult",

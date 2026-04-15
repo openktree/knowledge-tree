@@ -106,7 +106,7 @@ async def _batch_seed_fact_counts(
     # Build node_key -> node_id mapping
     key_to_id: dict[str, uuid.UUID] = {}
     for n in nodes:
-        nk = make_node_key(n.node_type, n.concept)
+        nk = make_node_key(n.concept)
         key_to_id[nk] = n.id
 
     keys = list(key_to_id.keys())
@@ -134,13 +134,13 @@ def _build_node_response(
     """Build a NodeResponse from a Node model using denormalized columns."""
     parent_info = parent_map.get(n.parent_id) if n.parent_id else None
     parent_concept = parent_info[0] if parent_info else None
-    parent_key = make_url_key(parent_info[1], parent_info[0]) if parent_info else None
+    parent_key = make_url_key(parent_info[0]) if parent_info else None
     sfc = seed_fact_count_map.get(n.id, 0) if seed_fact_count_map else 0
     return NodeResponse(
         id=str(n.id),
         concept=n.concept,
         node_type=n.node_type,
-        key=make_url_key(n.node_type, n.concept),
+        key=make_url_key(n.concept),
         entity_subtype=n.entity_subtype,
         parent_id=str(n.parent_id) if n.parent_id else None,
         parent_concept=parent_concept,
@@ -423,7 +423,7 @@ async def _list_nodes_by_pending_facts(
     # Seed fact counts from write-db
     key_to_id: dict[str, uuid.UUID] = {}
     for r in all_rows:
-        key_to_id[make_node_key(r.node_type, r.concept)] = r.id
+        key_to_id[make_node_key(r.concept)] = r.id
 
     seed_fc: dict[uuid.UUID, int] = {}
     write_sf = get_write_session_factory_cached()
@@ -797,7 +797,7 @@ async def quick_add_node(
     from kt_db.keys import make_seed_key
     from kt_db.repositories.write_seeds import WriteSeedRepository
 
-    seed_key = make_seed_key("concept", concept)
+    seed_key = make_seed_key(concept)
 
     # Create seed in write-db (upsert — safe if it already exists)
     write_sf = get_write_session_factory_cached()
@@ -967,8 +967,8 @@ async def quick_add_perspective(
     from kt_db.repositories.write_seeds import WriteSeedRepository as _WSR
 
     scope_id = f"quick-perspective-{uuid.uuid4().hex[:8]}"
-    thesis_key = _msk("perspective", body.thesis)
-    antithesis_key = _msk("perspective", body.antithesis)
+    thesis_key = _msk(body.thesis)
+    antithesis_key = _msk(body.antithesis)
 
     write_sf = _gwsf()
     async with write_sf() as ws:

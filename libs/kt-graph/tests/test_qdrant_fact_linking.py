@@ -61,7 +61,7 @@ class TestLinkFactToNodeQdrant:
         # Replace the real repo with a full mock
         mock_node_repo = AsyncMock()
         mock_wn = MagicMock()
-        mock_wn.key = "concept:test-concept"
+        mock_wn.key = "test-concept"
         mock_node_repo.get_by_uuid.return_value = mock_wn
         engine._write_node_repo = mock_node_repo
 
@@ -152,7 +152,7 @@ class TestUnlinkFactFromNodeQdrant:
 
         mock_node_repo = AsyncMock()
         mock_wn = MagicMock()
-        mock_wn.key = "concept:test-concept"
+        mock_wn.key = "test-concept"
         mock_node_repo.get_by_uuid.return_value = mock_wn
         engine._write_node_repo = mock_node_repo
 

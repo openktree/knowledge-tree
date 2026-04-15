@@ -206,6 +206,18 @@ class WriteSeedRepository:
         result = await self._session.execute(stmt)
         return result.rowcount > 0  # type: ignore[return-value]
 
+    async def unlink_fact(self, seed_key: str, fact_id: uuid.UUID) -> int:
+        """Remove a fact link from a seed. Returns number of rows deleted."""
+        from sqlalchemy import delete as _delete
+
+        result = await self._session.execute(
+            _delete(WriteSeedFact).where(
+                WriteSeedFact.seed_key == seed_key,
+                WriteSeedFact.fact_id == fact_id,
+            )
+        )
+        return result.rowcount or 0  # type: ignore[return-value]
+
     async def get_mentioned_facts_for_seed(self, seed_key: str) -> list[uuid.UUID]:
         """Get fact IDs for a seed, excluding source_attribution links."""
         result = await self._session.execute(
@@ -1424,4 +1436,184 @@ class WriteSeedRepository:
         """Clear promoted_node_key after absorption so it won't be reprocessed."""
         await self._session.execute(
             update(WriteSeed).where(WriteSeed.key == seed_key).values(promoted_node_key=None, updated_at=func.now())
+        )
+
+    # ── New dedup pipeline methods ──────────────────────────────────────
+
+    async def upsert_seed_with_aliases(
+        self,
+        key: str,
+        name: str,
+        node_type: str,
+        entity_subtype: str | None,
+        aliases: list[str],
+        *,
+        status: str = "pending",
+    ) -> None:
+        """Upsert a seed with aliases. Defaults to status=pending (not yet deduped).
+
+        On conflict: merge aliases (array_cat + dedup), prefer longer name as
+        canonical (longest-wins), touch updated_at. Does NOT reset status if
+        seed already exists — only pending seeds get promoted by dedup.
+        """
+        seed_uuid = key_to_uuid(key)
+        # Build deduplicated aliases including the incoming key itself
+        all_aliases = list(dict.fromkeys([key] + aliases))
+        stmt = (
+            pg_insert(WriteSeed)
+            .values(
+                key=key,
+                seed_uuid=seed_uuid,
+                name=name,
+                node_type=node_type,
+                entity_subtype=entity_subtype,
+                status=status,
+                aliases=all_aliases,
+                fact_count=0,
+            )
+            .on_conflict_do_update(
+                index_elements=[WriteSeed.key],
+                set_={
+                    # Merge aliases via array_cat; SQL dedup handled by the GIN index queries
+                    "aliases": func.array_cat(WriteSeed.aliases, all_aliases),
+                    # Longest-wins canonical name
+                    "name": func.greatest(WriteSeed.name, name),
+                    "updated_at": func.now(),
+                },
+            )
+        )
+        await self._session.execute(stmt)
+
+    async def upsert_seeds_batch_with_aliases(
+        self,
+        seeds: list[dict],
+        *,
+        status: str = "pending",
+    ) -> None:
+        """Batch upsert seeds with aliases. Each dict: {key, name, node_type, entity_subtype, aliases}.
+
+        aliases should be a list of slugified keys. Defaults to status=pending.
+        Does NOT touch fact_count — call refresh_fact_counts after linking facts.
+        """
+        if not seeds:
+            return
+        seeds_deduped = list({s["key"]: s for s in seeds}.values())
+        rows = [
+            {
+                "key": s["key"],
+                "seed_uuid": key_to_uuid(s["key"]),
+                "name": s["name"],
+                "node_type": s["node_type"],
+                "entity_subtype": s.get("entity_subtype"),
+                "status": status,
+                "aliases": list(dict.fromkeys([s["key"]] + list(s.get("aliases", [])))),
+                "fact_count": 0,
+            }
+            for s in seeds_deduped
+        ]
+        chunk_size = 4000
+        for i in range(0, len(rows), chunk_size):
+            chunk = rows[i : i + chunk_size]
+            insert_stmt = pg_insert(WriteSeed).values(chunk)
+            stmt = insert_stmt.on_conflict_do_update(
+                index_elements=[WriteSeed.key],
+                set_={
+                    "aliases": func.array_cat(
+                        WriteSeed.aliases,
+                        insert_stmt.excluded.aliases,
+                    ),
+                    "name": func.greatest(
+                        WriteSeed.name,
+                        insert_stmt.excluded.name,
+                    ),
+                    "updated_at": func.now(),
+                },
+            )
+            await self._session.execute(stmt)
+
+    async def set_status(self, seed_key: str, status: str) -> None:
+        """Update a seed's status field."""
+        await self._session.execute(
+            update(WriteSeed).where(WriteSeed.key == seed_key).values(status=status, updated_at=func.now())
+        )
+
+    async def find_seeds_by_keys_or_aliases(
+        self,
+        keys: list[str],
+        exclude_key: str,
+        node_type: str,
+    ) -> list["WriteSeed"]:
+        """Find seeds whose key OR aliases array overlaps with the given slugified keys.
+
+        Uses GIN index on aliases + primary key index on key for fast lookups.
+        Excludes self (exclude_key), merged seeds, and pending seeds from other batches.
+
+        keys should be slugified: [make_seed_key(name)] + [make_seed_key(a) for a in aliases]
+        """
+        import sqlalchemy as sa
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+
+        if not keys:
+            return []
+        keys_arr = list(dict.fromkeys(keys))  # deduplicate
+        stmt = (
+            select(WriteSeed)
+            .where(
+                (WriteSeed.key.in_(keys_arr)) | (WriteSeed.aliases.overlap(cast(keys_arr, PG_ARRAY(sa.String(500))))),
+                WriteSeed.key != exclude_key,
+                WriteSeed.node_type == node_type,
+                WriteSeed.status.notin_(["merged", "pending", "garbage"]),
+            )
+            .order_by(WriteSeed.fact_count.desc())
+            .limit(10)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_facts_with_content_for_seed(
+        self,
+        seed_key: str,
+        limit: int = 20,
+    ) -> list[tuple[uuid.UUID, str]]:
+        """Return (fact_id, content) tuples for all facts linked to a seed.
+
+        Used by genesis disambiguation to route facts to paths.
+        """
+        from kt_db.write_models import WriteFact
+
+        stmt = (
+            select(WriteSeedFact.fact_id, WriteFact.content)
+            .join(WriteFact, WriteFact.id == WriteSeedFact.fact_id)
+            .where(WriteSeedFact.seed_key == seed_key)
+            .order_by(WriteSeedFact.created_at.asc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def merge_aliases_into_winner(
+        self,
+        winner_key: str,
+        extra_aliases: list[str],
+    ) -> None:
+        """Append extra slugified alias keys to a seed's aliases array.
+
+        Called after a merge to register the loser's key + its aliases on the winner.
+        """
+        if not extra_aliases:
+            return
+        import sqlalchemy as sa
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+
+        # array_cat then deduplicate via subquery is expensive; just append and
+        # rely on GIN for lookup correctness (duplicates in array are harmless).
+        await self._session.execute(
+            update(WriteSeed)
+            .where(WriteSeed.key == winner_key)
+            .values(
+                aliases=func.array_cat(WriteSeed.aliases, cast(extra_aliases, PG_ARRAY(sa.String(500)))),
+                updated_at=func.now(),
+            )
         )

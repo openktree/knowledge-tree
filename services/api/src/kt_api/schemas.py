@@ -577,10 +577,17 @@ class PipelineTaskItem(BaseModel):
     started_at: str | None = None  # ISO 8601
     wave_number: int | None = None  # Only set for explore_scope tasks
     node_type: str | None = None  # "concept" | "entity" | "event" | "perspective" etc.
+    has_children: bool = False
     children: list["PipelineTaskItem"] = Field(default_factory=list)
 
 
 PipelineTaskItem.model_rebuild()
+
+
+class TaskChildrenResponse(BaseModel):
+    """Children of a single Hatchet task (spawned child workflow runs)."""
+
+    tasks: list[PipelineTaskItem] = Field(default_factory=list)
 
 
 class PipelineSnapshotResponse(BaseModel):
@@ -604,6 +611,7 @@ class ProgressResponse(BaseModel):
     """
 
     message_id: str
+    workflow_run_id: str | None = None
     status: str  # "pending" | "running" | "completed" | "failed"
     content: str  # answer text (empty while running)
     error: str | None = None
@@ -737,44 +745,27 @@ class IngestSourceResponse(BaseModel):
     file_size: int | None = None
     section_count: int | None = None
     summary: str | None = None
+    token_estimate: int = 0  # Approximate tokens in this source's content
     status: str
     error: str | None = None
     created_at: datetime
 
 
-class ChunkInfoResponse(BaseModel):
-    """Info about a single chunk with LLM recommendation."""
-
-    source_id: str
-    source_name: str
-    chunk_index: int
-    char_count: int
-    preview: str
-    is_image: bool = False
-    recommended: bool = True
-    reason: str = ""
-
-
 class IngestPrepareResponse(BaseModel):
-    """Response from the ingest prepare step — chunk counts for user confirmation."""
+    """Response from the ingest prepare step — source info for user confirmation."""
 
     conversation_id: str
     sources: list[IngestSourceResponse] = Field(default_factory=list)
-    chunks: list[ChunkInfoResponse] = Field(default_factory=list)
-    total_chunks: int
-    image_count: int
-    recommended_chunks: int
-    estimated_decompose_calls: int  # total_chunks + image_count
+    image_count: int = 0
     title: str
     suggested_nav_budget: int = 50  # 1 node per ~1K tokens
-    total_token_estimate: int = 0  # Approximate total tokens in content
+    total_token_estimate: int = 0  # Approximate total tokens across all sources
 
 
 class IngestConfirmRequest(BaseModel):
     """Request body for confirming an ingest after reviewing the prepare response."""
 
     nav_budget: int = 50  # max nodes to create
-    selected_chunks: list[int] | None = None  # chunk indices to process; None = all
     # Per-ingest opt-out for the multigraph public-cache contribute hook.
     # Defaults to True so the public graph keeps growing with normal use.
     # The API forces this to ``False`` server-side for file-only ingests
@@ -916,84 +907,22 @@ class ResearchSummaryResponse(BaseModel):
     explore_used: int = 0
 
 
-class BottomUpConfirmedNode(BaseModel):
-    """A node confirmed by the user for Phase 2 building."""
-
-    name: str
-    node_type: str = "concept"
-    entity_subtype: str | None = None
-    seed_key: str = ""
-    existing_node_id: str | None = None
-    perspectives: list[BottomUpProposedPerspective] = Field(default_factory=list)
-
-
-class AgentSelectRequest(BaseModel):
-    """Request for agent-assisted node selection."""
-
-    max_select: int = 20
-    instructions: str = ""
-
-
-class AgentSelectResponse(BaseModel):
-    """Acknowledgement that agent selection workflow was dispatched."""
-
-    conversation_id: str
-    message_id: str
-    status: str = "running"
-
-
-class AgentSelectStatusResponse(BaseModel):
-    """Status of agent-assisted node selection."""
-
-    status: str  # "running" | "completed" | "not_started"
-
-
 # ── Phased document ingest schemas ────────────────────────────────────
 
 
 class IngestDecomposeRequest(BaseModel):
-    """Request for phased ingest Phase 1 — decompose + extract + prioritize."""
+    """Request for ingest — decompose sources and auto-build nodes."""
 
-    selected_chunks: list[int] | None = None
     # See ``IngestConfirmRequest.share_with_public_graph``.
     share_with_public_graph: bool = True
 
 
 class IngestDecomposeResponse(BaseModel):
-    """Phase 1 acknowledgement."""
+    """Decompose + auto-build acknowledgement."""
 
     conversation_id: str
     message_id: str
     status: str = "running"
-
-
-class IngestProposalsResponse(BaseModel):
-    """Phase 1 result — proposed nodes from document decomposition."""
-
-    conversation_id: str
-    message_id: str
-    fact_count: int
-    proposed_nodes: list[BottomUpProposedNodeResponse] = Field(default_factory=list)
-    content_summary: str = ""
-    key_topics: list[str] = Field(default_factory=list)
-    fact_type_counts: dict[str, int] = Field(default_factory=dict)
-    agent_select_status: str | None = None
-
-
-class IngestBuildRequest(BaseModel):
-    """Request for phased ingest Phase 2 — build confirmed nodes."""
-
-    selected_nodes: list[BottomUpConfirmedNode]
-
-
-class IngestBuildResponse(BaseModel):
-    """Phase 2 acknowledgement."""
-
-    conversation_id: str
-    message_id: str
-    node_count: int = 0
-    status: str = "running"
-    workflow_run_id: str | None = None
 
 
 # ── Seed schemas ─────────────────────────────────────────────────────
@@ -1047,19 +976,6 @@ class SeedFactResponse(BaseModel):
     confidence: float = 1.0
     extraction_context: str | None = None
     extraction_role: str = "mentioned"
-
-
-class SeedDivergenceResponse(BaseModel):
-    """Fact embedding divergence metrics for a seed."""
-
-    seed_key: str
-    fact_count: int
-    vectors_found: int
-    mean_pairwise_distance: float | None = None
-    max_pairwise_distance: float | None = None
-    min_pairwise_distance: float | None = None
-    std_pairwise_distance: float | None = None
-    cluster_estimate: int = 1
 
 
 class SeedDetailResponse(BaseModel):

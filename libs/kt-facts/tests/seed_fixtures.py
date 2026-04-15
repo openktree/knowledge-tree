@@ -20,6 +20,7 @@ def make_seed(
     fact_count: int = 1,
     merged_into_key: str | None = None,
     metadata_: dict | None = None,
+    aliases: list[str] | None = None,
 ) -> SeedStub:
     """Build a SeedStub with sensible defaults."""
     return SeedStub(
@@ -31,6 +32,7 @@ def make_seed(
         merged_into_key=merged_into_key,
         metadata_=metadata_,
         context_hash=None,
+        aliases=aliases or [],
     )
 
 
@@ -52,21 +54,26 @@ def make_qdrant_match(seed_key: str, score: float) -> QdrantMatchStub:
 def make_seed_repo_mock(**overrides: object) -> MagicMock:
     """Standard WriteSeedRepository mock with all methods pre-configured."""
     repo = MagicMock()
-    repo.find_similar_seeds = AsyncMock(return_value=[])
-    repo.find_by_phonetic = AsyncMock(return_value=[])
-    repo.find_seeds_by_alias = AsyncMock(return_value=[])
+    # New pipeline methods
+    repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[])
+    repo.set_status = AsyncMock()
+    repo.merge_aliases_into_winner = AsyncMock()
+    repo.rename_seed = AsyncMock()
+    repo.get_facts_with_content_for_seed = AsyncMock(return_value=[])
+    repo.upsert_seeds_batch_with_aliases = AsyncMock()
+    repo.upsert_seed_with_aliases = AsyncMock()
+    # Shared methods
     repo.get_seed_by_key = AsyncMock(return_value=None)
     repo.merge_seeds = AsyncMock()
     repo.create_route = AsyncMock()
     repo.get_routes_for_parent = AsyncMock(return_value=[])
-    repo.update_phonetic_code = AsyncMock()
-    repo.update_context_hash = AsyncMock()
     repo.get_facts_for_seed = AsyncMock(return_value=[])
     repo.get_seeds_by_keys_batch = AsyncMock(return_value={})
-    repo.upsert_seed = AsyncMock()
-    repo.upsert_seeds_batch = AsyncMock()
+    repo.split_seed = AsyncMock()
     repo.link_fact = AsyncMock(return_value=True)
+    repo.unlink_fact = AsyncMock(return_value=1)
     repo.link_facts_batch = AsyncMock(return_value=0)
+    repo.refresh_fact_counts = AsyncMock()
     repo.upsert_edge_candidate = AsyncMock()
     repo.upsert_edge_candidates_batch = AsyncMock()
     repo._session = MagicMock()
@@ -84,11 +91,11 @@ def make_embedding_service_mock(embedding: list[float] | None = None) -> MagicMo
     return svc
 
 
-def make_qdrant_seed_repo_mock() -> MagicMock:
+def make_qdrant_seed_repo_mock(hits: list | None = None) -> MagicMock:
     """Standard QdrantSeedRepository mock."""
     repo = MagicMock()
     repo.upsert = AsyncMock()
-    repo.find_similar = AsyncMock(return_value=[])
+    repo.find_similar = AsyncMock(return_value=hits or [])
     return repo
 
 
@@ -97,6 +104,7 @@ def make_model_gateway_mock(result: dict | None = None) -> MagicMock:
     gw = MagicMock()
     gw.default_model = "test-model"
     gw.generate_json = AsyncMock(return_value=result or {})
+    gw.generate_json_schema = AsyncMock(return_value=result or {})
     return gw
 
 

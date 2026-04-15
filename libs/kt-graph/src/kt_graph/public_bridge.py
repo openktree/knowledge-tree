@@ -738,7 +738,7 @@ class PublicGraphBridge:
         # concept already exists locally under a different historical id.
         from kt_db.keys import key_to_uuid, make_node_key
 
-        new_key = make_node_key(node.node_type, node.concept)
+        new_key = make_node_key(node.concept)
         new_uuid = key_to_uuid(new_key)
         local_fact_ids = [str(local_fact_id_by_remote[fid]) for fid in node.fact_ids if fid in local_fact_id_by_remote]
         # ``RETURNING node_uuid`` lets us distinguish a real insert from an

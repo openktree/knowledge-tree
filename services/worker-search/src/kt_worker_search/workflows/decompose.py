@@ -218,7 +218,6 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
     start_usage_tracking()
 
     from kt_db.repositories.write_facts import WriteFactRepository
-    from kt_facts.processing.entity_extraction import extract_entities_from_facts
     from kt_models.gateway import ModelGateway
 
     model_gateway = cast(ModelGateway, state.model_gateway)
@@ -242,28 +241,41 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
             )
             return EntityExtractionOutput().model_dump()
 
-        # Extract entities via LLM
+        # Extract entities using configured extractor (spacy or llm)
+        from kt_config.settings import get_settings
+        from kt_facts.processing.extractor_base import ExtractedEntity
         from kt_models.usage import clear_usage_task, set_usage_task
 
+        settings = get_settings()
         set_usage_task("entity_extraction")
-        extracted_nodes = (
-            await extract_entities_from_facts(
-                write_facts,
-                model_gateway,
-                scope=input.concept,
-            )
-            or []
-        )
+
+        if settings.entity_extractor == "llm":
+            from kt_facts.processing.entity_extraction import LlmEntityExtractor
+
+            extractor = LlmEntityExtractor(model_gateway)
+        else:
+            from kt_facts.processing.spacy_extractor import SpacyEntityExtractor
+
+            extractor = SpacyEntityExtractor()
+
+        raw_entities: list[ExtractedEntity] = await extractor.extract(write_facts, scope=input.concept) or []
         clear_usage_task()
 
-        # Resolve fact_indices (1-indexed into write_facts) to fact UUIDs
-        # so the orchestrator can reconstruct links without reloading facts.
-        for node in extracted_nodes:
+        # Convert to dict format expected by downstream seed storage
+        extracted_nodes: list[dict] = []
+        for entity in raw_entities:
+            node: dict = {
+                "name": entity.name,
+                "fact_indices": entity.fact_indices,
+                "aliases": entity.aliases,
+            }
+            # Resolve fact_indices (1-indexed into write_facts) to fact UUIDs
             resolved: list[str] = []
-            for idx in node.get("fact_indices", []):
+            for idx in entity.fact_indices:
                 if isinstance(idx, int) and 1 <= idx <= len(write_facts):
                     resolved.append(str(write_facts[idx - 1].id))
             node["fact_ids"] = resolved
+            extracted_nodes.append(node)
 
         # Serialize extracted_nodes for output (include fact_ids, aliases,
         # extraction_role so the orchestrator can pass them to seed storage)
@@ -342,6 +354,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                 is_image=False,
                 message_id=input.message_id,
                 conversation_id=input.conversation_id,
+                graph_id=input.graph_id,
             ),
         )
         for sid in text_source_ids
@@ -384,6 +397,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                     source_authors=source_authors,
                     message_id=input.message_id,
                     conversation_id=input.conversation_id,
+                    graph_id=input.graph_id,
                 ),
             )
             entity_output = EntityExtractionOutput.model_validate(entity_result)
@@ -406,6 +420,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                         source_authors=source_authors if i == 0 else [],
                         message_id=input.message_id,
                         conversation_id=input.conversation_id,
+                        graph_id=input.graph_id,
                     ),
                 )
                 for i, chunk in enumerate(fact_chunks)
@@ -480,7 +495,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                         if name and _is_valid_entity_name(name):
                             author_seeds_data.append(
                                 {
-                                    "key": make_seed_key("entity", name),
+                                    "key": make_seed_key(name),
                                     "name": name,
                                     "node_type": "entity",
                                     "entity_subtype": "person",
@@ -491,7 +506,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                         if name and _is_valid_entity_name(name):
                             author_seeds_data.append(
                                 {
-                                    "key": make_seed_key("entity", name),
+                                    "key": make_seed_key(name),
                                     "name": name,
                                     "node_type": "entity",
                                     "entity_subtype": "organization",
@@ -635,6 +650,7 @@ async def reingest_source_task(input: ReingestSourceInput, ctx: Context) -> dict
                 concept=input.concept,
                 query_context=input.query_context,
                 force=True,
+                graph_id=input.graph_id,
             ),
         )
 

@@ -605,6 +605,124 @@ class ModelGateway:
 
         return {}  # unreachable, but satisfies type checker
 
+    async def generate_json_schema(
+        self,
+        model_id: str,
+        messages: list[dict[str, Any]],
+        schema_model: type,  # pydantic BaseModel subclass
+        system_prompt: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 2000,
+        reasoning_effort: str | None = None,
+    ) -> dict:  # type: ignore[type-arg]
+        """Generate a response validated against a pydantic model's JSON schema.
+
+        Uses OpenAI's json_schema response_format with strict=true, forcing the
+        provider to decode under the schema. Falls back to plain json_object
+        (via generate_json) if the schema call raises or returns invalid data.
+
+        Args:
+            schema_model: A pydantic BaseModel subclass. Its model_json_schema()
+                is sent to the provider; the response is validated against it.
+
+        Returns:
+            Parsed+validated dict. Empty dict on repeated failure.
+        """
+        msgs: list[dict[str, Any]] = []
+        if system_prompt:
+            msgs.append({"role": "system", "content": system_prompt})
+        msgs.extend(messages)
+
+        # Skip json_schema for providers that mishandle it (e.g. Gemini leaks
+        # decoder state). List is configurable via settings.
+        try:
+            from kt_config.settings import get_settings
+
+            blocklist_raw = get_settings().json_schema_unsupported_models or ""
+            blocklist = [s.strip().lower() for s in blocklist_raw.split(",") if s.strip()]
+            if any(b in model_id.lower() for b in blocklist):
+                logger.debug(
+                    "Model '%s' in json_schema_unsupported_models — using json_object",
+                    model_id,
+                )
+                return await self.generate_json(
+                    model_id=model_id,
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    reasoning_effort=reasoning_effort,
+                )
+        except Exception:
+            pass
+
+        try:
+            raw_schema = schema_model.model_json_schema()
+        except Exception:
+            logger.warning("schema_model has no model_json_schema(); falling back to json_object")
+            return await self.generate_json(
+                model_id=model_id,
+                messages=messages,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                reasoning_effort=reasoning_effort,
+            )
+
+        extra: dict[str, Any] = {}
+        if reasoning_effort:
+            extra["reasoning_effort"] = reasoning_effort
+            extra["allowed_openai_params"] = ["reasoning_effort"]
+
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_model.__name__,
+                "schema": raw_schema,
+                "strict": True,
+            },
+        }
+
+        try:
+            response = await self._call_with_retry(
+                model=model_id,
+                messages=msgs,
+                api_key=self._api_key,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                plugins=[{"id": "response-healing"}],
+                **extra,
+            )
+            raw_text: str = response.choices[0].message.content or ""  # type: ignore[union-attr]
+            try:
+                parsed = json.loads(raw_text)
+                # Validate via pydantic to surface schema drift
+                schema_model.model_validate(parsed)
+                return parsed  # type: ignore[no-any-return]
+            except Exception as exc:
+                logger.warning(
+                    "Schema-enforced JSON from %s failed validation (%s). Raw: %.200s. Falling back to json_object.",
+                    model_id,
+                    exc,
+                    raw_text,
+                )
+        except Exception:
+            logger.warning(
+                "json_schema call failed for %s; falling back to json_object",
+                model_id,
+                exc_info=True,
+            )
+
+        return await self.generate_json(
+            model_id=model_id,
+            messages=messages,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
+        )
+
     async def generate_parallel(
         self,
         model_ids: list[str],

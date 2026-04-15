@@ -51,3 +51,8 @@ mcp.json
 # Kubernetes
 kubeconfig-*
 infra/*/kubeconfig-*
+
+# Experiment LLM/bench caches (regenerable, often > 50MB)
+experiments/**/llm_cache*.jsonl
+experiments/**/bench_cache*.jsonl
+experiments/**/emb_cache*.json

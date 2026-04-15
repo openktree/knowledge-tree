@@ -59,14 +59,13 @@ class TestStoreSeedsFromExtractedNodes:
         )
         assert count == 1
         assert len(seed_keys) == 1
-        expected_key = make_seed_key("entity", "Albert Einstein")
-        # Batch upsert should be called with seed data
-        repo.upsert_seeds_batch.assert_called_once()
-        batch_arg = repo.upsert_seeds_batch.call_args[0][0]
+        expected_key = make_seed_key("Albert Einstein")
+        # New API: batch upsert with aliases (status=pending)
+        repo.upsert_seeds_batch_with_aliases.assert_called_once()
+        batch_arg = repo.upsert_seeds_batch_with_aliases.call_args[0][0]
         assert len(batch_arg) == 1
         assert batch_arg[0]["key"] == expected_key
         assert batch_arg[0]["name"] == "Albert Einstein"
-        # Batch link should be called
         repo.link_facts_batch.assert_called_once()
 
     async def test_two_nodes_same_fact_creates_edge_candidate(self) -> None:
@@ -176,11 +175,10 @@ class TestStoreSeedsFromExtractedNodes:
         assert count == 1
         assert len(seed_keys) == 1
 
-    async def test_aliases_stored_on_seeds(self) -> None:
-        """LLM-provided aliases should be passed to update_aliases_batch."""
+    async def test_aliases_stored_in_upsert(self) -> None:
+        """LLM-provided aliases passed to upsert_seeds_batch_with_aliases as slugified keys."""
         repo = make_seed_repo_mock()
         repo.link_facts_batch = AsyncMock(return_value=1)
-        repo.update_aliases_batch = AsyncMock()
         facts = [make_fact_stub("The FBI investigates federal crimes")]
         extracted = [
             {
@@ -198,12 +196,11 @@ class TestStoreSeedsFromExtractedNodes:
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        # update_aliases_batch should have been called with the alias
-        repo.update_aliases_batch.assert_called_once()
-        updates = repo.update_aliases_batch.call_args[0][0]
-        assert len(updates) == 1
-        seed_key, aliases = updates[0]
-        assert "FBI" in aliases
+        # Aliases passed as slugified keys inside the batch upsert
+        repo.upsert_seeds_batch_with_aliases.assert_called_once()
+        batch_arg = repo.upsert_seeds_batch_with_aliases.call_args[0][0]
+        assert len(batch_arg) == 1
+        assert "fbi" in batch_arg[0]["aliases"]
 
     async def test_concept_without_entity_subtype(self) -> None:
         repo = make_seed_repo_mock()
@@ -219,11 +216,42 @@ class TestStoreSeedsFromExtractedNodes:
             embedding_service=make_embedding_service_mock(),
             qdrant_seed_repo=make_qdrant_seed_repo_mock(),
         )
-        expected_key = make_seed_key("concept", "quantum mechanics")
-        # Batch upsert should contain the seed data
-        repo.upsert_seeds_batch.assert_called_once()
-        batch_arg = repo.upsert_seeds_batch.call_args[0][0]
+        expected_key = make_seed_key("quantum mechanics")
+        repo.upsert_seeds_batch_with_aliases.assert_called_once()
+        batch_arg = repo.upsert_seeds_batch_with_aliases.call_args[0][0]
         assert len(batch_arg) == 1
         assert batch_arg[0]["key"] == expected_key
         assert batch_arg[0]["node_type"] == "concept"
         assert batch_arg[0]["entity_subtype"] is None
+
+    async def test_alias_dsu_folds_matching_seeds(self) -> None:
+        """If alias key of A matches canonical key of B, they merge in-memory (DSU)."""
+        repo = make_seed_repo_mock()
+        repo.link_facts_batch = AsyncMock(return_value=2)
+        facts = [make_fact_stub("fact1"), make_fact_stub("fact2")]
+        extracted = [
+            # B's canonical key = make_seed_key("FBI")
+            {"name": "FBI", "node_type": "entity", "fact_indices": [1]},
+            # A has alias "FBI" → same key as B → should fold into one seed
+            {
+                "name": "Federal Bureau of Investigation",
+                "node_type": "entity",
+                "fact_indices": [2],
+                "aliases": ["FBI"],
+            },
+        ]
+        count, seed_keys = await store_seeds_from_extracted_nodes(
+            extracted,
+            facts,
+            repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+        )
+        # DSU should have merged into 1 representative
+        assert len(seed_keys) == 1
+        batch_arg = repo.upsert_seeds_batch_with_aliases.call_args[0][0]
+        assert len(batch_arg) == 1
+        # Longer name wins canonical
+        assert batch_arg[0]["name"] == "Federal Bureau of Investigation"
+        # Shorter key becomes alias
+        assert "fbi" in batch_arg[0]["aliases"]

@@ -1,0 +1,353 @@
+# Hand-curated ground truth for the fact-extraction bench.
+# Authored by Claude (the largest model in this session). DO NOT auto-generate.
+#
+# Per source:
+#   good_facts: self-explanatory factual statements that a knowledge graph
+#               would benefit from. Must stand alone without ambiguous
+#               pronouns, missing referents, or source-dependence.
+#   bad_facts:  examples of facts models tend to emit that FAIL the
+#               self-explanation test (vague, incomplete, meta-commentary,
+#               scraping artifacts). Treated as blacklist — emitting any
+#               semantically-close variant costs a point.
+
+sources:
+
+  - id: 1
+    title: "Autobiography of a Yogi 75th anniversary Princeton panel"
+    good_facts:
+      - "Paramahansa Yogananda's book 'Autobiography of a Yogi' was published in 1946 and had its 75th anniversary in December 2021."
+      - "Princeton University's Hindu Life Program hosted a virtual seminar on 'Autobiography of a Yogi' titled 'Its Light and Legacy, 75 Years Later'."
+      - "Vineet Chander is assistant dean of Princeton University's Office of Religious Life."
+      - "Philip Goldberg authored 'The Life of Yogananda: The Story of the Yogi Who Became the First Modern Guru'."
+      - "Brother Kamalananda is a monk of the Self-Realization Fellowship."
+      - "Paramahansa Yogananda wrote that utopia must spring in the private bosom before it can flower in civic virtue."
+      - "Paramahansa Yogananda wrote in 'Autobiography of a Yogi': 'A man who has reformed himself will reform thousands.'"
+      - "Brother Kamalananda stated that the message of 'Autobiography of a Yogi' is summarized by Paramahansa Yogananda's sentiment: 'Reform yourself and you will reform thousands.'"
+      - "Philip Goldberg first read 'Autobiography of a Yogi' approximately 50 years prior to the seminar, during a time of great tension and turmoil."
+    bad_facts:
+      - "The book is a spiritual classic."
+      - "It has been influential."
+      - "The seminar discussed various themes."
+      - "It was streamed recently."
+
+  - id: 2
+    title: "In Search of Brahman blog post on Advaita Vision"
+    good_facts:
+      - "The traditional Advaita Vedanta position is that Brahman is not an object that can be lost or found."
+      - "Advaita Vedanta holds that 'I = Brahman is the one true reality' and Brahman is the one without a second."
+      - "Traditional Advaita Vedanta asserts that a seeker must trust the word of the scriptures rather than rely on proof of Brahman."
+      - "Buddhist philosophy holds that everything is empty of inherent existence."
+      - "David Bohm's model of reality posits an implicate and explicate order."
+      - "Alfred North Whitehead's philosophical view describes reality as a grand interwoven process."
+    bad_facts:
+      - "The author is new to the blog."
+      - "The author is a skeptic."
+      - "Many spiritual traditions have scriptures."
+      - "The author enjoys hearing reactions."
+
+  - id: 3
+    title: "Thymic Epithelial Cell alterations in MHCII deficiency (Frontiers in Immunology 2021)"
+    good_facts:
+      - "MHC class II deficiency, also known as Bare Lymphocyte Syndrome (BLS), is a rare combined immunodeficiency caused by mutations in genes regulating expression of MHCII molecules."
+      - "MHCII deficiency results in impaired cellular and humoral immune responses, leading to severe infections and autoimmunity."
+      - "In MHCII−/− mice, impaired lymphostromal cross-talk in the thymus affects medullary thymic epithelial cell (mTEC) maturation and promiscuous gene expression and causes defects of central tolerance."
+      - "The article 'Thymic Epithelial Cell Alterations and Defective Thymopoiesis Lead to Central and Peripheral Tolerance Perturbation in MHCII Deficiency' was published in Frontiers in Immunology on 2021-06-15."
+      - "DOI 10.3389/fimmu.2021.669943 identifies the Ferrua et al. study on MHCII deficiency and thymic epithelial cell alterations."
+      - "Peripheral tolerance impairment in MHCII deficiency is likely due to defective regulatory T cell (Treg) generation and/or function and B cell tolerance breakdown."
+      - "Disease-specific thymic epithelial cell defects in MHCII deficiency limit the potential benefits of hematopoietic stem cell transplantation."
+      - "Absence of MHCII expression causes abnormal cross-talk with developing T cells, likely leading to defects in thymic epithelial cells (TEC)."
+    bad_facts:
+      - "The authors performed in-depth characterization."
+      - "Several alterations were revealed."
+      - "The study has findings."
+      - "Transcriptomic and proteomic profiling was done."
+
+  - id: 4
+    title: "Yoga in America 10 Things (Smithsonian APA blog)"
+    good_facts:
+      - "The word 'yoga' is derived from Sanskrit 'yoga' meaning 'union'."
+      - "Henry David Thoreau practiced meditative yoga in his Walden home from 1845 to 1849."
+      - "Henry David Thoreau described his meditative yoga practice as allowing him to see the world more clearly and more beautifully."
+      - "Swami Vivekananda brought meditative yoga to the World Parliament of Religions in Chicago in 1893."
+      - "Swami Vivekananda taught Raja yoga, which focuses on meditation to unite the individual Self with the supreme Self, and pranayama — breathing exercises."
+      - "Many of Swami Vivekananda's followers were wealthy, female Americans who had time and money to participate in his guided meditation and yoga classes."
+      - "Pierre Bernard founded the Clarkston Country Club yoga school in Nyack, New York in 1919, teaching Hatha yoga."
+      - "Hatha yoga is the practice of postures, breath control, and meditation to strengthen the body and promote union with the Supreme Self."
+      - "Indra Devi brought Hatha yoga to Los Angeles in 1947."
+      - "Indra Devi's Hatha yoga focused on asana, or postures, to promote youth, health, and physically fit bodies, and she did not include the religious philosophy of yoga in her teaching."
+      - "Marilyn Monroe practiced Hatha yoga asanas and was photographed doing certain yoga asanas to advertise her health regimen."
+      - "Margaret Woodrow Wilson, daughter of President Woodrow Wilson, joined Aurobindo's Ashram in India in 1938."
+      - "Aurobindo developed Integral yoga, teaching that humans would eventually evolve into supreme beings."
+      - "As of July 2012, 15 million Americans were reported to practice yoga, 72.2% female and 27.8% male."
+      - "The 1937 film 'Lost Horizon' told a story similar to Theos Bernard's adventures in India learning yoga postures and philosophy."
+    bad_facts:
+      - "Yoga has a long history in America."
+      - "Many Americans practice yoga."
+      - "Yoga evolved over time."
+      - "The author is an intern."
+
+  - id: 5
+    title: "Near-Death Experiences: Cultural Insights (Scribd summary of Shushan article)"
+    good_facts:
+      - "Gregory Shushan authored an article exploring the diversity and similarities of near-death experiences (NDEs) across different cultures and historical contexts."
+      - "Shushan's article argues for a multifaceted understanding of near-death experiences incorporating universal, cultural, and individual factors."
+      - "Shushan's article examines the tension between materialist and metaphysical explanations of near-death experiences."
+      - "Shushan's article discusses the implications of near-death experiences for the survival hypothesis."
+      - "Shushan's article highlights that near-death experiences are interpreted spiritually despite cultural variations."
+    bad_facts:
+      - "The document is 8 pages."
+      - "0% of readers found this document useful."
+      - "63 views have been recorded."
+      - "The article discusses implications."
+
+  - id: 6
+    title: "Winship/Emory study on childhood cancer survivorship care plans"
+    good_facts:
+      - "A Winship Cancer Institute of Emory University and Children's Healthcare of Atlanta study found that childhood cancer survivors who received a survivorship care plan had a 38% lower risk of death over 10 years compared with those who did not."
+      - "The survivorship care plan study followed 3,366 childhood and adolescent cancer survivors diagnosed between 2002 and 2016 for up to 10 years."
+      - "55.9% of patients in the Winship childhood cancer survivorship study received a survivorship care plan (SCP)."
+      - "Xu Ji, PhD, MSPH, is a researcher at Winship Cancer Institute and associate professor in the Department of Pediatrics at Emory University School of Medicine."
+      - "Sharon M. Castellino, MD, MSc, is a professor and pediatric oncologist at the Aflac Cancer and Blood Disorders Center of Children's Healthcare of Atlanta."
+      - "The Winship survivorship-care-plan study was published in the Journal of the National Cancer Institute."
+      - "A survivorship care plan (SCP) is a personalized document that summarizes diagnosis and treatment history and outlines recommended screenings, late-effect monitoring, and healthy-living guidance."
+      - "Childhood cancer survivors who received a survivorship care plan were less likely to die from relapse, treatment complications, or external causes than survivors who never received a plan."
+      - "Childhood cancer survivors with multiple survivorship visits and survivorship care plan updates experienced greater survival benefits."
+      - "Older childhood cancer survivors, those identifying as non-Hispanic Black, those with central nervous system tumors, and those who received surgery-only treatment were less likely to receive a survivorship care plan."
+      - "Cancer SurvivorLink is a web-based platform developed by Jordan Marchak, PhD, ABPP, to help survivors and clinicians access survivorship care plans."
+      - "Jordan Marchak, PhD, ABPP, is a professor and co-director of the Aflac Survivor Program at the Aflac Cancer and Blood Disorders Center of Children's Healthcare of Atlanta and a researcher at Winship Cancer Institute."
+    bad_facts:
+      - "The study has findings."
+      - "Results were significant."
+      - "The research is important."
+      - "Survivorship care plans are beneficial."
+
+  - id: 7
+    title: "Ethical Concerns of Generative AI and Mitigation Strategies (arXiv 2502.00015)"
+    good_facts:
+      - "The paper 'Ethical Concerns of Generative AI and Mitigation Strategies: A Systematic Mapping Study' conducted a systematic mapping study reviewing 39 studies on ethical concerns and mitigation strategies related to LLMs."
+      - "The systematic mapping study on LLM ethics analyzed ethical concerns using five ethical dimensions extracted from existing guidelines and frameworks."
+      - "The paper 'Ethical Concerns of Generative AI' was first submitted to arXiv on 8 January 2025 as 2502.00015."
+      - "Chetan Arora is one of the authors of the arXiv paper 'Ethical Concerns of Generative AI and Mitigation Strategies'."
+      - "Ethical concerns in Large Language Models are multi-dimensional and context-dependent."
+      - "Ethical issues often hinder the practical implementation of LLM mitigation strategies, particularly in high-stake areas like healthcare and public governance."
+      - "Existing frameworks for LLM ethics often lack adaptability, failing to accommodate evolving societal expectations and diverse contexts."
+      - "Mitigation strategies for ethical challenges in Large Language Models are complex and domain-dependent."
+    bad_facts:
+      - "The paper is important."
+      - "Challenges still remain."
+      - "The paper was reviewed."
+      - "Various concerns were identified."
+
+  - id: 8
+    title: "Advaita Vedanta (Scribd summary document)"
+    good_facts:
+      - "In Advaita Vedanta, the term 'Advaita' translates to 'non-duality', emphasizing the indivisible unity of all existence."
+      - "Advaita Vedanta holds that Brahman (ultimate reality) and Atman (individual self) are fundamentally identical."
+      - "Brahman in Advaita Vedanta is described as sat-cit-ananda — pure existence, consciousness, and bliss."
+      - "The Upanishadic mahavakya 'Tat Tvam Asi' ('Thou art That') articulates the identity of Atman and Brahman in Advaita Vedanta."
+      - "Avidya (ignorance) in Advaita Vedanta is said to veil the true nature of the self and cause the perception of separation between Atman and Brahman."
+      - "Maya in Advaita Vedanta is the cosmic illusion that creates the appearance of duality and multiplicity in the world."
+      - "In Advaita Vedanta, through Maya, the unchanging Brahman appears as the dynamic, ever-changing phenomenal world."
+      - "Advaita Vedanta distinguishes three levels of reality: Paramarthika (absolute), Vyavaharika (empirical), and Prabhasika (illusory)."
+      - "Moksha in Advaita Vedanta is liberation attained by realizing the non-dual nature of Brahman through jnana (knowledge)."
+      - "In Advaita Vedanta, liberation is aided through practices such as meditation and study of scriptures, which help transcend ignorance."
+      - "Sakshin in Advaita Vedanta is the witnessing consciousness that remains untouched by the mind-body complex."
+      - "Adi Shankaracharya formulated Advaita Vedanta extensively."
+    bad_facts:
+      - "Advaita Vedanta has central tenets."
+      - "Various practices are described."
+      - "The text discusses philosophy."
+      - "Consciousness is important."
+
+  - id: 9
+    title: "Harvard HMS page (bot-block error page)"
+    good_facts: []
+    bad_facts:
+      - "The page requires cookies and JavaScript."
+      - "Users may be blocked by the website."
+      - "Browser plugins can prevent JavaScript."
+      - "The website detected bot behavior."
+
+  - id: 10
+    title: "Kriya Yoga Path of Meditation Overview (SRF)"
+    good_facts:
+      - "Paramahansa Yogananda referred to the Kriya Yoga path as 'the highway to the Infinite'."
+      - "Kriya Yoga is described as containing the distilled essence of Raja Yoga."
+      - "Paramahansa Yogananda received the Kriya Yoga teaching from a lineage of gurus including Mahavatar Babaji, Lahiri Mahasaya, and Swami Sri Yukteswar."
+      - "The Self-Realization Fellowship (SRF) teaches Paramahansa Yogananda's Kriya Yoga path."
+      - "Rajarsi Janakananda served as the second president of SRF/YSS."
+      - "Paramahansa Yogananda considered the Kriya Yoga path the most effective method of attaining the highest goal of religion: union with Bliss."
+      - "Paramahansa Yogananda said: 'Divine Joy outlasts everything. It is enduring. When all else melts away, that Joy remains.'"
+      - "Paramahansa Yogananda described great spiritual masters as 'diamond mentalities' that reflect the sunlight of God's consciousness."
+    bad_facts:
+      - "Meditation brings inner peace."
+      - "Seekers can transform themselves."
+      - "There is a goal of Bliss."
+      - "Joy outlasts everything."
+
+  - id: 11
+    title: "Hybrid Architectures for Language Models (HuggingFace paper)"
+    good_facts:
+      - "The paper 'Hybrid Architectures for Language Models' evaluates language models that combine self-attention mechanisms with structured state space models like Mamba."
+      - "Hybrid language-model architectures aim to balance modeling quality and computational efficiency, particularly for long-context tasks."
+      - "The hybrid language-model study analyzes two fusion strategies: inter-layer (sequential) and intra-layer (parallel)."
+      - "The hybrid language-model paper evaluates designs along language-modeling performance, long-context capability, scaling, and training and inference efficiency."
+    bad_facts:
+      - "The paper provides practical guidance."
+      - "Hybrid models show promising performance."
+      - "This is an automated message from the Librarian Bot."
+      - "The following papers were recommended by the Semantic Scholar API."
+
+  - id: 12
+    title: "Limits of Emergent Reasoning of LLMs in Agentic Frameworks (arXiv 2510.15974)"
+    good_facts:
+      - "The arXiv paper 'Limits of Emergent Reasoning of Large Language Models in Agentic Frameworks for Deterministic Games' was submitted on 12 October 2025 as 2510.15974."
+      - "Large Reasoning Models (LRMs) were reported to undergo a collapse in performance on solving puzzles beyond certain perplexity thresholds."
+      - "The arXiv 2510.15974 study gave an LLM an environment interface for Tower of Hanoi problems, allowing tool-call moves with written justifications."
+      - "The arXiv 2510.15974 study found that access to an environment interface did not delay or eradicate performance collapse on Tower of Hanoi."
+      - "The arXiv 2510.15974 study observed increasing divergence of the LLM policy from both optimal and uniformly-random policies as problem complexity grew."
+      - "The arXiv 2510.15974 study found that LLM performance on Tower of Hanoi is dependent on whether the model's mode reflects the correct solution for the problem."
+    bad_facts:
+      - "The paper has references."
+      - "The authors conducted experiments."
+      - "This version is HTML experimental."
+      - "Bibliographic tools are listed."
+
+  - id: 13
+    title: "Traditional Chinese Medicine (Northwestern Medicine)"
+    good_facts:
+      - "Traditional Chinese Medicine originated over 5,000 years ago and is rooted in the ancient philosophy of Taoism."
+      - "Traditional Chinese Medicine encompasses acupuncture, acupressure, cupping, Chinese herbal medicine, tui na, dietary therapy, tai chi, and qi gong."
+      - "Tui na is a form of Chinese therapeutic massage."
+      - "In Traditional Chinese Medicine, Qi (pronounced chee) is described as the body's life force energy."
+      - "In Traditional Chinese Medicine, acupuncture involves insertion of very thin needles through the skin at points positioned along pathways called meridians."
+      - "Acupuncture has been shown to have pain-relieving, anti-inflammatory, hormone-regulating, and immunostimulating effects."
+      - "A traditional Chinese medicine practitioner completes an assessment based on a patient's history, tongue, and pulse."
+      - "In Traditional Chinese Medicine, acupuncture regulates and restores the normal flow of Qi, restoring health in the process."
+      - "Meridians in Traditional Chinese Medicine have been shown in recent research to be real, anatomical structures potentially involved in tissue restoration and repair."
+      - "In Traditional Chinese Medicine, an imbalance or disruption of Qi may result in physical and/or emotional pathologies."
+      - "Chinese herbal medicine is typically prescribed as formulas rather than individual herbs, tailored to a specific TCM diagnostic pattern."
+    bad_facts:
+      - "Acupuncture restores balance."
+      - "The team is dedicated to your health goals."
+      - "Common reasons include pain management."
+      - "Meridians have been shown to be more than energetic pathways."
+
+  - id: 14
+    title: "Disruption, empathy and transcendence: Why so many religions fast (RNS/NPR)"
+    good_facts:
+      - "During Ramadan, many Muslims fast from dawn to sunset."
+      - "During Lent, Catholics and Orthodox Christians give up certain foods."
+      - "The Baha'i fast lasts 19 days leading up to spring."
+      - "Sarah Riccardi-Swartz teaches anthropology and religion at Northeastern University in Boston."
+      - "In Jewish tradition, fasting is a form of teshuva (atonement)."
+      - "Catherine Newell is a professor of science and religion at the University of Miami in Florida."
+      - "The Muslim Educational Trust in Tigard, Oregon, hosts a nightly iftar meal during Ramadan."
+      - "Ancient Mesopotamian Babylonian cultures used fasting as a form of repentance."
+      - "Fasting traditions are part of religious practices for Hindus, Buddhists, and Jains."
+      - "In Islamic tradition, fasting is paired with charitable giving."
+      - "Daniel Azim Pschaida teaches comparative religion at Gonzaga University in Spokane, Washington."
+      - "Jay W. Richards is a vice president at the Heritage Foundation and the author of 'Eat, Fast, Feast: Heal Your Body While Feeding Your Soul: A Christian Guide to Fasting'."
+    bad_facts:
+      - "Fasting is universal."
+      - "Many faith traditions call for giving up food."
+      - "It is a very ancient practice."
+      - "Haqiqi has given up his weekly game night."
+
+  - id: 15
+    title: "Recovering from Microdiscectomy (CNSO blog)"
+    good_facts:
+      - "A microdiscectomy involves partial to complete removal of a damaged or distorted spinal disc that is causing discomfort or loss of function."
+      - "The goal of a microdiscectomy is to alleviate pressure on the spinal cord or on an aggravated, pinched nerve."
+      - "In a minimally invasive microdiscectomy the incision is no more than 2 centimeters."
+      - "Most patients can go home the same day as a microdiscectomy procedure."
+      - "Most patients have immediate relief of symptoms after a microdiscectomy."
+      - "Within 6 weeks of microdiscectomy, a patient can typically resume all their activities."
+      - "Most patients can return to work within two weeks after microdiscectomy, assuming the job is not labor intensive."
+      - "Centers for Neurosurgery, Spine & Orthopedics (CNSO) treats patients throughout northern New Jersey."
+      - "Approximately 80% of lumbar discectomies achieve satisfactory outcomes according to NIH Library of Medicine studies."
+      - "At Centers for Neurosurgery, Spine & Orthopedics (CNSO), patients have a 98% satisfaction rate and the recurrent lumbar disc herniation rate is less than 1%."
+    bad_facts:
+      - "Patients should ask their surgeon about recovery."
+      - "Pain and fatigue are common."
+      - "Providers recommend light activities."
+      - "The consultation covers what to expect."
+
+  - id: 16
+    title: "Fasting may have become a health fad (FIU 2021, Iqbal Akhtar)"
+    good_facts:
+      - "Iqbal Akhtar is a scholar of religion at Florida International University."
+      - "Fasting is one of the five pillars of Islam."
+      - "During Ramadan, Muslims abstain from food, water, smoking, sex, and all sensory pleasures from dawn to dusk."
+      - "Ramadan is the ninth month of the Islamic lunar calendar."
+      - "In Islam, fasting develops submission to God, empathy with the poor, and repentance, and provides time for spiritual introspection."
+      - "According to the 12th-century theologian al-Ghazali, fasting can allow the believer to better perceive the ultimate reality of God as it involves all five senses — touch, sight, hearing, smell, and taste."
+      - "Jainism is an ancient religion from India that espouses nonviolence, nonpossessiveness, and pluralism."
+      - "In Jainism, fasting falls under tapas or asceticism, which varies by degree between the laity and monastics."
+      - "Paryushan is a Jain holiday observed annually around August to September, lasting 8 to 10 days."
+      - "During Paryushan, Jains focus on values including forgiveness, humility, straightforwardness, truth, contentment, self-restraint, penance, renunciation, nonattachment, and celibacy."
+      - "Mircea Eliade was a 20th-century Romanian historian of religion."
+      - "Mircea Eliade described sacred time as lying outside of ordinary time, and fasting as one way to enter it."
+      - "Confucians use the term 'ren' to describe a type of wisdom from fasting that translates as humanity, humaneness, goodness, benevolence, or love."
+      - "Daoism includes the concept of 'fasting of the heart-mind,' which involves detoxing the soul by controlling the five senses."
+      - "'The Fast Diet' book advocates eating normally on select days and drastically reducing calories on the remaining days."
+    bad_facts:
+      - "Fasting has entered popular culture."
+      - "Fasting has been shown to have benefits."
+      - "The practice is far from new."
+      - "Fasting is about introspection."
+
+  - id: 17
+    title: "The Integrative Model (Raby Institute)"
+    good_facts:
+      - "The Raby Institute lists its pillars of integrative medicine as Science & Research-Based, Collaborative, Patient-Centered, and Proactive & Preventative."
+      - "The Raby Institute is located in Chicago."
+      - "The Raby Institute collaborates with allopathic and integrative providers in Chicago and around the country to expand its scope of healing services."
+    bad_facts:
+      - "The Raby Institute is committed to expanding care."
+      - "Collaboration is essential."
+      - "The institute welcomes referral relationships."
+      - "We are always available for conversations."
+
+  - id: 18
+    title: "Precision Medicine and Targeted Cancer Therapy (RGA Re)"
+    good_facts:
+      - "The Human Genome Project was completed in 2003 and decoded the entire human genome composed of 3 billion DNA base pairs."
+      - "The human exome contains approximately 23,000 genes and represents about 2% of the total DNA content of the genome."
+      - "The US Precision Medicine Initiative launched in 2015 placed cancer research and treatment at the forefront of US medical priorities."
+      - "Herceptin is a targeted therapy used for early and late stage breast cancer that acts on the human epidermal growth factor receptor 2 (Her-2)."
+      - "Herceptin blocks the Her-2 receptor function and prevents cancer cell proliferation."
+      - "Her-2 chemotherapy medications may cause cardiotoxicity, especially when used with anthracycline chemotherapy agents."
+      - "Pembrolizumab (brand name Keytruda) is a monoclonal antibody that binds to the PD-1 (programmed cell death 1) receptor."
+      - "Checkpoint inhibitors are monoclonal antibody drugs that bind checkpoint receptor sites on T lymphocytes to allow the immune system to kill tumor cells."
+      - "Checkpoint inhibitors have been shown to be effective against lung cancer, bladder cancer, head and neck cancer, renal cell cancer, and Hodgkin lymphoma."
+      - "Cancer cells evade immune system surveillance through a process called immunoediting."
+      - "Tumors stimulate upregulation of checkpoint inhibitors to promote T cell exhaustion and produce an immune tolerant environment via cytokine production."
+      - "Cancer avoids immune system surveillance by creating new surface proteins called neoantigens that are difficult to recognize as foreign, or by reducing antigenic proteins on the cell surface."
+      - "Cancers that are hypermutated can result from exposure to carcinogens such as tobacco and ultraviolet light."
+      - "Former US President Jimmy Carter received pembrolizumab (Keytruda) for metastatic melanoma to the brain, and his brain tumor shrunk and became undetectable on imaging after treatment."
+    bad_facts:
+      - "Cancer research is a priority."
+      - "Targeted therapy is a type of treatment."
+      - "Immunotherapy is not new."
+      - "The days of science fiction are here."
+
+  - id: 19
+    title: "Seven-Year Experiment on Consciousness (Sci.news)"
+    good_facts:
+      - "A multinational adversarial collaboration tested two theories of consciousness: Integrated Information Theory (IIT) and Global Neuronal Workspace Theory (GNWT)."
+      - "Integrated Information Theory (IIT) posits that consciousness emerges when information inside a system is highly connected and unified."
+      - "Global Neuronal Workspace Theory (GNWT) posits that a network of brain areas broadcasts important information widely when it enters consciousness."
+      - "The consciousness adversarial-collaboration study involved 256 subjects."
+      - "Professor Anil Seth is affiliated with the University of Sussex."
+      - "The IIT vs GNWT study used three common brain measurement tools tracking blood flow, magnetic activity, and electrical activity."
+      - "The IIT vs GNWT study did not find enough lasting connections in the back of the brain to support IIT, nor sufficient support for GNWT in the front of the brain."
+      - "The IIT vs GNWT adversarial collaboration was published as 'Adversarial testing of global neuronal workspace and integrated information theories of consciousness' in Nature on April 30, 2025, with DOI 10.1038/s41586-025-08888-1."
+      - "Identifying the neural origin of consciousness could help detect covert consciousness in unresponsive patients with severe injuries, such as those in comas."
+      - "Convergence on a broadly accepted neuroscientific theory of consciousness would have profound medical, societal, and ethical implications."
+      - "The consciousness study's findings suggest the prefrontal cortex, while important for reasoning and planning, may not be central to consciousness itself, which appears linked to sensory processing and perception."
+    bad_facts:
+      - "Philosophers have sought to explain consciousness."
+      - "The study has implications."
+      - "The findings are significant."
+      - "Various theories have evolved."

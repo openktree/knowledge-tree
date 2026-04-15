@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "knowledge-tree": {
+      "url": "https://mcp.openktree.com/mcp",
+      "type": "sse"
+    }
+  }
+}

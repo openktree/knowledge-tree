@@ -13,35 +13,27 @@ from fastapi.responses import FileResponse
 from kt_api.auth.permissions import require_graph_permission
 from kt_api.auth.tokens import require_auth
 from kt_api.graph_context import GraphContext, get_graph_context
+from kt_api.progress import _get_message_progress_impl
 from kt_api.research import (
-    _agent_select_impl,
-    _agent_select_status_impl,
     _bottom_up_prepare_impl,
-    _build_ingest_impl,
     _confirm_ingest_impl,
     _decompose_ingest_impl,
     _download_ingest_source_impl,
     _get_bottom_up_proposals_impl,
-    _get_ingest_proposals_impl,
     _get_ingest_sources_impl,
     _get_research_summary_impl,
     _prepare_ingest_impl,
 )
 from kt_api.schemas import (
-    AgentSelectRequest,
-    AgentSelectResponse,
-    AgentSelectStatusResponse,
     BottomUpPrepareRequest,
     BottomUpPrepareResponse,
     ConversationResponse,
-    IngestBuildRequest,
-    IngestBuildResponse,
     IngestConfirmRequest,
     IngestDecomposeRequest,
     IngestDecomposeResponse,
     IngestPrepareResponse,
-    IngestProposalsResponse,
     IngestSourceResponse,
+    ProgressResponse,
     ResearchSummaryResponse,
 )
 from kt_db.models import User
@@ -103,31 +95,9 @@ async def decompose_graph_ingest(
     user: User = Depends(require_auth),
     ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
 ) -> IngestDecomposeResponse:
-    """Phase 1: Decompose selected chunks in a specific graph."""
+    """Decompose sources and auto-build nodes in a specific graph."""
     async with ctx.graph_session_factory() as session:
         return await _decompose_ingest_impl(session, conversation_id, body, user, graph_id=str(ctx.graph.id))
-
-
-@router.get("/{conversation_id}/proposals", response_model=IngestProposalsResponse)
-async def get_graph_ingest_proposals(
-    conversation_id: str,
-    ctx: GraphContext = Depends(get_graph_context),
-) -> IngestProposalsResponse:
-    """Fetch Phase 1 results (proposed nodes) in a specific graph."""
-    async with ctx.graph_session_factory() as session:
-        return await _get_ingest_proposals_impl(session, conversation_id)
-
-
-@router.post("/{conversation_id}/build", response_model=IngestBuildResponse)
-async def build_graph_ingest(
-    conversation_id: str,
-    body: IngestBuildRequest,
-    user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
-) -> IngestBuildResponse:
-    """Phase 2: Build user-confirmed nodes in a specific graph."""
-    async with ctx.graph_session_factory() as session:
-        return await _build_ingest_impl(session, conversation_id, body, user, graph_id=str(ctx.graph.id))
 
 
 @router.post("/bottom-up/prepare", response_model=ConversationResponse)
@@ -151,28 +121,6 @@ async def get_graph_bottom_up_proposals(
         return await _get_bottom_up_proposals_impl(session, conversation_id)
 
 
-@router.post("/{conversation_id}/agent-select", response_model=AgentSelectResponse)
-async def graph_agent_select(
-    conversation_id: str,
-    body: AgentSelectRequest,
-    user: User = Depends(require_auth),
-    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_WRITE)),
-) -> AgentSelectResponse:
-    """Dispatch agent-assisted node selection in a specific graph."""
-    async with ctx.graph_session_factory() as session:
-        return await _agent_select_impl(session, conversation_id, body, user, graph_id=str(ctx.graph.id))
-
-
-@router.get("/{conversation_id}/agent-select/status", response_model=AgentSelectStatusResponse)
-async def graph_agent_select_status(
-    conversation_id: str,
-    ctx: GraphContext = Depends(get_graph_context),
-) -> AgentSelectStatusResponse:
-    """Check agent-assisted node selection status in a specific graph."""
-    async with ctx.graph_session_factory() as session:
-        return await _agent_select_status_impl(session, conversation_id)
-
-
 @router.get("/{conversation_id}/summary", response_model=ResearchSummaryResponse)
 async def get_graph_research_summary(
     conversation_id: str,
@@ -181,3 +129,18 @@ async def get_graph_research_summary(
     """Fetch research summary in a specific graph."""
     async with ctx.graph_session_factory() as session:
         return await _get_research_summary_impl(session, conversation_id)
+
+
+@router.get(
+    "/{conversation_id}/messages/{message_id}/progress",
+    response_model=ProgressResponse,
+)
+async def get_graph_message_progress(
+    conversation_id: str,
+    message_id: str,
+    user: User = Depends(require_auth),
+    ctx: GraphContext = Depends(require_graph_permission(Permission.GRAPH_READ)),
+) -> ProgressResponse:
+    """Get live progress for a workflow in a specific graph."""
+    async with ctx.graph_session_factory() as session:
+        return await _get_message_progress_impl(conversation_id, message_id, session)

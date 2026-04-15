@@ -182,8 +182,17 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         try:
             from kt_hatchet.client import run_workflow
 
+            # graph_slug is required by Hatchet concurrency expression
+            _dedup_slug = "default"
+            if input.graph_id and state.graph_resolver:
+                try:
+                    _gs = await state.graph_resolver.resolve(uuid.UUID(input.graph_id))
+                    _dedup_slug = _gs.graph.slug
+                except Exception:
+                    logger.debug("Could not resolve graph slug for dedup", exc_info=True)
             dedup_input: dict[str, object] = {
                 "fact_ids": plan.inserted_fact_ids,
+                "graph_slug": _dedup_slug,
             }
             if input.graph_id:
                 dedup_input["graph_id"] = input.graph_id
@@ -213,7 +222,7 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
 
     bulk_items = []
     for entry in plan.node_plans:
-        sk = entry.get("seed_key") or make_seed_key(entry.get("node_type", "concept"), entry["name"])
+        sk = entry.get("seed_key") or make_seed_key(entry["name"])
         bulk_items.append(
             node_pipeline_wf.create_bulk_run_item(
                 input=BuildNodeInput(

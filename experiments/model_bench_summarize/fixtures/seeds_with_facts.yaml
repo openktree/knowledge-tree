@@ -1,0 +1,207 @@
+seeds:
+- id: 1
+  seed: photosynthesis
+  facts:
+  - Photosynthesis converts light energy into chemical energy stored in glucose.
+  - Chlorophyll absorbs primarily red and blue wavelengths and reflects green.
+  - The process occurs mainly in the chloroplasts of plant cells.
+  - Water is split during the light-dependent reactions, releasing oxygen as a byproduct.
+  - Carbon dioxide is fixed into organic molecules during the Calvin cycle.
+  - Photosystem II precedes Photosystem I in the electron transport chain.
+  - ATP and NADPH produced in the light reactions power the dark reactions.
+  - C3 plants fix CO2 directly via Rubisco, while C4 plants concentrate CO2 first.
+  - CAM plants open their stomata at night to reduce water loss.
+  - Cyanobacteria were the first organisms to evolve oxygenic photosynthesis ~2.4 billion years ago.
+  - The Great Oxidation Event was caused by photosynthetic activity.
+  - Rubisco is the most abundant protein on Earth.
+  - Thylakoid membranes host the photosynthetic electron transport machinery.
+  - The stroma contains the enzymes of the Calvin cycle.
+  - Chlorophyll a is the primary pigment; chlorophyll b is an accessory pigment.
+  - Photosynthesis produces approximately 100 gigatonnes of biomass per year globally.
+  - Light saturation occurs when additional light no longer increases the rate.
+  - Photorespiration reduces photosynthetic efficiency in hot, dry conditions.
+  - Artificial photosynthesis research targets clean fuel production.
+  - Algae contribute roughly half of global photosynthetic oxygen production.
+- id: 2
+  seed: black holes
+  facts:
+  - Black holes are regions of spacetime where gravity is so strong that not even light can escape.
+  - The event horizon marks the boundary beyond which escape is impossible.
+  - Stellar-mass black holes form from the collapse of massive stars after supernova.
+  - Supermassive black holes reside at the centers of most large galaxies.
+  - Sagittarius A* is the supermassive black hole at the center of the Milky Way.
+  - The first direct image of a black hole was released by the Event Horizon Telescope in 2019 of M87*.
+  - Hawking radiation predicts black holes slowly evaporate over immense timescales.
+  - The Schwarzschild radius defines the event horizon size for a non-rotating black hole.
+  - Rotating black holes are described by the Kerr metric.
+  - The singularity at the center has infinite density according to general relativity.
+  - LIGO's 2015 detection of gravitational waves came from a black hole merger.
+  - Primordial black holes, if they exist, formed in the early universe.
+  - The information paradox questions whether information is lost when matter falls in.
+  - Accretion disks around black holes emit X-rays observable from Earth.
+  - The photon sphere is where light can orbit the black hole.
+  - Intermediate-mass black holes are an elusive middle category between stellar and supermassive.
+  - Tidal disruption events occur when stars stray too close and are torn apart.
+  - Black hole mergers produce gravitational waves detectable by LIGO and Virgo.
+  - The Penrose process theoretically extracts energy from a rotating black hole.
+  - General relativity, developed by Einstein in 1915, predicts black hole existence.
+- id: 3
+  seed: World War II
+  facts:
+  - World War II lasted from 1939 to 1945 and involved most of the world's nations.
+  - It was sparked by Germany's invasion of Poland on September 1, 1939.
+  - The Axis powers were led by Germany, Italy, and Japan.
+  - The Allies included the United Kingdom, Soviet Union, United States, and China.
+  - The Holocaust resulted in the murder of approximately 6 million Jews by Nazi Germany.
+  - The attack on Pearl Harbor on December 7, 1941 brought the United States into the war.
+  - The Battle of Stalingrad was a turning point on the Eastern Front in 1942-1943.
+  - D-Day, the Allied invasion of Normandy, occurred on June 6, 1944.
+  - The atomic bombs on Hiroshima and Nagasaki in August 1945 preceded Japan's surrender.
+  - Germany surrendered on May 8, 1945 after Hitler's suicide on April 30.
+  - An estimated 70-85 million people died during the war, roughly 3% of the 1940 population.
+  - The United Nations was founded in 1945 to prevent future global conflicts.
+  - The war established the US and Soviet Union as competing superpowers.
+  - The Battle of Britain in 1940 was the first major campaign fought entirely by air forces.
+  - The Pacific War featured island-hopping campaigns led by the United States.
+  - Operation Barbarossa was Germany's 1941 invasion of the Soviet Union.
+  - The Nuremberg Trials prosecuted Nazi leaders for war crimes after the war.
+  - Lend-Lease provided US material support to Allied nations before US entry.
+  - Rosie the Riveter symbolized the women who worked in war production in the US.
+  - The Manhattan Project developed the atomic weapons used against Japan.
+- id: 4
+  seed: CRISPR gene editing
+  facts:
+  - CRISPR stands for Clustered Regularly Interspaced Short Palindromic Repeats.
+  - The system was originally discovered as a bacterial immune mechanism against viruses.
+  - Cas9 is a nuclease guided to specific DNA sequences by a guide RNA.
+  - Jennifer Doudna and Emmanuelle Charpentier won the 2020 Nobel Prize in Chemistry for CRISPR.
+  - CRISPR enables precise editing of DNA in virtually any organism.
+  - The guide RNA matches a 20-nucleotide target sequence adjacent to a PAM site.
+  - Off-target effects are a major safety concern in therapeutic CRISPR applications.
+  - Base editing modifies single nucleotides without introducing double-strand breaks.
+  - Prime editing allows precise insertions, deletions, and substitutions without donor DNA.
+  - Cas12 and Cas13 are alternative CRISPR enzymes with different properties.
+  - CRISPR therapy Casgevy was approved in 2023 for sickle cell disease.
+  - He Jiankui was imprisoned in China for creating the first gene-edited babies in 2018.
+  - CRISPR is being developed for crop improvement, including disease resistance.
+  - Agricultural CRISPR crops often face fewer regulatory hurdles than transgenics.
+  - The Broad Institute and UC Berkeley fought a long patent dispute over CRISPR.
+  - CRISPR knockout screens identify genes essential for specific cellular functions.
+  - Delivery methods include viral vectors, lipid nanoparticles, and electroporation.
+  - tracrRNA and crRNA can be fused into a single guide RNA (sgRNA).
+  - CRISPR was first demonstrated in mammalian cells in 2013.
+  - Germline editing remains controversial due to heritable genetic changes.
+- id: 5
+  seed: Python programming language
+  facts:
+  - Python was created by Guido van Rossum and first released in 1991.
+  - Python is a high-level, interpreted, dynamically-typed language.
+  - Python 3 was released in 2008 and broke backward compatibility with Python 2.
+  - Python 2 reached end-of-life on January 1, 2020.
+  - The language emphasizes readability with significant whitespace and clear syntax.
+  - Python's philosophy is captured in PEP 20, 'The Zen of Python'.
+  - The CPython reference implementation is written in C.
+  - PyPy is an alternative implementation with a just-in-time compiler.
+  - The Python Package Index (PyPI) hosts hundreds of thousands of third-party packages.
+  - Python is the most popular language for data science and machine learning.
+  - NumPy and Pandas are foundational libraries for numerical computing.
+  - Django and Flask are widely used web frameworks.
+  - Python's Global Interpreter Lock limits true parallelism in threaded code.
+  - Async/await syntax was added in Python 3.5 for asynchronous programming.
+  - Type hints were introduced in Python 3.5 and enhanced in subsequent versions.
+  - The walrus operator (:=) was added in Python 3.8.
+  - Pattern matching (match/case) arrived in Python 3.10.
+  - Python Software Foundation manages the language's development and community.
+  - Python is used extensively at organizations including Google, Netflix, and NASA.
+  - List comprehensions provide a concise syntax for creating lists.
+- id: 6
+  seed: cancer
+  facts:
+  - Levi F published research on the chronotherapy of cancer, covering its biological basis and clinical application.
+  - Excessive sleepiness in cancer patients may be caused by injury to the ascending arousal system due to brain metastases or by leptomeningeal carcinomatosis.
+  - Current research on allostasis in the context of cancer is limited by the prevalence of cross-sectional studies, which hinders causal inference and the ability to determine the long-term effects of
+    allostatic load on cancer outcomes.
+  - A sequential therapy regimen for cancer involves inducing therapy-induced senescence (TIS) followed by the administration of a senolytic agent to kill the senescent cancer cells.
+  - Curcumin, genistein, and resveratrol block VEGF signaling pathways, which can reduce tumor blood flow by up to 70% and inhibit cancer spread.
+  - Traditional healers have developed expertise in managing complex conditions including diabetes, hypertension, mental health disorders, and various forms of cancer.
+  - Many cancer patients experience inflammation.
+  - There are more than 10 million Americans living with a history of cancer, defined as being 5 or more years after diagnosis.
+  - Under-nutrition causes nutritional deficiency, while over-nutrition leads to obesity, hypertension, hyperlipidemia, diabetes, and cancer.
+  - The NF-κB pathway plays a significant role in inflammation, immunity, and cancer, as detailed by Taniguchi and Karin (2018).
+  - Scientific consensus on whether anti-inflammatory medications reduce cancer risk is not yet available.
+  - Research studies investigating whether anti-inflammatory medications, such as aspirin or non-steroidal anti-inflammatory drugs, reduce cancer risk have not yet provided a clear answer.
+  - Research has associated chronic inflammation with heart disease, diabetes, cancer, arthritis, and bowel diseases such as Crohn's disease and ulcerative colitis.
+  - If chronic inflammation is caused by a chronic infection such as hepatitis C or cancer, treatment involves addressing the underlying condition.
+  - A second primary cancer is a new cancer that occurs in a person with a history of cancer, which can sometimes be caused by previous cancer treatment many years after the initial treatment has finished.
+  - Post-traumatic stress in cancer survivors can be caused by the accumulation of extreme feelings and repeated stressful events associated with finding out about, treating, and living with cancer.
+  - 'The study ''Nut consumption and risk of cardiovascular disease, total cancer, all-cause and cause-specific mortality: a systematic review and dose-response meta-analysis of prospective studies'' by
+    Aune D, Keum N, Giovannucci E, et al. was published in BMC Medicine in 2016.'
+  - The increasing number of clinical trials selecting specific molecular targets indicates an improvement in tools and capacity for the early diagnosis of cancer.
+  - Chronic low-level inflammation participates in the development of many cancer types, including kidney, prostate, ovarian, hepatocellular, pancreatic, colorectal, lung, and mesothelioma.
+  - A nationwide nested case-control study by Fang et al. identified an increased risk of cancer in patients diagnosed with insomnia, parasomnia, and obstructive sleep apnea.
+  - 'Izzo AA, Borrelli F, Capasso R, et al. published a review titled ''Natural products and cancer: From drug discovery to prevention and therapy'' in the British Journal of Pharmacology in 2025.'
+  - A moderate increase (20-percentile increase) in the AHEI score during follow-up was associated with a significantly lower risk of cardiovascular disease mortality and cancer mortality.
+  - Levin, M. (2021) reviewed bioelectric signaling as a system of reprogrammable circuits underlying embryogenesis, regeneration, and cancer.
+  - Sepsis is the third leading disease killer in the United States, following heart attacks and cancer.
+  - Turmeric (Curcuma longa) contains the compound curcumin, which acts as an anti-inflammatory agent and shows promise in managing conditions such as arthritis, inflammatory bowel disease, and certain
+    types of cancer.
+  - Consuming more fruits and vegetables can contribute to medical nutrition therapies for type 2 diabetes, heart disease, cancer, and obesity, as well as to the prevention of these diseases.
+  - Excessive cytokine release creates a heightened inflammatory response that can damage tissue and lead to conditions including autoimmune diseases, metabolic disorders, cancer, and sepsis.
+  - Medicinal plants commonly used in ethnomedicine possess pharmacological effects relevant to the treatment of diabetes mellitus, cancer, infections, cardiovascular diseases, inflammatory disorders, and
+    gastrointestinal disorders.
+  - The Global Council on Brain Health consensus statement asserts that people with chronic inadequate sleep are at higher risk for and experience more severe health problems, including dementia, depression,
+    heart disease, obesity, and cancer.
+  - Chronic inflammation is linked to the development of various health conditions, including gingivitis, periodontal disease, heart disease, arthritis, depression, Alzheimer's disease, type 2 diabetes,
+    inflammatory bowel disease, autoimmune diseases, and cancer.
+- id: 7
+  seed: consciousness
+  facts:
+  - One general function of consciousness is expanding the behavioral repertoire of an individual through the gradual accumulation of neurocircuitry innovations that would not exist without consciousness.
+  - Previc (2009) proposes that diverse alterations of consciousness are a function of the activation of the dopamine system, which is stimulated directly by neurotransmitters and drugs, and indirectly
+    through other neurotransmitter systems.
+  - Previc (2006, 2009) reviews evidence suggesting that diverse methods of altering consciousness share a common mechanism involving the disinhibition of dopaminergic extrapersonal brain systems, specifically
+    in the ventral cortex and the limbic circuit.
+  - Psychedelic drugs produce characteristic effects on neuronal activity and consciousness by influencing a range of neurotransmitter systems.
+  - Harry Hunt's 1995 book 'On the Nature of Consciousness' explores the nature of human consciousness.
+  - M. Liechti, P. Dolder, and Y. Schmid (2016) studied the alterations of consciousness and mystical-type experiences in humans following the acute administration of LSD.
+  - Panda et al. (2016) found that temporal dynamics of the default mode network characterize meditation-induced alterations in consciousness.
+  - Picard and Kurth (2014) documented ictal alterations of consciousness during ecstatic seizures in the journal 'Epilepsy & Behavior'.
+  - Polito, Langdon, and Brown (2010) investigated the role of pre-existing beliefs and affective factors in the experience of altered states of consciousness during shamanic rituals.
+  - 'Thompson and Varela published ''Radical embodiment: neural dynamics and consciousness'' in Trends in Cognitive Sciences in 2001.'
+  - 'The keywords associated with the article ''The Mechanisms of Psychedelic Visionary Experiences: Hypotheses from Evolutionary Psychology'' are psychedelic, cognition, mysticism, shaman, consciousness,
+    neurophenomenology, and mirror neuron system.'
+  - The common mechanisms underlying diverse alterations of consciousness involve the disruption of normal functions in the prefrontal cortex and the default mode network.
+  - Neurophenomenology is a research programme aimed at bridging the explanatory gap between first-person subjective experience and neurophysiological third-person data, through an embodied and enactive
+    approach to the biology of consciousness.
+  - The effects of psychedelics in producing visionary experiences involve the same mechanisms elicited by other non-drug mechanisms for altering consciousness and producing visionary experience.
+  - Psychedelics and other processes that alter consciousness share common mechanisms involving the disabling of the prefrontal cortex and default mode networks.
+  - The Default Mode Network is functionally and anatomically connected with the thalamus and precuneus, a connectivity that is crucial to consciousness, according to Cunningham et al. (2017).
+  - The decoupling of frontal and medial temporal lobe structures permits a freer operation of the medial temporal lobes, which is associated with primary forms of consciousness based in somatic awareness
+    and subjective feeling states.
+  - Reduced activity and connectivity within the Default Mode Network are observed in both psychedelic use and various non-pharmacological methods for altering consciousness.
+  - Presentational symbolism is an imagetic capacity that serves as a foundational symbolic representation system for meaning-making, preceding and supporting rational, language-based consciousness.
+  - Stuart Hameroff and Roger Penrose proposed the 'Orch OR' (Orchestrated Objective Reduction) model of consciousness in their 1996 paper 'Conscious Events as Orchestrated Space-Time Selections', published
+    in the Journal of Consciousness Studies.
+  - 'M. J. Winkelman''s 2004 chapter ''Spirits as human nature and the fundamental structures of consciousness'' appears in the book ''From Shaman to Scientist: Essays on Humanity''s Search for Spirits''.'
+  - Michael J. Winkelman authored the chapter 'Shamanism and the alteration of consciousness' in the 2011 book 'Altering Consciousness Multidisciplinary Perspectives'.
+  - 'Michael J. Winkelman authored the chapter ''The integrative mode of consciousness: evolutionary origins of ecstasy'' in the 2013 book ''Ekstasen: Kontexte – Formen – Wirkungen''.'
+  - It has been hypothesized that the ingestion of psychedelics influenced human evolution, given their medicinal and religious importance in some traditional cultures and the robust alterations of perception
+    and consciousness they produce.
+  - The consumption of psilocybin-containing fungi in sufficient quantities causes dramatic alterations in perception and consciousness, which historically drew attention to their properties and effects
+    on well-being.
+  - In a study of 15 subjects, psilocybin was shown to increase the repertoire of brain functional network states, brain integration, and neural signal complexity, resulting in an enriched state of consciousness.
+  - The article 'Restructuring consciousness–the psychedelic state in light of integrated information theory', published in 2015 in Frontiers in Human Neuroscience by A. R. Gallimore, analyzes the psychedelic
+    state using integrated information theory.
+  - Preller et al. (2019) published 'Effective connectivity changes in LSD-induced altered states of consciousness in humans' in PNAS, detailing how LSD impacts brain connectivity and consciousness.
+  - 'The article ''As without, so within: how the brain''s temporo-spatial alignment to the environment shapes consciousness'' by Northoff et al. was published in Interface Focus in 2023.'
+  - 'The article ''Psychedelics for Medicinal Use: How Will This Alter the Collective Laboratory Consciousness?'' by Cotten et al. was published in Clinical Chemistry in 2023.'
+  - 'The article ''Cognitive Science Below the Neck: Toward an Integrative Account of Consciousness in the Body'' by Christov-Moore et al. was published in Cognitive Science in 2023.'
+  - 'Safron, A. published ''Integrated world modeling theory expanded: Implications for the future of consciousness'' in Frontiers in Computational Neuroscience in 2022.'
+  - 'Yaden et al. published ''Psychedelics and Consciousness: Distinctions, Demarcations, and Opportunities'' in the International Journal of Neuropsychopharmacology in 2021.'
+  - 'The article ''Consciousness, Religion, and Gurus: Pitfalls of Psychedelic Medicine'' by M. W. Johnson was published in ACS Pharmacology & Translational Science in 2021.'
+  - Hallucinogens are drugs characterized by their ability to produce alterations in perceptual processes and profound changes in consciousness involving all sensory modalities.
+  - Alterations in consciousness caused by hallucinogens can range from feelings of bliss and oneness with the universe to fear, paranoia, and psychotic reactions.
+  - Hallucinogens have played a critical role in neuroscience by elucidating the molecular and neural mechanisms underlying perception, cognition, and consciousness.
+  - Psychedelic drugs are currently used as tools in modern neuroscience to investigate the neural correlates and causes of consciousness.
+  - Psychedelic treatment approaches typically utilize dosing regimens that involve fewer treatments at higher doses with the explicit aim of engendering powerful alterations of consciousness.
+  - 'The collection of papers titled ''Consciousness and its Place in Nature: Does Physicalism Entail Panpsychism?'' was edited by Anthony Freeman and contains seventeen papers.'

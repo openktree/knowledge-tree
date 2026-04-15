@@ -554,30 +554,16 @@ export interface IngestSourceResponse {
   file_size: number | null;
   section_count: number | null;
   summary: string | null;
+  token_estimate: number;
   status: string;
   error: string | null;
   created_at: string; // ISO 8601 datetime
 }
 
-export interface ChunkInfoResponse {
-  source_id: string;
-  source_name: string;
-  chunk_index: number;
-  char_count: number;
-  preview: string;
-  is_image: boolean;
-  recommended: boolean;
-  reason: string;
-}
-
 export interface IngestPrepareResponse {
   conversation_id: string;
   sources: IngestSourceResponse[];
-  chunks: ChunkInfoResponse[];
-  total_chunks: number;
   image_count: number;
-  recommended_chunks: number;
-  estimated_decompose_calls: number;
   title: string;
   suggested_nav_budget: number;
   total_token_estimate: number;
@@ -638,16 +624,6 @@ export interface BottomUpBuildResponse {
   status: string;
 }
 
-export interface AgentSelectResponse {
-  conversation_id: string;
-  message_id: string;
-  status: string;
-}
-
-export interface AgentSelectStatusResponse {
-  status: string; // "running" | "completed" | "not_started"
-}
-
 // ---------------------------------------------------------------------------
 // Research summary (new simplified output)
 // ---------------------------------------------------------------------------
@@ -676,17 +652,6 @@ export interface ResearchSummaryResponse {
 // ---------------------------------------------------------------------------
 // Phased document ingest
 // ---------------------------------------------------------------------------
-
-export interface IngestProposalsResponse {
-  conversation_id: string;
-  message_id: string;
-  fact_count: number;
-  proposed_nodes: BottomUpProposedNode[]; // reuse existing type
-  content_summary: string;
-  key_topics: string[];
-  fact_type_counts: Record<string, number>;
-  agent_select_status?: string | null;
-}
 
 // ---------------------------------------------------------------------------
 // WebSocket stream events
@@ -914,7 +879,12 @@ export interface PipelineTaskItem {
   started_at: string | null;
   wave_number?: number | null; // Only set for explore_scope tasks
   node_type?: string | null; // "concept" | "entity" | "event" | "perspective" etc.
+  has_children: boolean;
   children: PipelineTaskItem[];
+}
+
+export interface TaskChildrenResponse {
+  tasks: PipelineTaskItem[];
 }
 
 export interface PipelineSnapshotResponse {
@@ -926,6 +896,7 @@ export interface PipelineSnapshotResponse {
 
 export interface ProgressResponse {
   message_id: string;
+  workflow_run_id: string | null;
   status: string; // "pending" | "running" | "completed" | "failed"
   content: string; // answer text (empty while running)
   error: string | null;
@@ -1179,17 +1150,6 @@ export interface SeedFactResponse {
   confidence: number;
   extraction_context: string | null;
   extraction_role: "mentioned" | "source_attribution";
-}
-
-export interface SeedDivergenceResponse {
-  seed_key: string;
-  fact_count: number;
-  vectors_found: number;
-  mean_pairwise_distance: number | null;
-  max_pairwise_distance: number | null;
-  min_pairwise_distance: number | null;
-  std_pairwise_distance: number | null;
-  cluster_estimate: number;
 }
 
 export interface SeedDetailResponse {

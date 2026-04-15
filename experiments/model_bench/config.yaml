@@ -1,0 +1,102 @@
+# Model bench config. Edit the `models` list to add / remove candidates and
+# rerun. The bench runs each model across three tasks (alias_gen,
+# shell_classify, suggest_disambig) using the bench dataset in datasets.py.
+#
+# Model IDs are passed verbatim to LiteLLM/OpenRouter — a model that is
+# unavailable on OpenRouter will be reported as an error row, not a crash.
+
+models:
+  - id: openrouter/google/gemini-3.1-flash-lite-preview:nitro
+    label: gemini-3.1-flash-lite:nitro
+  - id: openrouter/x-ai/grok-4.1-fast:nitro
+    label: grok-4.1-fast:nitro
+  - id: openrouter/openai/gpt-5-nano:nitro
+    label: gpt-5-nano:nitro (no-think)
+    reasoning: {effort: "minimal"}   # OpenRouter → {reasoning: {effort: "..."}}. "none" or "minimal" to disable thinking.
+  - id: openrouter/xiaomi/mimo-v2-flash:nitro
+    label: mimo-v2-flash:nitro (no-think)
+    reasoning: {enabled: false}
+  - id: openrouter/google/gemma-4-26b-a4b-it:nitro
+    label: gemma-4-26b-a4b:nitro
+  - id: openrouter/openai/gpt-oss-120b:nitro
+    reasoning: {effort: "minimal"}
+    label: gpt-oss-120b:nitro
+  - id: openrouter/anthropic/claude-haiku-4.5
+    label: claude-haiku-4.5 (no-think)
+    reasoning: {effort: "minimal"}
+  - id: openrouter/google/gemini-3-flash-preview
+    label: gemini-3-flash-preview (no-think)
+    reasoning: {effort: "minimal"}
+  - id: openrouter/openai/gpt-5.4-mini
+    label: gpt-5.4-mini (no-think)
+    reasoning: {effort: "minimal"}
+  - id: openrouter/qwen/qwen3.6-plus
+    label: qwen3.6-plus (no-think)
+    reasoning: {effort: "minimal"}
+
+# Pricing overrides — $ per 1M tokens. If a model isn't listed here, the
+# bench falls back to LiteLLM's built-in completion_cost() (may be stale).
+# Edit these when new pricing data is published.
+pricing:
+  "openrouter/google/gemini-3.1-flash-lite-preview:nitro":
+    input: 0.25
+    output: 1.5
+  "openrouter/x-ai/grok-4.1-fast:nitro":
+    input: 0.20
+    output: 0.50
+  "openrouter/openai/gpt-5-nano:nitro":
+    input: 0.05
+    output: 0.40
+  "openrouter/stepfun/step-3.5-flash:nitro":
+    input: 0.10
+    output: 0.30
+  "openrouter/xiaomi/mimo-v2-flash:nitro":
+    input: 0.10
+    output: 0.30
+  "openrouter/qwen/qwen3.5-flash-02-23:nitro":
+    input: 0.1
+    output: 0.40
+  "openrouter/google/gemma-4-26b-a4b-it:nitro":
+    input: 0.08
+    output: 0.35
+  "openrouter/openai/gpt-oss-120b:nitro":
+    input: 0.09
+    output: 0.36
+  "openrouter/anthropic/claude-haiku-4.5":
+    input: 1.0
+    output: 5.0
+  "openrouter/google/gemini-3-flash-preview":
+    input: 0.5
+    output: 3.0
+  "openrouter/openai/gpt-5.4-mini":
+    input: 0.75
+    output: 4.5
+  "openrouter/qwen/qwen3.6-plus":
+    input: 0.5
+    output: 3.0
+
+tasks:
+  - alias_gen
+  - shell_classify
+  - suggest_disambig
+
+# Dataset: curated | pool | both
+# - curated: hand-picked 10 items/task with ground truth
+# - pool: permanent 100-seed snapshot (fixtures/bench_seeds_100.json);
+#         ground truth starts empty, grows via datasets.POOL_GROUND_TRUTH
+# - both: union (110 items/task)
+dataset: both
+
+# Per-call tunables
+# One call processes `batch_size` items at once; a task's items are chunked
+# into batches of this size, and up to `concurrency` batches run in parallel
+# per (model, task).
+batch_size: 10
+temperature: 0.0
+timeout_seconds: 120
+concurrency: 3  # across batches
+max_tokens_per_item: 150  # scaled by batch_size to total max_tokens (room for reasoning models)
+
+# Output paths relative to this config file
+output_html: report.html
+cache_file: bench_cache.jsonl

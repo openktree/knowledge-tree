@@ -30,6 +30,7 @@ from kt_facts.models import (
     _format_attribution,
 )
 from kt_facts.processing.dedup import insert_facts_pending
+from kt_facts.processing.extractor_base import EntityExtractor
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_providers.fetch import FileDataStore
@@ -74,6 +75,20 @@ class DecompositionPipeline:
         self._image_extractor: ImageExtractor = (
             image_extractor if isinstance(image_extractor, ImageExtractor) else ImageExtractor(gateway)
         )
+
+    def _make_extractor(self) -> EntityExtractor:
+        """Create entity extractor based on settings."""
+        from kt_config.settings import get_settings
+
+        settings = get_settings()
+        if settings.entity_extractor == "llm":
+            from kt_facts.processing.entity_extraction import LlmEntityExtractor
+
+            return LlmEntityExtractor(self._gateway)
+
+        from kt_facts.processing.spacy_extractor import SpacyEntityExtractor
+
+        return SpacyEntityExtractor()
 
     async def decompose(
         self,
@@ -256,16 +271,18 @@ class DecompositionPipeline:
         seed_keys: list[str] = []
         if all_facts:
             try:
-                from kt_facts.processing.entity_extraction import extract_entities_from_facts
+                from kt_facts.processing.extractor_base import ExtractedEntity
 
-                extracted_nodes = (
-                    await extract_entities_from_facts(
-                        all_facts,
-                        self._gateway,
-                        scope=concept,
-                    )
-                    or []
-                )
+                extractor = self._make_extractor()
+                raw_entities: list[ExtractedEntity] = await extractor.extract(all_facts, scope=concept) or []
+                extracted_nodes = [
+                    {
+                        "name": e.name,
+                        "fact_indices": e.fact_indices,
+                        "aliases": e.aliases,
+                    }
+                    for e in raw_entities
+                ]
             except Exception:
                 logger.exception("Entity extraction failed (non-fatal)")
 
@@ -279,10 +296,9 @@ class DecompositionPipeline:
                 )
                 from kt_qdrant.repositories.seeds import QdrantSeedRepository
 
-                if qdrant_client is None:
-                    raise RuntimeError("Qdrant client is required for seed extraction but was not provided")
-                if embedding_service is None:
-                    raise RuntimeError("Embedding service is required for seed extraction but was not provided")
+                if qdrant_client is None or embedding_service is None:
+                    logger.debug("Skipping seed extraction — qdrant_client or embedding_service not provided")
+                    extracted_nodes = []
 
                 write_seed_repo = WriteSeedRepository(write_session)
                 qdrant_seed_repo = QdrantSeedRepository(qdrant_client)
@@ -325,7 +341,7 @@ class DecompositionPipeline:
                             if name and _is_valid_entity_name(name):
                                 author_seeds_data.append(
                                     {
-                                        "key": make_seed_key("entity", name),
+                                        "key": make_seed_key(name),
                                         "name": name,
                                         "node_type": "entity",
                                         "entity_subtype": "person",
@@ -337,7 +353,7 @@ class DecompositionPipeline:
                             if name and _is_valid_entity_name(name):
                                 author_seeds_data.append(
                                     {
-                                        "key": make_seed_key("entity", name),
+                                        "key": make_seed_key(name),
                                         "name": name,
                                         "node_type": "entity",
                                         "entity_subtype": "organization",

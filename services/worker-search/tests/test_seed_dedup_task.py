@@ -17,18 +17,21 @@ def mock_session() -> AsyncMock:
     return session
 
 
+def _make_seed(name: str, node_type: str, status: str = "pending") -> MagicMock:
+    s = MagicMock()
+    s.name = name
+    s.node_type = node_type
+    s.status = status
+    s.aliases = []
+    return s
+
+
 @pytest.mark.asyncio
-async def test_seed_dedup_processes_active_seeds(mock_session: AsyncMock) -> None:
-    """Dedup should call deduplicate_seed for each active seed."""
-    seed_a = MagicMock(status="active")
-    seed_a.name = "Alpha"
-    seed_a.node_type = "concept"
-    seed_b = MagicMock(status="active")
-    seed_b.name = "Beta"
-    seed_b.node_type = "entity"
-    seed_c = MagicMock(status="merged")
-    seed_c.name = "Gamma"
-    seed_c.node_type = "concept"
+async def test_seed_dedup_processes_pending_seeds(mock_session: AsyncMock) -> None:
+    """Dedup should call deduplicate_seed for each pending seed, skip non-pending."""
+    seed_a = _make_seed("Alpha", "concept", "pending")
+    seed_b = _make_seed("Beta", "entity", "pending")
+    seed_c = _make_seed("Gamma", "concept", "merged")  # should be skipped
 
     seeds_by_key = {"key_a": seed_a, "key_b": seed_b, "key_c": seed_c}
 
@@ -50,7 +53,6 @@ async def test_seed_dedup_processes_active_seeds(mock_session: AsyncMock) -> Non
             "key_winner",  # Beta: merged into key_winner
         ]
 
-        # Simulate what the Hatchet task does
         from kt_db.repositories.write_seeds import WriteSeedRepository
         from kt_facts.processing.seed_dedup import deduplicate_seed
 
@@ -62,7 +64,7 @@ async def test_seed_dedup_processes_active_seeds(mock_session: AsyncMock) -> Non
         )
         unique_keys = list(dict.fromkeys(input_data.seed_keys))
         seeds = await repo.get_seeds_by_keys_batch(unique_keys)
-        active_seeds = [(k, s) for k, s in seeds.items() if s.status == "active"]
+        pending_seeds = [(k, s) for k, s in seeds.items() if s.status == "pending"]
 
         merges: dict[str, str] = {}
         processed = 0
@@ -71,7 +73,7 @@ async def test_seed_dedup_processes_active_seeds(mock_session: AsyncMock) -> Non
         mock_embedding = MagicMock()
         mock_qdrant = MagicMock()
 
-        for seed_key, seed in active_seeds:
+        for seed_key, seed in pending_seeds:
             surviving = await deduplicate_seed(
                 seed_key=seed_key,
                 name=seed.name,
@@ -79,6 +81,7 @@ async def test_seed_dedup_processes_active_seeds(mock_session: AsyncMock) -> Non
                 write_seed_repo=repo,
                 embedding_service=mock_embedding,
                 qdrant_seed_repo=mock_qdrant,
+                aliases=list(seed.aliases or []),
             )
             processed += 1
             if surviving != seed_key:
@@ -94,9 +97,7 @@ async def test_seed_dedup_processes_active_seeds(mock_session: AsyncMock) -> Non
 @pytest.mark.asyncio
 async def test_seed_dedup_handles_errors(mock_session: AsyncMock) -> None:
     """Errors in individual seed dedup should be counted, not raise."""
-    seed_a = MagicMock(status="active")
-    seed_a.name = "Alpha"
-    seed_a.node_type = "concept"
+    seed_a = _make_seed("Alpha", "concept", "pending")
 
     mock_repo = MagicMock()
     mock_repo.get_seeds_by_keys_batch = AsyncMock(
@@ -119,7 +120,7 @@ async def test_seed_dedup_handles_errors(mock_session: AsyncMock) -> None:
 
         repo = WriteSeedRepository(mock_session)
         seeds = await repo.get_seeds_by_keys_batch(["key_a"])
-        active_seeds = [(k, s) for k, s in seeds.items() if s.status == "active"]
+        pending_seeds = [(k, s) for k, s in seeds.items() if s.status == "pending"]
 
         merges: dict[str, str] = {}
         processed = 0
@@ -128,7 +129,7 @@ async def test_seed_dedup_handles_errors(mock_session: AsyncMock) -> None:
         mock_embedding = MagicMock()
         mock_qdrant = MagicMock()
 
-        for seed_key, seed in active_seeds:
+        for seed_key, seed in pending_seeds:
             try:
                 await deduplicate_seed(
                     seed_key=seed_key,
@@ -137,6 +138,7 @@ async def test_seed_dedup_handles_errors(mock_session: AsyncMock) -> None:
                     write_seed_repo=repo,
                     embedding_service=mock_embedding,
                     qdrant_seed_repo=mock_qdrant,
+                    aliases=list(seed.aliases or []),
                 )
                 processed += 1
             except Exception:
@@ -149,8 +151,8 @@ async def test_seed_dedup_handles_errors(mock_session: AsyncMock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_seed_dedup_skips_inactive_seeds(mock_session: AsyncMock) -> None:
-    """No active seeds → processed=0."""
+async def test_seed_dedup_skips_non_pending_seeds(mock_session: AsyncMock) -> None:
+    """No pending seeds → processed=0."""
     mock_repo = MagicMock()
     mock_repo.get_seeds_by_keys_batch = AsyncMock(return_value={})
 
@@ -162,9 +164,9 @@ async def test_seed_dedup_skips_inactive_seeds(mock_session: AsyncMock) -> None:
 
         repo = WriteSeedRepository(mock_session)
         seeds = await repo.get_seeds_by_keys_batch(["key_a"])
-        active_seeds = [(k, s) for k, s in seeds.items() if s.status == "active"]
+        pending_seeds = [(k, s) for k, s in seeds.items() if s.status == "pending"]
 
-    assert len(active_seeds) == 0
+    assert len(pending_seeds) == 0
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 """Ingest Agent — LangGraph agent that builds nodes from a pre-filled fact pool.
 
-The fact pool is filled by decompose_all_sources() BEFORE this agent runs.
+The fact pool is filled by decompose_sources_wf BEFORE this agent runs.
 The agent's job is to strategically pick which concepts to build, constrained
 by a node budget (nav_budget).
 """

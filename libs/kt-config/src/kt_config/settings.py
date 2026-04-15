@@ -41,8 +41,16 @@ class GraphDatabaseConfig(BaseModel):
     graph_database_url: str
     write_database_url: str
     qdrant_url: str = ""  # per-graph Qdrant URL; empty = use global qdrant_url
-    pool_size: int = 5
-    max_overflow: int = 10
+    # Graph-db (read side) pool — mirrors root Settings.db_pool_size defaults
+    graph_pool_size: int = 20
+    graph_max_overflow: int = 40
+    graph_pool_timeout: int = 30
+    graph_pool_recycle: int = 1800
+    # Write-db (worker pipeline writes) pool — mirrors root Settings.write_db_pool_size defaults
+    write_pool_size: int = 100
+    write_max_overflow: int = 700
+    write_pool_timeout: int = 120
+    write_pool_recycle: int = 600
 
     @field_validator("graph_database_url", "write_database_url")
     @classmethod
@@ -197,6 +205,7 @@ _register(
         "decomposition_thinking_level": "thinking_level",
         "file_decomposition_model": "file_model",
         "file_decomposition_thinking_level": "file_thinking_level",
+        "entity_extractor": "entity_extractor",
         "entity_extraction_model": "entity_extraction_model",
         "entity_extraction_thinking_level": "entity_extraction_thinking_level",
         "entity_extraction_batch_size": "entity_extraction_batch_size",
@@ -338,17 +347,13 @@ _register(
     "seeds",
     {
         "seed_dedup_embedding_threshold": "dedup_embedding_threshold",
-        "seed_dedup_trigram_threshold": "dedup_trigram_threshold",
         "seed_disambiguation_fact_threshold": "disambiguation_fact_threshold",
-        "seed_disambiguation_cluster_threshold": "disambiguation_cluster_threshold",
         "seed_promotion_min_facts": "promotion_min_facts",
         "seed_routing_embedding_threshold": "routing_embedding_threshold",
         "seed_routing_llm_ambiguity_margin": "routing_llm_ambiguity_margin",
-        "seed_phonetic_trigram_threshold": "phonetic_trigram_threshold",
-        "seed_dedup_typo_floor": "dedup_typo_floor",
         "seed_re_embed_thresholds": "re_embed_thresholds",
-        "seed_dedup_auto_merge_threshold": "dedup_auto_merge_threshold",
         "seed_dedup_llm_model": "dedup_llm_model",
+        "seed_suggest_disambig_enabled": "suggest_disambig_enabled",
     },
 )
 
@@ -381,6 +386,7 @@ _register(
         "fetch_flaresolverr_timeout": "flaresolverr_timeout",
         "fetch_host_overrides": "host_overrides",
         "fetch_provider_public_overrides": "provider_public_overrides",
+        "fetch_doi_enrichment": "doi_enrichment",
         "fetch_host_pref_ttl_seconds": "host_pref_ttl_seconds",
         "crossref_email": "crossref_email",
         "unpaywall_email": "unpaywall_email",
@@ -526,15 +532,22 @@ class Settings(BaseSettings):
     relation_dedup_threshold: float = 0.15
     default_model: str = "openrouter/x-ai/grok-4.1-fast"
 
+    # Models that mishandle response_format=json_schema (return decoder
+    # state or unparseable wrapping). generate_json_schema skips
+    # json_schema for these and uses json_object directly. Comma-separated
+    # substring match on model_id (case-insensitive).
+    json_schema_unsupported_models: str = "gemini"
+
     # Per-agent model overrides (empty string = use default_model)
     file_decomposition_model: str = ""
-    decomposition_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
-    entity_extraction_model: str = ""  # empty = use decomposition_model
+    decomposition_model: str = "openrouter/google/gemma-4-26b-a4b-it:nitro"
+    entity_extractor: str = "spacy"  # "spacy" or "llm"
+    entity_extraction_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
     entity_extraction_thinking_level: str = ""
     entity_extraction_batch_size: int = 10
     entity_extraction_concurrency: int = 4
     synthesis_model: str = ""
-    dimension_model: str = ""
+    dimension_model: str = "openrouter/xiaomi/mimo-v2-flash:nitro"
     chat_model: str = ""
     orchestrator_model: str = ""
     scope_model: str = ""  # empty = use orchestrator_model
@@ -547,7 +560,7 @@ class Settings(BaseSettings):
     # Per-role thinking/reasoning effort (empty string = don't send parameter)
     # Valid values: "none", "low", "medium", "high" (model-dependent)
     default_thinking_level: str = ""
-    decomposition_thinking_level: str = "low"
+    decomposition_thinking_level: str = ""
     file_decomposition_thinking_level: str = ""
     synthesis_thinking_level: str = ""
     dimension_thinking_level: str = ""
@@ -640,6 +653,12 @@ class Settings(BaseSettings):
     crossref_email: str = ""
     unpaywall_email: str = ""
 
+    # Post-fetch DOI enrichment via Crossref/Unpaywall.  When enabled, the
+    # fetch registry runs a post-fetch hook that queries Crossref for
+    # canonical metadata whenever a fetched page from a known publisher host
+    # contains a DOI.  Disable to skip the extra API roundtrip.
+    fetch_doi_enrichment: bool = True
+
     # TTL for the Redis-backed learned-host-preference cache.
     fetch_host_pref_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 days
 
@@ -689,20 +708,17 @@ class Settings(BaseSettings):
     # Facts
     fact_dedup_atomic_threshold: float = 0.95
     fact_dedup_compound_threshold: float = 0.95
+    dedup_search_batch_size: int = 20
 
     # Seeds
-    seed_dedup_embedding_threshold: float = 0.82
-    seed_dedup_trigram_threshold: float = 0.50
+    seed_dedup_embedding_threshold: float = 0.90  # single threshold; always LLM multiplex above this
     seed_disambiguation_fact_threshold: int = 10
-    seed_disambiguation_cluster_threshold: float = 0.85
     seed_promotion_min_facts: int = 10
     seed_routing_embedding_threshold: float = 0.80
     seed_routing_llm_ambiguity_margin: float = 0.05
-    seed_phonetic_trigram_threshold: float = 0.40
-    seed_dedup_typo_floor: float = 0.75  # min embedding sim for phonetic+trigram typo merges
     seed_re_embed_thresholds: str = "5,15,50,100"
-    seed_dedup_auto_merge_threshold: float = 0.95  # above this + guards → skip LLM
     seed_dedup_llm_model: str = ""  # empty = use decomposition_model (cheapest)
+    seed_suggest_disambig_enabled: bool = True  # run suggest_disambig at genesis
 
     # Wave pipeline
     default_wave_count: int = 2
@@ -779,9 +795,18 @@ class Settings(BaseSettings):
     # Frontend
     frontend_url: str = "http://localhost:3000"
 
-    # Multi-graph pool sizes (for schema-mode non-default graphs)
-    graph_pool_size: int = 5
-    graph_max_overflow: int = 10
+    # Pool sizes for non-default (multigraph) graphs that live on the system
+    # DBs — i.e. schema-mode graphs with no ``database_connection_id``.
+    # Mirrors default-graph sizes (db_* / write_db_*) so worker load on a
+    # non-default graph has the same headroom as on the default graph.
+    multigraph_db_pool_size: int = 20
+    multigraph_db_max_overflow: int = 40
+    multigraph_db_pool_timeout: int = 30
+    multigraph_db_pool_recycle: int = 1800
+    multigraph_write_db_pool_size: int = 100
+    multigraph_write_db_max_overflow: int = 700
+    multigraph_write_db_pool_timeout: int = 120
+    multigraph_write_db_pool_recycle: int = 600
 
     # Multi-graph: named database connections (config_key → connection config)
     # Auto-discovered from EXTRA_DB_<NAME>_* env vars injected by the Helm chart,

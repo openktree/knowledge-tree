@@ -54,7 +54,7 @@ class EdgeResolver:
 
         node_type = getattr(node, "node_type", "concept")
         concept = getattr(node, "concept", "")
-        seed_key = make_seed_key(node_type, concept)
+        seed_key = make_seed_key(concept)
 
         seed_repo = WriteSeedRepository(write_session)
 
@@ -115,7 +115,7 @@ class EdgeResolver:
 
                 # Determine relationship type
                 other_node_type = other_seed.node_type
-                rel_type = "related" if node_type == other_node_type else "cross_type"
+                rel_type = "related"
 
                 # Build candidate object for classifier
                 candidate = EdgeCandidate(
@@ -157,8 +157,8 @@ class EdgeResolver:
                 else:
                     from kt_db.keys import make_edge_key, make_node_key
 
-                    sk = make_node_key(node_type, concept)
-                    tk = make_node_key(other_node_type, other_seed.name)
+                    sk = make_node_key(concept)
+                    tk = make_node_key(other_seed.name)
                     ek = make_edge_key(rel_type, sk, tk)
                     edge_id = str(key_to_uuid(ek))
 

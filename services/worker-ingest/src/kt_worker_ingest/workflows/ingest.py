@@ -8,7 +8,6 @@ handle the full ingest pipeline:
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from collections.abc import AsyncGenerator
@@ -59,10 +58,20 @@ async def _open_sessions(state: WorkerState, graph_id: str | None = None) -> Asy
         await write_session.close()
 
 
+@asynccontextmanager
+async def _open_graph_session(state: WorkerState, graph_id: str | None = None) -> AsyncGenerator[Any, None]:
+    """Open a graph-db session scoped to the correct graph schema."""
+    graph_sf, _ = await state.resolve_sessions(graph_id)
+    session = graph_sf()
+    try:
+        yield session
+    finally:
+        await session.close()
+
+
 async def _build_agent_context(
     state: WorkerState,
     *,
-    emit_event: Any | None = None,
     write_session: Any,
     user_id: str | None = None,
     graph_id: str | None = None,
@@ -74,9 +83,6 @@ async def _build_agent_context(
     fallbacks will use write-db; conversation/message tracking uses
     short-lived sessions from ``session_factory`` directly in the
     workflow (not passed through AgentContext).
-
-    Pass ``emit_event`` to wire AgentContext.emit() calls to the
-    Hatchet stream.
 
     When ``user_id`` is provided, the user's API key is resolved from the
     database and per-request ``ModelGateway`` / ``EmbeddingService``
@@ -125,7 +131,7 @@ async def _build_agent_context(
         model_gateway=model_gateway,
         embedding_service=embedding_service,
         session=None,
-        emit_event=emit_event,
+        emit_event=None,
         fetch_registry=state.fetch_registry,
         session_factory=resolved_sf,
         write_session_factory=resolved_write_sf,
@@ -161,22 +167,6 @@ async def _resolve_graph_meta(
     return graph_uuid, gs.graph.use_public_cache, gs.graph.contribute_to_public
 
 
-def _make_emit_callback(emit: Any) -> Any:
-    """Wrap an emit coroutine to match the EventCallback interface.
-
-    EventCallback expected by AgentContext and ingest pipeline has signature
-    ``(event_type, **data) -> None``.
-    """
-
-    async def callback(event_type: str, **data: Any) -> None:
-        try:
-            await emit(event_type, data)
-        except Exception:
-            logger.warning("Failed to emit event %s", event_type, exc_info=True)
-
-    return callback
-
-
 # ══════════════════════════════════════════════════════════════
 # Ingest confirmation workflow — full ingest pipeline
 # ══════════════════════════════════════════════════════════════
@@ -201,19 +191,10 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
     worker_state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
-
-    emit_cb = _make_emit_callback(emit)
-
     from kt_db.repositories.conversations import ConversationRepository
     from kt_worker_ingest.agents.ingest_worker import IngestWorker
     from kt_worker_ingest.ingest.pipeline import (
-        build_chunk_list,
-        decompose_all_sources,
+        DecompositionSummary,
         process_ingest_sources,
     )
     from kt_worker_ingest.ingest.public_cache import (
@@ -235,167 +216,60 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
     conv_uuid = uuid.UUID(input.conversation_id)
 
     # Mark as running
-    async with worker_state.session_factory() as session:
+    async with _open_graph_session(worker_state, input.graph_id) as session:
         repo = ConversationRepository(session)
         await repo.update_message(msg_uuid, status="running")
         await session.commit()
 
-    await emit("phase_change", {"phase": "running"})
-
     try:
         # ── Phase 1: Process sources ──────────────────────────────
-        await emit(
-            "pipeline_scope_start",
-            {
-                "scope_id": "ingest-processing",
-                "scope_name": "Processing Sources",
-            },
-        )
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": "ingest-processing",
-                "phase": "processing",
-                "status": "started",
-            },
-        )
-        await emit(
-            "activity_log",
-            {
-                "action": "Processing uploaded sources...",
-                "tool": "ingest",
-            },
-        )
-
-        async with _open_sessions(worker_state) as (_, write_session):
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
             )
 
             # process_ingest_sources needs graph-db for IngestSource table;
-            # open a short-lived session just for that.
-            async with worker_state.session_factory() as graph_session:
+            # open a short-lived session scoped to the correct graph schema.
+            async with _open_graph_session(worker_state, input.graph_id) as graph_session:
                 processed = await process_ingest_sources(
                     conv_uuid,
                     graph_session,
                     agent_ctx.file_data_store,
-                    emit=emit_cb,
                     write_session=write_session,
                 )
                 await graph_session.commit()
             await write_session.commit()
 
         if not processed:
-            await emit(
-                "pipeline_phase",
-                {
-                    "scope_id": "ingest-processing",
-                    "phase": "processing",
-                    "status": "completed",
-                },
-            )
-            await emit(
-                "pipeline_scope_end",
-                {
-                    "scope_id": "ingest-processing",
-                    "status": "failed",
-                    "error": "No sources",
-                },
-            )
             raise ValueError("No sources could be processed")
 
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": "ingest-processing",
-                "phase": "processing",
-                "status": "completed",
-                "detail": f"Processed {len(processed)} source(s)",
-            },
-        )
-        await emit(
-            "pipeline_scope_end",
-            {
-                "scope_id": "ingest-processing",
-                "node_count": 0,
-            },
-        )
-
         ctx.log(f"Phase 1 complete: {len(processed)} sources processed")
-
-        # ── Convert flat selected_chunks to per-source selection ──
-        chunk_selection = None
-        if input.selected_chunks is not None:
-            selected_set = set(input.selected_chunks)
-            chunk_list = build_chunk_list(processed)
-            chunk_selection_dict: dict[str, set[int]] = {}
-            source_local_idx: dict[str, int] = {}
-            for c in chunk_list:
-                sid = c.source_id
-                local = source_local_idx.get(sid, 0)
-                source_local_idx[sid] = local + 1
-                if c.chunk_index in selected_set:
-                    chunk_selection_dict.setdefault(sid, set()).add(local)
-            for ps in processed:
-                if ps.source_id not in chunk_selection_dict:
-                    chunk_selection_dict[ps.source_id] = set()
-            chunk_selection = chunk_selection_dict
 
         # Keep gRPC stream alive between phases
         ctx.refresh_timeout("4h")
 
-        # ── Phase 2: Decompose selected sources ───────────────────
-        await emit(
-            "pipeline_scope_start",
-            {
-                "scope_id": "ingest-decomposition",
-                "scope_name": "Decomposing Facts",
-            },
-        )
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": "ingest-decomposition",
-                "phase": "decomposition",
-                "status": "started",
-            },
-        )
-        await emit("phase_change", {"phase": "decomposing"})
+        # ── Phase 2: Decompose sources via shared workflow ────────
+        # Uses the same Hatchet workflow as bottom-up (decompose_sources_wf)
+        # so all source decomposition follows a single code path:
+        # extract facts → entity extraction → seed creation.
 
-        selected_label = "selected" if chunk_selection is not None else "all"
-        await emit(
-            "activity_log",
-            {
-                "action": f"Decomposing {selected_label} chunks...",
-                "tool": "ingest",
-            },
-        )
-
+        # ── Public-cache lookups (before decomposition) ────────────
+        cache_hit_source_ids: set[str] = set()
         async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
                 graph_id=input.graph_id,
             )
-
-            # ── Public-cache lookups ──────────────────────────────
-            # Before spending LLM cost on decomposition, check whether
-            # the public default graph already has each link source. On
-            # hit, import facts/sources/concept-entity nodes into this
-            # graph and stamp the source as "skip" in chunk_selection so
-            # decompose_all_sources leaves it alone.
             try:
-                chunk_selection, cache_hit_source_ids, _hit_summaries = await apply_public_cache_lookups(
+                _, cache_hit_source_ids, _hit_summaries = await apply_public_cache_lookups(
                     agent_ctx.graph_engine,
                     processed,
                     use_public_cache=_use_public_cache,
-                    chunk_selection=chunk_selection,
-                    emit=emit_cb,
+                    chunk_selection=None,
                 )
             except Exception:
                 logger.warning("public cache lookup phase failed", exc_info=True)
@@ -404,18 +278,57 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             if cache_hit_source_ids:
                 ctx.log(f"Public cache: {len(cache_hit_source_ids)} hit(s)")
 
-            decomp_summary = await decompose_all_sources(
-                processed,
-                agent_ctx,
-                emit=emit_cb,
-                chunk_selection=chunk_selection,
-            )
+        # Separate text vs image sources
+        text_source_ids: list[str] = []
+        image_source_ids: list[str] = []
+        for ps in processed:
+            if not ps.raw_source_id:
+                continue
+            if ps.is_image:
+                image_source_ids.append(str(ps.raw_source_id))
+            else:
+                text_source_ids.append(str(ps.raw_source_id))
 
-            # ── Contribute newly-decomposed sources upstream ──────
-            # Done inside the same session so the bridge can read the
-            # freshly-written facts without a second open. Wrapped in
-            # a broad try so contribute failures never abort ingest —
-            # the cache is an optimisation, not a load-bearing path.
+        all_source_ids = text_source_ids + image_source_ids
+
+        # Dispatch the shared decomposition workflow (same as bottom-up)
+        from kt_hatchet.client import run_workflow
+        from kt_hatchet.models import DecomposeSourcesOutput
+
+        decompose_result = await run_workflow(
+            "decompose_sources",
+            {
+                "raw_source_ids": all_source_ids,
+                "image_source_ids": image_source_ids,
+                "concept": "",
+                "query_context": "",
+                "message_id": input.message_id,
+                "conversation_id": input.conversation_id,
+                "graph_id": input.graph_id,
+            },
+        )
+
+        # aio_result() returns {task_name: output} — unwrap the task key
+        if isinstance(decompose_result, dict) and len(decompose_result) == 1:
+            decompose_result = next(iter(decompose_result.values()))
+        decompose_output = DecomposeSourcesOutput.model_validate(decompose_result)
+
+        # Map to DecompositionSummary for downstream compatibility
+        decomp_summary = DecompositionSummary(
+            total_facts=decompose_output.total_fact_count,
+            total_chunks_processed=len(processed),
+            total_sources=len(processed),
+            inserted_fact_ids=list(decompose_output.fact_ids),
+        )
+
+        # ── Contribute to public graph (after decomposition) ───────
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
+            agent_ctx = await _build_agent_context(
+                worker_state,
+                write_session=write_session,
+                user_id=input.user_id,
+                graph_id=input.graph_id,
+            )
             try:
                 contributed = await contribute_processed_to_public(
                     agent_ctx.graph_engine,
@@ -430,33 +343,6 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 logger.warning("public contribute phase failed", exc_info=True)
 
             await write_session.commit()
-
-        await emit(
-            "activity_log",
-            {
-                "action": (
-                    f"Decomposition complete: {decomp_summary.total_facts} facts "
-                    f"from {decomp_summary.total_chunks_processed} chunks"
-                ),
-                "tool": "ingest",
-            },
-        )
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": "ingest-decomposition",
-                "phase": "decomposition",
-                "status": "completed",
-                "fact_count": decomp_summary.total_facts,
-                "detail": (f"{decomp_summary.total_facts} facts from {decomp_summary.total_chunks_processed} chunks"),
-            },
-        )
-        await emit(
-            "pipeline_scope_end",
-            {
-                "scope_id": "ingest-decomposition",
-            },
-        )
 
         ctx.log(
             f"Phase 2 complete: {decomp_summary.total_facts} facts from {decomp_summary.total_chunks_processed} chunks"
@@ -503,8 +389,6 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             content_index = None
 
         # ── Phase 3: Run ingest agent(s) (node building) ──────────
-        await emit("phase_change", {"phase": "building"})
-
         partitions = (
             partition_for_parallel(content_index, input.nav_budget)
             if content_index and len(content_index.entries) > 0
@@ -545,14 +429,6 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                     )
                 )
 
-            await emit(
-                "activity_log",
-                {
-                    "action": f"Splitting across {len(partitions)} parallel agents",
-                    "tool": "ingest",
-                },
-            )
-
             try:
                 results = await ingest_partition_wf.aio_run_many(bulk_items)
             except Exception:
@@ -579,15 +455,13 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             # Build subgraph from merged results
             from kt_agents_core.results import build_ingest_subgraph
 
-            async with _open_sessions(worker_state) as (_, merge_ws):
-                merge_ctx = await _build_agent_context(
-                    worker_state, emit_event=emit_cb, write_session=merge_ws, user_id=input.user_id
-                )
+            async with _open_sessions(worker_state, input.graph_id) as (_, merge_ws):
+                merge_ctx = await _build_agent_context(worker_state, write_session=merge_ws, user_id=input.user_id)
                 subgraph = await build_ingest_subgraph(all_created_nodes, all_created_edges, merge_ctx)
 
             # Persist merged result
             merged_answer = "\n\n---\n\n".join(partition_summaries) if partition_summaries else ""
-            async with worker_state.session_factory() as session:
+            async with _open_graph_session(worker_state, input.graph_id) as session:
                 repo = ConversationRepository(session)
                 await repo.update_message(
                     msg_uuid,
@@ -608,10 +482,9 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
         else:
             # Small document or no index — single agent (existing path)
-            async with _open_sessions(worker_state) as (_, write_session):
+            async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
                 agent_ctx = await _build_agent_context(
                     worker_state,
-                    emit_event=emit_cb,
                     write_session=write_session,
                     user_id=input.user_id,
                 )
@@ -627,7 +500,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
                 await write_session.commit()
 
             # Persist result
-            async with worker_state.session_factory() as session:
+            async with _open_graph_session(worker_state, input.graph_id) as session:
                 repo = ConversationRepository(session)
                 await repo.update_message(
                     msg_uuid,
@@ -658,7 +531,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
         try:
             from kt_db.repositories.research_reports import ResearchReportRepository
 
-            async with worker_state.session_factory() as session:
+            async with _open_graph_session(worker_state, input.graph_id) as session:
                 await ResearchReportRepository(session).create(
                     message_id=msg_uuid,
                     conversation_id=conv_uuid,
@@ -686,16 +559,11 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
 
     except Exception as e:
         logger.exception("Ingest failed: conv=%s", input.conversation_id)
-        async with worker_state.session_factory() as session:
+        async with _open_graph_session(worker_state, input.graph_id) as session:
             repo = ConversationRepository(session)
             await repo.update_message(msg_uuid, status="failed", error=str(e))
             await session.commit()
-        await emit("phase_change", {"phase": "completed"})
-        await emit("done", {})
         raise
-
-    await emit("phase_change", {"phase": "completed"})
-    await emit("done", {})
 
     ctx.log(f"Ingest confirm complete: conv={input.conversation_id}")
     return {}
@@ -719,14 +587,6 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
     only its assigned range is accessible via get_summary/browse_facts.
     """
     worker_state = cast(WorkerState, ctx.lifespan)
-
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
-
-    emit_cb = _make_emit_callback(emit)
 
     from kt_worker_ingest.agents.ingest_worker import IngestWorker
     from kt_worker_ingest.ingest.content_index import ContentIndex, IndexEntry, backfill_fact_counts
@@ -767,15 +627,14 @@ async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext)
     partition_range = (input.index_range_start, input.index_range_end)
 
     # Reconstruct decomp summary and processed sources
-    async with worker_state.session_factory() as session:
+    async with _open_graph_session(worker_state, input.graph_id) as session:
         decomp_summary = await reconstruct_decomp_summary(conv_uuid, session)
         processed_sources = await reconstruct_processed_sources(conv_uuid, session)
 
     # Run the ingest agent scoped to this partition
-    async with _open_sessions(worker_state) as (_, write_session):
+    async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
         agent_ctx = await _build_agent_context(
             worker_state,
-            emit_event=emit_cb,
             write_session=write_session,
         )
 
@@ -821,18 +680,9 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
     """
     worker_state = cast(WorkerState, ctx.lifespan)
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
-
-    emit_cb = _make_emit_callback(emit)
-
     from kt_db.repositories.conversations import ConversationRepository
     from kt_worker_ingest.ingest.pipeline import (
-        build_chunk_list,
-        decompose_all_sources,
+        DecompositionSummary,
         process_ingest_sources,
     )
     from kt_worker_ingest.ingest.public_cache import (
@@ -851,39 +701,27 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
     conv_uuid = uuid.UUID(input.conversation_id)
 
     # Mark as running
-    async with worker_state.session_factory() as session:
+    async with _open_graph_session(worker_state, input.graph_id) as session:
         repo = ConversationRepository(session)
         await repo.update_message(msg_uuid, status="running")
         await session.commit()
 
-    await emit("phase_change", {"phase": "running"})
-
     try:
         # ── Phase 1: Process sources (idempotent) ────────────────
-        await emit(
-            "pipeline_scope_start",
-            {
-                "scope_id": "ingest-processing",
-                "scope_name": "Processing Sources",
-            },
-        )
-
-        async with _open_sessions(worker_state) as (_, write_session):
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
             )
 
             # process_ingest_sources needs graph-db for IngestSource table;
-            # open a short-lived session just for that.
-            async with worker_state.session_factory() as graph_session:
+            # open a short-lived session scoped to the correct graph schema.
+            async with _open_graph_session(worker_state, input.graph_id) as graph_session:
                 processed = await process_ingest_sources(
                     conv_uuid,
                     graph_session,
                     agent_ctx.file_data_store,
-                    emit=emit_cb,
                     write_session=write_session,
                 )
                 await graph_session.commit()
@@ -892,57 +730,29 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
         if not processed:
             raise ValueError("No sources could be processed")
 
-        await emit("pipeline_scope_end", {"scope_id": "ingest-processing"})
         ctx.log(f"Processing complete: {len(processed)} sources")
-
-        # ── Convert selected_chunks to per-source selection ──────
-        chunk_selection = None
-        if input.selected_chunks is not None:
-            selected_set = set(input.selected_chunks)
-            chunk_list = build_chunk_list(processed)
-            chunk_selection_dict: dict[str, set[int]] = {}
-            source_local_idx: dict[str, int] = {}
-            for c in chunk_list:
-                sid = c.source_id
-                local = source_local_idx.get(sid, 0)
-                source_local_idx[sid] = local + 1
-                if c.chunk_index in selected_set:
-                    chunk_selection_dict.setdefault(sid, set()).add(local)
-            for ps in processed:
-                if ps.source_id not in chunk_selection_dict:
-                    chunk_selection_dict[ps.source_id] = set()
-            chunk_selection = chunk_selection_dict
 
         ctx.refresh_timeout("4h")
 
-        # ── Phase 2: Decompose into facts ────────────────────────
-        await emit(
-            "pipeline_scope_start",
-            {
-                "scope_id": "ingest-decomposition",
-                "scope_name": "Decomposing Facts",
-            },
-        )
-        await emit("phase_change", {"phase": "decomposing"})
+        # ── Phase 2: Decompose into facts + extract entities + create seeds
+        # Uses the same Hatchet workflow as bottom-up (decompose_sources_wf)
+        # so all source decomposition follows a single code path.
 
+        # ── Public-cache lookups (before decomposition) ────────────
+        cache_hit_source_ids: set[str] = set()
         async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
             agent_ctx = await _build_agent_context(
                 worker_state,
-                emit_event=emit_cb,
                 write_session=write_session,
                 user_id=input.user_id,
                 graph_id=input.graph_id,
             )
-
-            # ── Public-cache lookups (see ingest_confirm_wf for details) ──
-            cache_hit_source_ids: set[str] = set()
             try:
-                chunk_selection, cache_hit_source_ids, _hit_summaries = await apply_public_cache_lookups(
+                _, cache_hit_source_ids, _hit_summaries = await apply_public_cache_lookups(
                     agent_ctx.graph_engine,
                     processed,
                     use_public_cache=_use_public_cache,
-                    chunk_selection=chunk_selection,
-                    emit=emit_cb,
+                    chunk_selection=None,
                 )
             except Exception:
                 logger.warning("public cache lookup phase failed", exc_info=True)
@@ -950,14 +760,57 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             if cache_hit_source_ids:
                 ctx.log(f"Public cache: {len(cache_hit_source_ids)} hit(s)")
 
-            decomp_summary = await decompose_all_sources(
-                processed,
-                agent_ctx,
-                emit=emit_cb,
-                chunk_selection=chunk_selection,
-            )
+        # Separate text vs image sources
+        text_source_ids: list[str] = []
+        image_source_ids: list[str] = []
+        for ps in processed:
+            if not ps.raw_source_id:
+                continue
+            if ps.is_image:
+                image_source_ids.append(str(ps.raw_source_id))
+            else:
+                text_source_ids.append(str(ps.raw_source_id))
 
-            # ── Contribute upstream ─────────────────────────────────
+        all_source_ids = text_source_ids + image_source_ids
+
+        # Dispatch the shared decomposition workflow (same as bottom-up)
+        from kt_hatchet.client import run_workflow
+        from kt_hatchet.models import DecomposeSourcesOutput
+
+        decompose_result = await run_workflow(
+            "decompose_sources",
+            {
+                "raw_source_ids": all_source_ids,
+                "image_source_ids": image_source_ids,
+                "concept": "",
+                "query_context": "",
+                "message_id": input.message_id,
+                "conversation_id": input.conversation_id,
+                "graph_id": input.graph_id,
+            },
+        )
+
+        # aio_result() returns {task_name: output} — unwrap the task key
+        if isinstance(decompose_result, dict) and len(decompose_result) == 1:
+            decompose_result = next(iter(decompose_result.values()))
+        decompose_output = DecomposeSourcesOutput.model_validate(decompose_result)
+
+        # Map to DecompositionSummary for downstream compatibility
+        decomp_summary = DecompositionSummary(
+            total_facts=decompose_output.total_fact_count,
+            total_chunks_processed=len(processed),
+            total_sources=len(processed),
+            inserted_fact_ids=list(decompose_output.fact_ids),
+        )
+
+        # ── Contribute to public graph (after decomposition) ───────
+        async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
+            agent_ctx = await _build_agent_context(
+                worker_state,
+                write_session=write_session,
+                user_id=input.user_id,
+                graph_id=input.graph_id,
+            )
             try:
                 contributed = await contribute_processed_to_public(
                     agent_ctx.graph_engine,
@@ -973,10 +826,10 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
             await write_session.commit()
 
-        await emit("pipeline_scope_end", {"scope_id": "ingest-decomposition"})
         ctx.log(
             f"Decomposition complete: {decomp_summary.total_facts} facts "
-            f"from {decomp_summary.total_chunks_processed} chunks"
+            f"from {decomp_summary.total_chunks_processed} chunks, "
+            f"{len(decompose_output.seed_keys)} seeds"
         )
 
         # ── Post-job fact dedup ──────────────────────────────────
@@ -989,8 +842,17 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             try:
                 from kt_hatchet.client import run_workflow
 
+                # graph_slug is required by Hatchet concurrency expression
+                _dedup_slug = "default"
+                if input.graph_id and worker_state.graph_resolver:
+                    try:
+                        _gs = await worker_state.graph_resolver.resolve(uuid.UUID(input.graph_id))
+                        _dedup_slug = _gs.graph.slug
+                    except Exception:
+                        logger.debug("Could not resolve graph slug for dedup", exc_info=True)
                 dedup_input: dict[str, object] = {
                     "fact_ids": decomp_summary.inserted_fact_ids,
+                    "graph_slug": _dedup_slug,
                 }
                 if input.graph_id:
                     dedup_input["graph_id"] = input.graph_id
@@ -1002,20 +864,43 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
                     exc_info=True,
                 )
 
+        # ── Post-job seed dedup ───────────────────────────────────
+        # store_seeds_from_extracted_nodes writes seeds as status=pending.
+        # Dispatch seed_dedup_batch to run text search → embedding → LLM
+        # multiplex → promote pending→active/merged/ambiguous. Without
+        # this, auto_build (which filters status=active) would skip all
+        # newly extracted seeds.
+        if decompose_output.seed_keys:
+            try:
+                from kt_hatchet.client import run_workflow
+
+                seed_dedup_input: dict[str, object] = {
+                    "seed_keys": list(decompose_output.seed_keys),
+                    "scope_id": input.conversation_id or "",
+                }
+                if input.graph_id:
+                    seed_dedup_input["graph_id"] = input.graph_id
+                await run_workflow("seed_dedup_batch", seed_dedup_input)
+                ctx.log(f"Seed dedup complete for {len(decompose_output.seed_keys)} seeds")
+            except Exception:
+                logger.warning(
+                    "Failed to run seed_dedup_batch during ingest decompose",
+                    exc_info=True,
+                )
+
         ctx.refresh_timeout("2h")
 
         # ── Build proposals directly from seeds ───────────────────
         # Seeds are created during decomposition (step 2). The old
         # extract→filter→prioritize pipeline was replaced by the seed
         # system — all seeds with enough facts become nodes automatically.
-        await emit("phase_change", {"phase": "building_proposals"})
 
         from kt_db.keys import key_to_uuid
         from kt_db.repositories.write_seeds import WriteSeedRepository
 
         proposed_nodes: list[ProposedNode] = []
         try:
-            async with _open_sessions(worker_state) as (_, write_session):
+            async with _open_sessions(worker_state, input.graph_id) as (_, write_session):
                 if write_session is not None:
                     seed_repo = WriteSeedRepository(write_session)
                     seeds = await seed_repo.list_seeds(
@@ -1051,6 +936,103 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
         ctx.log(f"Built {len(proposed_nodes)} proposals from seeds")
 
+        # ── Auto-build: fan out node_pipeline_wf for all seeds ────
+        created_node_ids: list[str] = []
+        created_edge_ids: list[str] = []
+
+        if proposed_nodes:
+            from hatchet_sdk import TriggerWorkflowOptions
+
+            from kt_db.keys import make_seed_key as _make_seed_key
+            from kt_hatchet.models import BuildNodeInput
+            from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
+
+            node_meta = TriggerWorkflowOptions(
+                additional_metadata={
+                    "message_id": input.message_id,
+                    "conversation_id": input.conversation_id,
+                }
+            )
+
+            bulk_items = []
+            for pn in proposed_nodes:
+                sk = pn.seed_key or _make_seed_key(pn.node_type, pn.name)
+                bulk_items.append(
+                    node_pipeline_wf.create_bulk_run_item(
+                        input=BuildNodeInput(
+                            scope_id="ingest_build",
+                            concept=pn.name,
+                            node_type=pn.node_type,
+                            entity_subtype=pn.entity_subtype,
+                            seed_key=sk,
+                            existing_node_id=pn.existing_node_id,
+                            message_id=input.message_id,
+                            conversation_id=input.conversation_id,
+                            graph_id=input.graph_id,
+                        ),
+                        options=node_meta,
+                    )
+                )
+
+            ctx.log(f"Auto-build: dispatching {len(bulk_items)} node pipelines")
+            ctx.refresh_timeout("4h")
+
+            results = await node_pipeline_wf.aio_run_many(bulk_items)
+
+            # Collect results
+            for result in results:
+                create_data: dict = result.get("create_node", {}) if isinstance(result, dict) else {}
+                dim_data: dict = result.get("generate_dimensions", {}) if isinstance(result, dict) else {}
+                node_id = create_data.get("node_id")
+                if node_id:
+                    created_node_ids.append(node_id)
+                created_edge_ids.extend(dim_data.get("edge_ids", []))
+
+            ctx.log(f"Auto-build: created {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
+
+        # ── Flush usage to DB ─────────────────────────────────────
+        if created_node_ids:
+            try:
+                from kt_hatchet.usage_helpers import flush_usage_to_db
+
+                await flush_usage_to_db(
+                    worker_state.write_session_factory,
+                    input.conversation_id,
+                    input.message_id,
+                    "ingest_build",
+                )
+            except Exception:
+                logger.warning("Failed to flush usage", exc_info=True)
+
+        # ── Persist research report ───────────────────────────────
+        if created_node_ids:
+            try:
+                from kt_db.repositories.research_reports import ResearchReportRepository
+
+                async with _open_graph_session(worker_state, input.graph_id) as session:
+                    await ResearchReportRepository(session).create(
+                        message_id=msg_uuid,
+                        conversation_id=conv_uuid,
+                        nodes_created=len(created_node_ids),
+                        edges_created=len(created_edge_ids),
+                        waves_completed=1,
+                        explore_budget=0,
+                        explore_used=0,
+                        nav_budget=len(proposed_nodes),
+                        nav_used=len(created_node_ids),
+                        scope_summaries=[f"Built {len(created_node_ids)} nodes, {len(created_edge_ids)} edges"],
+                        total_prompt_tokens=0,
+                        total_completion_tokens=0,
+                        total_cost_usd=0.0,
+                        usage_by_model=None,
+                        usage_by_task=None,
+                        report_type="ingestion",
+                        workflow_run_id=ctx.workflow_run_id,
+                    )
+                    await session.commit()
+            except Exception:
+                logger.warning("Failed to persist research report", exc_info=True)
+
         output = IngestDecomposeOutput(
             fact_count=decomp_summary.total_facts,
             source_count=len(processed),
@@ -1060,32 +1042,33 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
             else "",
             key_topics=decomp_summary.key_topics[:20],
             fact_type_counts=decomp_summary.fact_type_counts,
+            nodes_created=len(created_node_ids),
+            edges_created=len(created_edge_ids),
+            created_node_ids=created_node_ids,
+            created_edge_ids=created_edge_ids,
         )
 
-        async with worker_state.session_factory() as session:
+        async with _open_graph_session(worker_state, input.graph_id) as session:
             repo = ConversationRepository(session)
             await repo.update_message(
                 msg_uuid,
                 status="completed",
-                content=f"Built {len(proposed_nodes)} proposals from {decomp_summary.total_facts} facts.",
+                content=f"Built {len(created_node_ids)} nodes and {len(created_edge_ids)} edges from {decomp_summary.total_facts} facts.",
                 metadata_json=output.model_dump(),
+                created_nodes=created_node_ids,
+                created_edges=created_edge_ids,
             )
             await session.commit()
 
     except Exception as e:
         logger.exception("Ingest decompose failed: conv=%s", input.conversation_id)
-        async with worker_state.session_factory() as session:
+        async with _open_graph_session(worker_state, input.graph_id) as session:
             repo = ConversationRepository(session)
             await repo.update_message(msg_uuid, status="failed", error=str(e))
             await session.commit()
-        await emit("phase_change", {"phase": "completed"})
-        await emit("done", {})
         raise
 
-    await emit("phase_change", {"phase": "completed"})
-    await emit("done", {})
-
-    ctx.log(f"Ingest decompose complete: {len(proposed_nodes)} proposals")
+    ctx.log(f"Ingest decompose+build complete: {len(created_node_ids)} nodes from {len(proposed_nodes)} seeds")
     return {}
 
 
@@ -1113,17 +1096,11 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
     state = cast(WorkerState, ctx.lifespan)
     start_usage_tracking()
 
-    async def emit(event_type: str, payload: dict) -> None:
-        try:
-            await ctx.aio_put_stream(json.dumps({"type": event_type, **payload}))
-        except Exception:
-            logger.warning("Failed to stream event %s", event_type, exc_info=True)
-
     msg_uuid = uuid.UUID(input.message_id)
     conv_uuid = uuid.UUID(input.conversation_id)
 
     # Mark as running
-    async with state.session_factory() as session:
+    async with _open_graph_session(state, input.graph_id) as session:
         from kt_db.repositories.conversations import ConversationRepository
 
         repo = ConversationRepository(session)
@@ -1132,30 +1109,11 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
 
     ctx.log(f"Starting ingest build (Phase 2): {len(input.selected_nodes)} nodes")
 
-    await emit(
-        "pipeline_scope_start",
-        {
-            "scope_id": "build",
-            "scope_name": f"Building {len(input.selected_nodes)} nodes",
-            "task_run_id": ctx.step_run_id,
-            "mode": "ingest_build",
-        },
-    )
-
     try:
         # ── Phase: Create nodes via node_pipeline_wf ─────────────
         from hatchet_sdk import TriggerWorkflowOptions
 
         from kt_worker_nodes.workflows.node_pipeline import node_pipeline_wf
-
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": "build",
-                "phase": "creating",
-                "event": "start",
-            },
-        )
 
         node_meta = TriggerWorkflowOptions(
             additional_metadata={
@@ -1168,7 +1126,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
 
         bulk_items = []
         for node in input.selected_nodes:
-            sk = node.seed_key or _make_seed_key(node.node_type, node.name)
+            sk = node.seed_key or _make_seed_key(node.name)
             bulk_items.append(
                 node_pipeline_wf.create_bulk_run_item(
                     input=BuildNodeInput(
@@ -1209,26 +1167,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
                 )
             created_edge_ids.extend(dim_data.get("edge_ids", []))
 
-        await emit(
-            "pipeline_phase",
-            {
-                "scope_id": "build",
-                "phase": "creating",
-                "event": "end",
-            },
-        )
-
         ctx.log(f"Created {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
-
-        if created_node_ids:
-            await emit(
-                "graph_update",
-                {
-                    "node_ids": created_node_ids,
-                    "edge_ids": created_edge_ids,
-                    "wave": 0,
-                },
-            )
 
         # ── Phase: Build perspectives ────────────────────────────
         perspective_plans: list[dict[str, Any]] = []
@@ -1246,15 +1185,6 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
         perspective_node_count = 0
         if perspective_plans and built_nodes:
             perspective_plans = resolve_perspective_source_ids(perspective_plans, built_nodes)
-
-            await emit(
-                "pipeline_phase",
-                {
-                    "scope_id": "build",
-                    "phase": "perspectives",
-                    "event": "start",
-                },
-            )
 
             ctx.log(f"Building {len(perspective_plans)} perspective pairs")
 
@@ -1313,15 +1243,6 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
                 except Exception:
                     logger.exception("Ingest build: composite perspective build failed")
 
-            await emit(
-                "pipeline_phase",
-                {
-                    "scope_id": "build",
-                    "phase": "perspectives",
-                    "event": "end",
-                },
-            )
-
             ctx.log(f"Built {perspective_node_count} perspective nodes")
 
         # ── Flush usage to DB (self-reporting) ─────────────────────
@@ -1336,7 +1257,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
         try:
             from kt_db.repositories.research_reports import ResearchReportRepository
 
-            async with state.session_factory() as session:
+            async with _open_graph_session(state, input.graph_id) as session:
                 await ResearchReportRepository(session).create(
                     message_id=msg_uuid,
                     conversation_id=conv_uuid,
@@ -1366,7 +1287,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
             logger.warning("Failed to persist research report", exc_info=True)
 
         # ── Update message with results ──────────────────────────
-        async with state.session_factory() as session:
+        async with _open_graph_session(state, input.graph_id) as session:
             from kt_db.repositories.conversations import ConversationRepository
 
             repo = ConversationRepository(session)
@@ -1381,34 +1302,15 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
             )
             await session.commit()
 
-        await emit(
-            "pipeline_scope_end",
-            {
-                "scope_id": "build",
-                "node_count": len(created_node_ids),
-            },
-        )
-
     except Exception as e:
         logger.exception("Ingest build failed: conv=%s", input.conversation_id)
-        async with state.session_factory() as session:
+        async with _open_graph_session(state, input.graph_id) as session:
             from kt_db.repositories.conversations import ConversationRepository
 
             repo = ConversationRepository(session)
             await repo.update_message(msg_uuid, status="failed", error=str(e))
             await session.commit()
-        await emit("phase_change", {"phase": "completed"})
-        await emit("done", {})
         raise
-
-    await emit(
-        "done",
-        {
-            "created_node_ids": created_node_ids,
-            "created_edge_ids": created_edge_ids,
-            "phase": "build",
-        },
-    )
 
     ctx.log(f"Ingest build complete: {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
 

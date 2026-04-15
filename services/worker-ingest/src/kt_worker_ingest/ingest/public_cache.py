@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from kt_graph.worker_engine import WorkerGraphEngine
@@ -53,7 +53,6 @@ async def apply_public_cache_lookups(
     *,
     use_public_cache: bool,
     chunk_selection: ChunkSelection,
-    emit: Any | None = None,
 ) -> tuple[ChunkSelection, set[str], list[dict]]:
     """Look up each eligible source in the public graph and import on hit.
 
@@ -121,28 +120,6 @@ async def apply_public_cache_lookups(
             "is_stale": import_data.is_stale,
         }
         summaries.append(summary)
-
-        if emit is not None:
-            try:
-                await emit(
-                    "pipeline_phase",
-                    scope_id="ingest-public-cache",
-                    phase="public_cache",
-                    status="cached",
-                    detail=(
-                        f"Public cache hit for {ps.name}: "
-                        f"{result.facts_imported} new facts, "
-                        f"{result.facts_deduped} deduped, "
-                        f"{result.nodes_matched + result.nodes_created} nodes"
-                    ),
-                    source_id=ps.source_id,
-                    facts_imported=result.facts_imported,
-                    facts_deduped=result.facts_deduped,
-                    nodes_matched=result.nodes_matched,
-                    nodes_created=result.nodes_created,
-                )
-            except Exception:
-                logger.debug("Failed to emit pipeline_phase for cache hit", exc_info=True)
 
     # If the user passed an explicit chunk_selection, the dict copy
     # already preserves their entries (including empty sets that mean

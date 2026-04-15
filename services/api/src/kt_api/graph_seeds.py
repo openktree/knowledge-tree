@@ -12,11 +12,9 @@ from kt_api.graph_context import GraphContext, get_graph_context
 from kt_api.schemas import (
     PaginatedSeedsResponse,
     SeedDetailResponse,
-    SeedDivergenceResponse,
     SeedTreeResponse,
 )
 from kt_api.seeds import (
-    _get_seed_divergence_impl,
     _get_seed_impl,
     _get_seed_tree_impl,
     _list_seeds_impl,
@@ -36,23 +34,6 @@ async def list_graph_seeds(
 ) -> PaginatedSeedsResponse:
     """List seeds in a specific graph."""
     return await _list_seeds_impl(ctx.write_session_factory, offset, limit, search, status, node_type)
-
-
-@router.get("/divergence/{seed_key:path}", response_model=SeedDivergenceResponse)
-async def get_graph_seed_divergence(
-    seed_key: str,
-    ctx: GraphContext = Depends(get_graph_context),
-) -> SeedDivergenceResponse:
-    """Compute fact embedding divergence for a seed in a specific graph."""
-    from kt_api.dependencies import get_qdrant_client_cached
-
-    collection_name = f"{ctx.qdrant_collection_prefix}facts" if ctx.qdrant_collection_prefix else "facts"
-    return await _get_seed_divergence_impl(
-        ctx.write_session_factory,
-        seed_key,
-        get_qdrant_client_cached(),
-        collection_name,
-    )
 
 
 @router.get("/tree/{seed_key:path}", response_model=SeedTreeResponse)

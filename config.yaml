@@ -176,8 +176,8 @@ synthesis:
 node_pipeline:
   dimension_fact_limit: 100
   dimension_saturation_ratio: 0.9
-#   dimension_model: ""
-#   dimension_thinking_level: ""
+  dimension_model: "openrouter/xiaomi/mimo-v2-flash:nitro"
+  dimension_thinking_level: ""
 #   dimension_pool_multiplier: 2
 #   definition_model: ""
 #   definition_thinking_level: ""
@@ -186,6 +186,16 @@ node_pipeline:
 # =============================================================================
 # Edges — resolution, classification, thresholds, parent selection
 # =============================================================================
+# =============================================================================
+# On-demand enrichment — when rebuild/enrich should regenerate dimensions
+# =============================================================================
+enrichment:
+  # Rebuild-mode enrich marks nodes "partial" below this fact count.
+  # Lowered from default 100 so niche topics with few facts still get dims
+  # and appear in the graph.
+  min_facts_for_dimensions: 20
+
+
 edges:
   resolution_model: "openrouter/x-ai/grok-4.1-fast"
 #   resolution_thinking_level: ""

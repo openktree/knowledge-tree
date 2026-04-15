@@ -294,7 +294,7 @@ class TestEnsureSeedForNode:
         assert call_args[0]["name"] == "Quantum Computing"
         assert call_args[0]["node_type"] == "concept"
         assert call_args[0]["fact_count"] == 0
-        assert call_args[0]["key"] == "concept:quantum-computing"
+        assert call_args[0]["key"] == "quantum-computing"
 
     @pytest.mark.asyncio
     async def test_noop_without_write_repo(self) -> None:
@@ -326,7 +326,7 @@ class TestEnsureSeedForNode:
         )
 
         mock_qdrant.upsert.assert_called_once_with(
-            seed_key="concept:physics",
+            seed_key="physics",
             embedding=embedding,
             name="Physics",
             node_type="concept",

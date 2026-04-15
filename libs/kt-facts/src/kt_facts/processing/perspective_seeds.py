@@ -53,8 +53,8 @@ async def store_perspective_seeds(
         source_concept_name = plan.get("source_concept_name", source_concept_id)
         scope_description = plan.get("scope_description", "")
 
-        thesis_key = make_seed_key("perspective", claim)
-        antithesis_key = make_seed_key("perspective", antithesis)
+        thesis_key = make_seed_key(claim)
+        antithesis_key = make_seed_key(antithesis)
 
         # Build thesis seed
         seed_upserts.append(

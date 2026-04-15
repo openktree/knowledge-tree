@@ -11,29 +11,24 @@ Pipeline shape
 1. **Recovery** — any ``write_facts`` row whose ``dedup_status`` is
    ``in_progress`` and older than the workflow timeout is reset to
    ``pending`` so a crashed previous run doesn't strand its snapshot.
-2. **Snapshot (T1)** — atomically flip the requested ``fact_ids`` from
+2. **Snapshot** — atomically flip the requested ``fact_ids`` from
    ``pending`` to ``in_progress`` and return ``(id, content, fact_type)``
-   for the claimed rows. Already-claimed or already-``ready`` rows are
-   skipped.
-3. **Embed + partition (T2)** — embed the snapshot in a single
-   ``embed_batch`` call, then brute-force pairwise cosine similarity at
-   the per-type threshold (max of both facts' thresholds) and union-find
-   the result into connected components.
-4. **Dedup partition (T3)** — one task per component:
-
-   * Query Qdrant ``find_most_similar`` against the global ``ready``
-     population using the representative embedding.
-   * If a global hit exists, canonical = hit.fact_id.
-   * Otherwise canonical = the snapshot fact with the smallest UUID.
-   * Call :func:`merge_into_fast` for every non-canonical member.
-   * If canonical is itself a snapshot fact, upsert its embedding into
-     Qdrant so future runs dedup against it.
-
-5. **Finalize (T4)** — mark the surviving canonical rows as ``ready``.
+   for the claimed rows.
+3. **Embed** — embed the snapshot in a single ``embed_batch`` call.
+4. **Upsert into Qdrant** — insert all pending facts so they are
+   discoverable by subsequent searches (both within-batch and cross-batch).
+5. **Search-based dedup** — for each fact, query Qdrant for similar
+   facts above threshold. Build edges from hits, union-find into
+   components. Searches run in parallel batches (configurable via
+   ``settings.dedup_search_batch_size``).
+6. **Merge** — for each component, pick canonical (existing ready
+   fact or smallest UUID), merge losers via ``merge_into_fast``.
+7. **Cleanup** — delete losers from Qdrant, mark survivors as ``ready``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import timedelta
@@ -43,11 +38,12 @@ from hatchet_sdk import ConcurrencyExpression, ConcurrencyLimitStrategy, Context
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from kt_config.settings import get_settings
 from kt_facts.processing.dedup import search_threshold_for_type, threshold_for_type
 from kt_facts.processing.merge import merge_into_fast
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
-from kt_worker_sync.workflows.dedup_partition import cosine, union_find_components
+from kt_worker_sync.workflows.dedup_partition import union_find_components
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +91,6 @@ _IN_PROGRESS_RECOVERY_AGE = timedelta(minutes=30)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-#
-# Pure helpers (``cosine``, ``union_find_components``) live in the
-# sibling ``dedup_partition`` module so they can be unit-tested
-# without importing the Hatchet client.
 
 
 async def _resolve_sessions_and_collection(
@@ -135,21 +127,7 @@ async def _resolve_sessions_and_collection(
     return gs.write_session_factory, gs.graph_session_factory, collection
 
 
-# ── Single task implementation ───────────────────────────────────────
-#
-# The whole pipeline (recovery → snapshot → partition → merge → finalize)
-# runs in one Hatchet task. We pay one extra task's worth of latency by
-# not fanning out across components here, but in exchange we get a much
-# simpler I/O story: no state needs to round-trip through Hatchet as
-# per-task return payloads, and the snapshot / merge / finalize all
-# share the same write-db session — which matters because the ``ready``
-# transition is the commit point that makes the work visible to the
-# sync worker and to autograph.
-#
-# Fan-out across components is a latency optimisation that can be added
-# later if snapshots grow to the point where per-component Qdrant
-# searches dominate wall time. At current scale (a few hundred facts per
-# snapshot) the sequential path is already sub-second.
+# ── Task implementation ─────────────────────────────────────────────
 
 
 @dedup_pending_facts_wf.task(
@@ -162,9 +140,12 @@ async def dedup_pending_facts(
 ) -> dict:
     state = cast(WorkerState, ctx.lifespan)
     graph_slug = input.graph_slug
+    settings = get_settings()
 
     if not input.fact_ids:
         return {"claimed": 0, "merged": 0, "ready": 0}
+
+    ctx.log(f"dedup({graph_slug}): starting with {len(input.fact_ids)} fact_ids")
 
     (
         write_session_factory,
@@ -172,7 +153,17 @@ async def dedup_pending_facts(
         qdrant_collection,
     ) = await _resolve_sessions_and_collection(state, graph_slug, input.graph_id)
 
+    # Qdrant is required for dedup — fail fast if unavailable.
+    qdrant_client = state.qdrant_client
+    if qdrant_client is None:
+        raise RuntimeError("dedup_pending_facts_wf: Qdrant client unavailable")
+
+    from kt_qdrant.repositories.facts import QdrantFactRepository
+
+    qdrant_fact_repo = QdrantFactRepository(qdrant_client, collection_name=qdrant_collection)
+
     # ── 0. Recovery: reclaim abandoned in_progress rows ───────────────
+    ctx.log(f"dedup({graph_slug}): recovering abandoned in_progress rows")
     async with write_session_factory() as recovery_session:  # type: ignore[misc]
         await recovery_session.execute(
             text(
@@ -180,14 +171,14 @@ async def dedup_pending_facts(
                 UPDATE write_facts
                    SET dedup_status = 'pending'
                  WHERE dedup_status = 'in_progress'
-                   AND updated_at < (now() AT TIME ZONE 'utc') - :age
+                   AND updated_at < (now() AT TIME ZONE 'utc') - INTERVAL '30 minutes'
                 """
             ),
-            {"age": _IN_PROGRESS_RECOVERY_AGE},
         )
         await recovery_session.commit()
 
     # ── 1. Snapshot: claim the requested fact_ids ─────────────────────
+    ctx.log(f"dedup({graph_slug}): claiming {len(input.fact_ids)} facts")
     async with write_session_factory() as snapshot_session:  # type: ignore[misc]
         claim_result = await snapshot_session.execute(
             text(
@@ -205,125 +196,159 @@ async def dedup_pending_facts(
         await snapshot_session.commit()
 
     if not claimed_rows:
-        logger.debug(
-            "dedup_pending_facts_wf(%s): nothing to claim for %d fact_ids",
-            graph_slug,
-            len(input.fact_ids),
-        )
+        ctx.log(f"dedup({graph_slug}): nothing to claim, done")
         return {"claimed": 0, "merged": 0, "ready": 0}
+
+    ctx.log(f"dedup({graph_slug}): claimed {len(claimed_rows)} facts")
 
     snapshot: list[tuple[uuid.UUID, str, str]] = [
         (row[0] if isinstance(row[0], uuid.UUID) else uuid.UUID(str(row[0])), row[1], row[2]) for row in claimed_rows
     ]
     snapshot_ids_set: set[uuid.UUID] = {s[0] for s in snapshot}
+    n = len(snapshot)
 
-    # ── 2. Embed + partition ──────────────────────────────────────────
+    # ── 2. Embed ──────────────────────────────────────────────────────
+    ctx.log(f"dedup({graph_slug}): embedding {n} facts")
     embedding_service = state.embedding_service
     contents = [s[1] for s in snapshot]
     embeddings = await embedding_service.embed_batch(contents)
+    ctx.log(f"dedup({graph_slug}): embedding complete")
 
-    n = len(snapshot)
+    # ── 3. Upsert pending facts into Qdrant ──────────────────────────
+    # All claimed facts go into the index so they can find each other
+    # during the search phase, as well as be found by future dedup runs.
+    upsert_tuples = [(snapshot[i][0], embeddings[i], snapshot[i][2], snapshot[i][1]) for i in range(n)]
+    await qdrant_fact_repo.upsert_batch(upsert_tuples)
+    ctx.log(f"dedup({graph_slug}): upserted {n} facts into Qdrant")
+
+    # ── 4. Search-based duplicate discovery ──────────────────────────
+    # For each fact, query Qdrant for similar facts (both within this
+    # batch and from the existing ready population). Build edges for
+    # union-find, and track matches against existing ready facts.
+    id_to_idx: dict[uuid.UUID, int] = {snapshot[i][0]: i for i in range(n)}
     edges: list[tuple[int, int]] = []
-    # TODO: O(n²) brute-force pairwise cosine. Fine at current snapshot
-    # sizes (a few hundred facts). If snapshots grow past ~2k, switch to
-    # batched numpy dot-product or an ANN index over the snapshot.
-    for i in range(n):
-        for j in range(i + 1, n):
-            thr = max(
-                threshold_for_type(snapshot[i][2]),
-                threshold_for_type(snapshot[j][2]),
+    ready_matches: dict[int, uuid.UUID] = {}  # snapshot_idx -> ready_fact_id
+
+    batch_size = settings.dedup_search_batch_size
+
+    async def _search_one(i: int) -> list[tuple[int, int, uuid.UUID | None]]:
+        """Search for duplicates of snapshot[i]. Returns (edge_pairs, ready_match)."""
+        fact_id = snapshot[i][0]
+        fact_type = snapshot[i][2]
+        search_thr = search_threshold_for_type(fact_type)
+        merge_thr = threshold_for_type(fact_type)
+
+        try:
+            hits = await qdrant_fact_repo.search_similar(
+                embedding=embeddings[i],
+                limit=20,
+                score_threshold=search_thr,
+                exclude_ids=[fact_id],
             )
-            if cosine(embeddings[i], embeddings[j]) >= thr:
-                edges.append((i, j))
+        except Exception:
+            logger.warning("dedup(%s): Qdrant search failed for fact %s", graph_slug, fact_id, exc_info=True)
+            return []
+
+        results: list[tuple[int, int, uuid.UUID | None]] = []
+        best_ready_score = 0.0
+        best_ready_id: uuid.UUID | None = None
+
+        for hit in hits:
+            if hit.score < merge_thr:
+                continue
+            if hit.fact_id in id_to_idx:
+                # Intra-batch duplicate — add edge
+                j = id_to_idx[hit.fact_id]
+                pair_thr = max(merge_thr, threshold_for_type(snapshot[j][2]))
+                if hit.score >= pair_thr:
+                    results.append((i, j, None))
+            elif hit.score > best_ready_score:
+                # Match against existing ready fact — track best
+                best_ready_score = hit.score
+                best_ready_id = hit.fact_id
+
+        if best_ready_id is not None:
+            results.append((i, -1, best_ready_id))
+
+        return results
+
+    # Run searches in parallel batches, yielding between each to avoid
+    # starving the event loop when there are many batches.
+    for batch_start in range(0, n, batch_size):
+        batch_end = min(batch_start + batch_size, n)
+        batch_results = await asyncio.gather(*[_search_one(i) for i in range(batch_start, batch_end)])
+
+        for result_list in batch_results:
+            for i_idx, j_idx, ready_id in result_list:
+                if ready_id is not None:
+                    ready_matches[i_idx] = ready_id
+                else:
+                    edges.append((i_idx, j_idx))
+
+        await asyncio.sleep(0)
+
     components = union_find_components(n, edges)
+    ctx.log(f"dedup({graph_slug}): search done — {len(edges)} edges, {len(components)} components")
 
-    # ── 3. Dedup per component ────────────────────────────────────────
-    qdrant_client = state.qdrant_client
-    qdrant_fact_repo = None
-    if qdrant_client is not None:
-        from kt_qdrant.repositories.facts import QdrantFactRepository
-
-        qdrant_fact_repo = QdrantFactRepository(qdrant_client, collection_name=qdrant_collection)
-
+    # ── 5. Merge per component ───────────────────────────────────────
+    # Batch all merges into a single session, committing every
+    # _MERGE_COMMIT_EVERY components to checkpoint progress and
+    # yield to the event loop between phases.
+    _MERGE_COMMIT_EVERY = 50
     surviving_canonicals: list[uuid.UUID] = []
     merged_count = 0
+    loser_ids: list[uuid.UUID] = []
 
-    # We open one write-db transaction per component to keep the merge
-    # atomic yet bounded. Graph-db is not touched in fast mode.
-    for component in components:
-        member_ids = [snapshot[i][0] for i in component]
-        rep_idx = component[0]
-        rep_embedding = embeddings[rep_idx]
-        rep_fact_type = snapshot[rep_idx][2]
+    async with write_session_factory() as merge_session:  # type: ignore[misc]
+        for comp_idx, component in enumerate(components):
+            member_ids = [snapshot[i][0] for i in component]
 
-        # 3a. Global Qdrant lookup (ready population)
-        canonical: uuid.UUID | None = None
-        if qdrant_fact_repo is not None:
-            try:
-                hit = await qdrant_fact_repo.find_most_similar(
-                    rep_embedding,
-                    score_threshold=search_threshold_for_type(rep_fact_type),
-                )
-                if (
-                    hit is not None
-                    and hit.fact_id not in snapshot_ids_set
-                    and hit.score >= threshold_for_type(rep_fact_type)
-                ):
-                    canonical = hit.fact_id
-            except Exception:
-                logger.warning(
-                    "dedup_pending_facts_wf(%s): Qdrant find_most_similar failed for component of size %d",
-                    graph_slug,
-                    len(component),
-                    exc_info=True,
-                )
+            # Check if any member matched an existing ready fact
+            canonical: uuid.UUID | None = None
+            for idx in component:
+                if idx in ready_matches:
+                    canonical = ready_matches[idx]
+                    break
 
-        if canonical is None:
-            # Deterministic tiebreaker: smallest UUID in the component.
-            canonical = min(member_ids)
+            if canonical is None:
+                # Deterministic tiebreaker: smallest UUID in the component.
+                canonical = min(member_ids)
 
-        # 3b. Merge all non-canonical members into canonical.
-        async with write_session_factory() as merge_session:  # type: ignore[misc]
+            # Merge all non-canonical members
             for member_id in member_ids:
                 if member_id == canonical:
                     continue
                 await merge_into_fast(merge_session, member_id, canonical)
+                loser_ids.append(member_id)
                 merged_count += 1
-            await merge_session.commit()
 
-        # 3c. If canonical is itself a snapshot fact (no global hit),
-        # upsert its embedding into Qdrant so the ``ready`` population
-        # grows.
-        if canonical in snapshot_ids_set and qdrant_fact_repo is not None:
-            canonical_idx = next(
-                (component[k] for k, mid in enumerate(member_ids) if mid == canonical),
-                rep_idx,
+            if canonical in snapshot_ids_set:
+                surviving_canonicals.append(canonical)
+
+            # Periodic commit + yield to avoid starving the event loop
+            if (comp_idx + 1) % _MERGE_COMMIT_EVERY == 0:
+                await merge_session.commit()
+                await asyncio.sleep(0)
+
+        # Final commit for remaining components
+        await merge_session.commit()
+
+    ctx.log(f"dedup({graph_slug}): merged {merged_count}, {len(surviving_canonicals)} surviving")
+
+    # ── 6. Cleanup losers from Qdrant ────────────────────────────────
+    if loser_ids:
+        try:
+            await qdrant_fact_repo.delete_batch(loser_ids)
+            ctx.log(f"dedup({graph_slug}): deleted {len(loser_ids)} losers from Qdrant")
+        except Exception:
+            logger.warning(
+                "dedup(%s): Qdrant delete_batch failed for %d losers",
+                graph_slug,
+                len(loser_ids),
+                exc_info=True,
             )
-            try:
-                await qdrant_fact_repo.upsert(
-                    fact_id=canonical,
-                    embedding=embeddings[canonical_idx],
-                    fact_type=snapshot[canonical_idx][2],
-                    content=snapshot[canonical_idx][1],
-                )
-            except Exception:
-                logger.warning(
-                    "dedup_pending_facts_wf(%s): Qdrant upsert failed for canonical %s",
-                    graph_slug,
-                    canonical,
-                    exc_info=True,
-                )
 
-        if canonical in snapshot_ids_set:
-            surviving_canonicals.append(canonical)
-
-    # ── 4. Finalize: flip survivors to 'ready' ────────────────────────
-    # Losers were deleted by merge_into_fast. Surviving canonicals that
-    # are themselves snapshot rows get marked ready; canonicals that
-    # came from a global Qdrant hit are already ready (we didn't touch
-    # them). If a canonical came from Qdrant its component's snapshot
-    # rows were merged *into* it, so nothing in this snapshot survives
-    # under that canonical.
+    # ── 7. Finalize: flip survivors to 'ready' ──────────────────────
     if surviving_canonicals:
         async with write_session_factory() as finalize_session:  # type: ignore[misc]
             await finalize_session.execute(
@@ -349,7 +374,7 @@ async def dedup_pending_facts(
     )
 
     # Silence unused-variable warning for the graph session factory —
-    # fast-mode dedup does not touch graph-db. Heavy-mode repair does.
+    # fast-mode dedup does not touch graph-db.
     del graph_session_factory
 
     return {

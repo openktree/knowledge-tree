@@ -381,7 +381,6 @@ class IngestConfirmInput(GraphAwareMixin):
     """Input for the ingest confirmation workflow."""
 
     nav_budget: int
-    selected_chunks: list[int] | None = None
     conversation_id: str
     message_id: str
     user_id: str | None = None
@@ -397,7 +396,6 @@ class IngestDecomposeInput(GraphAwareMixin):
 
     conversation_id: str
     message_id: str
-    selected_chunks: list[int] | None = None
     user_id: str | None = None
     # Per-ingest opt-out for the multigraph public-cache contribute hook.
     # See ``IngestConfirmInput.share_with_public_graph``.
@@ -405,7 +403,7 @@ class IngestDecomposeInput(GraphAwareMixin):
 
 
 class IngestDecomposeOutput(BaseModel):
-    """Phase 1 results — stored on message metadata, returned to frontend."""
+    """Decompose + auto-build results — stored on message metadata."""
 
     fact_count: int = 0
     source_count: int = 0
@@ -413,6 +411,11 @@ class IngestDecomposeOutput(BaseModel):
     content_summary: str = ""
     key_topics: list[str] = Field(default_factory=list)
     fact_type_counts: dict[str, int] = Field(default_factory=dict)
+    # Auto-build results (populated after node pipeline fan-out)
+    nodes_created: int = 0
+    edges_created: int = 0
+    created_node_ids: list[str] = Field(default_factory=list)
+    created_edge_ids: list[str] = Field(default_factory=list)
 
 
 class IngestBuildInput(GraphAwareMixin):

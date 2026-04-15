@@ -414,7 +414,7 @@ async def create_seeds_from_import(
     for node_data in nodes:
         if node_data.id not in node_id_map:
             continue
-        seed_key = make_seed_key(node_data.node_type, node_data.concept)
+        seed_key = make_seed_key(node_data.concept)
 
         if seed_key in seed_keys_created:
             continue
@@ -463,8 +463,8 @@ async def create_seeds_from_import(
     for node_data in nodes:
         if node_data.id not in node_id_map:
             continue
-        seed_key = make_seed_key(node_data.node_type, node_data.concept)
-        node_key = make_node_key(node_data.node_type, node_data.concept)
+        seed_key = make_seed_key(node_data.concept)
+        node_key = make_node_key(node_data.concept)
         await seed_repo.promote_seed(seed_key, node_key)
 
     return len(seed_dicts)

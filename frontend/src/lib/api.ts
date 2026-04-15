@@ -38,12 +38,7 @@ import type {
   PathsResponse,
   IngestSourceResponse,
   IngestPrepareResponse,
-  IngestProposalsResponse,
   BottomUpPrepareResponse,
-  BottomUpProposedNode,
-  BottomUpBuildResponse,
-  AgentSelectResponse,
-  AgentSelectStatusResponse,
   UserRead,
   ApiTokenRead,
   ApiTokenCreated,
@@ -63,7 +58,6 @@ import type {
   PaginatedSeedsResponse,
   PaginatedPerspectiveSeedsResponse,
   SeedDetailResponse,
-  SeedDivergenceResponse,
   SeedTreeResponse,
   PaginatedEdgeCandidatePairs,
   EdgeCandidatePairDetail,
@@ -86,6 +80,7 @@ import type {
   SentenceFactLink,
   SynthesisNodeResponse,
   PipelineSnapshotResponse,
+  TaskChildrenResponse,
   GraphResponse,
   CreateGraphRequest,
   UpdateGraphRequest,
@@ -260,7 +255,7 @@ export const api = {
       messageId: string,
     ): Promise<ProgressResponse> {
       return graphRequest<ProgressResponse>(
-        `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/progress`,
+        `/research/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/progress`,
       );
     },
 
@@ -618,12 +613,6 @@ export const api = {
       return graphRequest<SeedDetailResponse>(`/seeds/${encodeURIComponent(key)}`);
     },
 
-    getDivergence(key: string): Promise<SeedDivergenceResponse> {
-      return graphRequest<SeedDivergenceResponse>(
-        `/seeds/divergence/${encodeURIComponent(key)}`,
-      );
-    },
-
     list(params?: {
       offset?: number;
       limit?: number;
@@ -832,7 +821,6 @@ export const api = {
     confirm(
       conversationId: string,
       navBudget: number,
-      selectedChunks?: number[] | null,
       shareWithPublicGraph: boolean = true,
     ): Promise<ConversationResponse> {
       return graphRequest<ConversationResponse>(
@@ -841,10 +829,6 @@ export const api = {
           method: "POST",
           body: JSON.stringify({
             nav_budget: navBudget,
-            selected_chunks: selectedChunks ?? null,
-            // Per-ingest opt-out for the multigraph public-cache
-            // contribute hook. The API forces this to ``false``
-            // server-side for file-only ingests regardless of value.
             share_with_public_graph: shareWithPublicGraph,
           }),
         },
@@ -866,7 +850,6 @@ export const api = {
 
     decompose(
       conversationId: string,
-      selectedChunks?: number[] | null,
       shareWithPublicGraph: boolean = true,
     ): Promise<{ conversation_id: string; message_id: string; status: string }> {
       return graphRequest<{ conversation_id: string; message_id: string; status: string }>(
@@ -874,28 +857,8 @@ export const api = {
         {
           method: "POST",
           body: JSON.stringify({
-            selected_chunks: selectedChunks ?? null,
             share_with_public_graph: shareWithPublicGraph,
           }),
-        },
-      );
-    },
-
-    proposals(conversationId: string): Promise<IngestProposalsResponse> {
-      return graphRequest<IngestProposalsResponse>(
-        `/research/${encodeURIComponent(conversationId)}/proposals`,
-      );
-    },
-
-    build(
-      conversationId: string,
-      selectedNodes: BottomUpProposedNode[],
-    ): Promise<BottomUpBuildResponse> {
-      return graphRequest<BottomUpBuildResponse>(
-        `/research/${encodeURIComponent(conversationId)}/build`,
-        {
-          method: "POST",
-          body: JSON.stringify({ selected_nodes: selectedNodes }),
         },
       );
     },
@@ -916,31 +879,6 @@ export const api = {
     ): Promise<BottomUpPrepareResponse> {
       return graphRequest<BottomUpPrepareResponse>(
         `/research/${encodeURIComponent(conversationId)}/bottom-up/proposals`,
-      );
-    },
-
-    agentSelect(
-      conversationId: string,
-      maxSelect: number,
-      instructions?: string,
-    ): Promise<AgentSelectResponse> {
-      return graphRequest<AgentSelectResponse>(
-        `/research/${encodeURIComponent(conversationId)}/agent-select`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            max_select: maxSelect,
-            instructions: instructions ?? "",
-          }),
-        },
-      );
-    },
-
-    agentSelectStatus(
-      conversationId: string,
-    ): Promise<AgentSelectStatusResponse> {
-      return graphRequest<AgentSelectStatusResponse>(
-        `/research/${encodeURIComponent(conversationId)}/agent-select/status`,
       );
     },
 
@@ -1305,8 +1243,14 @@ export async function createSuperSynthesis(data: CreateSuperSynthesisRequest) {
 }
 
 export async function getWorkflowProgress(workflowRunId: string) {
-  return graphRequest<PipelineSnapshotResponse>(
+  return request<PipelineSnapshotResponse>(
     `/workflows/${encodeURIComponent(workflowRunId)}/progress`
+  );
+}
+
+export async function getTaskChildren(workflowRunId: string, taskId: string) {
+  return request<TaskChildrenResponse>(
+    `/workflows/${encodeURIComponent(workflowRunId)}/tasks/${encodeURIComponent(taskId)}/children`
   );
 }
 
