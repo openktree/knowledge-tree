@@ -248,41 +248,70 @@ class CallResult:
     latency_ms: int = 0
     error: str | None = None
     correct: bool | None = None
+    score: float = 0.0           # raw: +1 per valid hit, -1 per blacklist hit (negative allowed)
 
 
 # ── scoring ────────────────────────────────────────────────────────
 
-def _score(task: str, expected: dict, response: dict | None) -> bool:
+def _score(task: str, expected: dict, response: dict | None) -> tuple[bool, float]:
+    """Returns (correct, score). score = +1 per valid hit, −1 per blacklist hit.
+
+    - alias_gen: aliases (whitelist), must_exclude (blacklist).
+      correct = True iff at least one whitelist hit AND no blacklist hits
+                (or whitelist empty + no blacklist hits).
+    - suggest_disambig: paths compared against must_include_any and
+      acceptable_extra needles (both count +1). ambiguous bool must match.
+    - shell_classify: binary; score = 1 if correct else 0.
+    """
     if response is None:
-        return False
+        return False, 0.0
     if task == "alias_gen":
         raw = response.get("aliases", []) if isinstance(response, dict) else []
         emitted = {str(a).strip().lower() for a in raw if isinstance(a, str) and str(a).strip()}
-        must_include = {s.lower() for s in expected.get("must_include", [])}
-        must_exclude = {s.lower() for s in expected.get("must_exclude", [])}
-        if not must_include.issubset(emitted):
-            return False
-        if emitted & must_exclude:
-            return False
-        return True
+        valid = {s.lower() for s in expected.get("aliases", [])}
+        bad = {s.lower() for s in expected.get("must_exclude", [])}
+        hits_valid = len(emitted & valid)
+        hits_bad = len(emitted & bad)
+        score = float(hits_valid - hits_bad)
+        # correct: at least one valid hit and no blacklist leak; OR valid empty + no blacklist leak
+        if hits_bad > 0:
+            return False, score
+        if not valid:
+            return True, score
+        return hits_valid > 0, score
+
     if task == "shell_classify":
         got = bool(response.get("is_shell", False)) if isinstance(response, dict) else False
-        return got == bool(expected.get("is_shell"))
+        ok = got == bool(expected.get("is_shell"))
+        return ok, 1.0 if ok else 0.0
+
     if task == "suggest_disambig":
         raw = response.get("paths", []) if isinstance(response, dict) else []
         emitted = [str(p).strip() for p in raw if isinstance(p, str) and str(p).strip()]
         expect_ambig = bool(expected.get("ambiguous", False))
         got_ambig = len(emitted) >= 2
         if got_ambig != expect_ambig:
-            return False
-        if expect_ambig:
-            needles = [s.lower() for s in expected.get("must_include_any", [])]
-            if needles:
-                joined = " ".join(p.lower() for p in emitted)
-                if not any(n in joined for n in needles):
-                    return False
-        return True
-    return False
+            return False, 0.0
+        needles = [s.lower() for s in expected.get("must_include_any", [])]
+        extras = [s.lower() for s in expected.get("acceptable_extra", [])]
+        if not expect_ambig:
+            # Non-ambiguous items score 1 for staying empty/short; 0 otherwise.
+            return True, 1.0
+        # Ambiguous: count path-labels that contain any needle or acceptable_extra substring
+        joined_labels = [p.lower() for p in emitted]
+        score = 0
+        covered_needles: set[str] = set()
+        for lbl in joined_labels:
+            for n in needles + extras:
+                if n in lbl and n not in covered_needles:
+                    covered_needles.add(n)
+                    score += 1
+                    break
+        # correct: hit at least one core needle
+        covered_core = any(n in " ".join(joined_labels) for n in needles)
+        return covered_core, float(score)
+
+    return False, 0.0
 
 
 # ── one batched LLM call ──────────────────────────────────────────
@@ -443,7 +472,13 @@ async def _call_batch(
             latency_ms=batch_stats["latency_ms"],
             error=error,
         )
-        r.correct = _score(task, it.expected, scored_resp) if error is None else False
+        if error is None:
+            correct, score = _score(task, it.expected, scored_resp)
+            r.correct = correct
+            r.score = score
+        else:
+            r.correct = False
+            r.score = 0.0
         per_item_results.append(r)
     return per_item_results, batch_stats
 
