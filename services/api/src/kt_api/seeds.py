@@ -35,10 +35,36 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/api/v1/seeds", tags=["seeds"])
 
 
-def _seed_to_response(seed: WriteSeed) -> SeedResponse:
-    aliases: list[str] = []
+def _resolve_aliases(seed: WriteSeed) -> list[str]:
+    """Prefer the indexed aliases[] column; fall back to legacy metadata.
+
+    Pre-migration seeds may only have aliases under metadata_.aliases.
+    Post-migration seeds have the canonical list in seed.aliases.
+    Union both, dedup, and exclude the seed's own key.
+    """
+    collected: list[str] = []
+    column_aliases = list(seed.aliases or [])
+    if column_aliases:
+        collected.extend(column_aliases)
     if seed.metadata_:
-        aliases = seed.metadata_.get("aliases", [])
+        meta_aliases = seed.metadata_.get("aliases") or []
+        if isinstance(meta_aliases, list):
+            for a in meta_aliases:
+                if isinstance(a, str) and a:
+                    collected.append(a)
+    # Dedup preserving order, drop self-reference
+    seen: set[str] = set()
+    out: list[str] = []
+    for a in collected:
+        if a == seed.key or a in seen:
+            continue
+        seen.add(a)
+        out.append(a)
+    return out
+
+
+def _seed_to_response(seed: WriteSeed) -> SeedResponse:
+    aliases = _resolve_aliases(seed)
     return SeedResponse(
         key=seed.key,
         seed_uuid=str(seed.seed_uuid),
@@ -490,9 +516,7 @@ async def _get_seed_impl(
             if parent:
                 parent_seed_resp = _seed_to_response(parent)
 
-        aliases: list[str] = []
-        if seed.metadata_:
-            aliases = seed.metadata_.get("aliases", [])
+        aliases = _resolve_aliases(seed)
 
         settings = get_settings()
         return SeedDetailResponse(

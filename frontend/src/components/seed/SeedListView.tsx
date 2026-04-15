@@ -20,10 +20,12 @@ import { api } from "@/lib/api";
 const PAGE_SIZE = 20;
 
 const STATUS_COLORS: Record<string, string> = {
+  pending: "bg-slate-500/15 text-slate-700 dark:text-slate-400",
   active: "bg-green-500/15 text-green-700 dark:text-green-400",
   promoted: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
   merged: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
   ambiguous: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
+  garbage: "bg-red-500/15 text-red-700 dark:text-red-400",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -101,7 +103,7 @@ export function SeedListView() {
             <DropdownMenuItem onClick={() => setStatus(null)}>
               All statuses
             </DropdownMenuItem>
-            {["active", "promoted", "merged", "ambiguous", "promotable"].map((s) => (
+            {["pending", "active", "promoted", "merged", "ambiguous", "garbage", "promotable"].map((s) => (
               <DropdownMenuItem key={s} onClick={() => setStatus(s)}>
                 {s}
               </DropdownMenuItem>
