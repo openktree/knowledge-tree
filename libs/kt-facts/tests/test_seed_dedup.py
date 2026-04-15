@@ -290,6 +290,97 @@ class TestDeduplicateSeed:
         assert not any("homeopathy" in c and "homeopath" in c and "multiplex_fold" not in c for c in merge_calls)
         assert result == "homeopath"
 
+    async def test_merge_into_path_merges_into_child(self):
+        """LLM says merge_into_path → incoming merged into specific child of ambiguous target."""
+        from seed_fixtures import make_route
+        parent = make_seed("mercury", "Mercury", "concept", fact_count=8, status="ambiguous")
+        child_planet = make_seed("mercury-planet", "Mercury (planet)", "concept", fact_count=5)
+        child_element = make_seed("mercury-element", "Mercury (element)", "concept", fact_count=3)
+        incoming = make_seed("hg", "Hg", "concept", status="pending", fact_count=1)
+
+        repo = make_seed_repo_mock()
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[parent])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(parent, child_planet, child_element, incoming))
+        repo.get_routes_for_parent = AsyncMock(return_value=[
+            make_route("mercury", "mercury-planet", "Mercury (planet)"),
+            make_route("mercury", "mercury-element", "Mercury (element)"),
+        ])
+
+        gw = make_model_gateway_mock({
+            "action": "merge_into_path",
+            "target_seed_key": "mercury",
+            "target_path_key": "mercury-element",
+            "reason": "Hg is the chemical symbol for mercury (element)",
+        })
+
+        result = await deduplicate_seed(
+            "hg", "Hg", "concept", repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=gw,
+        )
+
+        # Should merge into the element child, not the parent
+        assert result == "mercury-element"
+        repo.merge_seeds.assert_called_once()
+
+    async def test_merge_into_path_invalid_key_uses_first_child(self):
+        """Bad target_path_key → falls back to first child."""
+        from seed_fixtures import make_route
+        parent = make_seed("mercury", "Mercury", "concept", fact_count=8, status="ambiguous")
+        child = make_seed("mercury-planet", "Mercury (planet)", "concept", fact_count=5)
+        incoming = make_seed("hg", "Hg", "concept", status="pending", fact_count=1)
+
+        repo = make_seed_repo_mock()
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[parent])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(parent, child, incoming))
+        repo.get_routes_for_parent = AsyncMock(return_value=[
+            make_route("mercury", "mercury-planet", "Mercury (planet)"),
+        ])
+
+        gw = make_model_gateway_mock({
+            "action": "merge_into_path",
+            "target_seed_key": "mercury",
+            "target_path_key": "nonexistent-child-key",
+            "reason": "test",
+        })
+
+        result = await deduplicate_seed(
+            "hg", "Hg", "concept", repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=gw,
+        )
+
+        assert result == "mercury-planet"
+
+    async def test_merge_into_path_no_routes_falls_back_to_flat_merge(self):
+        """Target has no routes yet → fall back to flat merge_into_seed."""
+        parent = make_seed("mercury", "Mercury", "concept", fact_count=8)
+        incoming = make_seed("hg", "Hg", "concept", status="pending", fact_count=1)
+
+        repo = make_seed_repo_mock()
+        repo.find_seeds_by_keys_or_aliases = AsyncMock(return_value=[parent])
+        repo.get_seed_by_key = AsyncMock(side_effect=_seed_map(parent, incoming))
+        repo.get_routes_for_parent = AsyncMock(return_value=[])
+
+        gw = make_model_gateway_mock({
+            "action": "merge_into_path",
+            "target_seed_key": "mercury",
+            "target_path_key": "mercury-element",
+            "reason": "test",
+        })
+
+        result = await deduplicate_seed(
+            "hg", "Hg", "concept", repo,
+            embedding_service=make_embedding_service_mock(),
+            qdrant_seed_repo=make_qdrant_seed_repo_mock(),
+            model_gateway=gw,
+        )
+
+        assert result == "mercury"
+        repo.merge_seeds.assert_called_once()
+
     async def test_aliases_passed_to_text_search(self):
         """aliases kwarg is forwarded to find_seeds_by_keys_or_aliases as extra keys."""
         repo = make_seed_repo_mock()

@@ -3,7 +3,7 @@
 Pipeline (per seed, after all batch writes complete):
   1. DB text search — exact key + GIN alias array overlap
   2. Qdrant embedding search — single threshold (0.90), mandatory LLM above it
-  3. LLM multiplex — merge_into_seed | new_disambig_path
+  3. LLM multiplex — merge_into_seed | merge_into_path | new_disambig_path
   4. Genesis path (no candidates) — promote pending→active + suggest_disambig
 
 Dropped vs old design:
@@ -59,10 +59,20 @@ HARD RULES — never merge the following (split or birth new seed):
 ACTIONS (pick exactly one):
 
 1. "merge_into_seed"
-   Use when incoming is literally the same concept as the candidate.
+   Use when the target seed is FLAT (not yet disambiguated) AND incoming
+   is literally the same concept.
    Response: {"action": "merge_into_seed", "target_seed_key": "...", "reason": "..."}
 
-2. "new_disambig_path"
+2. "merge_into_path"
+   Use when the target seed is ALREADY DISAMBIGUATED (has existing paths)
+   AND incoming is literally the same concept as one of those paths.
+   Provide the key of the specific child path to merge into.
+   Response: {"action": "merge_into_path",
+              "target_seed_key": "...",
+              "target_path_key": "...",
+              "reason": "..."}
+
+3. "new_disambig_path"
    Use when the incoming reveals a distinct concept sharing a surface
    form with the candidate seed. Provide unambiguous labels for both.
    If the target seed is still flat, also provide existing_disambig_label
@@ -95,6 +105,9 @@ Examples:
   Python      → ["Python (programming language)", "Python (snake)", "Python (mythology)"]
   Paris       → ["Paris (France)", "Paris (Greek myth)"]
   Amazon      → ["Amazon (company)", "Amazon (river)", "Amazon (rainforest)"]
+  Cambridge   → ["Cambridge (city, UK)", "Cambridge (city, MA)", "Cambridge University"]
+  Washington  → ["Washington (state)", "Washington D.C.", "George Washington"]
+  Saturn      → ["Saturn (planet)", "Saturn (Roman god)", "Saturn (car brand)"]
 
 Multi-token names are typically NOT naturally ambiguous — emit
 empty list for them.
@@ -223,6 +236,29 @@ async def deduplicate_seed(
 
     if action == "merge_into_seed" and target is not None:
         winner = await _merge_pair(seed_key, target_key, write_seed_repo, reason=f"llm_multiplex:{reason}")
+        return winner
+
+    elif action == "merge_into_path" and target is not None:
+        # Target is already disambiguated — merge incoming into a specific child path
+        path_key = str(response.get("target_path_key", "")).strip()
+        # Validate path_key is a real child of target
+        routes = await write_seed_repo.get_routes_for_parent(target_key)
+        valid_child_keys = {r.child_seed_key for r in routes}
+        if path_key not in valid_child_keys:
+            if valid_child_keys:
+                # LLM gave bad path key — use first child as fallback
+                path_key = next(iter(valid_child_keys))
+                reason += " | fallback: path_key invalid, used first child"
+            else:
+                # Target has no routes — treat as flat merge
+                logger.info(
+                    "merge_into_path: target '%s' has no routes, falling back to merge_into_seed",
+                    target_key,
+                )
+                winner = await _merge_pair(seed_key, target_key, write_seed_repo, reason=f"llm_multiplex:merge_into_path_flat_fallback:{reason}")
+                return winner
+        logger.info("Merging '%s' into path '%s' of '%s' (reason: %s)", name, path_key, target_key, reason)
+        winner = await _merge_pair(seed_key, path_key, write_seed_repo, reason=f"llm_multiplex:merge_into_path:{reason}")
         return winner
 
     elif action == "new_disambig_path" and target is not None:
