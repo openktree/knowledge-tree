@@ -44,10 +44,11 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
     async with (await state.resolve_sessions(input.graph_id))[1]() as session:
         repo = WriteSeedRepository(session)
 
-        # Batch-fetch all seeds, filter to active only
+        # Batch-fetch all seeds, filter to pending only
+        # (dedup promotes pending → active/merged/ambiguous)
         unique_keys = list(dict.fromkeys(input.seed_keys))
         seeds_by_key = await repo.get_seeds_by_keys_batch(unique_keys)
-        active_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "active"]
+        active_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "pending"]
 
         # Build Qdrant seed repo — required for embedding dedup
         if state.qdrant_client is None:
@@ -73,6 +74,7 @@ async def seed_dedup_task(input: SeedDedupBatchInput, ctx: Context) -> dict:
                         qdrant_seed_repo=qdrant_seed_repo,
                         model_gateway=state.model_gateway,
                         write_fact_repo=write_fact_repo,
+                        aliases=list(seed.aliases or []),
                     )
                 processed += 1
                 if surviving != seed_key:

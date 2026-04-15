@@ -305,9 +305,10 @@ async def dedup_seeds_batch(
     # Batch-fetch all seeds in one query to filter early
     unique_keys = list(dict.fromkeys(seed_keys))
     seeds_by_key = await write_seed_repo.get_seeds_by_keys_batch(unique_keys)
-    active_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "active"]
+    # Only process pending seeds — dedup promotes them to active/merged/ambiguous
+    pending_seeds = [(k, s) for k, s in seeds_by_key.items() if s.status == "pending"]
 
-    if not active_seeds:
+    if not pending_seeds:
         return {}
 
     merges: dict[str, str] = {}
@@ -316,14 +317,13 @@ async def dedup_seeds_batch(
         # Parallel dedup with separate sessions
         sem = asyncio.Semaphore(max_concurrency)
 
-        async def _dedup_one(seed_key: str, name: str, node_type: str) -> tuple[str, str]:
+        async def _dedup_one(seed_key: str, name: str, node_type: str, aliases: list[str]) -> tuple[str, str]:
             async with sem:
                 async with write_session_factory() as session:
                     async with session.begin():
                         from kt_db.repositories.write_seeds import WriteSeedRepository as _WSR
 
                         repo = _WSR(session)
-                        # Build per-session write_fact_repo if model_gateway available
                         _wfr = None
                         if model_gateway is not None:
                             from kt_db.repositories.write_facts import WriteFactRepository
@@ -338,10 +338,11 @@ async def dedup_seeds_batch(
                             qdrant_seed_repo=qdrant_seed_repo,
                             model_gateway=model_gateway,
                             write_fact_repo=_wfr,
+                            aliases=aliases,
                         )
                         return seed_key, surviving
 
-        tasks = [_dedup_one(k, s.name, s.node_type) for k, s in active_seeds]
+        tasks = [_dedup_one(k, s.name, s.node_type, list(s.aliases or [])) for k, s in pending_seeds]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
             if isinstance(r, BaseException):
@@ -352,7 +353,7 @@ async def dedup_seeds_batch(
                 merges[seed_key] = surviving
     else:
         # Sequential fallback
-        for seed_key, seed in active_seeds:
+        for seed_key, seed in pending_seeds:
             try:
                 surviving_key = await deduplicate_seed(
                     seed_key=seed_key,
@@ -363,6 +364,7 @@ async def dedup_seeds_batch(
                     qdrant_seed_repo=qdrant_seed_repo,
                     model_gateway=model_gateway,
                     write_fact_repo=write_fact_repo,
+                    aliases=list(seed.aliases or []),
                 )
                 if surviving_key != seed_key:
                     merges[seed_key] = surviving_key
