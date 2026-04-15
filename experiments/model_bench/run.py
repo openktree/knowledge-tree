@@ -14,12 +14,15 @@ import argparse
 import asyncio
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field, ValidationError
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
@@ -96,6 +99,89 @@ PROMPTS = {
     "shell_classify":    _SHELL_SYSTEM,
     "suggest_disambig":  _SUGGEST_DISAMBIG_SYSTEM,
 }
+
+
+# ── Pydantic response schemas (batch-mode: {results: [...]}) ──────
+
+class AliasEntry(BaseModel):
+    index: int
+    aliases: list[str] = Field(default_factory=list)
+
+
+class ShellEntry(BaseModel):
+    index: int
+    is_shell: bool = False
+
+
+class DisambigEntry(BaseModel):
+    index: int
+    paths: list[str] = Field(default_factory=list)
+
+
+class BatchAlias(BaseModel):
+    results: list[AliasEntry] = Field(default_factory=list)
+
+
+class BatchShell(BaseModel):
+    results: list[ShellEntry] = Field(default_factory=list)
+
+
+class BatchDisambig(BaseModel):
+    results: list[DisambigEntry] = Field(default_factory=list)
+
+
+BATCH_SCHEMAS = {
+    "alias_gen":        BatchAlias,
+    "shell_classify":   BatchShell,
+    "suggest_disambig": BatchDisambig,
+}
+
+
+# ── Robust JSON extraction — handles markdown fences + text wrapping ──
+
+_FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+_FIRST_OBJ = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json(raw: str) -> dict | None:
+    """Try progressively to parse JSON from a model's text output."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # Strip markdown fences
+    m = _FENCE.search(raw)
+    if m:
+        candidate = m.group(1).strip()
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+    # Grab the first {...} block
+    m = _FIRST_OBJ.search(raw)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _validate_and_normalize(task: str, raw_json: dict | None) -> dict | None:
+    """Validate raw JSON against the batch schema, coerce to canonical shape."""
+    if raw_json is None:
+        return None
+    schema = BATCH_SCHEMAS.get(task)
+    if schema is None:
+        return raw_json
+    try:
+        validated = schema.model_validate(raw_json)
+        return validated.model_dump()
+    except ValidationError:
+        return raw_json  # pass through — caller may still extract partials
 
 
 def _build_batch_user(task: str, names: list[str]) -> str:
@@ -213,6 +299,7 @@ async def _call_batch(
     cache: Cache,
     reasoning: dict | None = None,
     pricing: dict | None = None,
+    force_json_object: bool = True,
 ) -> tuple[list[CallResult], dict]:
     """Returns (per-item results, batch stats)."""
     names = [it.name for it in items]
@@ -251,11 +338,11 @@ async def _call_batch(
             "max_tokens": max_tokens,
             "api_key": settings.openrouter_api_key,
             "api_base": "https://openrouter.ai/api/v1",
-            "response_format": {"type": "json_object"},
             "timeout": timeout,
         }
+        if force_json_object:
+            call_kwargs["response_format"] = {"type": "json_object"}
         if reasoning:
-            # OpenRouter format: {"reasoning": {"effort": "none" | "minimal", ...}}
             call_kwargs["reasoning"] = reasoning
         try:
             response = await asyncio.wait_for(
@@ -263,17 +350,12 @@ async def _call_batch(
                 timeout=timeout,
             )
             raw_text = response.choices[0].message.content or ""
-            try:
-                resp = json.loads(raw_text)
-            except json.JSONDecodeError:
-                # Salvage attempt — strip markdown fences if any
-                txt = raw_text.strip()
-                if txt.startswith("```"):
-                    txt = txt.strip("`").split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-                try:
-                    resp = json.loads(txt)
-                except json.JSONDecodeError:
-                    err = f"JSON parse failed (len={len(raw_text)}): {raw_text[:120]}"
+            raw_json = _extract_json(raw_text)
+            if raw_json is None:
+                err = f"JSON parse failed (len={len(raw_text)}): {raw_text[:120]}"
+                resp = None
+            else:
+                resp = _validate_and_normalize(task, raw_json)
             usage = getattr(response, "usage", None)
             if usage is not None:
                 prompt_tok = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -386,17 +468,18 @@ async def run_bench(config_path: Path) -> None:
     pricing_map = config.get("pricing", {}) or {}
 
     # Build (model, task, batch) jobs
-    jobs: list[tuple[str, str, str, list[BenchItem], dict | None, dict | None]] = []
+    jobs: list[tuple[str, str, str, list[BenchItem], dict | None, dict | None, bool]] = []
     for m in models:
         mid = m["id"]
         label = m.get("label", mid)
         reasoning = m.get("reasoning")
         price = pricing_map.get(mid)
+        force_json = bool(m.get("force_json_object", True))
         for task in tasks:
             items = TASKS[task]
             for i in range(0, len(items), batch_size):
                 batch = items[i : i + batch_size]
-                jobs.append((mid, label, task, batch, reasoning, price))
+                jobs.append((mid, label, task, batch, reasoning, price, force_json))
 
     total_items = sum(len(b[3]) for b in jobs)
     print(f"Bench: {len(models)} model(s) × {len(tasks)} task(s), batch_size={batch_size}, "
@@ -405,7 +488,8 @@ async def run_bench(config_path: Path) -> None:
     sem = asyncio.Semaphore(concurrency)
 
     async def _one(mid: str, lbl: str, tsk: str, batch: list[BenchItem],
-                    reasoning: dict | None, price: dict | None):
+                    reasoning: dict | None, price: dict | None,
+                    force_json: bool):
         async with sem:
             per_item, stats = await _call_batch(
                 None, mid, tsk, batch,
@@ -415,14 +499,15 @@ async def run_bench(config_path: Path) -> None:
                 cache=cache,
                 reasoning=reasoning,
                 pricing=price,
+                force_json_object=force_json,
             )
             return lbl, per_item, stats, tsk, len(batch)
 
     results_by_model: dict[str, list[CallResult]] = {}
     completed_batches = 0
     for coro in asyncio.as_completed([
-        _one(mid, lbl, tsk, batch, reasoning, price)
-        for mid, lbl, tsk, batch, reasoning, price in jobs
+        _one(mid, lbl, tsk, batch, reasoning, price, force_json)
+        for mid, lbl, tsk, batch, reasoning, price, force_json in jobs
     ]):
         lbl, per_item, stats, tsk, n = await coro
         results_by_model.setdefault(lbl, []).extend(per_item)

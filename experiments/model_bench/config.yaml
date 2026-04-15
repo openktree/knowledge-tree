@@ -15,6 +15,7 @@ models:
     reasoning: {effort: "minimal"}   # OpenRouter → {reasoning: {effort: "..."}}. "none" or "minimal" to disable thinking.
   - id: openrouter/stepfun/step-3.5-flash:nitro
     label: step-3.5-flash:nitro
+    force_json_object: false   # DeepInfra provider rejects response_format for stepfun
   - id: openrouter/minimax/MiniMax-M2.7:nitro
     label: minimax-m2.7:nitro (min-think)
     reasoning: {effort: "minimal"}   # MiniMax has no "none" mode — minimal is the floor
