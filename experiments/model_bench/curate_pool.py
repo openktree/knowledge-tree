@@ -142,9 +142,84 @@ def _propose_aliases(per_model: dict[str, dict], seed: str) -> list[str]:
         if count >= 2 and _is_valid_alias_candidate(cand, seed):
             proposed.append(cand)
         elif count == 1 and _is_trusted_single_model(cand, seed):
-            # High-confidence pattern (acronym/plural/diacritic) — accept single-model
             proposed.append(cand)
     return proposed
+
+
+# Anti-patterns — emissions that should NEVER be aliases.
+_ADJ_SUFFIXES = ("ic", "ical", "istic", "al", "ive", "ary", "ous", "ed", "ing", "ly")
+_ROLE_SUFFIXES = ("ist", "er", "or", "ian", "ant", "ent")
+
+
+def _is_blacklist_candidate(candidate: str, seed: str) -> str | None:
+    """Return reason if candidate should be blacklisted, else None.
+
+    Rules:
+    - Derived-adjective form of noun seed (seed ends in normal noun suffix,
+      candidate adds adj suffix).
+    - Practitioner/role form (seed is discipline, candidate adds -ist/-er/-ian).
+    - Candidate is a coreference/specialization — seed token set is a
+      proper subset with the extra words being substantive modifiers.
+    """
+    c = candidate.strip().lower()
+    s = seed.strip().lower()
+    if not c or c == s:
+        return None
+    # Derived adjective
+    if any(c.endswith(suf) for suf in _ADJ_SUFFIXES):
+        # candidate is adjective if stem matches seed-ish
+        for suf in _ADJ_SUFFIXES:
+            if c.endswith(suf) and len(c) > len(suf) + 2:
+                stem = c[: -len(suf)]
+                if stem == s or stem.rstrip("e") == s.rstrip("e") or s.startswith(stem) or stem.startswith(s):
+                    if not any(s.endswith(x) for x in _ADJ_SUFFIXES):
+                        return f"derived adjective form of noun seed"
+    # Practitioner/role — short dictionary pairs
+    role_pairs = [
+        ("homeopathy", "homeopath"), ("physics", "physicist"), ("biology", "biologist"),
+        ("chemistry", "chemist"), ("law", "lawyer"), ("medicine", "doctor"),
+        ("philosophy", "philosopher"), ("psychology", "psychologist"),
+    ]
+    for p, r in role_pairs:
+        if s == p and c == r:
+            return "practitioner vs practice"
+        if s == r and c == p:
+            return "practice vs practitioner"
+    # Specialization/coreference — strict subset token check
+    s_tokens = [t for t in re.split(r"[\s-]+", s) if t]
+    c_tokens = [t for t in re.split(r"[\s-]+", c) if t]
+    if len(c_tokens) > len(s_tokens) and all(t in c_tokens for t in s_tokens):
+        # candidate has seed + extra words → specialization
+        extras = [t for t in c_tokens if t not in s_tokens]
+        # Exclude trivial plural-s additions (already whitelisted as valid)
+        if not (len(extras) == 1 and extras[0] in {"s", "es"}):
+            return "specialization (seed + extra modifiers)"
+    if len(s_tokens) > len(c_tokens) and all(t in s_tokens for t in c_tokens):
+        # candidate is a proper subset of seed's tokens → coreference
+        # Exclude short acronym-like single tokens (valid abbreviation)
+        if not (len(c_tokens) == 1 and len(c) <= 6):
+            # Also keep anything that was an all-caps acronym (trusted earlier)
+            if not _ACRONYM.match(candidate.strip()):
+                return "coreference (shorter reference to same thing)"
+    return None
+
+
+def _propose_must_exclude(per_model: dict[str, dict], seed: str, whitelist: list[str]) -> list[str]:
+    whitelist_lc = {w.strip().lower() for w in whitelist}
+    collected: dict[str, str] = {}  # lower -> display
+    for _, entry in per_model.items():
+        als = entry.get("aliases", [])
+        if not isinstance(als, list):
+            continue
+        for a in als:
+            if not isinstance(a, str):
+                continue
+            k = a.strip().lower()
+            if not k or k in whitelist_lc:
+                continue
+            if _is_blacklist_candidate(a.strip(), seed):
+                collected.setdefault(k, a.strip())
+    return sorted(collected.values(), key=str.lower)
 
 
 def _propose_is_shell(per_model: dict[str, dict]) -> bool | None:
@@ -212,8 +287,9 @@ def main() -> None:
         # alias_gen
         per_model_alias = {m: e for (m, t, n), e in cache.items() if t == "alias_gen" and n == name}
         aliases = _propose_aliases(per_model_alias, name)
-        if aliases:
-            entry["alias_gen"] = {"aliases": aliases, "must_exclude": []}
+        blacklist = _propose_must_exclude(per_model_alias, name, aliases)
+        if aliases or blacklist:
+            entry["alias_gen"] = {"aliases": aliases, "must_exclude": blacklist}
         else:
             skipped["alias_gen"] += 1
 
