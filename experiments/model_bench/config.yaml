@@ -11,17 +11,48 @@ models:
   - id: openrouter/x-ai/grok-4.1-fast:nitro
     label: grok-4.1-fast:nitro
   - id: openrouter/openai/gpt-5-nano:nitro
-    label: gpt-5-nano:nitro
+    label: gpt-5-nano:nitro (no-think)
+    reasoning: {effort: "minimal"}   # OpenRouter → {reasoning: {effort: "..."}}. "none" or "minimal" to disable thinking.
   - id: openrouter/stepfun/step-3.5-flash:nitro
     label: step-3.5-flash:nitro
   - id: openrouter/minimax/MiniMax-M2.7:nitro
-    label: minimax-m2.7:nitro
+    label: minimax-m2.7:nitro (min-think)
+    reasoning: {effort: "minimal"}   # MiniMax has no "none" mode — minimal is the floor
   - id: openrouter/qwen/qwen3.5-flash-02-23:nitro
     label: qwen3.5-flash:nitro
   - id: openrouter/google/gemma-4-26b-a4b-it:nitro
     label: gemma-4-26b-a4b:nitro
   - id: openrouter/openai/gpt-oss-120b:nitro
     label: gpt-oss-120b:nitro
+
+# Pricing overrides — $ per 1M tokens. If a model isn't listed here, the
+# bench falls back to LiteLLM's built-in completion_cost() (may be stale).
+# Edit these when new pricing data is published.
+pricing:
+  "openrouter/google/gemini-3.1-flash-lite-preview:nitro":
+    input: 0.25
+    output: 1.5
+  "openrouter/x-ai/grok-4.1-fast:nitro":
+    input: 0.20
+    output: 0.50
+  "openrouter/openai/gpt-5-nano:nitro":
+    input: 0.05
+    output: 0.40
+  "openrouter/stepfun/step-3.5-flash:nitro":
+    input: 0.10
+    output: 0.30
+  "openrouter/minimax/MiniMax-M2.7:nitro":
+    input: 0.20
+    output: 1.10
+  "openrouter/qwen/qwen3.5-flash-02-23:nitro":
+    input: 0.1
+    output: 0.40
+  "openrouter/google/gemma-4-26b-a4b-it:nitro":
+    input: 0.08
+    output: 0.35
+  "openrouter/openai/gpt-oss-120b:nitro":
+    input: 0.09
+    output: 0.36
 
 tasks:
   - alias_gen

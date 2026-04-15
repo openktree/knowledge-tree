@@ -23,8 +23,8 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from kt_models.gateway import ModelGateway  # noqa: E402
-from kt_models.usage import start_usage_tracking, stop_usage_tracking  # noqa: E402
+import litellm  # noqa: E402
+from kt_config.settings import get_settings  # noqa: E402
 
 from .datasets import TASKS, BenchItem  # noqa: E402
 from .report import generate_report  # noqa: E402
@@ -202,7 +202,7 @@ def _score(task: str, expected: dict, response: dict | None) -> bool:
 # ── one batched LLM call ──────────────────────────────────────────
 
 async def _call_batch(
-    gateway: ModelGateway,
+    gateway,  # unused; kept for signature stability
     model_id: str,
     task: str,
     items: list[BenchItem],
@@ -211,6 +211,8 @@ async def _call_batch(
     temperature: float,
     timeout: int,
     cache: Cache,
+    reasoning: dict | None = None,
+    pricing: dict | None = None,
 ) -> tuple[list[CallResult], dict]:
     """Returns (per-item results, batch stats)."""
     names = [it.name for it in items]
@@ -234,31 +236,70 @@ async def _call_batch(
             "error": cached.get("error"),
         })
     else:
-        acc = start_usage_tracking()
+        settings = get_settings()
         t0 = time.time()
         err: str | None = None
+        prompt_tok = 0
+        compl_tok = 0
+        call_kwargs: dict = {
+            "model": model_id,
+            "messages": [
+                {"role": "system", "content": PROMPTS[task]},
+                {"role": "user", "content": _build_batch_user(task, names)},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "api_key": settings.openrouter_api_key,
+            "api_base": "https://openrouter.ai/api/v1",
+            "response_format": {"type": "json_object"},
+            "timeout": timeout,
+        }
+        if reasoning:
+            # OpenRouter format: {"reasoning": {"effort": "none" | "minimal", ...}}
+            call_kwargs["reasoning"] = reasoning
         try:
-            resp = await asyncio.wait_for(
-                gateway.generate_json(
-                    model_id=model_id,
-                    messages=[{"role": "user", "content": _build_batch_user(task, names)}],
-                    system_prompt=PROMPTS[task],
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                ),
+            response = await asyncio.wait_for(
+                litellm.acompletion(**call_kwargs),
                 timeout=timeout,
             )
+            raw_text = response.choices[0].message.content or ""
+            try:
+                resp = json.loads(raw_text)
+            except json.JSONDecodeError:
+                # Salvage attempt — strip markdown fences if any
+                txt = raw_text.strip()
+                if txt.startswith("```"):
+                    txt = txt.strip("`").split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+                try:
+                    resp = json.loads(txt)
+                except json.JSONDecodeError:
+                    err = f"JSON parse failed (len={len(raw_text)}): {raw_text[:120]}"
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                prompt_tok = int(getattr(usage, "prompt_tokens", 0) or 0)
+                compl_tok = int(getattr(usage, "completion_tokens", 0) or 0)
         except asyncio.TimeoutError:
             err = f"timeout>{timeout}s"
         except Exception as exc:
             err = f"{type(exc).__name__}: {str(exc)[:300]}"
-        finally:
-            stop_usage_tracking()
         latency_ms = int((time.time() - t0) * 1000)
+
+        # Cost: use pricing override if provided, else LiteLLM
+        cost_usd = 0.0
+        if pricing:
+            p_in = float(pricing.get("input", 0.0))
+            p_out = float(pricing.get("output", 0.0))
+            cost_usd = prompt_tok * p_in / 1_000_000 + compl_tok * p_out / 1_000_000
+        elif err is None:
+            try:
+                cost_usd = float(litellm.completion_cost(completion_response=response) or 0.0)
+            except Exception:
+                cost_usd = 0.0
+
         batch_stats.update({
-            "prompt_tokens": acc.total_prompt_tokens if acc else 0,
-            "completion_tokens": acc.total_completion_tokens if acc else 0,
-            "cost_usd": acc.total_cost_usd if acc else 0.0,
+            "prompt_tokens": prompt_tok,
+            "completion_tokens": compl_tok,
+            "cost_usd": cost_usd,
             "latency_ms": latency_ms,
             "error": err,
         })
@@ -335,8 +376,6 @@ async def run_bench(config_path: Path) -> None:
     out_path = here / str(config.get("output_html", "report.html"))
     cache = Cache(cache_path)
 
-    gateway = ModelGateway()
-
     models: list[dict] = config.get("models", []) or []
     tasks: list[str] = config.get("tasks", []) or []
     batch_size = int(config.get("batch_size", 10))
@@ -344,17 +383,20 @@ async def run_bench(config_path: Path) -> None:
     timeout = int(config.get("timeout_seconds", 120))
     concurrency = int(config.get("concurrency", 3))
     max_tokens_per_item = int(config.get("max_tokens_per_item", 80))
+    pricing_map = config.get("pricing", {}) or {}
 
     # Build (model, task, batch) jobs
-    jobs: list[tuple[str, str, str, list[BenchItem]]] = []
+    jobs: list[tuple[str, str, str, list[BenchItem], dict | None, dict | None]] = []
     for m in models:
         mid = m["id"]
         label = m.get("label", mid)
+        reasoning = m.get("reasoning")
+        price = pricing_map.get(mid)
         for task in tasks:
             items = TASKS[task]
             for i in range(0, len(items), batch_size):
                 batch = items[i : i + batch_size]
-                jobs.append((mid, label, task, batch))
+                jobs.append((mid, label, task, batch, reasoning, price))
 
     total_items = sum(len(b[3]) for b in jobs)
     print(f"Bench: {len(models)} model(s) × {len(tasks)} task(s), batch_size={batch_size}, "
@@ -362,20 +404,26 @@ async def run_bench(config_path: Path) -> None:
 
     sem = asyncio.Semaphore(concurrency)
 
-    async def _one(mid: str, lbl: str, tsk: str, batch: list[BenchItem]):
+    async def _one(mid: str, lbl: str, tsk: str, batch: list[BenchItem],
+                    reasoning: dict | None, price: dict | None):
         async with sem:
             per_item, stats = await _call_batch(
-                gateway, mid, tsk, batch,
+                None, mid, tsk, batch,
                 max_tokens=max(150, max_tokens_per_item * len(batch)),
                 temperature=temperature,
                 timeout=timeout,
                 cache=cache,
+                reasoning=reasoning,
+                pricing=price,
             )
             return lbl, per_item, stats, tsk, len(batch)
 
     results_by_model: dict[str, list[CallResult]] = {}
     completed_batches = 0
-    for coro in asyncio.as_completed([_one(mid, lbl, tsk, batch) for mid, lbl, tsk, batch in jobs]):
+    for coro in asyncio.as_completed([
+        _one(mid, lbl, tsk, batch, reasoning, price)
+        for mid, lbl, tsk, batch, reasoning, price in jobs
+    ]):
         lbl, per_item, stats, tsk, n = await coro
         results_by_model.setdefault(lbl, []).extend(per_item)
         completed_batches += 1
