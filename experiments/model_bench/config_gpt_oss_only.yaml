@@ -1,0 +1,24 @@
+models:
+  - id: openrouter/openai/gpt-oss-120b:nitro
+    reasoning: {effort: "minimal"}
+    label: gpt-oss-120b:nitro
+
+pricing:
+  "openrouter/openai/gpt-oss-120b:nitro":
+    input: 0.09
+    output: 0.36
+
+tasks:
+  - alias_gen
+  - shell_classify
+  - suggest_disambig
+
+dataset: both
+batch_size: 10
+temperature: 0.0
+timeout_seconds: 120
+concurrency: 3
+max_tokens_per_item: 150
+
+output_html: report_gpt_oss_only.html
+cache_file: bench_cache_gpt_oss_only.jsonl

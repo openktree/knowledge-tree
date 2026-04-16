@@ -241,23 +241,14 @@ async def entity_extraction_task(input: EntityExtractionInput, ctx: Context) -> 
             )
             return EntityExtractionOutput().model_dump()
 
-        # Extract entities using configured extractor (spacy or llm)
-        from kt_config.settings import get_settings
-        from kt_facts.processing.extractor_base import ExtractedEntity
+        # Extract entities using the configured extractor plugin.
+        from kt_core_engine_api.extractor import ExtractedEntity
+        from kt_facts.pipeline import get_entity_extractor
         from kt_models.usage import clear_usage_task, set_usage_task
 
-        settings = get_settings()
         set_usage_task("entity_extraction")
 
-        if settings.entity_extractor == "llm":
-            from kt_facts.processing.entity_extraction import LlmEntityExtractor
-
-            extractor = LlmEntityExtractor(model_gateway)
-        else:
-            from kt_facts.processing.spacy_extractor import SpacyEntityExtractor
-
-            extractor = SpacyEntityExtractor()
-
+        extractor = get_entity_extractor(model_gateway)
         raw_entities: list[ExtractedEntity] = await extractor.extract(write_facts, scope=input.concept) or []
         clear_usage_task()
 
@@ -483,8 +474,8 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
             # Previously done inside entity_extraction_task; now batched here
             # alongside entity seeds to keep all seed writes in one place.
             if source_authors:
+                from kt_core_engine_api.extractor import is_valid_entity_name
                 from kt_db.keys import make_seed_key
-                from kt_facts.processing.entity_extraction import _is_valid_entity_name
 
                 author_seeds_data: list[dict[str, Any]] = []
                 for author_info in source_authors:
@@ -492,7 +483,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                     org = author_info.get("author_org") or ""
                     for name in person.split(","):
                         name = name.strip()
-                        if name and _is_valid_entity_name(name):
+                        if name and is_valid_entity_name(name):
                             author_seeds_data.append(
                                 {
                                     "key": make_seed_key(name),
@@ -503,7 +494,7 @@ async def decompose_sources(input: DecomposeSourcesInput, ctx: Context) -> dict:
                             )
                     for name in org.split(","):
                         name = name.strip()
-                        if name and _is_valid_entity_name(name):
+                        if name and is_valid_entity_name(name):
                             author_seeds_data.append(
                                 {
                                     "key": make_seed_key(name),

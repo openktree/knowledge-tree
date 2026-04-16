@@ -1,8 +1,70 @@
 import asyncio
-from typing import overload
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Callable, overload
 
 from kt_config.types import RawSearchResult
-from kt_providers.base import KnowledgeProvider
+from kt_core_engine_api.search import KnowledgeProvider
+
+
+@dataclass(frozen=True)
+class ExtraProviderFactory:
+    """External provider factory registered by services at startup.
+
+    Keeps ``kt-providers`` free of plugin-framework awareness: services
+    (which already know about plugins) translate plugin contributions
+    into these generic tuples and push them here before the worker
+    lifespan runs.
+    """
+
+    name: str                                      # unique id used for selection + logging
+    provider_id: str                               # matched against settings.default_search_provider
+    factory: Callable[[], KnowledgeProvider]
+    is_available: Callable[[], bool] = lambda: True
+
+
+_EXTRA_PROVIDER_FACTORIES: list[ExtraProviderFactory] = []
+
+
+def register_extra_provider_factory(factory: ExtraProviderFactory) -> None:
+    """Register an extra provider factory for the worker lifespan to pick up.
+
+    Idempotent by ``name`` — re-registering the same name is a no-op.
+    """
+    for existing in _EXTRA_PROVIDER_FACTORIES:
+        if existing.name == factory.name:
+            return
+    _EXTRA_PROVIDER_FACTORIES.append(factory)
+
+
+def iter_extra_provider_factories() -> Iterable[ExtraProviderFactory]:
+    """Iterate every registered extra provider factory."""
+    return tuple(_EXTRA_PROVIDER_FACTORIES)
+
+
+def clear_extra_provider_factories() -> None:
+    """Remove every registered extra factory. Intended for test isolation."""
+    _EXTRA_PROVIDER_FACTORIES.clear()
+
+
+def bridge_plugin_search_providers() -> None:
+    """Bridge every plugin ``SearchProviderContribution`` into the extras list.
+
+    Call once at startup, after ``load_default_plugins()``. Keeps
+    ``kt-hatchet`` and the API dependency layer unaware of the plugin
+    framework — they only see generic ``ExtraProviderFactory`` entries.
+    """
+    from kt_config.plugin import plugin_registry
+
+    for contrib in plugin_registry.iter_search_providers():
+        register_extra_provider_factory(
+            ExtraProviderFactory(
+                name=contrib.provider_id,
+                provider_id=contrib.provider_id,
+                factory=contrib.factory,
+                is_available=contrib.is_available,
+            )
+        )
 
 
 class ProviderRegistry:

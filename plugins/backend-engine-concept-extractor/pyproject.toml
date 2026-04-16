@@ -1,0 +1,34 @@
+[project]
+name = "kt-plugin-be-concept-extractor"
+version = "0.1.0"
+description = "Backend-engine plugin: spaCy / LLM / hybrid concept extractors for Knowledge Tree"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "kt-config",
+    "kt-core-engine-api",
+    "kt-models",
+    "pydantic>=2",
+    "sqlalchemy>=2",
+    "spacy>=3.8",
+    "alembic>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-config = { workspace = true }
+kt-core-engine-api = { workspace = true }
+kt-models = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_plugin_be_concept_extractor"]

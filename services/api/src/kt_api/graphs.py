@@ -7,7 +7,6 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -792,38 +791,20 @@ async def _provision_graph(
     finally:
         await w_eng.dispose()
 
-    # ---- Run Alembic migrations against the chosen DBs --------------------
-    # libs/kt-db/alembic{,_write}/env.py both call get_settings() at startup;
-    # Pydantic Settings reads DATABASE_URL / WRITE_DATABASE_URL from env, so
-    # the override below propagates into the subprocess via env={...}.
-    import os
-    import subprocess
-    import sys
+    # ---- Run Alembic migrations in-process against the chosen DBs --------
+    # Both schemas are migrated through the same PluginDatabase contract
+    # used by core / third-party plugins — no subprocess spawn.
+    from kt_db.startup import ensure_graph_schema_migrated
 
-    import kt_db
-
-    kt_db_root = Path(kt_db.__file__).resolve().parents[2]  # kt_db/__init__.py -> src/kt_db -> kt-db/
-    env = {
-        **os.environ,
-        "ALEMBIC_SCHEMA": schema,
-        "DATABASE_URL": graph_url,
-        "WRITE_DATABASE_URL": write_url,
-    }
-
-    def _run_migrations() -> None:
-        for ini_file in ("alembic.ini", "alembic_write.ini"):
-            result = subprocess.run(
-                [sys.executable, "-m", "alembic", "-c", str(kt_db_root / ini_file), "upgrade", "head"],
-                env=env,
-                capture_output=True,
-                text=True,
-                cwd=str(kt_db_root),
-            )
-            if result.returncode != 0:
-                logger.error("Migration failed for graph '%s': %s", graph.slug, result.stderr)
-                raise RuntimeError(f"Migration failed for graph '{graph.slug}'")
-
-    await asyncio.to_thread(_run_migrations)
+    try:
+        await ensure_graph_schema_migrated(
+            schema,
+            graph_db_url=graph_url,
+            write_db_url=write_url,
+        )
+    except Exception as exc:
+        logger.error("Migration failed for graph '%s': %s", graph.slug, exc)
+        raise RuntimeError(f"Migration failed for graph '{graph.slug}'") from exc
 
     # ---- Create Qdrant collections ----------------------------------------
     # Use the per-graph Qdrant if it differs from the system one. The system

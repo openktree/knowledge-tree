@@ -188,9 +188,9 @@ async def deduplicate_seed(
 
     aliases: slugified keys from entity extractor (make_seed_key(alias)).
     """
-    from kt_facts.processing.entity_extraction import _is_valid_entity_name
+    from kt_core_engine_api.extractor import is_valid_entity_name
 
-    if not _is_valid_entity_name(name):
+    if not is_valid_entity_name(name):
         # Invalid names (citation artifacts, measurements, mostly-digits)
         # don't benefit from dedup/multiplex, but must still exit pending
         # so they stop being reprocessed. Mark as 'garbage' — auto_build

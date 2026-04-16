@@ -1,0 +1,36 @@
+[project]
+name = "kt-plugin-be-search-providers"
+version = "0.1.0"
+description = "Backend-engine plugin: Serper / Brave / OpenAlex search providers for Knowledge Tree"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "kt-config",
+    "kt-core-engine-api",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.12.0",
+    "structlog>=25.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-config = { workspace = true }
+kt-core-engine-api = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_plugin_be_search_providers"]
+
+[dependency-groups]
+dev = [
+    "respx>=0.22.0",
+]

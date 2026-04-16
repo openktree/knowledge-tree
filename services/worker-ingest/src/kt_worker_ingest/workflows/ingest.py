@@ -979,7 +979,6 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
             results = await node_pipeline_wf.aio_run_many(bulk_items)
 
-            # Collect results
             for result in results:
                 create_data: dict = result.get("create_node", {}) if isinstance(result, dict) else {}
                 dim_data: dict = result.get("generate_dimensions", {}) if isinstance(result, dict) else {}
@@ -1165,7 +1164,7 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
                         "node_type": create_data.get("node_type", "concept"),
                     }
                 )
-            created_edge_ids.extend(dim_data.get("edge_ids", []))
+                created_edge_ids.extend(dim_data.get("edge_ids", []))
 
         ctx.log(f"Created {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
 

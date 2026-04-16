@@ -163,9 +163,6 @@ class DimensionDTO(BaseModel):
     generated_at: datetime
 
 
-class RawSearchResult(BaseModel):
-    uri: str
-    title: str
-    raw_content: str
-    provider_id: str
-    provider_metadata: dict | None = None
+# Public re-export — canonical definition in kt_core_engine_api.search.types.
+# Kept here permanently since many packages import from kt_config.types.
+from kt_core_engine_api.search import RawSearchResult  # noqa: E402,F401

@@ -18,10 +18,8 @@ from kt_db.session import get_session_factory, get_write_session_factory
 from kt_graph.read_engine import ReadGraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
-from kt_providers.brave import BraveSearchProvider
 from kt_providers.fetch import build_fetch_registry
-from kt_providers.registry import ProviderRegistry
-from kt_providers.serper import SerperSearchProvider
+from kt_providers.registry import ProviderRegistry, iter_extra_provider_factories
 
 logger = logging.getLogger(__name__)
 
@@ -109,10 +107,15 @@ async def get_agent_context(
 
     provider_registry = ProviderRegistry()
     default_provider = settings.default_search_provider
-    if default_provider in ("brave", "all") and settings.brave_key:
-        provider_registry.register(BraveSearchProvider(settings.brave_key))
-    if default_provider in ("serper", "all") and settings.serper_key:
-        provider_registry.register(SerperSearchProvider(settings.serper_key))
+    for extra in iter_extra_provider_factories():
+        if default_provider not in (extra.provider_id, "all"):
+            continue
+        try:
+            if not extra.is_available():
+                continue
+            provider_registry.register(extra.factory())
+        except Exception:
+            logger.exception("Failed to register extra search provider: %s", extra.name)
 
     fetch_registry = None
     if settings.enable_full_text_fetch:

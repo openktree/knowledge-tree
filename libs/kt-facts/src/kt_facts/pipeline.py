@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from kt_core_engine_api.extractor import EntityExtractor
 from kt_db.models import Fact, RawSource
 from kt_db.repositories.facts import FactRepository
 from kt_facts.author import (
@@ -30,7 +31,6 @@ from kt_facts.models import (
     _format_attribution,
 )
 from kt_facts.processing.dedup import insert_facts_pending
-from kt_facts.processing.extractor_base import EntityExtractor
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
 from kt_providers.fetch import FileDataStore
@@ -41,6 +41,29 @@ if TYPE_CHECKING:
     from kt_db.repositories.write_facts import WriteFactRepository
 
 logger = logging.getLogger(__name__)
+
+
+def get_entity_extractor(gateway: ModelGateway) -> EntityExtractor:
+    """Resolve the configured entity extractor via the plugin registry.
+
+    Reads ``settings.entity_extractor`` and looks the name up against every
+    registered backend-engine plugin. Raises ``RuntimeError`` when no plugin
+    provides the requested extractor — fail loud so a misconfigured
+    deployment surfaces at worker startup rather than producing silently
+    degraded seeds. Callers: :class:`DecompositionPipeline._make_extractor`
+    and standalone worker tasks (``worker-search.entity_extraction_task``).
+    """
+    from kt_config.plugin import plugin_registry
+    from kt_config.settings import get_settings
+
+    settings = get_settings()
+    extractor = plugin_registry.get_entity_extractor(settings.entity_extractor, gateway)
+    if extractor is not None:
+        return extractor
+    raise RuntimeError(
+        f"entity_extractor={settings.entity_extractor!r} has no registered plugin. "
+        "Install and register the matching backend-engine plugin at worker startup."
+    )
 
 
 @dataclass
@@ -77,18 +100,8 @@ class DecompositionPipeline:
         )
 
     def _make_extractor(self) -> EntityExtractor:
-        """Create entity extractor based on settings."""
-        from kt_config.settings import get_settings
-
-        settings = get_settings()
-        if settings.entity_extractor == "llm":
-            from kt_facts.processing.entity_extraction import LlmEntityExtractor
-
-            return LlmEntityExtractor(self._gateway)
-
-        from kt_facts.processing.spacy_extractor import SpacyEntityExtractor
-
-        return SpacyEntityExtractor()
+        """Resolve the configured extractor via the plugin registry."""
+        return get_entity_extractor(self._gateway)
 
     async def decompose(
         self,
@@ -271,18 +284,35 @@ class DecompositionPipeline:
         seed_keys: list[str] = []
         if all_facts:
             try:
-                from kt_facts.processing.extractor_base import ExtractedEntity
+                from kt_core_engine_api.extractor import ExtractedEntity  # noqa: F401
 
                 extractor = self._make_extractor()
-                raw_entities: list[ExtractedEntity] = await extractor.extract(all_facts, scope=concept) or []
+                raw_entities = await extractor.extract(all_facts, scope=concept) or []
+
                 extracted_nodes = [
                     {
                         "name": e.name,
                         "fact_indices": e.fact_indices,
                         "aliases": e.aliases,
                     }
-                    for e in raw_entities
+                    for e in (raw_entities or [])
                 ]
+
+                # Forward any side outputs (e.g. shells, rejected terms) to
+                # matching PostExtractionHook contributions. Plugin-specific
+                # persistence lives in the hooks — kt-facts stays generic.
+                side_outputs = extractor.get_last_side_outputs()
+                if side_outputs and write_session is not None:
+                    from kt_config.plugin import plugin_registry
+                    from kt_config.settings import get_settings
+
+                    extractor_name = get_settings().entity_extractor
+                    for hook in plugin_registry.iter_post_extraction_hooks(extractor_name):
+                        items = side_outputs.get(hook.output_key)
+                        if not items:
+                            continue
+                        await hook.handler(write_session, items, concept)
+
             except Exception:
                 logger.exception("Entity extraction failed (non-fatal)")
 
@@ -326,9 +356,9 @@ class DecompositionPipeline:
             # lives on write_fact_sources.author_person/author_org and is
             # queried dynamically when needed).
             if write_session is not None:
+                from kt_core_engine_api.extractor import is_valid_entity_name
                 from kt_db.keys import make_seed_key
                 from kt_db.repositories.write_seeds import WriteSeedRepository as _WSR
-                from kt_facts.processing.entity_extraction import _is_valid_entity_name
 
                 author_seed_repo = _WSR(write_session)
                 author_seeds_data: list[dict[str, Any]] = []
@@ -338,7 +368,7 @@ class DecompositionPipeline:
                     if author.person:
                         for name in author.person.split(","):
                             name = name.strip()
-                            if name and _is_valid_entity_name(name):
+                            if name and is_valid_entity_name(name):
                                 author_seeds_data.append(
                                     {
                                         "key": make_seed_key(name),
@@ -350,7 +380,7 @@ class DecompositionPipeline:
                     if author.organization:
                         for name in author.organization.split(","):
                             name = name.strip()
-                            if name and _is_valid_entity_name(name):
+                            if name and is_valid_entity_name(name):
                                 author_seeds_data.append(
                                     {
                                         "key": make_seed_key(name),

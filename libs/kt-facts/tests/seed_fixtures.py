@@ -86,8 +86,10 @@ def make_seed_repo_mock(**overrides: object) -> MagicMock:
 
 def make_embedding_service_mock(embedding: list[float] | None = None) -> MagicMock:
     """Standard EmbeddingService mock."""
+    vec = embedding or [0.1] * 10
     svc = MagicMock()
-    svc.embed_text = AsyncMock(return_value=embedding or [0.1] * 10)
+    svc.embed_text = AsyncMock(return_value=vec)
+    svc.embed_batch = AsyncMock(side_effect=lambda texts, **kw: [vec] * len(texts))
     return svc
 
 
@@ -95,6 +97,7 @@ def make_qdrant_seed_repo_mock(hits: list | None = None) -> MagicMock:
     """Standard QdrantSeedRepository mock."""
     repo = MagicMock()
     repo.upsert = AsyncMock()
+    repo.upsert_batch = AsyncMock()
     repo.find_similar = AsyncMock(return_value=hits or [])
     return repo
 

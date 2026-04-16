@@ -5,6 +5,7 @@ description = "Knowledge Tree fact decomposition pipeline"
 requires-python = ">=3.12"
 dependencies = [
     "kt-db",
+    "kt-core-engine-api",
     "kt-models",
     "kt-providers",
     "kt-qdrant",
@@ -20,6 +21,7 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 kt-db = { workspace = true }
+kt-core-engine-api = { workspace = true }
 kt-models = { workspace = true }
 kt-providers = { workspace = true }
 kt-qdrant = { workspace = true }

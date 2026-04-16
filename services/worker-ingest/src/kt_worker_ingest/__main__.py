@@ -24,6 +24,12 @@ def main() -> None:
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    from kt_config.plugin import load_default_plugins
+    from kt_providers.registry import bridge_plugin_search_providers
+
+    load_default_plugins()
+    bridge_plugin_search_providers()
+
     hatchet = get_hatchet()
     worker = hatchet.worker(
         "ingest",

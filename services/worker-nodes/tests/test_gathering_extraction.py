@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kt_facts.processing.entity_extraction import extract_entities_from_facts
+from kt_plugin_be_concept_extractor.strategies.llm_extraction import extract_entities_from_facts
 from kt_worker_nodes.pipelines.gathering.pipeline import GatherFactsPipeline
 
 # ── extract_entities_from_facts tests ─────────────────────────────

@@ -129,8 +129,6 @@ _register(
     "api_keys",
     {
         "openrouter_api_key": "openrouter",
-        "brave_key": "brave",
-        "serper_key": "serper",
         "openai_api_key": "openai",
     },
 )
@@ -194,6 +192,7 @@ _register(
         "hatchet_execution_timeout_minutes": "hatchet_execution_timeout_minutes",
         "hatchet_schedule_timeout_minutes": "hatchet_schedule_timeout_minutes",
         "use_hatchet": "use_hatchet",
+        "run_migrations_on_startup": "run_migrations_on_startup",
     },
 )
 
@@ -353,6 +352,7 @@ _register(
         "seed_routing_llm_ambiguity_margin": "routing_llm_ambiguity_margin",
         "seed_re_embed_thresholds": "re_embed_thresholds",
         "seed_dedup_llm_model": "dedup_llm_model",
+        "seed_dedup_llm_thinking_level": "dedup_llm_thinking_level",
         "seed_suggest_disambig_enabled": "suggest_disambig_enabled",
     },
 )
@@ -500,12 +500,10 @@ class Settings(BaseSettings):
 
     # External APIs
     openrouter_api_key: str = ""
-    brave_key: str = ""
-    serper_key: str = ""
     openai_api_key: str = ""
 
     # Defaults
-    default_search_provider: str = "serper"  # "serper", "brave", or "all"
+    default_search_provider: str = "serper"  # "serper", "brave", "openalex", or "all"
     default_nav_budget: int = 200
     default_explore_budget: int = 20
     default_max_content_tokens: int = 500
@@ -515,7 +513,8 @@ class Settings(BaseSettings):
     embedding_model: str = "openrouter/openai/text-embedding-3-large"
     embedding_dimensions: int = 3072
     embedding_timeout: int = 120  # seconds; higher for OpenRouter proxy overhead
-    embedding_batch_chunk_size: int = 32  # texts per API call; smaller = faster per-call through proxy
+    embedding_batch_chunk_size: int = 128  # texts per API call
+    embedding_batch_concurrency: int = 4  # parallel API calls for chunked batches
     pipeline_concurrency: int = 10
 
     # Fact pool
@@ -541,11 +540,14 @@ class Settings(BaseSettings):
     # Per-agent model overrides (empty string = use default_model)
     file_decomposition_model: str = ""
     decomposition_model: str = "openrouter/google/gemma-4-26b-a4b-it:nitro"
-    entity_extractor: str = "spacy"  # "spacy" or "llm"
+    entity_extractor: str = "hybrid"  # "spacy", "llm", or plugin name (e.g. "hybrid")
     entity_extraction_model: str = "openrouter/google/gemini-3.1-flash-lite-preview"
     entity_extraction_thinking_level: str = ""
     entity_extraction_batch_size: int = 10
     entity_extraction_concurrency: int = 4
+    # Hybrid/spaCy/LLM concept-extractor knobs live in the plugin's own
+    # ``kt_plugin_be_concept_extractor.settings.ConceptExtractorSettings``
+    # (env prefix ``CONCEPT_EXTRACTOR_``).
     synthesis_model: str = ""
     dimension_model: str = "openrouter/xiaomi/mimo-v2-flash:nitro"
     chat_model: str = ""
@@ -590,6 +592,10 @@ class Settings(BaseSettings):
 
     # Feature flags
     use_hatchet: bool = True  # True=Hatchet task queue, False=BackgroundTasks
+    # Run Alembic migrations (core + plugins + per-graph) in-process at
+    # API/worker startup. Disable when migrations are handled out-of-band
+    # (e.g. a dedicated K8s pre-deploy Job).
+    run_migrations_on_startup: bool = True
     enable_secondary_models: bool = False
     enable_full_text_fetch: bool = True
     full_text_fetch_max_urls: int = 10
@@ -646,6 +652,10 @@ class Settings(BaseSettings):
     # Public-cache contribute sweeper (retries failed contribute-back rows).
     public_contribute_retry_min_age_minutes: int = 15
     public_contribute_retry_batch_size: int = 200
+
+    # Orphan fact sweeper (processes contributed facts with no seed links).
+    orphan_fact_sweep_batch_size: int = 500
+    orphan_fact_sweep_min_age_minutes: int = 5
 
     # Crossref + Unpaywall contact emails (used by the DOI fetcher).
     # Crossref's "polite pool" gives configured users better rate limits;
@@ -717,7 +727,8 @@ class Settings(BaseSettings):
     seed_routing_embedding_threshold: float = 0.80
     seed_routing_llm_ambiguity_margin: float = 0.05
     seed_re_embed_thresholds: str = "5,15,50,100"
-    seed_dedup_llm_model: str = ""  # empty = use decomposition_model (cheapest)
+    seed_dedup_llm_model: str = "openrouter/google/gemini-3.1-flash-lite-preview:nitro"
+    seed_dedup_llm_thinking_level: str = "minimal"
     seed_suggest_disambig_enabled: bool = True  # run suggest_disambig at genesis
 
     # Wave pipeline

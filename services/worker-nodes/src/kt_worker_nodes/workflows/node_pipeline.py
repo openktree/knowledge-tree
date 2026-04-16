@@ -66,7 +66,7 @@ node_pipeline_wf = hatchet.workflow(
     input_validator=NodePipelineInput,
     concurrency=ConcurrencyExpression(
         expression="has(input.node_id) && input.node_id != '' && input.node_id != null ? input.node_id : input.seed_key",
-        max_runs=1,
+        max_runs=10,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),
 )

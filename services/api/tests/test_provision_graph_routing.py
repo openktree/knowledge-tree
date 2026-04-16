@@ -4,9 +4,10 @@ The function previously hardcoded the system DB; with multi-graph support
 it must route schema creation, alembic migrations, and Qdrant collection
 creation to the database referenced by ``graph.database_connection_id``.
 
-These tests stub out ``create_async_engine``, the alembic subprocess, and
-the Qdrant client factories so we can assert the routing logic without
-actually hitting any database.
+These tests stub out ``create_async_engine``, the in-process alembic
+runner (``ensure_graph_schema_migrated``), and the Qdrant client
+factories so we can assert the routing logic without actually hitting
+any database.
 """
 
 from __future__ import annotations
@@ -95,11 +96,12 @@ async def test_provision_routes_to_external_db_when_connection_set(stub_provisio
         captured_qdrant_urls.append(url)
         return fake_qdrant_client
 
-    fake_subprocess_calls: list[dict] = []
+    fake_migrate_calls: list[dict] = []
 
-    def fake_subprocess_run(*args, env=None, **_kwargs):
-        fake_subprocess_calls.append(env or {})
-        return MagicMock(returncode=0, stderr="")
+    async def fake_ensure_graph_schema_migrated(slug, *, graph_db_url, write_db_url):
+        fake_migrate_calls.append(
+            {"slug": slug, "graph_db_url": graph_db_url, "write_db_url": write_db_url}
+        )
 
     fake_collection_repo = MagicMock()
     fake_collection_repo.ensure_collection = AsyncMock()
@@ -112,7 +114,10 @@ async def test_provision_routes_to_external_db_when_connection_set(stub_provisio
         patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=fake_collection_repo),
         patch("kt_qdrant.repositories.nodes.QdrantNodeRepository", return_value=fake_collection_repo),
         patch("kt_qdrant.repositories.seeds.QdrantSeedRepository", return_value=fake_collection_repo),
-        patch("subprocess.run", side_effect=fake_subprocess_run),
+        patch(
+            "kt_db.startup.ensure_graph_schema_migrated",
+            side_effect=fake_ensure_graph_schema_migrated,
+        ),
     ):
         session_mock = MagicMock()
         resolver_mock = MagicMock()
@@ -128,14 +133,12 @@ async def test_provision_routes_to_external_db_when_connection_set(stub_provisio
     assert captured_qdrant_urls == ["http://shared-qdrant:6333"]
     fake_qdrant_client.close.assert_awaited()  # cleaned up the per-graph client
 
-    # Alembic subprocess was invoked with overridden DATABASE_URL / WRITE_DATABASE_URL
-    assert len(fake_subprocess_calls) == 2  # one per ini file
-    for env in fake_subprocess_calls:
-        assert env["DATABASE_URL"] == "postgresql+asyncpg://kt:pw@shared-graph-rw:5432/knowledge_tree_shared"
-        assert (
-            env["WRITE_DATABASE_URL"] == "postgresql+asyncpg://kt:pw@shared-pgbouncer:5432/knowledge_tree_shared_write"
-        )
-        assert env["ALEMBIC_SCHEMA"] == "graph_prov_test"
+    # Alembic ran in-process with the external DB URLs for this schema
+    assert len(fake_migrate_calls) == 1
+    call = fake_migrate_calls[0]
+    assert call["slug"] == "graph_prov_test"
+    assert call["graph_db_url"] == "postgresql+asyncpg://kt:pw@shared-graph-rw:5432/knowledge_tree_shared"
+    assert call["write_db_url"] == "postgresql+asyncpg://kt:pw@shared-pgbouncer:5432/knowledge_tree_shared_write"
 
 
 @pytest.mark.asyncio
@@ -152,11 +155,12 @@ async def test_provision_routes_to_system_db_when_connection_null(stub_provision
         captured_urls.append(url)
         return _fake_async_engine_ctx()
 
-    fake_subprocess_calls: list[dict] = []
+    fake_migrate_calls: list[dict] = []
 
-    def fake_subprocess_run(*args, env=None, **_kwargs):
-        fake_subprocess_calls.append(env or {})
-        return MagicMock(returncode=0, stderr="")
+    async def fake_ensure_graph_schema_migrated(slug, *, graph_db_url, write_db_url):
+        fake_migrate_calls.append(
+            {"slug": slug, "graph_db_url": graph_db_url, "write_db_url": write_db_url}
+        )
 
     fake_collection_repo = MagicMock()
     fake_collection_repo.ensure_collection = AsyncMock()
@@ -171,7 +175,10 @@ async def test_provision_routes_to_system_db_when_connection_null(stub_provision
         patch("kt_qdrant.repositories.facts.QdrantFactRepository", return_value=fake_collection_repo),
         patch("kt_qdrant.repositories.nodes.QdrantNodeRepository", return_value=fake_collection_repo),
         patch("kt_qdrant.repositories.seeds.QdrantSeedRepository", return_value=fake_collection_repo),
-        patch("subprocess.run", side_effect=fake_subprocess_run),
+        patch(
+            "kt_db.startup.ensure_graph_schema_migrated",
+            side_effect=fake_ensure_graph_schema_migrated,
+        ),
     ):
         session_mock = MagicMock()
         resolver_mock = MagicMock()
@@ -186,10 +193,11 @@ async def test_provision_routes_to_system_db_when_connection_null(stub_provision
     make_mock.assert_not_called()
     fake_singleton.close.assert_not_awaited()  # singleton is not closed by us
 
-    # Alembic was invoked with the SYSTEM DB URLs
-    for env in fake_subprocess_calls:
-        assert env["DATABASE_URL"] == s.database_url
-        assert env["WRITE_DATABASE_URL"] == s.write_database_url
+    # Alembic ran in-process against the SYSTEM DB URLs
+    assert len(fake_migrate_calls) == 1
+    call = fake_migrate_calls[0]
+    assert call["graph_db_url"] == s.database_url
+    assert call["write_db_url"] == s.write_database_url
 
 
 @pytest.mark.asyncio

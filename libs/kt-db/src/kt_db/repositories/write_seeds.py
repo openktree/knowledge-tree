@@ -464,7 +464,28 @@ class WriteSeedRepository:
         losing_facts = await self.get_facts_for_seed(losing_key)
         fact_id_strs = [str(fid) for fid in losing_facts]
 
-        # Reassign seed-fact links
+        # Reassign seed-fact links — delete losing-key rows that would
+        # collide with existing winning-key rows (same fact_id) before
+        # the UPDATE, mirroring the edge-candidate dedup pattern below.
+        from sqlalchemy import and_, delete, exists
+        from sqlalchemy import select as sa_select
+        from sqlalchemy.orm import aliased
+
+        WSF2 = aliased(WriteSeedFact)
+        conflict_subq = (
+            sa_select(WSF2.id)
+            .where(
+                WSF2.seed_key == winning_key,
+                WSF2.fact_id == WriteSeedFact.fact_id,
+            )
+            .correlate(WriteSeedFact)
+        )
+        await self._session.execute(
+            delete(WriteSeedFact).where(
+                WriteSeedFact.seed_key == losing_key,
+                exists(conflict_subq),
+            )
+        )
         await self._session.execute(
             update(WriteSeedFact)
             .where(WriteSeedFact.seed_key == losing_key)
@@ -475,8 +496,6 @@ class WriteSeedRepository:
         # Delete duplicates first to avoid unique constraint violations
         # when both losing and winning seeds share candidates for the
         # same partner seed + fact.
-        from sqlalchemy import and_, delete, exists
-        from sqlalchemy import select as sa_select
 
         # Remove losing-key rows that would collide with existing winning-key rows
         # (same partner seed + fact already exists under winning key)

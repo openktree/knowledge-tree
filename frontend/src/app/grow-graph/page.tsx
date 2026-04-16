@@ -7,6 +7,7 @@ import { SourceUploadForm } from "@/components/research/SourceUploadForm";
 import { WebResearchForm } from "@/components/research/WebResearchForm";
 import { ResearchHistory } from "@/components/research/ResearchHistory";
 import { ResearchBuildProgress } from "@/components/research/ResearchBuildProgress";
+import { IngestHistory } from "@/components/research/IngestHistory";
 import { api } from "@/lib/api";
 
 type ResearchTab = "documents" | "web-research";
@@ -22,6 +23,7 @@ export default function ResearchPage() {
   const [tab, setTab] = useState<ResearchTab>("web-research");
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [viewingBuild, setViewingBuild] = useState<ViewingBuild | null>(null);
+  const [viewingIngest, setViewingIngest] = useState<ViewingBuild | null>(null);
 
   const handleResume = useCallback((conversationId: string) => {
     setResumeId(conversationId);
@@ -67,6 +69,32 @@ export default function ResearchPage() {
     setViewingBuild(null);
   }, []);
 
+  const handleViewIngest = useCallback(async (conversationId: string) => {
+    try {
+      const conv = await api.conversations.get(conversationId);
+      const assistantMsgs = conv.messages.filter((m) => m.role === "assistant");
+      if (assistantMsgs.length === 0) return;
+
+      const buildMsg = assistantMsgs[assistantMsgs.length - 1];
+      const status =
+        buildMsg.status === "completed" ? "completed" :
+        buildMsg.status === "failed" ? "failed" : "running";
+
+      setViewingIngest({
+        conversationId,
+        messageId: buildMsg.id,
+        title: conv.title || "Untitled",
+        status: status as ViewingBuild["status"],
+      });
+    } catch {
+      // Silently ignore
+    }
+  }, []);
+
+  const clearViewIngest = useCallback(() => {
+    setViewingIngest(null);
+  }, []);
+
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -97,7 +125,7 @@ export default function ResearchPage() {
         <Button
           variant={tab === "web-research" ? "default" : "ghost"}
           size="sm"
-          onClick={() => setTab("web-research")}
+          onClick={() => { setTab("web-research"); setViewingIngest(null); }}
           className="gap-1.5"
         >
           <Globe className="size-4" />
@@ -105,7 +133,34 @@ export default function ResearchPage() {
         </Button>
       </div>
 
-      {tab === "documents" && <SourceUploadForm />}
+      {tab === "documents" && (
+        <>
+          {viewingIngest ? (
+            <div className="space-y-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 -ml-2"
+                onClick={clearViewIngest}
+              >
+                <ArrowLeft className="size-3.5" />
+                Back to ingestion
+              </Button>
+              <h2 className="text-lg font-semibold">{viewingIngest.title}</h2>
+              <ResearchBuildProgress
+                conversationId={viewingIngest.conversationId}
+                messageId={viewingIngest.messageId}
+                initialStatus={viewingIngest.status}
+              />
+            </div>
+          ) : (
+            <div className="space-y-8">
+              <SourceUploadForm />
+              <IngestHistory onView={handleViewIngest} />
+            </div>
+          )}
+        </>
+      )}
       {tab === "web-research" && (
         <>
           {viewingBuild ? (

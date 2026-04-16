@@ -22,7 +22,7 @@ from kt_facts.author import (
     _LLM_SYSTEM_PROMPT,
     SourceContext,
 )
-from kt_facts.processing.entity_extraction import _is_valid_entity_name
+from kt_facts.processing.entity_validation import is_valid_entity_name as _is_valid_entity_name
 from kt_models.gateway import ModelGateway
 
 # ── Current (hallucinating) prompt ──────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Loader2,
@@ -129,6 +129,11 @@ interface TaskRowProps {
   nodeType?: string;
 }
 
+function isTaskActive(status: string): boolean {
+  const upper = status.toUpperCase();
+  return upper === "RUNNING" || upper === "QUEUED" || upper === "PENDING";
+}
+
 function TaskRow({ task, depth, workflowRunId, nodeType }: TaskRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<PipelineTaskItem[]>(task.children || []);
@@ -137,6 +142,18 @@ function TaskRow({ task, depth, workflowRunId, nodeType }: TaskRowProps) {
 
   const hasChildren = task.has_children || children.length > 0;
   const status = taskStatusToNode(task.status);
+  const anyChildActive = children.some((c) => isTaskActive(c.status));
+
+  const fetchChildren = useCallback(async () => {
+    if (!workflowRunId || !task.has_children) return;
+    try {
+      const res = await getTaskChildren(workflowRunId, task.task_id);
+      setChildren(res.tasks);
+      setError(false);
+    } catch {
+      setError(true);
+    }
+  }, [workflowRunId, task.task_id, task.has_children]);
 
   const toggle = async () => {
     const next = !expanded;
@@ -144,16 +161,17 @@ function TaskRow({ task, depth, workflowRunId, nodeType }: TaskRowProps) {
     if (next && children.length === 0 && task.has_children && workflowRunId && !loading) {
       setLoading(true);
       setError(false);
-      try {
-        const res = await getTaskChildren(workflowRunId, task.task_id);
-        setChildren(res.tasks);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
+      await fetchChildren();
+      setLoading(false);
     }
   };
+
+  // Auto-refresh children while expanded and any child is still active
+  useEffect(() => {
+    if (!expanded || !anyChildActive) return;
+    const timer = setInterval(fetchChildren, 10_000);
+    return () => clearInterval(timer);
+  }, [expanded, anyChildActive, fetchChildren]);
 
   return (
     <>
@@ -272,7 +290,7 @@ export function ResearchBuildProgress({
 
     // Only poll if still running
     if (overallStatus === "running") {
-      const timer = setInterval(fetchProgress, 3000);
+      const timer = setInterval(fetchProgress, 10_000);
       return () => { cancelled = true; clearInterval(timer); };
     }
 

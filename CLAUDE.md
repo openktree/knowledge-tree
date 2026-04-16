@@ -413,6 +413,22 @@ All custom components use **named exports** (not default exports), except page c
 
 ---
 
+## CRITICAL: Fail-Fast Principle
+
+**Errors that affect data quality or system correctness MUST propagate — never swallow them.**
+
+This system builds a knowledge graph where bad data (garbage seeds, missing shell classification, silent migration failures) compounds over time and is expensive to clean up. A failed Hatchet task is cheap; corrupted graph state is not.
+
+**Rules:**
+1. **Pipeline steps that affect output quality MUST fail the task on error.** If shell classification, entity extraction, fact decomposition, or any step that gates data quality fails, let the exception propagate. The Hatchet task fails, the operator sees it, and the system gets fixed.
+2. **Never catch-and-warn for errors that silently degrade results.** A `try/except` that logs a warning and continues is only acceptable when the skipped work is truly optional (e.g. Qdrant collection creation, telemetry). If skipping the step means bad data enters the graph, it is NOT optional.
+3. **Migrations must fail loudly.** If a plugin schema doesn't exist, the plugin's writes will silently fail. Startup migrations that succeed in Alembic but roll back silently (e.g. missing `commit()`) are the worst kind of bug — they look green but produce a broken runtime.
+4. **Validate at boundaries, fail at boundaries.** When data crosses a trust boundary (external API → pipeline, pipeline → DB), validate and reject early. Don't pass garbage downstream hoping a later stage will filter it.
+
+**Anti-pattern (real incident):** Plugin migration transaction rolled back silently → shell_candidates table didn't exist → PostExtractionHook insert failed → exception caught as "non-fatal" → shell classifier results discarded → all candidates kept as seeds → graph flooded with garbage ("volume", "pages", "authors", "article"). Three silent failures compounded into a data quality disaster.
+
+---
+
 ## Common Mistakes to Avoid
 
 1. **Wrong package manager** — Using `npm` instead of `pnpm`, or `pip` instead of `uv`. Always check which directory you're in.

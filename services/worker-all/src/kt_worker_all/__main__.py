@@ -43,6 +43,12 @@ def main() -> None:
 
     asyncio.get_event_loop().set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
 
+    from kt_config.plugin import load_default_plugins
+    from kt_providers.registry import bridge_plugin_search_providers
+
+    load_default_plugins()
+    bridge_plugin_search_providers()
+
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
     from kt_worker_bottomup.bottom_up import (
@@ -60,6 +66,7 @@ def main() -> None:
         ingest_decompose_wf,
         ingest_partition_wf,
     )
+    from kt_worker_ingest.workflows.orphan_fact_sweeper import orphan_fact_sweep_wf
     from kt_worker_ingest.workflows.public_cache_sweeper import public_cache_sweep_wf
     from kt_worker_nodes.workflows.auto_build import auto_build_task
     from kt_worker_nodes.workflows.composite import (
@@ -90,8 +97,8 @@ def main() -> None:
     hatchet = get_hatchet()
     worker = hatchet.worker(
         "knowledge-tree-all",
-        slots=100,
-        durable_slots=50,
+        slots=500,
+        durable_slots=250,
         workflows=[
             agent_select_wf,
             bottom_up_wf,
@@ -116,6 +123,7 @@ def main() -> None:
             ingest_decompose_wf,
             ingest_partition_wf,
             public_cache_sweep_wf,
+            orphan_fact_sweep_wf,
             sync_dispatch_wf,
             sync_graph_wf,
             dedup_pending_facts_wf,

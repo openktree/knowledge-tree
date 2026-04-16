@@ -210,20 +210,20 @@ async def store_seeds_from_extracted_nodes(
             except Exception:
                 logger.exception("Error upserting seed '%s'", sdata["key"])
 
-    # 2. Embed each canonical name → Qdrant upsert (one point per seed)
-    from kt_facts.processing.seed_dedup import embed_and_upsert_seed
-
-    for sdata in seeds_to_upsert:
-        try:
-            await embed_and_upsert_seed(
-                seed_key=sdata["key"],
-                name=sdata["name"],
-                node_type=sdata["node_type"],
-                embedding_service=embedding_service,  # type: ignore[arg-type]
-                qdrant_seed_repo=qdrant_seed_repo,  # type: ignore[arg-type]
-            )
-        except Exception:
-            logger.debug("embed_and_upsert_seed failed for '%s'", sdata["key"], exc_info=True)
+    # 2. Batch-embed canonical names → Qdrant batch upsert
+    if seeds_to_upsert:
+        names = [s["name"] for s in seeds_to_upsert]
+        embeddings = await embedding_service.embed_batch(names)  # type: ignore[union-attr]
+        points = [
+            {
+                "seed_key": sdata["key"],
+                "embedding": emb,
+                "name": sdata["name"],
+                "node_type": sdata["node_type"],
+            }
+            for sdata, emb in zip(seeds_to_upsert, embeddings)
+        ]
+        await qdrant_seed_repo.upsert_batch(points)  # type: ignore[union-attr]
 
     # 3. Link facts
     total_links = 0

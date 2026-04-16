@@ -1,0 +1,22 @@
+[project]
+name = "kt-core-engine-api"
+version = "0.1.0"
+description = "Knowledge Tree core backend-engine contracts — extractor + search ABCs shared by plugins and the fact/search pipelines"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.12.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_core_engine_api"]
+
+[dependency-groups]
+dev = []

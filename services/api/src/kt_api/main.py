@@ -35,6 +35,22 @@ except Exception:
     pass
 
 
+def _load_plugins() -> None:
+    """Load plugins into plugin_registry and bridge search-provider contributions.
+
+    Runs at module import so plugin DB migrations executed during lifespan
+    startup see every registered plugin.
+    """
+    from kt_config.plugin import load_default_plugins
+    from kt_providers.registry import bridge_plugin_search_providers
+
+    load_default_plugins()
+    bridge_plugin_search_providers()
+
+
+_load_plugins()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
@@ -45,6 +61,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     settings = get_settings()
     Path(settings.ingest_upload_dir).mkdir(parents=True, exist_ok=True)
+
+    # Run all DB migrations in-process (core + plugins + per-graph).
+    # Guaranteed to complete before FastAPI serves any request.
+    # Plugins providing entity extractors etc. must register before this.
+    try:
+        from kt_db.startup import run_startup_migrations
+
+        await run_startup_migrations(settings)
+    except Exception:
+        logger.exception("Startup migrations failed — aborting API startup")
+        raise
 
     # Ensure Qdrant collections exist
     try:

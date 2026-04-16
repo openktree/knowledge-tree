@@ -62,7 +62,7 @@ def _load_prompts() -> list[PromptEntry]:
 
     # ── Fact Extraction ────────────────────────────────────────
     try:
-        from kt_facts.processing.entity_extraction import _NODE_EXTRACTION_SYSTEM
+        from kt_plugin_be_concept_extractor.strategies.llm_prompts import NODE_EXTRACTION_SYSTEM
 
         entries.append(
             PromptEntry(
@@ -70,7 +70,7 @@ def _load_prompts() -> list[PromptEntry]:
                 name="Entity Extraction",
                 stage="Fact Decomposition",
                 purpose="Extracts entities, concepts, events, and locations mentioned in each fact. Maps each fact to the knowledge graph nodes it references.",
-                prompt=_NODE_EXTRACTION_SYSTEM,
+                prompt=NODE_EXTRACTION_SYSTEM,
             )
         )
     except ImportError:
