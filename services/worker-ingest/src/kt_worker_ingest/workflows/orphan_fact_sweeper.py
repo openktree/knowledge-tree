@@ -160,9 +160,7 @@ async def sweep_orphan_facts(input: dict, ctx: Context) -> dict:
 
         fact_id_to_pos = {str(f.id): i + 1 for i, f in enumerate(write_facts)}
         for node in all_extracted_nodes:
-            node["fact_indices"] = [
-                fact_id_to_pos[fid] for fid in node.get("fact_ids", []) if fid in fact_id_to_pos
-            ]
+            node["fact_indices"] = [fact_id_to_pos[fid] for fid in node.get("fact_ids", []) if fid in fact_id_to_pos]
 
         write_seed_repo = WriteSeedRepository(write_session)
 
@@ -228,15 +226,17 @@ async def sweep_orphan_facts(input: dict, ctx: Context) -> dict:
                     existing_id = str(key_to_uuid(seed.promoted_node_key))
 
                 aliases = (seed.metadata_ or {}).get("aliases", []) if seed.metadata_ else []
-                proposed.append({
-                    "name": seed.name,
-                    "node_type": seed.node_type,
-                    "entity_subtype": seed.entity_subtype,
-                    "seed_key": seed.key,
-                    "existing_node_id": existing_id,
-                    "fact_count": seed.fact_count,
-                    "aliases": aliases,
-                })
+                proposed.append(
+                    {
+                        "name": seed.name,
+                        "node_type": seed.node_type,
+                        "entity_subtype": seed.entity_subtype,
+                        "seed_key": seed.key,
+                        "existing_node_id": existing_id,
+                        "fact_count": seed.fact_count,
+                        "aliases": aliases,
+                    }
+                )
         finally:
             await write_session.close()
     except Exception:

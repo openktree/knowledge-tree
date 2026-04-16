@@ -14,13 +14,13 @@ class _Other(BackendEnginePlugin):
     plugin_id = "backend-engine-other"
 
 
-def test_plugin_registry_clean_resets(plugin_registry_clean):
+def test_plugin_registry_clean_resets(plugin_registry_clean):  # noqa: F811
     assert plugin_registry_clean is plugin_registry
     plugin_registry.register_backend_engine(_Dummy())
     assert len(plugin_registry._backend_engine) == 1
 
 
-def test_registered_plugins_factory(registered_plugins):
+def test_registered_plugins_factory(registered_plugins):  # noqa: F811
     reg = registered_plugins(_Dummy(), _Other())
     ids = [p.plugin_id for p in reg._backend_engine]
     assert ids == ["backend-engine-dummy", "backend-engine-other"]

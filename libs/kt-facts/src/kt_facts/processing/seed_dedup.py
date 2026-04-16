@@ -839,4 +839,5 @@ async def embed_and_upsert_seed(
     except Exception:
         logger.warning("Failed to embed/upsert seed '%s' to Qdrant", name, exc_info=True)
 
+
 # Deployment trigger: seed dedup redesign

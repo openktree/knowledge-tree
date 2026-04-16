@@ -21,25 +21,80 @@ _STRIP_POS = frozenset({"DET", "PRON", "ADP", "CCONJ", "SCONJ", "PART", "AUX", "
 
 _FILLER_WORDS = frozenset(
     {
-        "i", "me", "my", "we", "us", "our", "you", "your",
-        "he", "him", "his", "she", "her", "they", "them", "their", "it", "its",
-        "how", "what", "why", "when", "where", "which", "who", "whom",
-        "the", "a", "an", "this", "that", "these", "those",
-        "some", "most", "many", "several", "various", "other", "one",
-        "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did",
+        "i",
+        "me",
+        "my",
+        "we",
+        "us",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "they",
+        "them",
+        "their",
+        "it",
+        "its",
+        "how",
+        "what",
+        "why",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whom",
+        "the",
+        "a",
+        "an",
+        "this",
+        "that",
+        "these",
+        "those",
+        "some",
+        "most",
+        "many",
+        "several",
+        "various",
+        "other",
+        "one",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
     }
 )
 
 # NER labels that never produce useful knowledge-graph entities
-_SKIP_NER_LABELS = frozenset({
-    "DATE", "TIME", "CARDINAL", "ORDINAL", "QUANTITY", "MONEY", "PERCENT",
-})
+_SKIP_NER_LABELS = frozenset(
+    {
+        "DATE",
+        "TIME",
+        "CARDINAL",
+        "ORDINAL",
+        "QUANTITY",
+        "MONEY",
+        "PERCENT",
+    }
+)
 
 _VERSION_SUFFIX_RE = re.compile(r"\s+v?\d+(?:[.\-]\d+)+$", re.IGNORECASE)
 _PURE_VERSION_RE = re.compile(r"^v?\d+(?:[.\-]\d+)+$", re.IGNORECASE)
 _SUPP_REF_RE = re.compile(
-    r"^(?:tables?|figures?|supplementary|supp\.?)\s+\S{1,6}$", re.IGNORECASE,
+    r"^(?:tables?|figures?|supplementary|supp\.?)\s+\S{1,6}$",
+    re.IGNORECASE,
 )
 
 
