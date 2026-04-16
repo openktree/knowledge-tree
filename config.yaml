@@ -160,6 +160,20 @@ decomposition:
 
 
 # =============================================================================
+# Concept extractor plugin — shell classifier + alias generator
+# =============================================================================
+concept_extractor:
+  shell_model: "openrouter/google/gemma-4-26b-a4b-it:nitro"
+  shell_thinking_level: ""
+  shell_batch_size: 40
+  shell_concurrency: 5
+  alias_model: "openrouter/google/gemini-3-flash-preview"
+  alias_thinking_level: "minimal"
+  alias_batch_size: 40
+  alias_concurrency: 5
+
+
+# =============================================================================
 # Synthesis — answer generation from navigated nodes
 # =============================================================================
 synthesis:

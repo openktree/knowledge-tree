@@ -1773,7 +1773,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.50.8"
+version = "0.51.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -2126,6 +2126,7 @@ dependencies = [
     { name = "kt-core-engine-api" },
     { name = "kt-models" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "spacy" },
     { name = "sqlalchemy" },
 ]
@@ -2137,6 +2138,7 @@ requires-dist = [
     { name = "kt-core-engine-api", editable = "libs/kt-core-engine-api" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "pydantic", specifier = ">=2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "spacy", specifier = ">=3.8" },
     { name = "sqlalchemy", specifier = ">=2" },
 ]
