@@ -12,6 +12,7 @@ from kt_config.plugin import (
     BackendEnginePlugin,
     SearchProviderContribution,
 )
+from kt_flags import get_flag_client
 
 
 class SearchProvidersBackendEnginePlugin(BackendEnginePlugin):
@@ -30,7 +31,9 @@ class SearchProvidersBackendEnginePlugin(BackendEnginePlugin):
         yield SearchProviderContribution(
             provider_id="serper",
             factory=lambda: SerperSearchProvider(settings.serper_key),
-            is_available=lambda: bool(settings.serper_key),
+            is_available=lambda: (
+                bool(settings.serper_key) and get_flag_client().get_boolean("provider.serper.enabled", default=True)
+            ),
         )
         yield SearchProviderContribution(
             provider_id="brave_search",

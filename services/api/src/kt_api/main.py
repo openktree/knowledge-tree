@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from kt_api.router import api_router
+from kt_flags.fastapi import install_middleware as install_flag_middleware
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    install_flag_middleware(app)
 
     app.include_router(api_router)
     return app

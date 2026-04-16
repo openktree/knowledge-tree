@@ -17,6 +17,7 @@ members = [
     "kt-core-engine-api",
     "kt-db",
     "kt-facts",
+    "kt-flags",
     "kt-graph",
     "kt-hatchet",
     "kt-mcp",
@@ -1773,7 +1774,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.51.0"
+version = "0.52.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1841,6 +1842,7 @@ dependencies = [
     { name = "kt-config" },
     { name = "kt-db" },
     { name = "kt-facts" },
+    { name = "kt-flags" },
     { name = "kt-graph" },
     { name = "kt-hatchet" },
     { name = "kt-models" },
@@ -1864,6 +1866,7 @@ requires-dist = [
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
     { name = "kt-facts", editable = "libs/kt-facts" },
+    { name = "kt-flags", editable = "libs/kt-flags" },
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
@@ -1986,6 +1989,21 @@ requires-dist = [
 dev = []
 
 [[package]]
+name = "kt-flags"
+version = "0.1.0"
+source = { editable = "libs/kt-flags" }
+dependencies = [
+    { name = "kt-config" },
+    { name = "openfeature-sdk" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kt-config", editable = "libs/kt-config" },
+    { name = "openfeature-sdk", specifier = ">=0.8.4" },
+]
+
+[[package]]
 name = "kt-graph"
 version = "0.1.0"
 source = { editable = "libs/kt-graph" }
@@ -2012,6 +2030,7 @@ dependencies = [
     { name = "kt-agents-core" },
     { name = "kt-config" },
     { name = "kt-db" },
+    { name = "kt-flags" },
     { name = "kt-graph" },
     { name = "kt-models" },
     { name = "kt-providers" },
@@ -2028,6 +2047,7 @@ requires-dist = [
     { name = "kt-agents-core", editable = "libs/kt-agents-core" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-db", editable = "libs/kt-db" },
+    { name = "kt-flags", editable = "libs/kt-flags" },
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "kt-providers", editable = "libs/kt-providers" },
@@ -2124,6 +2144,7 @@ dependencies = [
     { name = "alembic" },
     { name = "kt-config" },
     { name = "kt-core-engine-api" },
+    { name = "kt-flags" },
     { name = "kt-models" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -2136,6 +2157,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-core-engine-api", editable = "libs/kt-core-engine-api" },
+    { name = "kt-flags", editable = "libs/kt-flags" },
     { name = "kt-models", editable = "libs/kt-models" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
@@ -2151,6 +2173,7 @@ dependencies = [
     { name = "httpx" },
     { name = "kt-config" },
     { name = "kt-core-engine-api" },
+    { name = "kt-flags" },
     { name = "pydantic-settings" },
     { name = "structlog" },
 ]
@@ -2165,6 +2188,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-core-engine-api", editable = "libs/kt-core-engine-api" },
+    { name = "kt-flags", editable = "libs/kt-flags" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "structlog", specifier = ">=25.5.0" },
 ]
@@ -3050,6 +3074,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/02/2e/58d83848dd1a79cb92ed8e63f6ba901ca282c5f09d04af9423ec26c56fd7/openapi_pydantic-0.5.1.tar.gz", hash = "sha256:ff6835af6bde7a459fb93eb93bb92b8749b754fc6e51b2f1590a19dc3005ee0d", size = 60892, upload-time = "2025-01-08T19:29:27.083Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/cf/03675d8bd8ecbf4445504d8071adab19f5f993676795708e36402ab38263/openapi_pydantic-0.5.1-py3-none-any.whl", hash = "sha256:a3a09ef4586f5bd760a8df7f43028b60cafb6d9f61de2acba9574766255ab146", size = 96381, upload-time = "2025-01-08T19:29:25.275Z" },
+]
+
+[[package]]
+name = "openfeature-sdk"
+version = "0.8.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/08/f6698d0614b8703170117b786bd77b7b0a04f3ee00f19fbe9b360d2dee69/openfeature_sdk-0.8.4.tar.gz", hash = "sha256:66abf71f928ec8c0db1111072bb0ef2635dfbd09510f77f4b548e5d0ea0e6c1a", size = 29676, upload-time = "2025-12-09T07:31:13.137Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9c/80/f6532778188c573cc83790b11abccde717d4c1442514e722d6bb6140e55c/openfeature_sdk-0.8.4-py3-none-any.whl", hash = "sha256:805ba090669798fc343ca9fdcbc56ff0f4b57bf6757533f0854d2021192e620a", size = 35986, upload-time = "2025-12-09T07:31:12.092Z" },
 ]
 
 [[package]]

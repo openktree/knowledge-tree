@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_agents_core.state import AgentContext, EventCallback
 from kt_config.settings import get_settings
 from kt_db.session import get_session_factory, get_write_session_factory
+from kt_flags import get_flag_client
 from kt_graph.read_engine import ReadGraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
@@ -118,7 +119,7 @@ async def get_agent_context(
             logger.exception("Failed to register extra search provider: %s", extra.name)
 
     fetch_registry = None
-    if settings.enable_full_text_fetch:
+    if get_flag_client().get_boolean("feature.full_text_fetch", default=True):
         fetch_registry = build_fetch_registry(settings)
 
     return AgentContext(

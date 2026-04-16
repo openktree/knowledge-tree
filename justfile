@@ -108,6 +108,7 @@ migrate-write:
 test-libs:
     cd libs/kt-config && uv run pytest -x
     cd libs/kt-db && uv run pytest -x
+    cd libs/kt-flags && uv run pytest -x
     cd libs/kt-models && uv run pytest -x
     cd libs/kt-providers && uv run pytest -x
     cd libs/kt-graph && uv run pytest -x

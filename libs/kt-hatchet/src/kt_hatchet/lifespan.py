@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_config.settings import Settings
 from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.session import get_engine, get_write_engine
+from kt_flags import get_flag_client
+from kt_flags.hatchet import init_worker as _init_flag_client
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +155,7 @@ async def _resolve_default_graph_id(
 async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
     """Async context manager that Hatchet calls at worker start/stop."""
     settings = Settings()
+    _init_flag_client()
 
     engine = get_engine(application_name="kt-worker")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -186,7 +189,7 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
             logger.exception("Failed to register extra search provider: %s", extra.name)
 
     fetch_registry = None
-    if settings.enable_full_text_fetch:
+    if get_flag_client().get_boolean("feature.full_text_fetch", default=True):
         from kt_providers.fetch import build_fetch_registry
 
         fetch_registry = build_fetch_registry(settings)
@@ -300,7 +303,7 @@ async def build_worker_state() -> WorkerState:
             logger.exception("Failed to register extra search provider: %s", extra.name)
 
     fetch_registry = None
-    if settings.enable_full_text_fetch:
+    if get_flag_client().get_boolean("feature.full_text_fetch", default=True):
         from kt_providers.fetch import build_fetch_registry
 
         fetch_registry = build_fetch_registry(settings)
