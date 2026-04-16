@@ -283,6 +283,7 @@ _register(
         "email_enabled": "enabled",
         "email_provider": "provider",
         "email_verification": "verification",
+        "email_verification_required": "verification_required",
         "email_from_address": "from_address",
         "resend_api_key": "resend_api_key",
     },
@@ -800,6 +801,7 @@ class Settings(BaseSettings):
     email_enabled: bool = False
     email_provider: str = "resend"
     email_verification: bool = False
+    email_verification_required: bool = False
     email_from_address: str = ""
     resend_api_key: str = ""
 

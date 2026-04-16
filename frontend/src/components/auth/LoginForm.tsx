@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth";
 import { api } from "@/lib/api";
 
+type ResendState = "idle" | "sending" | "sent" | "error";
+
 export function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
@@ -13,6 +15,9 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendState, setResendState] = useState<ResendState>("idle");
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   useEffect(() => {
     api.auth.authFeatures().then((f) => setGoogleEnabled(f.google_oauth_enabled)).catch(() => {});
@@ -21,14 +26,41 @@ export function LoginForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNeedsVerification(false);
+    setResendState("idle");
+    setResendMessage(null);
     setLoading(true);
     try {
       await login(email, password);
       router.push("/");
-    } catch {
-      setError("Invalid email or password.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("LOGIN_USER_NOT_VERIFIED")) {
+        setNeedsVerification(true);
+        setError("Please verify your email before signing in.");
+      } else {
+        setError("Invalid email or password.");
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    if (!email) {
+      setResendMessage("Enter your email above first.");
+      setResendState("error");
+      return;
+    }
+    setResendState("sending");
+    setResendMessage(null);
+    try {
+      await api.auth.requestVerifyToken(email);
+      setResendState("sent");
+      setResendMessage("Verification email sent — check your inbox.");
+    } catch (err) {
+      setResendState("error");
+      setResendMessage(err instanceof Error ? err.message : "Failed to send verification email.");
     }
   }
 
@@ -73,6 +105,29 @@ export function LoginForm() {
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {needsVerification && (
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/50 px-3 py-3">
+          <p className="text-xs text-muted-foreground">
+            We sent a verification link to your email when you registered. Didn&apos;t get it or did it expire?
+          </p>
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={resendState === "sending" || resendState === "sent"}
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+          >
+            {resendState === "sending"
+              ? "Sending…"
+              : resendState === "sent"
+                ? "Sent"
+                : "Resend verification email"}
+          </button>
+          {resendMessage && (
+            <p className="text-xs text-muted-foreground">{resendMessage}</p>
+          )}
+        </div>
+      )}
 
       <button
         type="submit"
