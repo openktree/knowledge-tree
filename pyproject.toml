@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-tree-workspace"
-version = "0.53.0"
+version = "0.54.0"
 description = "Knowledge Tree monorepo workspace"
 requires-python = ">=3.12"
 
