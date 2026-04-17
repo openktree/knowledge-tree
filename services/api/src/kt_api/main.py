@@ -7,10 +7,12 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from kt_api.router import api_router
+from kt_config.errors import GraphReadOnlyError
 from kt_flags.fastapi import install_middleware as install_flag_middleware
 
 logger = logging.getLogger(__name__)
@@ -187,6 +189,17 @@ def create_app() -> FastAPI:
     )
 
     install_flag_middleware(app)
+
+    @app.exception_handler(GraphReadOnlyError)
+    async def _graph_read_only_handler(_request: Request, exc: GraphReadOnlyError) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "graph_id": exc.graph_id,
+                "reason": exc.reason,
+            },
+        )
 
     app.include_router(api_router)
     return app

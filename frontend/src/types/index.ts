@@ -1361,6 +1361,14 @@ export interface SynthesisModelOption {
 
 // ── Graphs (multi-graph) ─────────────────────────────────────────────
 
+export interface GraphTypeSummary {
+  id: string;
+  display_name: string;
+  current_version: number;
+}
+
+export type GraphReadOnlyReason = "owner" | "migrating" | "error" | null;
+
 export interface GraphResponse {
   id: string;
   slug: string;
@@ -1368,6 +1376,11 @@ export interface GraphResponse {
   description: string | null;
   is_default: boolean;
   graph_type: string;
+  graph_type_id: string;
+  graph_type_version: number;
+  graph_type_info: GraphTypeSummary | null;
+  read_only: boolean;
+  read_only_reason: GraphReadOnlyReason;
   byok_enabled: boolean;
   storage_mode: string;
   schema_name: string;
@@ -1390,12 +1403,45 @@ export interface CreateGraphRequest {
   name: string;
   description?: string;
   graph_type?: string;
+  // Graph type plugin id (e.g. "default"). Server sets graph_type_version
+  // automatically to the plugin's current_version — not user-selectable.
+  graph_type_id?: string;
   byok_enabled?: boolean;
   // "default" or omitted = system DB; otherwise a config_key from
   // listDatabaseConnections() (an external DB provisioned in the infra layer).
   database_connection_config_key?: string;
   contribute_to_public?: boolean;
   use_public_cache?: boolean;
+}
+
+export interface GraphTypeCompositionResponse {
+  fetch_chain: string[];
+  search_providers: string[];
+  fact_decomposition: string;
+  concept_extractor: string;
+  disambiguation: string;
+  seed_multiplex: string;
+  seed_promotion: string;
+  dimensions: string;
+  definition: string;
+  relations: string;
+  sync: string;
+  source_cache: string;
+  source_contribution: string;
+  agentic_tasks: Record<string, string>;
+}
+
+export interface GraphTypeResponse {
+  id: string;
+  display_name: string;
+  current_version: number;
+  composition: GraphTypeCompositionResponse;
+  default_phase_settings: Record<string, Record<string, unknown>>;
+  config_schema: Record<string, unknown>;
+}
+
+export interface ReadOnlyToggleRequest {
+  read_only: boolean;
 }
 
 export interface UpdateGraphRequest {

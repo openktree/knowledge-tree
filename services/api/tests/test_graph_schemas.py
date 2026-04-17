@@ -10,6 +10,8 @@ from kt_api.graphs import (
     AddMemberRequest,
     CreateGraphRequest,
     GraphResponse,
+    GraphTypeSummary,
+    ReadOnlyToggleRequest,
     UpdateMemberRoleRequest,
 )
 from kt_db.keys import validate_schema_name
@@ -44,8 +46,17 @@ class TestCreateGraphRequest:
     def test_defaults(self):
         req = CreateGraphRequest(slug="test_graph", name="Test Graph")
         assert req.graph_type == "v1"
+        assert req.graph_type_id == "default"
         assert req.byok_enabled is False
         assert req.database_connection_config_key is None
+
+    def test_graph_type_id_custom(self):
+        req = CreateGraphRequest(slug="my_graph", name="X", graph_type_id="science")
+        assert req.graph_type_id == "science"
+
+    def test_graph_type_id_invalid_chars(self):
+        with pytest.raises(ValidationError):
+            CreateGraphRequest(slug="my_graph", name="X", graph_type_id="Bad Type!")
 
     def test_custom_values(self):
         req = CreateGraphRequest(
@@ -77,6 +88,10 @@ class TestGraphResponse:
             name="Test",
             is_default=False,
             graph_type="v1",
+            graph_type_id="default",
+            graph_type_version=1,
+            graph_type_info=GraphTypeSummary(id="default", display_name="Default", current_version=1),
+            read_only=False,
             byok_enabled=True,
             storage_mode="schema",
             schema_name="graph_test",
@@ -88,6 +103,45 @@ class TestGraphResponse:
         )
         assert resp.byok_enabled is True
         assert resp.node_count == 42
+        assert resp.graph_type_id == "default"
+        assert resp.graph_type_version == 1
+        assert resp.graph_type_info.current_version == 1
+        assert resp.read_only is False
+
+    def test_read_only_reason(self):
+        resp = GraphResponse(
+            id="abc",
+            slug="test",
+            name="Test",
+            is_default=False,
+            graph_type="v1",
+            graph_type_id="default",
+            graph_type_version=1,
+            read_only=True,
+            read_only_reason="migrating",
+            byok_enabled=False,
+            storage_mode="schema",
+            schema_name="graph_test",
+            status="active",
+            created_at="2026-01-01T00:00:00",
+            updated_at="2026-01-01T00:00:00",
+        )
+        assert resp.read_only is True
+        assert resp.read_only_reason == "migrating"
+
+
+class TestReadOnlyToggleRequest:
+    def test_enable(self):
+        req = ReadOnlyToggleRequest(read_only=True)
+        assert req.read_only is True
+
+    def test_disable(self):
+        req = ReadOnlyToggleRequest(read_only=False)
+        assert req.read_only is False
+
+    def test_missing_field(self):
+        with pytest.raises(ValidationError):
+            ReadOnlyToggleRequest()  # type: ignore[call-arg]
 
 
 class TestAddMemberRequest:

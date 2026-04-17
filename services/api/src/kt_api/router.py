@@ -24,6 +24,7 @@ from kt_api.graph_research import router as graph_research_router
 from kt_api.graph_seeds import router as graph_seeds_router
 from kt_api.graph_sources import router as graph_sources_router
 from kt_api.graph_syntheses import router as graph_syntheses_router
+from kt_api.graph_types import router as graph_types_router
 from kt_api.graphs import router as graphs_router
 from kt_api.health import router as health_router
 from kt_api.import_router import router as import_router
@@ -54,6 +55,7 @@ api_router.include_router(nodes_router, dependencies=_auth_dep)
 api_router.include_router(edges_router, dependencies=_auth_dep)
 api_router.include_router(graph_router, dependencies=_auth_dep)
 api_router.include_router(graphs_router, dependencies=_auth_dep)
+api_router.include_router(graph_types_router, dependencies=_auth_dep)
 api_router.include_router(graph_nodes_router, dependencies=_auth_dep)
 api_router.include_router(graph_facts_router, dependencies=_auth_dep)
 api_router.include_router(graph_edges_router, dependencies=_auth_dep)

@@ -40,3 +40,18 @@ class EmbeddingError(KnowledgeTreeError):
 class ConfigurationError(KnowledgeTreeError):
     def __init__(self, message: str):
         super().__init__(f"Configuration error: {message}")
+
+
+class GraphReadOnlyError(KnowledgeTreeError):
+    """Raised when a write is attempted on a read-only graph.
+
+    A graph is read-only when ``Graph.read_only`` is ``True`` — either
+    set by an owner, set automatically during a type-version migration,
+    or stuck after a migration failure. The ``reason`` mirrors
+    ``Graph.read_only_reason``: ``"owner"``, ``"migrating"``, or ``"error"``.
+    """
+
+    def __init__(self, graph_id: str, reason: str):
+        self.graph_id = graph_id
+        self.reason = reason
+        super().__init__(f"Graph {graph_id} is read-only (reason={reason})")

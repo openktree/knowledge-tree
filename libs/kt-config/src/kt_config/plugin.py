@@ -20,7 +20,7 @@ from collections.abc import Awaitable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from kt_core_engine_api.extractor import EntityExtractor
@@ -193,6 +193,52 @@ class EntityExtractorContribution:
     factory: Callable[["ModelGateway"], "EntityExtractor"]
 
 
+# ── Graph type: composition + migration contracts ─────────────────────────
+
+
+@dataclass(frozen=True)
+class GraphTypeComposition:
+    """Declares which provider fills each pipeline phase for a graph type.
+
+    Each value is a provider-id string that resolves against
+    :class:`PluginRegistry`. Provider extraction is phased — during Phase 1
+    scaffolding, ids may refer to inline implementations until their
+    matching plugin lands.
+    """
+
+    fetch_chain: list[str]
+    search_providers: list[str]
+    fact_decomposition: str
+    concept_extractor: str
+    disambiguation: str
+    seed_multiplex: str
+    seed_promotion: str
+    dimensions: str
+    definition: str
+    relations: str
+    sync: str
+    source_cache: str
+    source_contribution: str
+    agentic_tasks: dict[str, str]  # task_name → provider_id
+
+
+@runtime_checkable
+class GraphMigration(Protocol):
+    """Data migration between two consecutive graph-type versions.
+
+    MUST NOT run DDL — schema-shape evolution stays under per-schema
+    Alembic migrations. Data migrations are data-only; the registration
+    guard in Phase 7 rejects migration modules that import ``alembic``.
+    """
+
+    migration_id: str
+    from_version: int
+    to_version: int
+    description: str
+
+    async def run(self, ctx: Any) -> None: ...
+
+
 # ── Plugin type ABCs ──────────────────────────────────────────────────────
 
 
@@ -277,6 +323,57 @@ class BackendEnginePlugin(ABC):
     # def get_fact_processor(self) -> FactProcessorContribution | None: ...
 
 
+class GraphTypePlugin(ABC):
+    """Plugin bundling a pipeline recipe (composition of providers) + config + migrations.
+
+    Graph types are versioned *internally* — users do not pick a version.
+    On startup, any graph whose ``graph_type_version`` is below
+    ``plugin.current_version`` is migrated forward via ``graph_migration_wf``.
+
+    Registered via :meth:`PluginRegistry.register_graph_type`.
+    """
+
+    @property
+    @abstractmethod
+    def graph_type_id(self) -> str:
+        """Unique slug, e.g. ``"default"``, ``"science"``."""
+
+    @property
+    @abstractmethod
+    def display_name(self) -> str:
+        """Human-facing label shown in the create dialog + settings page."""
+
+    @property
+    @abstractmethod
+    def current_version(self) -> int:
+        """Latest internal version. Bumped on every shipped recipe change."""
+
+    @abstractmethod
+    def composition(self) -> GraphTypeComposition:
+        """Provider-ids per pipeline phase at ``current_version``."""
+
+    def default_phase_settings(self) -> dict[str, dict[str, Any]]:
+        """Per-phase default config (``phase -> {key: value}``).
+
+        Merged by ``GraphConfigResolver`` below YAML overrides.
+        Default: empty — the plugin inherits global ``Settings`` fallbacks.
+        """
+        return {}
+
+    def config_schema(self) -> dict[str, Any]:
+        """JSONSchema describing editable phase settings (UI display only)."""
+        return {"type": "object", "properties": {}}
+
+    def migrations(self) -> list[GraphMigration]:
+        """Ordered data migrations (``from_version -> from_version + 1``).
+
+        Default: empty. Populated in Phase 7 once the migration framework
+        lands. Each migration must have ``to_version = from_version + 1``
+        so the planner can walk version hops deterministically.
+        """
+        return []
+
+
 class BackendPlugin(ABC):
     """API-only plugin. No graph writes allowed. ID: ``backend-<feature>``.
 
@@ -312,6 +409,7 @@ class PluginRegistry:
 
     def __init__(self) -> None:
         self._backend_engine: list[BackendEnginePlugin] = []
+        self._graph_types: list[GraphTypePlugin] = []
 
     def register_backend_engine(self, plugin: BackendEnginePlugin) -> None:
         """Register a BackendEnginePlugin.
@@ -325,9 +423,35 @@ class PluginRegistry:
         self._backend_engine.append(plugin)
         logger.debug("Registered backend-engine plugin: %s", plugin.plugin_id)
 
+    def register_graph_type(self, plugin: GraphTypePlugin) -> None:
+        """Register a GraphTypePlugin.
+
+        Idempotent by graph_type_id. Registration order matches discovery
+        order — the default graph type is always registered first so
+        callers asking for an unknown type can fall back deterministically.
+        """
+        for existing in self._graph_types:
+            if existing.graph_type_id == plugin.graph_type_id:
+                logger.debug("Graph type already registered, skipping: %s", plugin.graph_type_id)
+                return
+        self._graph_types.append(plugin)
+        logger.debug("Registered graph type plugin: %s", plugin.graph_type_id)
+
+    def get_graph_type(self, graph_type_id: str) -> GraphTypePlugin | None:
+        """Look up a registered GraphTypePlugin by id, or ``None``."""
+        for plugin in self._graph_types:
+            if plugin.graph_type_id == graph_type_id:
+                return plugin
+        return None
+
+    def list_graph_types(self) -> list[GraphTypePlugin]:
+        """Return every registered GraphTypePlugin in registration order."""
+        return list(self._graph_types)
+
     def clear(self) -> None:
         """Remove every registered plugin. Intended for test isolation."""
         self._backend_engine.clear()
+        self._graph_types.clear()
 
     async def run_database_migrations(
         self,
@@ -420,12 +544,17 @@ _DEFAULT_PLUGIN_TARGETS: list[tuple[str, str]] = [
     ("kt_plugin_be_search_providers.plugin", "SearchProvidersBackendEnginePlugin"),
 ]
 
+_DEFAULT_GRAPH_TYPE_TARGETS: list[tuple[str, str]] = [
+    ("kt_db.default_graph_type", "DefaultGraphTypePlugin"),
+]
+
 
 def load_default_plugins(
     *,
     targets: list[tuple[str, str]] | None = None,
+    graph_type_targets: list[tuple[str, str]] | None = None,
 ) -> None:
-    """Import and register the standard set of backend-engine plugins.
+    """Import and register the standard set of backend-engine + graph-type plugins.
 
     Each target is ``(module_path, class_name)``. Plugins that are not
     installed are silently skipped. Safe to call multiple times — the
@@ -444,3 +573,19 @@ def load_default_plugins(
             logger.info("Plugin %s disabled by flag — skipping", module_path)
             continue
         plugin_registry.register_backend_engine(plugin_cls())
+
+    for module_path, class_name in graph_type_targets or _DEFAULT_GRAPH_TYPE_TARGETS:
+        try:
+            module = importlib.import_module(module_path)
+        except ImportError:
+            logger.debug("Graph type plugin %s not installed — skipping", module_path)
+            continue
+        plugin_cls = getattr(module, class_name, None)
+        if plugin_cls is None:
+            logger.warning(
+                "Graph type plugin class %s.%s not found — skipping",
+                module_path,
+                class_name,
+            )
+            continue
+        plugin_registry.register_graph_type(plugin_cls())
