@@ -51,6 +51,11 @@ def load_default_plugins(
 
     ``targets`` is accepted for back-compat but ignored — the legacy
     target list is hardwired inside discovery.
+
+    **Must not be called from inside a running event loop** — asyncio.run
+    will crash. Worker ``__main__`` is sync at this point, so it is safe.
+    Prefer :func:`bootstrap_worker_plugins` which bundles the standard
+    worker startup sequence.
     """
     import asyncio
 
@@ -63,11 +68,40 @@ def load_default_plugins(
     )
 
 
+def bootstrap_worker_plugins() -> None:
+    """Full plugin startup sequence for Hatchet workers.
+
+    Equivalent to:
+        register_core_plugins(plugin_manager)
+        load_default_plugins(enabled_plugins=..., license_keys=...)
+        bridge_plugin_search_providers()
+
+    Every worker's ``__main__`` must call this *before* building its
+    workflow list so plugin-contributed Hatchet workflows are enrolled.
+    Keeping this in one helper avoids the "forgot to update one of seven
+    workers" class of bug.
+    """
+    # Lazy imports so kt-plugins keeps its foundation-level footprint —
+    # kt_db + kt_providers are heavier and only needed inside workers.
+    from kt_config.settings import get_settings
+    from kt_db.core_plugin import register_core_plugins
+    from kt_providers.registry import bridge_plugin_search_providers
+
+    settings = get_settings()
+    register_core_plugins(plugin_manager)
+    load_default_plugins(
+        enabled_plugins=settings.enabled_plugins or None,
+        license_keys=settings.plugin_license_keys or None,
+    )
+    bridge_plugin_search_providers()
+
+
 __all__ = [
     "ENTRY_POINT_GROUP",
     "BackendEnginePlugin",
     "BackendPlugin",
     "DbTarget",
+    "bootstrap_worker_plugins",
     "discover_plugins",
     "validate_dependencies",
     "EntityExtractorContribution",

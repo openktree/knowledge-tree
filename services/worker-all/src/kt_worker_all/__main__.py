@@ -47,18 +47,9 @@ def main() -> None:
     # plugin-contributed Hatchet workflows are enrolled with the worker.
     # Bootstrap (hook subscriptions, session factories) runs inside
     # worker_lifespan().
-    from kt_config.settings import Settings
-    from kt_db.core_plugin import register_core_plugins
-    from kt_plugins import load_default_plugins, plugin_manager
-    from kt_providers.registry import bridge_plugin_search_providers
+    from kt_plugins import bootstrap_worker_plugins, plugin_manager
 
-    register_core_plugins(plugin_manager)
-    _settings = Settings()
-    load_default_plugins(
-        enabled_plugins=_settings.enabled_plugins or None,
-        license_keys=_settings.plugin_license_keys or None,
-    )
-    bridge_plugin_search_providers()
+    bootstrap_worker_plugins()
 
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan

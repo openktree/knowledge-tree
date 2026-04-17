@@ -192,19 +192,30 @@ class PluginManager:
             return
 
         license_keys = license_keys or {}
+        enabled_set = set(enabled_plugins or [])
         discovered = discover_plugins(enabled=enabled_plugins or None)
         validate_dependencies(discovered)
 
-        # License gating — drop plugins whose commercial key is missing/invalid.
+        # License gating. If the plugin is on the explicit allowlist, treat
+        # a missing/invalid key as a hard startup error (operator asked for
+        # it but didn't configure it — silent skip would look like "billing
+        # routes missing" with no trace). Otherwise, log and drop.
         gated: list[PluginManifest] = []
         for manifest in discovered:
             if manifest.requires_license_key:
                 key = license_keys.get(manifest.id, "")
                 try:
                     validate_license_key(manifest.id, key)
-                except PluginLicenseError:
+                except PluginLicenseError as exc:
+                    if manifest.id in enabled_set:
+                        logger.error(
+                            "license validation failed for allowlisted plugin %r: %s",
+                            manifest.id,
+                            exc.message,
+                        )
+                        raise
                     logger.error(
-                        "license validation failed for plugin %r — skipping",
+                        "license validation failed for plugin %r — skipping (not in enabled_plugins)",
                         manifest.id,
                     )
                     continue

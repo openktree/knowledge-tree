@@ -36,8 +36,7 @@ class PermissionChecker:
         granted = self._evaluate(ctx, permission)
         # Fire-and-forget audit hook for plugins (SIEM, access log, anomaly
         # detection). Must not block the critical path — handlers run on
-        # the event loop in a detached task. Import lazily so kt-rbac stays
-        # plugin-agnostic for code paths that don't exercise plugins.
+        # the event loop in a detached task.
         try:
             from kt_plugins import plugin_manager as _pm
 
@@ -50,8 +49,15 @@ class PermissionChecker:
                 is_default_graph=ctx.is_default_graph,
             )
         except Exception:
-            # A broken plugin registry must not break auth checks.
-            pass
+            # A broken plugin registry must not break auth checks — but
+            # log at DEBUG (not silently swallowed) so import errors or
+            # registry bugs are still discoverable in verbose logs.
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug(
+                "auth.permission_check hook emit failed (non-fatal)",
+                exc_info=True,
+            )
         return granted
 
     def _evaluate(self, ctx: PermissionContext, permission: Permission) -> bool:

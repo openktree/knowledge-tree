@@ -96,13 +96,33 @@ async def _bootstrap_plugins(app: FastAPI) -> None:
     # Mount plugin routes. Done after bootstrap so plugins that build
     # their router inside bootstrap() (e.g. depending on settings) still
     # get picked up.
+    #
+    # ``require_permission`` enforces a system-level Permission via a
+    # router-level dependency. Graph-scoped permissions cannot be enforced
+    # here (they need the graph_id path param) — plugins must call
+    # ``require_graph_permission`` inside their handlers.
     from fastapi import APIRouter, Depends
 
+    from kt_api.auth.permissions import require_system_permission
     from kt_api.auth.tokens import require_auth
 
     plugin_root = APIRouter()
     for contrib in plugin_manager.get_plugin_routes():
-        deps = [Depends(require_auth)] if contrib.auth_required else []
+        deps = []
+        if contrib.auth_required:
+            deps.append(Depends(require_auth))
+        if contrib.require_permission is not None:
+            perm_value = contrib.require_permission.value
+            if not perm_value.startswith("system:"):
+                logger.warning(
+                    "plugin route %r declares require_permission=%s — only system:* "
+                    "permissions are enforceable at router scope; graph:*/source:* "
+                    "must be checked inside the handler",
+                    contrib.prefix,
+                    perm_value,
+                )
+            else:
+                deps.append(Depends(require_system_permission(contrib.require_permission)))
         plugin_root.include_router(
             contrib.router,
             prefix=f"/{contrib.prefix}" if not contrib.prefix.startswith("/") else contrib.prefix,

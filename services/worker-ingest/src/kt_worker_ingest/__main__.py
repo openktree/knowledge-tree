@@ -24,18 +24,9 @@ def main() -> None:
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    from kt_config.settings import Settings
-    from kt_db.core_plugin import register_core_plugins
-    from kt_plugins import load_default_plugins, plugin_manager
-    from kt_providers.registry import bridge_plugin_search_providers
+    from kt_plugins import bootstrap_worker_plugins, plugin_manager
 
-    register_core_plugins(plugin_manager)
-    _settings = Settings()
-    load_default_plugins(
-        enabled_plugins=_settings.enabled_plugins or None,
-        license_keys=_settings.plugin_license_keys or None,
-    )
-    bridge_plugin_search_providers()
+    bootstrap_worker_plugins()
 
     hatchet = get_hatchet()
     _core_workflows = [

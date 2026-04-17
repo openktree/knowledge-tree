@@ -77,12 +77,39 @@ async def test_initialize_skips_plugins_missing_license() -> None:
     original = manager_mod.discover_plugins
     manager_mod.discover_plugins = lambda enabled=None: [manifest]  # type: ignore[assignment]
     try:
-        await mgr.initialize(license_keys={})  # no key supplied
+        # No allowlist — missing key drops the plugin silently (log-only).
+        await mgr.initialize(license_keys={})
     finally:
         manager_mod.discover_plugins = original
 
     assert seen == []  # license gate prevented register()
     assert [m.id for m in mgr.manifests] == []
+
+
+async def test_initialize_fails_hard_when_allowlisted_plugin_lacks_license() -> None:
+    """Operator put the plugin on ``enabled_plugins`` but didn't configure
+    its license key — that's a misconfiguration, not an "oh well"."""
+    import pytest
+
+    from kt_plugins import PluginLicenseError
+
+    class _Life:
+        async def register(self, registry: ExtensionRegistry) -> None: ...
+        async def bootstrap(self, ctx: PluginContext) -> None: ...
+        async def shutdown(self) -> None: ...
+
+    manifest = PluginManifest(id="billing", requires_license_key=True, lifecycle=_Life())
+    mgr = PluginManager()
+    import kt_plugins.manager as manager_mod
+
+    original = manager_mod.discover_plugins
+    # Simulate discovery returning the plugin even when allowlist filter runs.
+    manager_mod.discover_plugins = lambda enabled=None: [manifest]  # type: ignore[assignment]
+    try:
+        with pytest.raises(PluginLicenseError):
+            await mgr.initialize(enabled_plugins=["billing"], license_keys={})
+    finally:
+        manager_mod.discover_plugins = original
 
 
 async def test_initialize_respects_enabled_allowlist() -> None:
