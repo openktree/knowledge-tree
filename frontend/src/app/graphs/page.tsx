@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth";
 import { useGraph } from "@/contexts/graph";
-import { listGraphs, createGraph, listDatabaseConnections } from "@/lib/api";
+import { listGraphs, createGraph, listDatabaseConnections, listGraphTypes } from "@/lib/api";
 import { DeleteGraphDialog } from "@/components/graphs/DeleteGraphDialog";
-import type { GraphResponse, DatabaseConnectionResponse } from "@/types";
+import type { GraphResponse, DatabaseConnectionResponse, GraphTypeResponse } from "@/types";
 
 export default function GraphsPage() {
   const { user } = useAuth();
@@ -31,6 +31,9 @@ export default function GraphsPage() {
   // Schema is the only isolation strategy — the database picker is the only choice.
   const [newDbKey, setNewDbKey] = useState("default");
   const [dbConnections, setDbConnections] = useState<DatabaseConnectionResponse[]>([]);
+  // Graph type selection — version is never user-picked; backend sets it.
+  const [graphTypes, setGraphTypes] = useState<GraphTypeResponse[]>([]);
+  const [newGraphTypeId, setNewGraphTypeId] = useState("default");
 
   const fetchGraphs = useCallback(async () => {
     try {
@@ -59,6 +62,17 @@ export default function GraphsPage() {
     }
   }, [showCreate, user?.is_superuser, dbLoaded]);
 
+  // Graph types — loaded once on mount. Any auth'd user can see them.
+  const [typesLoaded, setTypesLoaded] = useState(false);
+  useEffect(() => {
+    if (showCreate && !typesLoaded) {
+      setTypesLoaded(true);
+      listGraphTypes()
+        .then(setGraphTypes)
+        .catch((err) => console.error("Failed to load graph types", err));
+    }
+  }, [showCreate, typesLoaded]);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -67,6 +81,7 @@ export default function GraphsPage() {
         slug: newSlug,
         name: newName,
         description: newDescription || undefined,
+        graph_type_id: newGraphTypeId,
         // Omit when "default" so the backend uses the system DB.
         ...(newDbKey !== "default" && { database_connection_config_key: newDbKey }),
       });
@@ -74,6 +89,7 @@ export default function GraphsPage() {
       setNewName("");
       setNewDescription("");
       setNewDbKey("default");
+      setNewGraphTypeId("default");
       setShowCreate(false);
       fetchGraphs();
       refreshGraphContext();
@@ -226,6 +242,31 @@ export default function GraphsPage() {
               For full DB-level isolation, just keep one graph per database.
             </p>
           </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="g-type" className="text-xs font-medium text-muted-foreground">
+              Type
+            </label>
+            <select
+              id="g-type"
+              value={newGraphTypeId}
+              onChange={(e) => setNewGraphTypeId(e.target.value)}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring w-fit"
+            >
+              {graphTypes.length === 0 ? (
+                <option value="default">default</option>
+              ) : (
+                graphTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.display_name} (v{t.current_version})
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="text-[10px] text-muted-foreground">
+              The type bundles the pipeline recipe (search + extraction + relations).
+              Version is internal — migrations bump it automatically.
+            </p>
+          </div>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={creating || dbError !== null}>
               {creating ? "Creating..." : "Create"}
@@ -327,7 +368,15 @@ export default function GraphsPage() {
               </div>
               <div className="flex gap-2 mt-2 text-[10px] text-muted-foreground">
                 <span>DB: {g.database_connection_name ?? "default"}</span>
-                <span>Type: {g.graph_type}</span>
+                <span>
+                  Type: {g.graph_type_info?.display_name ?? g.graph_type_id} v
+                  {g.graph_type_version}
+                </span>
+                {g.read_only && (
+                  <Badge variant="destructive" className="text-[10px] h-4">
+                    read-only
+                  </Badge>
+                )}
                 {g.byok_enabled && (
                   <Badge variant="outline" className="text-[10px] h-4">
                     BYOK

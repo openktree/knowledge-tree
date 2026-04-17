@@ -87,6 +87,8 @@ import type {
   GraphMemberResponse,
   AddGraphMemberRequest,
   UpdateGraphMemberRoleRequest,
+  GraphTypeResponse,
+  ReadOnlyToggleRequest,
   DatabaseConnectionResponse,
 } from "@/types";
 
@@ -1364,4 +1366,19 @@ export async function removeGraphMember(slug: string, userId: string) {
     `/graphs/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
     { method: "DELETE" }
   );
+}
+
+// ---------------------------------------------------------------------------
+// Graph types + read-only toggle
+// ---------------------------------------------------------------------------
+
+export async function listGraphTypes() {
+  return request<GraphTypeResponse[]>("/graph-types");
+}
+
+export async function setGraphReadOnly(slug: string, data: ReadOnlyToggleRequest) {
+  return request<GraphResponse>(`/graphs/${encodeURIComponent(slug)}/read-only`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }

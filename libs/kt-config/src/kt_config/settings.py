@@ -193,6 +193,7 @@ _register(
         "hatchet_schedule_timeout_minutes": "hatchet_schedule_timeout_minutes",
         "use_hatchet": "use_hatchet",
         "run_migrations_on_startup": "run_migrations_on_startup",
+        "graph_types_enabled": "graph_types_enabled",
     },
 )
 
@@ -597,6 +598,13 @@ class Settings(BaseSettings):
     # API/worker startup. Disable when migrations are handled out-of-band
     # (e.g. a dedicated K8s pre-deploy Job).
     run_migrations_on_startup: bool = True
+    # Graph-type versioning feature gate. When False (default), the
+    # GraphTypePlugin registry is still populated but pipelines continue
+    # to read configuration from global Settings only — no per-graph
+    # composition resolution and no automatic version-migration dispatch.
+    # Flip to True once Phases 1–2 scaffolding is confirmed stable in
+    # each environment; the flag is removed after Phase 3 lands.
+    graph_types_enabled: bool = False
     enable_secondary_models: bool = False
     enable_full_text_fetch: bool = True
     full_text_fetch_max_urls: int = 10

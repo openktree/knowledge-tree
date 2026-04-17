@@ -11,6 +11,13 @@ from kt_db.keys import validate_schema_name
 from kt_db.models import DatabaseConnection, Graph, GraphMember
 
 
+class _Unset:
+    """Sentinel for three-state optional params (unset vs explicit None)."""
+
+
+_UNSET: _Unset = _Unset()
+
+
 class GraphRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -54,6 +61,8 @@ class GraphRepository:
         name: str,
         description: str | None = None,
         graph_type: str = "v1",
+        graph_type_id: str = "default",
+        graph_type_version: int = 1,
         byok_enabled: bool = False,
         storage_mode: str = "schema",
         schema_name: str | None = None,
@@ -73,6 +82,8 @@ class GraphRepository:
             name=name,
             description=description,
             graph_type=graph_type,
+            graph_type_id=graph_type_id,
+            graph_type_version=graph_type_version,
             byok_enabled=byok_enabled,
             storage_mode=storage_mode,
             schema_name=resolved_schema,
@@ -96,6 +107,9 @@ class GraphRepository:
         status: str | None = None,
         contribute_to_public: bool | None = None,
         use_public_cache: bool | None = None,
+        graph_type_version: int | None = None,
+        read_only: bool | None = None,
+        read_only_reason: str | None | _Unset = _UNSET,
     ) -> Graph:
         if name is not None:
             graph.name = name
@@ -107,6 +121,13 @@ class GraphRepository:
             graph.contribute_to_public = contribute_to_public
         if use_public_cache is not None:
             graph.use_public_cache = use_public_cache
+        if graph_type_version is not None:
+            graph.graph_type_version = graph_type_version
+        if read_only is not None:
+            graph.read_only = read_only
+        # Three-state sentinel: allow explicit None (clear reason) vs unset.
+        if not isinstance(read_only_reason, _Unset):
+            graph.read_only_reason = read_only_reason
         await self._session.flush()
         return graph
 

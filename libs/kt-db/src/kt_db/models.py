@@ -843,7 +843,25 @@ class Graph(Base):
     use_public_cache: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     graph_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="v1", server_default="v1"
-    )  # Versioned graph type for backward compat ("v1", "v2", ...)
+    )  # Legacy — kept for back-compat. New code reads graph_type_id/graph_type_version.
+    # Graph type plugin slug (e.g. "default", "science"). Resolves against
+    # PluginRegistry.get_graph_type() — determines pipeline composition.
+    graph_type_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default", server_default="default")
+    # Internal version of the graph type plugin this graph was built under.
+    # Users do not pick this; the startup auto-dispatch compares against
+    # plugin.current_version and runs graph_migration_wf when behind.
+    graph_type_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # Reserved for future user-managed per-graph overrides (UI toggles).
+    # Not read by the resolver in Phase 1 — layered above YAML when the
+    # edit UI ships.
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    # Read-only state. Two sources: owner-set via settings UI, or
+    # system-set during a type-version migration. Writes must call
+    # ``assert_writable(graph)`` before mutating any graph-scoped data.
+    read_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # 'owner' | 'migrating' | 'error' | NULL. Drives the frontend banner
+    # copy and blocks the owner toggle when the system set the flag.
+    read_only_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     byok_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )  # When True, users pay for LLM via their own keys — honored for early adopters
@@ -887,6 +905,36 @@ class GraphMember(Base):
     # Relationships
     graph: Mapped["Graph"] = relationship(back_populates="members")
     user: Mapped["User"] = relationship()
+
+
+class GraphMigrationRun(Base):
+    """Audit row for one hop of a graph-type version migration.
+
+    Written by ``graph_migration_wf`` (Phase 7). One row per (graph_id,
+    migration_id, to_version); the unique constraint is the idempotency
+    guard so re-dispatched workflows never run the same hop twice.
+    """
+
+    __tablename__ = "graph_migration_runs"
+    __table_args__ = (
+        UniqueConstraint("graph_id", "migration_id", "to_version", name="uq_graph_migration_run"),
+        Index("ix_graph_migration_runs_graph_id", "graph_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    graph_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("graphs.id", ondelete="CASCADE"), nullable=False
+    )
+    from_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    to_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    migration_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # 'pending' | 'running' | 'success' | 'failed' | 'skipped'
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    workflow_run_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class GraphGroup(Base):

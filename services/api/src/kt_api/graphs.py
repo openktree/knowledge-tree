@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kt_api.auth.permissions import require_system_permission
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_graph_session_resolver
+from kt_config.plugin import plugin_registry
 from kt_config.settings import DEFAULT_DB_CONFIG_KEY, get_settings
 from kt_db.graph_sessions import GraphSessionResolver
 from kt_db.keys import validate_schema_name
@@ -34,13 +35,30 @@ _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,98}[a-z0-9]$")
 # -- Schemas ----------------------------------------------------------------
 
 
+class GraphTypeSummary(BaseModel):
+    """Info about the graph-type plugin driving this graph's pipeline.
+
+    ``current_version`` is the plugin's latest — compare against
+    :attr:`GraphResponse.graph_type_version` to detect a pending migration.
+    """
+
+    id: str
+    display_name: str
+    current_version: int
+
+
 class GraphResponse(BaseModel):
     id: str
     slug: str
     name: str
     description: str | None = None
     is_default: bool
-    graph_type: str
+    graph_type: str  # legacy
+    graph_type_id: str
+    graph_type_version: int
+    graph_type_info: GraphTypeSummary | None = None  # None if plugin missing
+    read_only: bool = False
+    read_only_reason: str | None = None
     byok_enabled: bool
     storage_mode: str
     schema_name: str
@@ -78,6 +96,11 @@ class CreateGraphRequest(BaseModel):
     slug: str = Field(..., min_length=3, max_length=100, pattern=r"^[a-z0-9][a-z0-9_]{1,98}[a-z0-9]$")
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
+    # Graph type plugin slug. Must match a registered GraphTypePlugin.
+    # graph_type_version is never accepted from the client — backend sets
+    # it to the plugin's current_version at create time. Legacy graph_type
+    # accepts 'v1' for back-compat; new code should use graph_type_id.
+    graph_type_id: str = Field(default="default", pattern=r"^[a-z][a-z0-9_-]*$")
     graph_type: str = Field(default="v1", pattern="^v[0-9]+$")
     byok_enabled: bool = False
     # "default" or omitted = system database; otherwise a config_key from
@@ -103,6 +126,18 @@ class UpdateGraphRequest(BaseModel):
     use_public_cache: bool | None = None
 
 
+class ReadOnlyToggleRequest(BaseModel):
+    """Owner-driven read-only toggle.
+
+    Rejected with 409 when the current ``read_only_reason`` is
+    ``'migrating'`` or ``'error'`` — those are system-set; the owner
+    cannot override them. Clearing a system lock requires the migration
+    workflow to finish or the superuser re-migrate endpoint.
+    """
+
+    read_only: bool
+
+
 class GraphMemberResponse(BaseModel):
     id: str
     user_id: str
@@ -124,6 +159,17 @@ class UpdateMemberRoleRequest(BaseModel):
 # -- Helpers ----------------------------------------------------------------
 
 
+def _graph_type_summary(graph_type_id: str) -> GraphTypeSummary | None:
+    plugin = plugin_registry.get_graph_type(graph_type_id)
+    if plugin is None:
+        return None
+    return GraphTypeSummary(
+        id=plugin.graph_type_id,
+        display_name=plugin.display_name,
+        current_version=plugin.current_version,
+    )
+
+
 def _graph_response(
     graph: Graph,
     member_count: int = 0,
@@ -137,6 +183,11 @@ def _graph_response(
         description=graph.description,
         is_default=graph.is_default,
         graph_type=graph.graph_type,
+        graph_type_id=graph.graph_type_id,
+        graph_type_version=graph.graph_type_version,
+        graph_type_info=_graph_type_summary(graph.graph_type_id),
+        read_only=graph.read_only,
+        read_only_reason=graph.read_only_reason,
         byok_enabled=graph.byok_enabled,
         storage_mode=graph.storage_mode,
         schema_name=graph.schema_name,
@@ -311,6 +362,17 @@ async def create_graph(
             )
         db_conn_id = db_conn.id
 
+    # Resolve graph type plugin — backend sets graph_type_version to its
+    # current_version. Unknown type id is a 400: we don't want a graph
+    # persisted with an id whose composition we can't look up.
+    type_plugin = plugin_registry.get_graph_type(body.graph_type_id)
+    if type_plugin is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown graph_type_id '{body.graph_type_id}'",
+        )
+    graph_type_version = type_plugin.current_version
+
     schema_name = f"graph_{body.slug}"
 
     graph = await repo.create(
@@ -318,6 +380,8 @@ async def create_graph(
         name=body.name,
         description=body.description,
         graph_type=body.graph_type,
+        graph_type_id=body.graph_type_id,
+        graph_type_version=graph_type_version,
         byok_enabled=body.byok_enabled,
         # storage_mode is now legacy: every non-default graph is schema-mode.
         # Kept on the column for backward-compat with older rows.
@@ -468,6 +532,34 @@ async def update_graph(
     if toggle_change:
         await resolver.invalidate(graph.id)
 
+    members = await repo.get_members(graph.id)
+    return _graph_response(graph, member_count=len(members))
+
+
+@router.patch("/{slug}/read-only", response_model=GraphResponse)
+async def set_read_only(
+    slug: str,
+    body: ReadOnlyToggleRequest,
+    user: User = Depends(require_auth),
+    session: AsyncSession = Depends(get_db_session),
+) -> GraphResponse:
+    """Owner toggle for the read-only gate.
+
+    System-set reasons (``migrating`` / ``error``) block this endpoint —
+    only the migration workflow or a superuser re-migrate can clear them.
+    """
+    graph = await _require_graph_access(slug, user, session, Permission.GRAPH_MANAGE_METADATA)
+    if graph.read_only and graph.read_only_reason in {"migrating", "error"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Graph is system-locked (reason={graph.read_only_reason})",
+        )
+    repo = GraphRepository(session)
+    if body.read_only:
+        graph = await repo.update(graph, read_only=True, read_only_reason="owner")
+    else:
+        graph = await repo.update(graph, read_only=False, read_only_reason=None)
+    await session.commit()
     members = await repo.get_members(graph.id)
     return _graph_response(graph, member_count=len(members))
 
