@@ -3,13 +3,14 @@
 Single entry point called pre-yield from both the FastAPI API lifespan
 and the Hatchet ``worker_lifespan``. Runs:
 
-  1. Core migrations (graph-db + write-db) via registered core plugins
-  2. Third-party plugin migrations (e.g. hybrid-extractor)
+  1. Core migrations (graph-db + write-db) directly — strict, abort on
+     failure so the service never binds with a stale schema
+  2. Third-party plugin migrations via ``plugin_manager`` (includes core
+     plugins if they were enrolled — idempotent re-runs are harmless)
   3. Per-graph schema migrations (for every active non-default graph)
 
-Core migrations run in ``strict=True`` mode — a failure aborts startup
-so the service never binds with a stale schema. External plugin failures
-remain best-effort.
+Core migration failure aborts startup. Plugin migration failures are
+best-effort — a bad third-party plugin should not block the service.
 """
 
 from __future__ import annotations

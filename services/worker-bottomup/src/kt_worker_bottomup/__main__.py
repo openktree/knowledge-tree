@@ -25,25 +25,24 @@ def main() -> None:
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    from kt_config.plugin import load_default_plugins
-    from kt_providers.registry import bridge_plugin_search_providers
+    from kt_plugins import bootstrap_worker_plugins, plugin_manager
 
-    load_default_plugins()
-    bridge_plugin_search_providers()
+    bootstrap_worker_plugins()
 
     hatchet = get_hatchet()
     settings = get_settings()
+    _core_workflows = [
+        agent_select_wf,
+        bottom_up_wf,
+        bottom_up_scope_wf,
+        bottom_up_prepare_scope_wf,
+        bottom_up_prepare_wf,
+    ]
     worker = hatchet.worker(
         "orchestrator",
         slots=settings.worker_bottomup_slots,
         durable_slots=settings.worker_bottomup_durable_slots,
-        workflows=[
-            agent_select_wf,
-            bottom_up_wf,
-            bottom_up_scope_wf,
-            bottom_up_prepare_scope_wf,
-            bottom_up_prepare_wf,
-        ],
+        workflows=_core_workflows + plugin_manager.get_plugin_workflows(),
         lifespan=worker_lifespan,
     )
     worker.start()

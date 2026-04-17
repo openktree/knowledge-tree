@@ -22,17 +22,22 @@ def main() -> None:
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    from kt_plugins import bootstrap_worker_plugins, plugin_manager
+
+    bootstrap_worker_plugins()
+
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
     from kt_worker_synthesis.workflows.super_synthesizer import super_synthesizer_wf
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
 
     hatchet = get_hatchet()
+    _core_workflows = [synthesizer_wf, super_synthesizer_wf]
     worker = hatchet.worker(
         "knowledge-tree-synthesis",
         slots=10,
         durable_slots=5,
-        workflows=[synthesizer_wf, super_synthesizer_wf],
+        workflows=_core_workflows + plugin_manager.get_plugin_workflows(),
         lifespan=worker_lifespan,
     )
     logging.getLogger(__name__).info("Starting synthesis worker")

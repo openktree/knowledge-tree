@@ -18,6 +18,7 @@ from kt_api.auth.email_templates import password_reset_email_html, verification_
 from kt_config.settings import get_settings
 from kt_db.models import User
 from kt_db.repositories.system_settings import SystemSettingsRepository
+from kt_plugins import plugin_manager
 from kt_providers.email_base import EmailMessage, EmailProvider
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,42 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 await self.request_verify(user, request)
             except Exception:
                 logger.exception("Failed to send verification email to %s", user.email)
+
+        # Fire auth.user_created for plugins (audit, SSO group-sync, billing onboarding).
+        await plugin_manager.hook_registry.trigger(
+            "auth.user_created",
+            user_id=str(user.id),
+            email=user.email,
+            method="register",
+        )
+
+    async def on_after_login(  # type: ignore[override]
+        self,
+        user: User,
+        request=None,
+        response=None,
+    ) -> None:
+        # Audit hook for plugins (SIEM, anomaly detection, per-user analytics).
+        ip = None
+        user_agent = None
+        if request is not None:
+            client = getattr(request, "client", None)
+            ip = getattr(client, "host", None) if client else None
+            ua = request.headers.get("user-agent") if hasattr(request, "headers") else None
+            user_agent = ua
+        await plugin_manager.hook_registry.trigger(
+            "auth.user_login",
+            user_id=str(user.id),
+            method="jwt",
+            ip=ip,
+            user_agent=user_agent,
+        )
+
+    async def on_after_delete(self, user: User, request=None) -> None:  # type: ignore[override]
+        await plugin_manager.hook_registry.trigger(
+            "auth.user_deleted",
+            user_id=str(user.id),
+        )
 
     async def on_after_request_verify(self, user: User, token: str, request=None) -> None:  # type: ignore[override]
         if self._email_provider is None:

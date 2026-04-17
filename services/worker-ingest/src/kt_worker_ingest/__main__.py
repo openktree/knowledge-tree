@@ -24,23 +24,22 @@ def main() -> None:
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    from kt_config.plugin import load_default_plugins
-    from kt_providers.registry import bridge_plugin_search_providers
+    from kt_plugins import bootstrap_worker_plugins, plugin_manager
 
-    load_default_plugins()
-    bridge_plugin_search_providers()
+    bootstrap_worker_plugins()
 
     hatchet = get_hatchet()
+    _core_workflows = [
+        ingest_build_wf,
+        ingest_confirm_wf,
+        ingest_decompose_wf,
+        ingest_partition_wf,
+        public_cache_sweep_wf,
+    ]
     worker = hatchet.worker(
         "ingest",
         slots=10,
-        workflows=[
-            ingest_build_wf,
-            ingest_confirm_wf,
-            ingest_decompose_wf,
-            ingest_partition_wf,
-            public_cache_sweep_wf,
-        ],
+        workflows=_core_workflows + plugin_manager.get_plugin_workflows(),
         lifespan=worker_lifespan,
     )
     worker.start()

@@ -25,6 +25,7 @@ members = [
     "kt-ontology",
     "kt-plugin-be-concept-extractor",
     "kt-plugin-be-search-providers",
+    "kt-plugins",
     "kt-providers",
     "kt-qdrant",
     "kt-rbac",
@@ -1774,7 +1775,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-tree-workspace"
-version = "0.52.0"
+version = "0.55.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1846,6 +1847,7 @@ dependencies = [
     { name = "kt-graph" },
     { name = "kt-hatchet" },
     { name = "kt-models" },
+    { name = "kt-plugins" },
     { name = "kt-providers" },
     { name = "kt-rbac" },
     { name = "kt-worker-ingest" },
@@ -1870,6 +1872,7 @@ requires-dist = [
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-hatchet", editable = "libs/kt-hatchet" },
     { name = "kt-models", editable = "libs/kt-models" },
+    { name = "kt-plugins", editable = "libs/kt-plugins" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-rbac", editable = "libs/kt-rbac" },
     { name = "kt-worker-ingest", editable = "services/worker-ingest" },
@@ -1906,6 +1909,7 @@ version = "0.1.0"
 source = { editable = "libs/kt-config" }
 dependencies = [
     { name = "kt-core-engine-api" },
+    { name = "kt-plugins" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
@@ -1914,6 +1918,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "kt-core-engine-api", editable = "libs/kt-core-engine-api" },
+    { name = "kt-plugins", editable = "libs/kt-plugins" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
@@ -2045,6 +2050,7 @@ dependencies = [
     { name = "kt-flags" },
     { name = "kt-graph" },
     { name = "kt-models" },
+    { name = "kt-plugins" },
     { name = "kt-providers" },
     { name = "kt-qdrant" },
     { name = "langchain-core" },
@@ -2062,6 +2068,7 @@ requires-dist = [
     { name = "kt-flags", editable = "libs/kt-flags" },
     { name = "kt-graph", editable = "libs/kt-graph" },
     { name = "kt-models", editable = "libs/kt-models" },
+    { name = "kt-plugins", editable = "libs/kt-plugins" },
     { name = "kt-providers", editable = "libs/kt-providers" },
     { name = "kt-qdrant", editable = "libs/kt-qdrant" },
     { name = "langchain-core", specifier = ">=0.3.0" },
@@ -2209,6 +2216,11 @@ requires-dist = [
 dev = [{ name = "respx", specifier = ">=0.22.0" }]
 
 [[package]]
+name = "kt-plugins"
+version = "0.1.0"
+source = { editable = "libs/kt-plugins" }
+
+[[package]]
 name = "kt-providers"
 version = "0.1.0"
 source = { editable = "libs/kt-providers" }
@@ -2264,6 +2276,12 @@ requires-dist = [
 name = "kt-rbac"
 version = "0.1.0"
 source = { editable = "libs/kt-rbac" }
+dependencies = [
+    { name = "kt-plugins" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "kt-plugins", editable = "libs/kt-plugins" }]
 
 [[package]]
 name = "kt-worker-all"

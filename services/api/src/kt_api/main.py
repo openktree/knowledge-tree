@@ -36,20 +36,104 @@ except Exception:
     pass
 
 
-def _load_plugins() -> None:
-    """Load plugins into plugin_registry and bridge search-provider contributions.
+def _register_core_db_plugins() -> None:
+    """Enrol the core graph-db + write-db migration plugins.
 
-    Runs at module import so plugin DB migrations executed during lifespan
-    startup see every registered plugin.
+    kt-db owns the core schemas; the plugin framework treats them the
+    same as third-party plugins so ``run_startup_migrations`` has one
+    iteration path. Registration happens at module import (before
+    ``plugin_manager.initialize()`` runs) so the core DB plugins are
+    present before any third-party entry-point plugins can depend on
+    the schema being migrated.
     """
-    from kt_config.plugin import load_default_plugins
-    from kt_providers.registry import bridge_plugin_search_providers
+    from kt_db.core_plugin import register_core_plugins
+    from kt_plugins import plugin_manager
 
-    load_default_plugins()
-    bridge_plugin_search_providers()
+    register_core_plugins(plugin_manager)
 
 
-_load_plugins()
+_register_core_db_plugins()
+
+
+async def _bootstrap_plugins(app: FastAPI) -> None:
+    """Run each plugin's bootstrap phase and mount contributed routes.
+
+    Plugins subscribe to hooks here (``ctx.hook_registry.register(...)``)
+    and receive session factories + cross-cutting services via
+    ``PluginContext``. Routes contributed via ``RouteContribution`` are
+    mounted under ``/api/v1/plugins/{prefix}``.
+    """
+    from kt_api.dependencies import get_session_factory_cached, get_write_session_factory_cached
+    from kt_config.settings import get_settings
+    from kt_plugins import PluginContext, plugin_manager
+
+    settings = get_settings()
+    session_factory = get_session_factory_cached()
+    write_session_factory = get_write_session_factory_cached()
+
+    def _ctx_factory(manifest):  # noqa: ANN202 — runtime-typed
+        plugin_settings = None
+        if manifest.settings_class is not None:
+            try:
+                plugin_settings = manifest.settings_class()
+            except Exception:
+                logger.warning("plugin %r: settings failed to load", manifest.id, exc_info=True)
+        return PluginContext(
+            plugin_id=manifest.id,
+            settings=plugin_settings or settings,
+            hook_registry=plugin_manager.hook_registry,
+            session_factory=session_factory,
+            write_session_factory=write_session_factory,
+        )
+
+    await plugin_manager.bootstrap(ctx_factory=_ctx_factory)
+
+    # Expose the hook registry on app.state so request-path code
+    # (auth manager, middleware, route handlers) can fire hooks without
+    # importing the global singleton.
+    app.state.hook_registry = plugin_manager.hook_registry
+
+    # Mount plugin routes. Done after bootstrap so plugins that build
+    # their router inside bootstrap() (e.g. depending on settings) still
+    # get picked up.
+    #
+    # ``require_permission`` enforces a system-level Permission via a
+    # router-level dependency. Graph-scoped permissions cannot be enforced
+    # here (they need the graph_id path param) — plugins must call
+    # ``require_graph_permission`` inside their handlers.
+    from fastapi import APIRouter, Depends
+
+    from kt_api.auth.permissions import require_system_permission
+    from kt_api.auth.tokens import require_auth
+
+    plugin_root = APIRouter()
+    for contrib in plugin_manager.get_plugin_routes():
+        deps = []
+        if contrib.auth_required:
+            deps.append(Depends(require_auth))
+        if contrib.require_permission is not None:
+            perm_value = contrib.require_permission.value
+            if not perm_value.startswith("system:"):
+                logger.warning(
+                    "plugin route %r declares require_permission=%s — only system:* "
+                    "permissions are enforceable at router scope; graph:*/source:* "
+                    "must be checked inside the handler",
+                    contrib.prefix,
+                    perm_value,
+                )
+            else:
+                deps.append(Depends(require_system_permission(contrib.require_permission)))
+        plugin_root.include_router(
+            contrib.router,
+            prefix=f"/{contrib.prefix}" if not contrib.prefix.startswith("/") else contrib.prefix,
+            dependencies=deps,
+        )
+    if plugin_manager.get_plugin_routes():
+        app.include_router(plugin_root, prefix="/api/v1/plugins")
+        logger.info(
+            "mounted %d plugin route group(s) under /api/v1/plugins",
+            len(plugin_manager.get_plugin_routes()),
+        )
 
 
 @asynccontextmanager
@@ -59,15 +143,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from pathlib import Path
 
     from kt_config.settings import get_settings
+    from kt_plugins import plugin_manager
+    from kt_providers.registry import bridge_plugin_search_providers
 
     settings = get_settings()
     Path(settings.ingest_upload_dir).mkdir(parents=True, exist_ok=True)
 
     _validate_email_verification_config(settings)
 
-    # Run all DB migrations in-process (core + plugins + per-graph).
+    # Phase 1: discover + register plugins (entry points + legacy targets).
+    # Any plugin contributing a DB schema must be registered before startup
+    # migrations run below.
+    await plugin_manager.initialize(
+        enabled_plugins=settings.enabled_plugins or None,
+        license_keys=settings.plugin_license_keys or None,
+    )
+    bridge_plugin_search_providers()
+
+    # Phase 2: DB migrations — core + plugins + per-graph.
     # Guaranteed to complete before FastAPI serves any request.
-    # Plugins providing entity extractors etc. must register before this.
     try:
         from kt_db.startup import run_startup_migrations
 
@@ -75,6 +169,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("Startup migrations failed — aborting API startup")
         raise
+
+    # Phase 3: plugin bootstrap — hand runtime services + hook registry to
+    # each plugin. Mounts plugin routes onto the app.
+    await _bootstrap_plugins(app)
 
     # Ensure Qdrant collections exist
     try:
@@ -105,7 +203,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
     # Shutdown
     from kt_api.dependencies import reset_session_factory
+    from kt_plugins import plugin_manager
 
+    await plugin_manager.shutdown()
     reset_session_factory()
 
 

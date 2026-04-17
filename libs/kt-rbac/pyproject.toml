@@ -3,7 +3,10 @@ name = "kt-rbac"
 version = "0.1.0"
 description = "Knowledge Tree RBAC - roles, permissions, and policy evaluation"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["kt-plugins"]
+
+[tool.uv.sources]
+kt-plugins = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

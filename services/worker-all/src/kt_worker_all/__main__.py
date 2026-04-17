@@ -43,11 +43,13 @@ def main() -> None:
 
     asyncio.get_event_loop().set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
 
-    from kt_config.plugin import load_default_plugins
-    from kt_providers.registry import bridge_plugin_search_providers
+    # Discover + register plugins before building the workflow list so any
+    # plugin-contributed Hatchet workflows are enrolled with the worker.
+    # Bootstrap (hook subscriptions, session factories) runs inside
+    # worker_lifespan().
+    from kt_plugins import bootstrap_worker_plugins, plugin_manager
 
-    load_default_plugins()
-    bridge_plugin_search_providers()
+    bootstrap_worker_plugins()
 
     from kt_hatchet.client import get_hatchet
     from kt_hatchet.lifespan import worker_lifespan
@@ -95,44 +97,49 @@ def main() -> None:
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
 
     hatchet = get_hatchet()
+    _core_workflows = [
+        agent_select_wf,
+        bottom_up_wf,
+        bottom_up_scope_wf,
+        bottom_up_prepare_scope_wf,
+        bottom_up_prepare_wf,
+        search_wf,
+        decompose_page_wf,
+        decompose_chunk_task,
+        decompose_source_task,
+        decompose_sources_wf,
+        entity_extraction_task,
+        seed_dedup_task,
+        reingest_source_wf,
+        node_pipeline_wf,
+        edge_task,
+        auto_build_task,
+        build_composite_task,
+        regenerate_composite_task,
+        ingest_build_wf,
+        ingest_confirm_wf,
+        ingest_decompose_wf,
+        ingest_partition_wf,
+        public_cache_sweep_wf,
+        orphan_fact_sweep_wf,
+        sync_dispatch_wf,
+        sync_graph_wf,
+        dedup_pending_facts_wf,
+        synthesizer_wf,
+        super_synthesizer_wf,
+    ]
     worker = hatchet.worker(
         "knowledge-tree-all",
         slots=500,
         durable_slots=250,
-        workflows=[
-            agent_select_wf,
-            bottom_up_wf,
-            bottom_up_scope_wf,
-            bottom_up_prepare_scope_wf,
-            bottom_up_prepare_wf,
-            search_wf,
-            decompose_page_wf,
-            decompose_chunk_task,
-            decompose_source_task,
-            decompose_sources_wf,
-            entity_extraction_task,
-            seed_dedup_task,
-            reingest_source_wf,
-            node_pipeline_wf,
-            edge_task,
-            auto_build_task,
-            build_composite_task,
-            regenerate_composite_task,
-            ingest_build_wf,
-            ingest_confirm_wf,
-            ingest_decompose_wf,
-            ingest_partition_wf,
-            public_cache_sweep_wf,
-            orphan_fact_sweep_wf,
-            sync_dispatch_wf,
-            sync_graph_wf,
-            dedup_pending_facts_wf,
-            synthesizer_wf,
-            super_synthesizer_wf,
-        ],
+        workflows=_core_workflows + plugin_manager.get_plugin_workflows(),
         lifespan=worker_lifespan,
     )
-    logging.getLogger(__name__).info("Starting all-in-one worker")
+    logging.getLogger(__name__).info(
+        "Starting all-in-one worker (%d core + %d plugin workflow(s))",
+        len(_core_workflows),
+        len(plugin_manager.get_plugin_workflows()),
+    )
     worker.start()
 
 

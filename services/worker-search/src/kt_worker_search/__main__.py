@@ -29,26 +29,25 @@ def main() -> None:
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    from kt_config.plugin import load_default_plugins
-    from kt_providers.registry import bridge_plugin_search_providers
+    from kt_plugins import bootstrap_worker_plugins, plugin_manager
 
-    load_default_plugins()
-    bridge_plugin_search_providers()
+    bootstrap_worker_plugins()
 
     hatchet = get_hatchet()
+    _core_workflows = [
+        search_wf,
+        decompose_page_wf,
+        decompose_chunk_task,
+        decompose_source_task,
+        decompose_sources_wf,
+        entity_extraction_task,
+        seed_dedup_task,
+        reingest_source_wf,
+    ]
     worker = hatchet.worker(
         "search",
         slots=50,
-        workflows=[
-            search_wf,
-            decompose_page_wf,
-            decompose_chunk_task,
-            decompose_source_task,
-            decompose_sources_wf,
-            entity_extraction_task,
-            seed_dedup_task,
-            reingest_source_wf,
-        ],
+        workflows=_core_workflows + plugin_manager.get_plugin_workflows(),
         lifespan=worker_lifespan,
     )
     worker.start()

@@ -12,6 +12,7 @@ dependencies = [
     "kt-graph",
     "kt-agents-core",
     "kt-flags",
+    "kt-plugins",
     "cryptography>=43.0.0",
     "hatchet-sdk>=1.26.0",
     "python-dotenv>=1.0.0",
@@ -32,6 +33,7 @@ kt-qdrant = { workspace = true }
 kt-graph = { workspace = true }
 kt-agents-core = { workspace = true }
 kt-flags = { workspace = true }
+kt-plugins = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
