@@ -32,6 +32,7 @@ from kt_hatchet.models import (
     RegenerateCompositeInput,
     RegenerateCompositeOutput,
 )
+from kt_hatchet.tracked_task import tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,9 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 # ══════════════════════════════════════════════════════════════
 
 
-@hatchet.task(
+@tracked_task(
+    hatchet,
+    task_type="composite_build",
     name="build_composite",
     input_validator=BuildCompositeInput,
     execution_timeout=timedelta(minutes=15),
@@ -240,7 +243,9 @@ async def build_composite_task(input: BuildCompositeInput, ctx: Context) -> dict
 # ══════════════════════════════════════════════════════════════
 
 
-@hatchet.task(
+@tracked_task(
+    hatchet,
+    task_type="composite_regenerate",
     name="regenerate_composite",
     input_validator=RegenerateCompositeInput,
     execution_timeout=timedelta(minutes=15),

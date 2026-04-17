@@ -29,6 +29,7 @@ from kt_hatchet.models import (
     IngestPartitionOutput,
     ProposedNode,
 )
+from kt_hatchet.tracked_task import tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -579,7 +580,12 @@ ingest_partition_wf = hatchet.workflow(
 )
 
 
-@ingest_partition_wf.durable_task(execution_timeout=timedelta(hours=4), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    ingest_partition_wf,
+    task_type="ingest_partition",
+    execution_timeout=timedelta(hours=4),
+    schedule_timeout=_schedule_timeout,
+)
 async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext) -> dict:
     """Run ingest agent on a partition of the content index.
 
@@ -672,7 +678,12 @@ ingest_decompose_wf = hatchet.workflow(
 )
 
 
-@ingest_decompose_wf.durable_task(execution_timeout=timedelta(hours=6), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    ingest_decompose_wf,
+    task_type="ingest_decompose",
+    execution_timeout=timedelta(hours=6),
+    schedule_timeout=_schedule_timeout,
+)
 async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> dict:
     """Phase 1: Process sources, decompose facts, extract nodes, filter, prioritize.
 

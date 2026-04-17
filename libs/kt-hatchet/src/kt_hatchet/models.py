@@ -657,6 +657,11 @@ class SynthesizerInput(GraphAwareMixin):
     visibility: str = "public"
     creator_id: str | None = None
     model_id: str | None = None
+    # Tracking IDs — synthesis is not conversation-scoped, but the usage
+    # dashboard groups rows by these fields. When empty, rows still land
+    # under task_type="synthesis".
+    conversation_id: str = ""
+    message_id: str = ""
 
 
 class SynthesizerOutput(BaseModel):
@@ -679,6 +684,8 @@ class SuperSynthesizerInput(GraphAwareMixin):
     creator_id: str | None = None
     distance_threshold: float = 0.7
     model_id: str | None = None
+    conversation_id: str = ""
+    message_id: str = ""
 
 
 class SuperSynthesizerOutput(BaseModel):

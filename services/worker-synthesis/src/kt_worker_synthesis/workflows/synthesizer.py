@@ -19,6 +19,7 @@ from hatchet_sdk import Context
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import SynthesizerInput, SynthesizerOutput
+from kt_hatchet.tracked_task import tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ hatchet = get_hatchet()
 synthesizer_wf = hatchet.workflow(name="synthesizer_wf", input_validator=SynthesizerInput)
 
 
-@synthesizer_wf.task(execution_timeout=timedelta(minutes=30))
+@tracked_task(synthesizer_wf, task_type="synthesis", execution_timeout=timedelta(minutes=30))
 async def run_synthesizer(input: SynthesizerInput, ctx: Context) -> dict[str, Any]:
     """Run the full synthesis pipeline."""
     worker_state = cast(WorkerState, ctx.lifespan)

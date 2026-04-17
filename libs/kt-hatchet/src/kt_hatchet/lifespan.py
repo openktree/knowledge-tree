@@ -238,6 +238,12 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
 
     await run_startup_migrations(settings)
 
+    # Install the LLM usage sink so every gateway call records one row to
+    # write_llm_usage via the expense-context pipeline.
+    from kt_models.usage_sink import UsageSink
+
+    UsageSink.install(write_session_factory)
+
     yield WorkerState(
         session_factory=session_factory,
         write_session_factory=write_session_factory,
@@ -250,6 +256,12 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         graph_resolver=graph_resolver,
         default_graph_id=default_graph_id,
     )
+
+    # Drain and stop the usage sink before DB engines go away so that
+    # in-flight usage rows land in write-db rather than being dropped.
+    from kt_models.usage_sink import UsageSink as _UsageSink
+
+    await _UsageSink.shutdown()
 
     if qdrant_client is not None:
         from kt_qdrant.client import close_qdrant_client

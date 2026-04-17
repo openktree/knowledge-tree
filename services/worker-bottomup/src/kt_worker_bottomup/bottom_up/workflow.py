@@ -40,6 +40,7 @@ from kt_hatchet.models import (
     BottomUpScopeOutput,
     BuildNodeInput,
 )
+from kt_hatchet.tracked_task import tracked_task
 from kt_worker_bottomup.shared import _build_agent_context, _open_sessions
 
 logger = logging.getLogger(__name__)
@@ -1225,7 +1226,12 @@ agent_select_wf = hatchet.workflow(
 )
 
 
-@agent_select_wf.task(execution_timeout=timedelta(minutes=10), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    agent_select_wf,
+    task_type="agent_select",
+    execution_timeout=timedelta(minutes=10),
+    schedule_timeout=_schedule_timeout,
+)
 async def agent_select(input: AgentSelectInput, ctx: DurableContext) -> dict:
     """Run agent-assisted node selection over proposed nodes.
 
