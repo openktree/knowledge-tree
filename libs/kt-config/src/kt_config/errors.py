@@ -35,3 +35,8 @@ class DuplicateNodeError(KnowledgeTreeError):
 class EmbeddingError(KnowledgeTreeError):
     def __init__(self, message: str):
         super().__init__(f"Embedding error: {message}")
+
+
+class ConfigurationError(KnowledgeTreeError):
+    def __init__(self, message: str):
+        super().__init__(f"Configuration error: {message}")
