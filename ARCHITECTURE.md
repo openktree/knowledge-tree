@@ -11,7 +11,7 @@
 7. [Fact Decomposition Pipeline](#7-fact-decomposition-pipeline)
 8. [Graph Engine](#8-graph-engine)
 9. [Research & Synthesis Flow](#9-research--synthesis-flow)
-10. [Convergence & Node Splitting](#10-convergence--node-splitting)
+10. [Convergence](#10-convergence)
 11. [Multimodel Dimensional Analysis](#11-multimodel-dimensional-analysis)
 12. [API Design](#12-api-design)
 13. [UI Requirements](#13-ui-requirements)
@@ -46,7 +46,6 @@ A knowledge integration system that builds understanding exclusively from raw ex
 - **FR-1.3:** Edges SHALL only be created from shared factual evidence (seed co-occurrence candidates) — semantic proximity alone does NOT create edges. Embedding similarity is a search tool, not a structural mechanism.
 - **FR-1.4:** Nodes SHALL reference facts, and facts SHALL reference their original raw sources with stored links.
 - **FR-1.5:** Node content size SHALL be configurable (default: 500 tokens per dimension).
-- **FR-1.6:** The system SHALL support node splitting when divergent facts form coherent, internally consistent clusters.
 - **FR-1.7:** The system SHALL support node merging when independently created nodes describe the same concept.
 
 #### FR-2: Query & Budget System
@@ -253,7 +252,7 @@ The system follows a strict layered architecture with dependency inversion at ev
 | **Orchestration Layer** | Hatchet durable workflows: bottom-up research, synthesis, super-synthesis, node pipeline, ingest, search, sync. Each workflow type runs in its own worker service (`services/worker-*`). | Agent Layer, Node Pipeline |
 | **Agent Layer** | LangGraph agents within Hatchet tasks: synthesizer (`kt_worker_synthesis`), super-synthesizer (`kt_worker_synthesis`), ingest (`kt_worker_ingest`) | Graph Engine, Provider Layer, Model Layer |
 | **Node Pipeline** | Hatchet DAG: create_node -> dimensions -> definition -> parent | Fact Store, Model Layer, Persistence |
-| **Graph Engine** | Split into ReadGraphEngine (graph-db + Qdrant reads) and WorkerGraphEngine (write-db + Qdrant writes). Convergence scoring, splitting. | Fact Store, Persistence, Qdrant |
+| **Graph Engine** | Split into ReadGraphEngine (graph-db + Qdrant reads) and WorkerGraphEngine (write-db + Qdrant writes). Convergence scoring. | Fact Store, Persistence, Qdrant |
 | **Fact Store** | Typed fact storage, indexing, deduplication, retrieval by concept | Persistence |
 | **Provider Layer** | Raw data fetching from external sources (Serper, Brave, URL fetcher) | External APIs |
 | **Ingestion Layer** | File/link upload, content extraction (PDF, DOCX, etc.), partitioning, decomposition | Fact Store, Persistence |
@@ -1239,7 +1238,7 @@ All heavy processing runs as **durable Hatchet workflows**:
 
 ---
 
-## 10. Convergence & Node Splitting
+## 10. Convergence
 
 ### 10.1 Convergence Scoring
 
@@ -1255,98 +1254,6 @@ Scale:
   0.3 - 0.5  →  Significant disagreement, content is model-dependent
   0.0 - 0.3  →  Fundamental disagreement, biases dominate evidence
 ```
-
-### 10.2 Fact-Based Convergence
-
-Beyond model convergence, nodes also have a **fact convergence** dimension:
-
-```
-fact_coherence = measure of internal consistency among facts linked to a node
-
-When facts linked to a node form two or more coherent clusters that contradict each other,
-the node is a candidate for splitting.
-
-Example:
-  Node: "Politician X"
-  Fact cluster A: {testimony of good governance, economic growth stats, endorsements}
-  Fact cluster B: {corruption allegations, investigative reports, legal proceedings}
-
-  Both clusters are internally coherent.
-  The clusters contradict each other.
-  → Node split triggered.
-```
-
-### 10.3 Node Splitting Algorithm
-
-```
-function evaluateSplit(node):
-  facts = getNodeFacts(node.id)
-  clusters = clusterFacts(facts)  # semantic clustering
-
-  if clusters.count < 2:
-    return NO_SPLIT
-
-  # Check if clusters are internally coherent but mutually contradictory
-  for pair in combinations(clusters, 2):
-    internalCoherenceA = computeCoherence(pair[0])
-    internalCoherenceB = computeCoherence(pair[1])
-    interClusterContradiction = computeContradiction(pair[0], pair[1])
-
-    if internalCoherenceA > 0.7 and internalCoherenceB > 0.7
-       and interClusterContradiction > 0.6:
-      return SPLIT_RECOMMENDED(pair)
-
-  return NO_SPLIT
-
-function executeSplit(node, clusters):
-  # Create child nodes for each coherent cluster
-  childNodes = []
-  for cluster in clusters:
-    label = generateClusterLabel(cluster)  # e.g., "Politician X: Governance Record"
-    child = createNode(label)
-    for fact in cluster.facts:
-      linkFactToNode(child.id, fact.id)
-    generateDimensions(child)
-    childNodes.append(child)
-
-  # Link child nodes to the original node via parent_id FK
-  for child in childNodes:
-    setParent(child.id, node.id)
-
-  # Link child nodes to each other via related edges
-  for pair in combinations(childNodes, 2):
-    createEdge(pair[0].id, pair[1].id, "related", weight=1.0)
-
-  # Update original node to note the split
-  updateNodeContent(node, """
-    This topic has divergent viewpoints supported by coherent evidence.
-    See linked child nodes for each cluster.
-  """)
-```
-
-### 10.4 Split Visualization
-
-```mermaid
-graph TD
-    P["Politician X<br/>⚖️ Split Node<br/>convergence: 0.3"]
-    A["Politician X: Positive Record<br/>📊 convergence: 0.85<br/>47 supporting facts"]
-    B["Politician X: Corruption Allegations<br/>📊 convergence: 0.78<br/>31 supporting facts"]
-
-    A -->|"parent_id"| P
-    B -->|"parent_id"| P
-    A <-.->|"related"| B
-
-    A --- FA1["Fact: GDP grew 4.2% during tenure<br/>Source: BLS data"]
-    A --- FA2["Fact: Approved infrastructure bill<br/>Source: Congressional Record"]
-    B --- FB1["Fact: Under investigation for bribery<br/>Source: DOJ filing"]
-    B --- FB2["Fact: Reporter Y alleges corruption<br/>Source: Newspaper Z, investigative piece"]
-
-    style P fill:#1a2235,stroke:#fbbf24,color:#e2e8f0
-    style A fill:#1a2235,stroke:#34d399,color:#e2e8f0
-    style B fill:#1a2235,stroke:#f87171,color:#e2e8f0
-```
-
-All three nodes are peers in the flat graph. The `parent_id` FK indicates that A and B are facets of the original concept. The `related` edge between A and B captures their shared domain. Other nodes in the graph can link to any of the three independently.
 
 ---
 
@@ -1706,7 +1613,6 @@ Node visual encoding:
   - Size:   proportional to access_count (frequently used = larger)
   - Color:  convergence score gradient (green → yellow → red)
   - Border: solid for complete nodes, dashed for thin nodes (few facts)
-  - Icon:   indicates if node is split (fork icon)
   - Label:  concept name, truncated to fit
 
 Edge visual encoding:
@@ -1828,7 +1734,7 @@ graph TB
 | **Phase 1** | Project scaffolding, database schema, test framework | Complete |
 | **Phase 2** | Knowledge provider layer (Brave Search), embeddings | Complete |
 | **Phase 3** | Fact decomposition pipeline | Complete |
-| **Phase 4** | Graph engine (nodes, edges, dimensions, convergence, splitting) | Complete |
+| **Phase 4** | Graph engine (nodes, edges, dimensions, convergence) | Complete |
 | **Phase 5** | Agent system (Orchestrator + LangGraph agents) | Complete |
 | **Phase 6** | REST API + WebSocket | Complete |
 | **Phase 7** | Frontend core UI | Complete |
@@ -1884,7 +1790,6 @@ graph TB
 | **Fact** | A typed, attributed piece of information extracted from raw sources. Types: claim, account, measurement, formula, quote, procedure, reference, code, image, perspective. |
 | **Raw Source** | Original data fetched from a knowledge provider, stored append-only. |
 | **Convergence** | Degree of agreement across dimensions (models) within a node. |
-| **Node Split** | When a node's facts form contradictory but internally coherent clusters, creating child nodes linked via `parent_id` FK. |
 | **Exploration Budget** | Maximum number of nodes the synthesizer agent can visit during graph navigation. Controls investigation depth without limiting free operations like search. |
 | **graph-db** | Read-optimized PostgreSQL database with pgvector and FK constraints. API and synthesis agent read from here. |
 | **write-db** | Write-optimized PostgreSQL database with no FKs and deterministic TEXT keys. Workers write here during pipelines. |
@@ -1903,7 +1808,6 @@ Facts are independent of nodes. A single fact ("water boils at 100C at sea level
 - Deduplication across sources
 - Accumulation (same fact gains more sources over time)
 - Cross-node relevance
-- Node splitting based on fact clustering
 - Re-use when the graph reorganizes
 
 ### B.2: Why two budgets (navigation + exploration)?
@@ -1922,11 +1826,7 @@ The system's value proposition is knowledge grounded in traceable external data.
 
 Raw sources may be reprocessed with improved decomposition agents. Today's fact extractor might miss nuances that tomorrow's will catch. Append-only raw storage ensures nothing is lost. It also enables auditing: any claim can be traced back to the exact text that was fetched and processed.
 
-### B.5: Why node splitting instead of just tagging divergence?
-
-Splitting creates navigable structure. A user exploring "Politician X" sees at a glance that there are two coherent viewpoints, each with its own evidence base. This is more useful than a single node with a "divergence warning." Split nodes can themselves accumulate facts, develop edges, and participate in the graph as first-class entities.
-
-### B.6: Why a flat graph instead of a tree (parent-child)?
+### B.5: Why a flat graph instead of a tree (parent-child)?
 
 Knowledge is inherently circular. "Water" helps explain "hydrogen" and "hydrogen" helps explain "water." A tree forces an artificial hierarchy that breaks with circular dependencies. A flat graph where all nodes are peers:
 - Supports circular references naturally (A→B→C→A is valid)
@@ -1936,7 +1836,7 @@ Knowledge is inherently circular. "Water" helps explain "hydrogen" and "hydrogen
 
 Embedding similarity is a **search tool** (find candidates), not a **structural mechanism** (create relationships). Edges are only created through the edge pipeline from seed co-occurrence candidates — facts that mention multiple seeds during decomposition. This prevents the graph from becoming a noisy hairball of semantic similarity edges, while grounding every edge in shared factual evidence.
 
-### B.7: Why agent-created edges (not automatic)?
+### B.6: Why agent-created edges (not automatic)?
 
 If edges were created automatically from embedding similarity, the graph would be dominated by obvious connections (synonyms, near-duplicates) and miss non-obvious ones (cross-domain insights). By deriving edges from seed co-occurrence (facts that mention multiple seeds):
 - Every edge is grounded in shared factual evidence — not just semantic proximity
@@ -1944,7 +1844,7 @@ If edges were created automatically from embedding similarity, the graph would b
 - Weight (shared fact count) is a concrete, interpretable metric
 - The graph stays sparse and navigable rather than becoming a dense similarity matrix
 
-### B.8: Why 3 edge types?
+### B.7: Why 3 edge types?
 
 The original design had 16, then 8 edge types with increasingly overlapping semantics that LLMs couldn't reliably distinguish. The current 3-type system (`related`, `cross_type`, `draws_from`) maximizes simplicity:
 - `related` covers all same-type relationships — the weight (shared fact count) captures evidence strength, and the LLM justification explains the nature of the relationship.
@@ -1953,7 +1853,7 @@ The original design had 16, then 8 edge types with increasingly overlapping sema
 
 The `justification` field with `{fact:uuid}` citation tokens provides the semantic richness that previously required fine-grained type distinctions.
 
-### B.9: Why separate fact gathering from node assembly (fact pool)?
+### B.8: Why separate fact gathering from node assembly (fact pool)?
 
 In the original agent design, every `explore_concept()` call triggered both an external search AND node creation. This conflation meant:
 - You couldn't gather facts for multiple topics cheaply and then organize them
