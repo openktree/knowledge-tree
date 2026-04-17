@@ -192,34 +192,6 @@ class WriteDimension(WriteBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
-class WriteConvergenceReport(WriteBase):
-    __tablename__ = "write_convergence_reports"
-    __table_args__ = (Index("ix_write_convergence_updated_at", "updated_at"),)
-
-    node_key: Mapped[str] = mapped_column(String(500), primary_key=True)
-    convergence_score: Mapped[float] = mapped_column(Float, default=0.0)
-    converged_claims: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-    recommended_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    computed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
-
-
-class WriteDivergentClaim(WriteBase):
-    __tablename__ = "write_divergent_claims"
-    __table_args__ = (
-        Index("ix_write_divergent_claims_node_key", "node_key"),
-        Index("ix_write_divergent_claims_updated_at", "updated_at"),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    node_key: Mapped[str] = mapped_column(String(500), nullable=False)
-    claim: Mapped[str] = mapped_column(Text, nullable=False)
-    model_positions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    divergence_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
-
-
 class WriteNodeCounter(WriteBase):
     __tablename__ = "write_node_counters"
     __table_args__ = (Index("ix_write_node_counters_updated_at", "updated_at"),)

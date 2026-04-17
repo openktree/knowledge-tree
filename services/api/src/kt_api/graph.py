@@ -119,7 +119,6 @@ async def get_subgraph(
                 update_count=n.update_count,
                 access_count=n.access_count,
                 richness=_compute_richness(n),
-                convergence_score=n.convergence_score,
                 definition=n.definition,
                 definition_generated_at=n.definition_generated_at.isoformat() if n.definition_generated_at else None,
                 metadata=n.metadata_,

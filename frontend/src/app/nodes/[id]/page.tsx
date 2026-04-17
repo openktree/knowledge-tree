@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/tabs";
 import { Loader2 } from "lucide-react";
 import { DimensionsTab } from "@/components/node/DimensionsTab";
-import { ConvergenceTab } from "@/components/node/ConvergenceTab";
 import { FactsTab } from "@/components/node/FactsTab";
 import { HistoryTab } from "@/components/node/HistoryTab";
 import { NeighborsTab } from "@/components/node/NeighborsTab";
@@ -39,7 +38,6 @@ export default function NodeDetailPage({
     facts,
     edges,
     history,
-    convergence,
     isLoading,
     error,
   } = useNodeDetail(id);
@@ -94,7 +92,6 @@ export default function NodeDetailPage({
           <Tabs defaultValue="dimensions" className="flex-1 flex flex-col min-h-0 pt-4">
             <TabsList>
               <TabsTrigger value="dimensions">Dimensions</TabsTrigger>
-              <TabsTrigger value="convergence">Convergence</TabsTrigger>
               <TabsTrigger value="facts">Facts</TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>
               <TabsTrigger value="neighbors">Neighbors</TabsTrigger>
@@ -103,12 +100,6 @@ export default function NodeDetailPage({
             <div className="flex-1 overflow-y-auto pt-4 pb-6">
               <TabsContent value="dimensions" className="mt-0">
                 <DimensionsTab dimensions={dimensions} />
-              </TabsContent>
-              <TabsContent value="convergence" className="mt-0">
-                <ConvergenceTab
-                  convergence={convergence}
-                  isLoading={isLoading}
-                />
               </TabsContent>
               <TabsContent value="facts" className="mt-0">
                 <FactsTab facts={facts} />

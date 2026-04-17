@@ -179,7 +179,6 @@ describe("TimelineControls", () => {
         seed_fact_count: 0,
         pending_facts: 0,
         richness: 0,
-        convergence_score: 0,
         definition: null,
         definition_generated_at: null,
         enrichment_status: null,

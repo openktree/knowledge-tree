@@ -20,7 +20,6 @@ from kt_api.nodes import (
     _batch_seed_fact_counts,
     _build_node_response,
     _get_node_children_impl,
-    _get_node_convergence_impl,
     _get_node_dimensions_impl,
     _get_node_edges_impl,
     _get_node_facts_impl,
@@ -29,7 +28,6 @@ from kt_api.nodes import (
     _get_node_perspectives_impl,
 )
 from kt_api.schemas import (
-    ConvergenceResponse,
     DimensionResponse,
     EdgeResponse,
     FactResponse,
@@ -121,16 +119,6 @@ async def get_graph_node_history(
     """Get version history for a node in a specific graph."""
     async with ctx.graph_session_factory() as session:
         return await _get_node_history_impl(node_id, session, get_qdrant_client_cached())
-
-
-@router.get("/{node_id}/convergence", response_model=ConvergenceResponse)
-async def get_graph_node_convergence(
-    node_id: str,
-    ctx: GraphContext = Depends(get_graph_context),
-) -> ConvergenceResponse:
-    """Compute convergence analysis for a node in a specific graph."""
-    async with ctx.graph_session_factory() as session:
-        return await _get_node_convergence_impl(node_id, session, get_qdrant_client_cached())
 
 
 @router.get("/{node_id}/perspectives", response_model=list[NodeResponse])

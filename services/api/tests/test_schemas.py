@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from kt_api.schemas import (
-    ConvergenceResponse,
     ConversationListItem,
     ConversationMessageResponse,
     ConversationResponse,
@@ -191,24 +190,6 @@ def test_dimension_response():
     )
     assert resp.confidence == 0.95
     assert resp.suggested_concepts is None
-
-
-def test_convergence_response():
-    resp = ConvergenceResponse(
-        convergence_score=0.85,
-        converged_claims=["Water boils at 100C"],
-        divergent_claims=[{"claim": "test", "model_positions": {"m1": "supports"}}],
-        recommended_content="Water boils at 100C.",
-    )
-    assert resp.convergence_score == 0.85
-    assert len(resp.converged_claims) == 1
-
-
-def test_convergence_response_defaults():
-    resp = ConvergenceResponse(convergence_score=0.0)
-    assert resp.converged_claims == []
-    assert resp.divergent_claims == []
-    assert resp.recommended_content is None
 
 
 def test_source_response():

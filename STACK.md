@@ -288,8 +288,6 @@ Deterministic UUIDs via `key_to_uuid()` (UUID5) bridge the two databases so both
 - `fact_sources` — Links facts to their raw sources (provenance).
 - `node_facts`, `edge_facts`, `dimension_facts` — Junction tables.
 - `dimensions` — Multi-model analyses per node.
-- `convergence_reports` — Cross-model agreement scores.
-- `divergent_claims` — Where models disagree.
 - `conversations`, `conversation_messages`, `research_reports` — Research sessions.
 - `ingest_sources` — Uploaded files/links with processing status.
 - `user`, `oauthaccount`, `api_tokens` — Authentication.
@@ -301,7 +299,7 @@ Deterministic UUIDs via `key_to_uuid()` (UUID5) bridge the two databases so both
 - `write_nodes`, `write_edges`, `write_dimensions`, `write_facts`, `write_fact_sources` — Parallel to graph-db but with TEXT keys and no FKs.
 - `write_seeds`, `write_seed_facts` — Seed entities (pre-node clustering).
 - `write_edge_candidates` — Potential edges awaiting classification.
-- `write_convergence_reports`, `write_divergent_claims`, `write_node_counters` — Worker-produced analysis.
+- `write_node_counters` — Worker-produced analysis.
 - `sync_watermarks` — Tracks last synced timestamp per table for incremental sync.
 - `sync_failures` — Dead-letter queue for failed sync entries.
 
@@ -374,7 +372,7 @@ knowledge-tree/
 │   ├── kt-db/                       # Models, repositories, session, alembic (kt_db)
 │   ├── kt-models/                   # ModelGateway, embeddings, dimensions (kt_models)
 │   ├── kt-providers/                # Serper, Brave, fetcher, registry (kt_providers)
-│   ├── kt-graph/                    # GraphEngine, convergence, splitting (kt_graph)
+│   ├── kt-graph/                    # GraphEngine (kt_graph)
 │   ├── kt-facts/                    # Decomposition pipeline, extraction (kt_facts)
 │   ├── kt-ontology/                 # *(deprecated — scheduled for removal)* (kt_ontology)
 │   ├── kt-hatchet/                  # Hatchet client, lifespan, models (kt_hatchet)
@@ -447,7 +445,7 @@ Each package has its own `tests/` directory with optional `tests/integration/` s
 - `libs/kt-config/tests/` — Settings, types (14 tests)
 - `libs/kt-models/tests/` — Gateway, dimensions (57 tests)
 - `libs/kt-providers/tests/` — Providers, fetcher (32 tests)
-- `libs/kt-graph/tests/` — Convergence, splitting (28 tests)
+- `libs/kt-graph/tests/` — Graph engine (tests)
 - `libs/kt-facts/tests/` — Decomposition pipeline (119 tests)
 - `libs/kt-ontology/tests/` — Ontology, wikidata (65 tests)
 - `libs/kt-db/tests/integration/` — Repository tests (5 tests)

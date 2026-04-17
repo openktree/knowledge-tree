@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  getConvergenceColor,
   getEdgeColor,
   getNodeTypeColor,
   toCytoscapeElements,
@@ -35,7 +34,6 @@ function makeNode(overrides: Partial<NodeResponse> = {}): NodeResponse {
     seed_fact_count: 0,
     pending_facts: 0,
     richness: 0.75,
-    convergence_score: 0.75,
     definition: null,
     definition_generated_at: null,
     enrichment_status: null,
@@ -60,30 +58,6 @@ function makeEdge(overrides: Partial<EdgeResponse> = {}): EdgeResponse {
     ...overrides,
   };
 }
-
-// ---------------------------------------------------------------------------
-// getConvergenceColor
-// ---------------------------------------------------------------------------
-
-describe("getConvergenceColor", () => {
-  it("returns green for scores >= 0.7", () => {
-    expect(getConvergenceColor(0.7)).toBe("#22c55e");
-    expect(getConvergenceColor(0.85)).toBe("#22c55e");
-    expect(getConvergenceColor(1.0)).toBe("#22c55e");
-  });
-
-  it("returns yellow for scores >= 0.4 and < 0.7", () => {
-    expect(getConvergenceColor(0.4)).toBe("#eab308");
-    expect(getConvergenceColor(0.55)).toBe("#eab308");
-    expect(getConvergenceColor(0.69)).toBe("#eab308");
-  });
-
-  it("returns red for scores < 0.4", () => {
-    expect(getConvergenceColor(0)).toBe("#ef4444");
-    expect(getConvergenceColor(0.1)).toBe("#ef4444");
-    expect(getConvergenceColor(0.39)).toBe("#ef4444");
-  });
-});
 
 // ---------------------------------------------------------------------------
 // getNodeTypeColor
@@ -151,8 +125,8 @@ describe("getEdgeColor", () => {
 describe("toCytoscapeElements", () => {
   it("converts nodes and edges into cytoscape element definitions", () => {
     const nodes = [
-      makeNode({ id: "n1", concept: "A", richness: 0.8, convergence_score: 0.8, access_count: 5 }),
-      makeNode({ id: "n2", concept: "B", richness: 0.3, convergence_score: 0.3, access_count: 1 }),
+      makeNode({ id: "n1", concept: "A", richness: 0.8, access_count: 5 }),
+      makeNode({ id: "n2", concept: "B", richness: 0.3, access_count: 1 }),
     ];
     const edges = [
       makeEdge({

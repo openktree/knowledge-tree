@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_api.auth.tokens import require_auth
 from kt_api.dependencies import get_db_session, get_qdrant_client_cached, require_api_key
 from kt_api.schemas import (
-    ConvergenceResponse,
     DeleteResponse,
     DimensionResponse,
     EdgeResponse,
@@ -38,7 +37,6 @@ from kt_api.schemas import (
 )
 from kt_config.settings import get_settings
 from kt_db.models import FactSource, Node, NodeFact, User
-from kt_graph.convergence import compute_convergence
 from kt_graph.read_engine import ReadGraphEngine
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
@@ -158,7 +156,6 @@ def _build_node_response(
         seed_fact_count=sfc,
         pending_facts=max(0, sfc - n.fact_count),
         richness=_compute_richness(n),
-        convergence_score=n.convergence_score,
         definition=n.definition,
         definition_source=n.definition_source,
         definition_generated_at=n.definition_generated_at.isoformat() if n.definition_generated_at else None,
@@ -321,27 +318,6 @@ async def _get_node_history_impl(
         )
         for v in versions
     ]
-
-
-async def _get_node_convergence_impl(
-    node_id: str,
-    session: AsyncSession,
-    qdrant_client: AsyncQdrantClient,
-) -> ConvergenceResponse:
-    """Core logic for GET /nodes/{node_id}/convergence."""
-    uid = _parse_node_id(node_id)
-    engine = ReadGraphEngine(session=session, qdrant_client=qdrant_client)
-    node = await engine.get_node(uid)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    dims = await engine.get_dimensions(uid)
-    result = compute_convergence(dims)
-    return ConvergenceResponse(
-        convergence_score=result["convergence_score"],
-        converged_claims=result["converged_claims"],
-        divergent_claims=result["divergent_claims"],
-        recommended_content=result["recommended_content"],
-    )
 
 
 async def _get_node_perspectives_impl(
@@ -689,15 +665,6 @@ async def get_node_history(
 ) -> list[NodeVersionResponse]:
     """Get the version history for a node."""
     return await _get_node_history_impl(node_id, session, get_qdrant_client_cached())
-
-
-@router.get("/{node_id}/convergence", response_model=ConvergenceResponse)
-async def get_node_convergence(
-    node_id: str,
-    session: AsyncSession = Depends(get_db_session),
-) -> ConvergenceResponse:
-    """Compute convergence analysis across model dimensions for a node."""
-    return await _get_node_convergence_impl(node_id, session, get_qdrant_client_cached())
 
 
 @router.get("/{node_id}/perspectives", response_model=list[NodeResponse])

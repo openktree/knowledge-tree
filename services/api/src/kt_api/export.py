@@ -56,7 +56,6 @@ def _node_to_response(
         updated_at=n.updated_at,  # type: ignore[attr-defined]
         update_count=n.update_count,  # type: ignore[attr-defined]
         access_count=n.access_count,  # type: ignore[attr-defined]
-        convergence_score=getattr(n, "convergence_score", 0.0),  # type: ignore[attr-defined]
         definition=n.definition,  # type: ignore[attr-defined]
         definition_generated_at=n.definition_generated_at.isoformat() if n.definition_generated_at else None,  # type: ignore[attr-defined]
         metadata=n.metadata_,  # type: ignore[attr-defined]

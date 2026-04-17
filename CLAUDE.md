@@ -58,7 +58,7 @@ The system is designed so that over time, frequently queried topics accumulate i
 - **kt-db** — SQLAlchemy models (both DBs), repositories, Alembic migrations (`alembic/` graph-db, `alembic_write/` write-db)
 - **kt-models** — AI model gateway (LiteLLM), embeddings
 - **kt-providers** — Knowledge providers (Serper, Brave), abstract `KnowledgeProvider` ABC
-- **kt-graph** — GraphEngine — node/edge CRUD, search, convergence
+- **kt-graph** — GraphEngine — node/edge CRUD, search
 - **kt-facts** — Fact decomposition, extraction, dedup
 - **kt-ontology** — *(deprecated — do not use)*
 - **kt-hatchet** — Hatchet client singleton, worker state, workflow I/O models. Depends on `kt-graph` so `WorkerState.make_worker_engine()` can wire a `PublicGraphBridge` into every per-workflow engine. The dep direction is one-way: `kt-graph` MUST NOT import `kt-hatchet`.
@@ -101,7 +101,6 @@ The system uses **two PostgreSQL databases** optimized for different workloads:
 | **Definitions** | Write-db ONLY | Stored on WriteNode; sync worker propagates to graph-db |
 | **Parents** | Write-db ONLY | Stored as parent_key on WriteNode; sync worker resolves FK |
 | **Counters** | Write-db ONLY | Sync worker propagates to graph-db NodeCounter |
-| **Convergence** | Write-db ONLY | Sync worker propagates to graph-db ConvergenceReport |
 | **Facts** | Write-db + Qdrant | WriteFact (UUID PK), WriteFactSource (denormalized); sync worker creates graph-db Fact + FactSource rows |
 
 **Node cache**: GraphEngine maintains an in-memory `_node_cache` populated by `create_node()`. Subsequent methods (`add_dimension`, `create_edge`, `set_parent`, `link_fact_to_node`) check the cache first for node info (type, concept) needed for write-db key generation, falling back to graph-db for nodes from previous pipeline runs.
@@ -110,7 +109,7 @@ The system uses **two PostgreSQL databases** optimized for different workloads:
 
 **Key files:**
 - `kt_db/keys.py` — `make_node_key()`, `make_edge_key()`, `make_dimension_key()`, `key_to_uuid()`
-- `kt_db/write_models.py` — WriteNode, WriteEdge, WriteDimension, WriteConvergenceReport, WriteNodeCounter, SyncWatermark
+- `kt_db/write_models.py` — WriteNode, WriteEdge, WriteDimension, WriteNodeCounter, SyncWatermark
 - `kt_db/repositories/write_*.py` — Write-db repository classes
 - `kt_graph/engine.py` — `GraphEngine` routes writes to write-db, reads from graph-db (with node cache for pipeline-created nodes)
 - `services/worker-sync/src/kt_worker_sync/sync_engine.py` — `SyncEngine` incremental sync

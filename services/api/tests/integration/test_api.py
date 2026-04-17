@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch  # noqa: F401 — may be needed by remaining tests
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -155,12 +154,6 @@ async def test_get_node_history(api_client: AsyncClient):
     assert resp.status_code == 404
 
 
-async def test_get_node_convergence(api_client: AsyncClient):
-    fake_id = str(uuid.uuid4())
-    resp = await api_client.get(f"/api/v1/nodes/{fake_id}/convergence")
-    assert resp.status_code == 404
-
-
 async def test_node_dimensions_with_db(api_session_factory):
     """Get dimensions for a node that exists but has none."""
     async with api_session_factory() as session:
@@ -240,30 +233,6 @@ async def test_node_facts_with_db(api_session_factory):
             assert src["attribution"] == "Test Author"
             assert "retrieved_at" in src
             assert src["source_id"] == str(raw_source.id)
-
-        await session.rollback()
-
-
-async def test_node_convergence_with_db(api_session_factory):
-    """Test convergence for a node with no dimensions."""
-    async with api_session_factory() as session:
-        node = Node(id=uuid.uuid4(), concept="api_conv_test", max_content_tokens=500)
-        session.add(node)
-        await session.flush()
-
-        app = create_app()
-
-        async def override() -> AsyncGenerator[AsyncSession, None]:
-            yield session
-
-        app.dependency_overrides[get_db_session] = override
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.get(f"/api/v1/nodes/{node.id}/convergence")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["convergence_score"] == 0.0
 
         await session.rollback()
 
@@ -951,7 +920,6 @@ async def test_import_nodes_creates_new(api_session_factory):
                             "update_count": 0,
                             "access_count": 0,
                             "richness": 0.0,
-                            "convergence_score": 0.0,
                         }
                     ],
                     "edges": [],
@@ -1076,7 +1044,6 @@ async def test_import_v10_backwards_compat(api_session_factory):
                             "update_count": 0,
                             "access_count": 0,
                             "richness": 0.0,
-                            "convergence_score": 0.0,
                         }
                     ],
                     "facts": [
@@ -1196,7 +1163,6 @@ async def test_import_creates_seeds(api_session_factory):
                             "update_count": 0,
                             "access_count": 0,
                             "richness": 0.0,
-                            "convergence_score": 0.0,
                         }
                     ],
                     "facts": [

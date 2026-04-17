@@ -11,8 +11,7 @@
 7. [Fact Decomposition Pipeline](#7-fact-decomposition-pipeline)
 8. [Graph Engine](#8-graph-engine)
 9. [Research & Synthesis Flow](#9-research--synthesis-flow)
-10. [Convergence & Node Splitting](#10-convergence--node-splitting)
-11. [Multimodel Dimensional Analysis](#11-multimodel-dimensional-analysis)
+10. [Multimodel Dimensional Analysis](#11-multimodel-dimensional-analysis)
 12. [API Design](#12-api-design)
 13. [UI Requirements](#13-ui-requirements)
 14. [Technology Stack](#14-technology-stack)
@@ -72,8 +71,7 @@ A knowledge integration system that builds understanding exclusively from raw ex
 #### FR-5: Multimodel Analysis
 - **FR-5.1:** Each node SHALL contain dimensions — one per configured AI model.
 - **FR-5.2:** Dimensions SHALL be generated independently by each model using the same fact base.
-- **FR-5.3:** A convergence report SHALL be auto-generated for each node comparing all dimensions.
-- **FR-5.4:** Models SHALL serve as reasoning engines over facts, not as knowledge sources.
+- **FR-5.3:** Models SHALL serve as reasoning engines over facts, not as knowledge sources.
 
 #### FR-6: Research & Synthesis Agents
 - **FR-6.1:** The system SHALL support document-based research through specialized agents: a synthesizer agent that navigates the graph to produce synthesis documents, and an ingest agent that builds nodes from uploaded sources.
@@ -253,7 +251,7 @@ The system follows a strict layered architecture with dependency inversion at ev
 | **Orchestration Layer** | Hatchet durable workflows: bottom-up research, synthesis, super-synthesis, node pipeline, ingest, search, sync. Each workflow type runs in its own worker service (`services/worker-*`). | Agent Layer, Node Pipeline |
 | **Agent Layer** | LangGraph agents within Hatchet tasks: synthesizer (`kt_worker_synthesis`), super-synthesizer (`kt_worker_synthesis`), ingest (`kt_worker_ingest`) | Graph Engine, Provider Layer, Model Layer |
 | **Node Pipeline** | Hatchet DAG: create_node -> dimensions -> definition -> parent | Fact Store, Model Layer, Persistence |
-| **Graph Engine** | Split into ReadGraphEngine (graph-db + Qdrant reads) and WorkerGraphEngine (write-db + Qdrant writes). Convergence scoring, splitting. | Fact Store, Persistence, Qdrant |
+| **Graph Engine** | Split into ReadGraphEngine (graph-db + Qdrant reads) and WorkerGraphEngine (write-db + Qdrant writes). | Fact Store, Persistence, Qdrant |
 | **Fact Store** | Typed fact storage, indexing, deduplication, retrieval by concept | Persistence |
 | **Provider Layer** | Raw data fetching from external sources (Serper, Brave, URL fetcher) | External APIs |
 | **Ingestion Layer** | File/link upload, content extraction (PDF, DOCX, etc.), partitioning, decomposition | Fact Store, Persistence |
@@ -1236,117 +1234,6 @@ All heavy processing runs as **durable Hatchet workflows**:
 | `super_synthesizer_wf` | worker-synthesis | Multi-scope super-synthesis (plan → dispatch → combine) |
 | `ingest_build_wf` | worker-ingest | Source ingestion pipeline (decompose → build nodes) |
 | `sync_wf` | worker-sync | write-db → graph-db incremental sync |
-
----
-
-## 10. Convergence & Node Splitting
-
-### 10.1 Convergence Scoring
-
-Convergence measures agreement across model dimensions within a node:
-
-```
-convergence_score = |claims in ALL dimensions| / |unique claims across all dimensions|
-
-Scale:
-  0.9 - 1.0  →  Strong consensus across models
-  0.7 - 0.9  →  Broad agreement, minor interpretation differences
-  0.5 - 0.7  →  Moderate agreement, divergences worth investigating
-  0.3 - 0.5  →  Significant disagreement, content is model-dependent
-  0.0 - 0.3  →  Fundamental disagreement, biases dominate evidence
-```
-
-### 10.2 Fact-Based Convergence
-
-Beyond model convergence, nodes also have a **fact convergence** dimension:
-
-```
-fact_coherence = measure of internal consistency among facts linked to a node
-
-When facts linked to a node form two or more coherent clusters that contradict each other,
-the node is a candidate for splitting.
-
-Example:
-  Node: "Politician X"
-  Fact cluster A: {testimony of good governance, economic growth stats, endorsements}
-  Fact cluster B: {corruption allegations, investigative reports, legal proceedings}
-
-  Both clusters are internally coherent.
-  The clusters contradict each other.
-  → Node split triggered.
-```
-
-### 10.3 Node Splitting Algorithm
-
-```
-function evaluateSplit(node):
-  facts = getNodeFacts(node.id)
-  clusters = clusterFacts(facts)  # semantic clustering
-
-  if clusters.count < 2:
-    return NO_SPLIT
-
-  # Check if clusters are internally coherent but mutually contradictory
-  for pair in combinations(clusters, 2):
-    internalCoherenceA = computeCoherence(pair[0])
-    internalCoherenceB = computeCoherence(pair[1])
-    interClusterContradiction = computeContradiction(pair[0], pair[1])
-
-    if internalCoherenceA > 0.7 and internalCoherenceB > 0.7
-       and interClusterContradiction > 0.6:
-      return SPLIT_RECOMMENDED(pair)
-
-  return NO_SPLIT
-
-function executeSplit(node, clusters):
-  # Create child nodes for each coherent cluster
-  childNodes = []
-  for cluster in clusters:
-    label = generateClusterLabel(cluster)  # e.g., "Politician X: Governance Record"
-    child = createNode(label)
-    for fact in cluster.facts:
-      linkFactToNode(child.id, fact.id)
-    generateDimensions(child)
-    childNodes.append(child)
-
-  # Link child nodes to the original node via parent_id FK
-  for child in childNodes:
-    setParent(child.id, node.id)
-
-  # Link child nodes to each other via related edges
-  for pair in combinations(childNodes, 2):
-    createEdge(pair[0].id, pair[1].id, "related", weight=1.0)
-
-  # Update original node to note the split
-  updateNodeContent(node, """
-    This topic has divergent viewpoints supported by coherent evidence.
-    See linked child nodes for each cluster.
-  """)
-```
-
-### 10.4 Split Visualization
-
-```mermaid
-graph TD
-    P["Politician X<br/>⚖️ Split Node<br/>convergence: 0.3"]
-    A["Politician X: Positive Record<br/>📊 convergence: 0.85<br/>47 supporting facts"]
-    B["Politician X: Corruption Allegations<br/>📊 convergence: 0.78<br/>31 supporting facts"]
-
-    A -->|"parent_id"| P
-    B -->|"parent_id"| P
-    A <-.->|"related"| B
-
-    A --- FA1["Fact: GDP grew 4.2% during tenure<br/>Source: BLS data"]
-    A --- FA2["Fact: Approved infrastructure bill<br/>Source: Congressional Record"]
-    B --- FB1["Fact: Under investigation for bribery<br/>Source: DOJ filing"]
-    B --- FB2["Fact: Reporter Y alleges corruption<br/>Source: Newspaper Z, investigative piece"]
-
-    style P fill:#1a2235,stroke:#fbbf24,color:#e2e8f0
-    style A fill:#1a2235,stroke:#34d399,color:#e2e8f0
-    style B fill:#1a2235,stroke:#f87171,color:#e2e8f0
-```
-
-All three nodes are peers in the flat graph. The `parent_id` FK indicates that A and B are facets of the original concept. The `related` edge between A and B captures their shared domain. Other nodes in the graph can link to any of the three independently.
 
 ---
 

@@ -20,7 +20,6 @@ import {
 import { X, Loader2, RefreshCw, ArrowLeftRight, GitBranch, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DimensionsTab } from "@/components/node/DimensionsTab";
-import { ConvergenceTab } from "@/components/node/ConvergenceTab";
 import { FactsTab } from "@/components/node/FactsTab";
 import { HistoryTab } from "@/components/node/HistoryTab";
 import { NeighborsTab } from "@/components/node/NeighborsTab";
@@ -56,7 +55,6 @@ export default function NodeDetailPanel({
     facts,
     edges,
     history,
-    convergence,
     perspectives,
     isLoading,
     error,
@@ -267,9 +265,6 @@ export default function NodeDetailPanel({
                   <TabsTrigger value="dimensions" className="flex-1 text-xs px-1.5">
                     Dimensions
                   </TabsTrigger>
-                  <TabsTrigger value="convergence" className="flex-1 text-xs px-1.5">
-                    Convergence
-                  </TabsTrigger>
                   <TabsTrigger value="facts" className="flex-1 text-xs px-1.5">
                     Facts
                   </TabsTrigger>
@@ -297,12 +292,6 @@ export default function NodeDetailPanel({
                   <DimensionsTab
                     dimensions={dimensions}
                     onConceptClick={onNodeSelect}
-                  />
-                </TabsContent>
-                <TabsContent value="convergence" className="mt-0">
-                  <ConvergenceTab
-                    convergence={convergence}
-                    isLoading={isLoading}
                   />
                 </TabsContent>
                 <TabsContent value="facts" className="mt-0">

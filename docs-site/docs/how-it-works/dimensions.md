@@ -40,8 +40,7 @@ Dimensions include inline citations to specific facts using markdown links: `[br
    - Send the same fact base + neighbor context
    - The model generates its analysis independently
    - Parse the response into a Dimension record
-4. **Compute convergence** across all dimensions
-5. **Store** all dimensions and the convergence report
+4. **Store** all dimensions
 
 ### Node-type-specific prompts
 
@@ -53,36 +52,6 @@ Different node types get different analysis prompts:
 | **Entity** | Role, factual details, relationships, involvement |
 | **Event** | Timeline, causes, effects, participants, context |
 
-## Convergence
-
-After all dimensions are generated, a **convergence report** is automatically computed:
-
-### Convergence score (0-1)
-
-- **> 0.7** — Strong consensus across models. The conclusion is well-supported.
-- **0.4 - 0.7** — Moderate agreement. Some uncertainty remains.
-- **< 0.4** — Significant disagreement. Multiple competing interpretations exist.
-
-### What the report contains
-
-| Field | Description |
-|-------|-------------|
-| **convergence_score** | Overall agreement level |
-| **converged_claims** | Claims all models agree on |
-| **recommended_content** | Synthesized view of the consensus |
-| **divergent_claims** | Where models disagree, with each model's position and analysis |
-
-### Divergences
-
-When models disagree, each divergent claim records:
-
-- The specific claim in question
-- Each model's position on it
-- The **divergence type** — whether models interpret the same facts differently, emphasize different facts, or reach different conclusions from the same reasoning
-- An analysis of what might explain the divergence
-
-Divergences are surfaced transparently to users. They represent genuine areas of uncertainty or bias — exactly the kind of information that a single-model system would hide.
-
 ## Why multiple models matter
 
 A single AI model can:
@@ -91,4 +60,4 @@ A single AI model can:
 - Miss patterns that other architectures would catch
 - Present confident-sounding conclusions that lack genuine support
 
-By requiring convergence across diverse models analyzing the same evidence, Knowledge Tree provides a level of epistemic robustness that no single model can achieve. The system doesn't hide disagreement — it highlights it as valuable information.
+By running diverse models over the same evidence, Knowledge Tree surfaces each perspective as an independent dimension. Readers compare them directly — disagreement is information, not noise.

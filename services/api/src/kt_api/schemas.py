@@ -117,7 +117,6 @@ class NodeResponse(BaseModel):
     seed_fact_count: int = 0
     pending_facts: int = 0
     richness: float = 0.0
-    convergence_score: float = 0.0
     definition: str | None = None
     definition_source: str | None = None
     definition_generated_at: str | None = None
@@ -216,15 +215,6 @@ class DimensionResponse(BaseModel):
     batch_index: int = 0
     fact_count: int = 0
     is_definitive: bool = False
-
-
-class ConvergenceResponse(BaseModel):
-    """Response body for convergence analysis results."""
-
-    convergence_score: float
-    converged_claims: list[str] = Field(default_factory=list)
-    divergent_claims: list[dict[str, object]] = Field(default_factory=list)
-    recommended_content: str | None = None
 
 
 class ProhibitedChunkResponse(BaseModel):

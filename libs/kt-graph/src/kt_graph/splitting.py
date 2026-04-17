@@ -4,6 +4,7 @@ When a node accumulates contradictory facts, it may need to be split
 into perspective nodes, each linked to the original via 'related' edges.
 """
 
+import re
 import uuid
 from typing import TypedDict
 
@@ -13,7 +14,30 @@ from kt_db.models import Fact, Node
 from kt_db.repositories.edges import EdgeRepository
 from kt_db.repositories.facts import FactRepository
 from kt_db.repositories.nodes import NodeRepository
-from kt_graph.convergence import _tokenize
+
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could",
+        "should", "may", "might", "shall", "can", "need", "dare", "to", "of",
+        "in", "for", "on", "with", "at", "by", "from", "as", "into", "through",
+        "during", "before", "after", "above", "below", "between", "out", "off",
+        "over", "under", "again", "further", "then", "once", "and", "but", "or",
+        "nor", "not", "so", "yet", "both", "either", "neither", "each", "every",
+        "all", "any", "few", "more", "most", "other", "some", "such", "no",
+        "only", "own", "same", "than", "too", "very", "just", "because", "if",
+        "when", "where", "how", "what", "which", "who", "whom", "this", "that",
+        "these", "those", "i", "me", "my", "myself", "we", "our", "ours", "you",
+        "your", "he", "him", "his", "she", "her", "it", "its", "they", "them",
+        "their", "also", "about", "up", "there", "here",
+    }
+)
+
+
+def _tokenize(text: str) -> set[str]:
+    """Extract non-stopword lowercase tokens from text."""
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return {w for w in words if w not in _STOPWORDS and len(w) > 1}
 
 
 class ClusterSummary(TypedDict):

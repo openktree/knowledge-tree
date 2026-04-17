@@ -98,20 +98,6 @@ Dimension:
   generated_at:       timestamp
 ```
 
-## Convergence Report
-
-Auto-generated comparison of all dimensions for a node.
-
-```python
-ConvergenceReport:
-  id:                 UUID
-  node_id:            UUID
-  convergence_score:  float         # 0-1, agreement across models
-  converged_claims:   str[]         # Claims all models agree on
-  recommended_content: str          # Synthesized consensus view
-  computed_at:        timestamp
-```
-
 ## Seed (Write-db)
 
 Lightweight proto-node that accumulates facts before promotion.

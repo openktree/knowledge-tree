@@ -169,7 +169,6 @@ export interface NodeResponse {
   seed_fact_count: number;
   pending_facts: number;
   richness: number;
-  convergence_score: number;
   definition: string | null;
   definition_generated_at: string | null;
   enrichment_status: string | null;
@@ -238,13 +237,6 @@ export interface DimensionResponse {
   batch_index: number;
   fact_count: number;
   is_definitive: boolean;
-}
-
-export interface ConvergenceResponse {
-  convergence_score: number;
-  converged_claims: string[];
-  divergent_claims: Record<string, unknown>[];
-  recommended_content: string | null;
 }
 
 export interface ProhibitedChunkResponse {

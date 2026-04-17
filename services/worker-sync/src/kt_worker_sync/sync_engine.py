@@ -33,7 +33,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from kt_config.settings import get_settings
 from kt_db.keys import key_to_uuid
 from kt_db.models import (
-    ConvergenceReport,
     Dimension,
     DimensionFact,
     Edge,
@@ -51,7 +50,6 @@ from kt_db.models import (
 from kt_db.write_models import (
     SyncFailure,
     SyncWatermark,
-    WriteConvergenceReport,
     WriteDimension,
     WriteEdge,
     WriteFact,
@@ -132,7 +130,6 @@ class SyncEngine:
             ("write_nodes", self._sync_nodes),
             ("write_edges", self._sync_edges),
             ("write_dimensions", self._sync_dimensions),
-            ("write_convergence_reports", self._sync_convergence),
             ("write_node_counters", self._sync_counters),
             ("write_node_versions", self._sync_node_versions),
             ("write_llm_usage", self._sync_llm_usage),
@@ -227,7 +224,6 @@ class SyncEngine:
                         UNION ALL SELECT 'write_nodes', MAX(updated_at) FROM write_nodes
                         UNION ALL SELECT 'write_edges', MAX(updated_at) FROM write_edges
                         UNION ALL SELECT 'write_dimensions', MAX(updated_at) FROM write_dimensions
-                        UNION ALL SELECT 'write_convergence_reports', MAX(updated_at) FROM write_convergence_reports
                         UNION ALL SELECT 'write_node_counters', MAX(updated_at) FROM write_node_counters
                         UNION ALL SELECT 'write_node_versions', MAX(updated_at) FROM write_node_versions
                         UNION ALL SELECT 'write_llm_usage', MAX(updated_at) FROM write_llm_usage
@@ -352,14 +348,6 @@ class SyncEngine:
             ),
             {"ids": id_list},
         )
-
-        # convergence_score
-        conv_sub = (
-            select(ConvergenceReport.node_id, ConvergenceReport.convergence_score.label("score"))
-            .where(ConvergenceReport.node_id.in_(id_list))
-            .subquery()
-        )
-        await gs.execute(update(Node).where(Node.id == conv_sub.c.node_id).values(convergence_score=conv_sub.c.score))
 
         # Invalidate cached API responses for affected nodes
         from kt_config.cache import cache_invalidate
@@ -1389,103 +1377,6 @@ class SyncEngine:
             await ws.commit()
             return count
 
-    # ── Convergence Reports ────────────────────────────────────────────
-
-    async def _sync_convergence(self) -> int:
-        async with self._write_sf() as ws, self._graph_sf() as gs:
-            watermark = await self._get_watermark(ws, "write_convergence_reports")
-            rows = (
-                (
-                    await ws.execute(
-                        select(WriteConvergenceReport)
-                        .where(WriteConvergenceReport.updated_at > watermark)
-                        .order_by(WriteConvergenceReport.updated_at.asc())
-                        .limit(self._batch_size)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            if not rows:
-                return 0
-
-            logger.info(
-                "Syncing %d convergence reports (watermark=%s)",
-                len(rows),
-                watermark.isoformat(),
-            )
-
-            max_ts = watermark
-            count = 0
-            first_failure_ts: datetime | None = None
-            for wcr in rows:
-                node_id = key_to_uuid(wcr.node_key)
-
-                node_exists = (await gs.execute(select(Node.id).where(Node.id == node_id))).scalar_one_or_none()
-                if node_exists is None:
-                    logger.debug(
-                        "Skipping convergence for node_key=%s: node not yet synced",
-                        wcr.node_key,
-                    )
-                    continue
-
-                try:
-                    async with gs.begin_nested():
-                        # ConvergenceReport has unique(node_id), use that for upsert
-                        stmt = (
-                            pg_insert(ConvergenceReport.__table__)
-                            .values(
-                                id=uuid.uuid4(),
-                                node_id=node_id,
-                                convergence_score=wcr.convergence_score,
-                                converged_claims=wcr.converged_claims,
-                                recommended_content=wcr.recommended_content,
-                            )
-                            .on_conflict_do_update(
-                                index_elements=[ConvergenceReport.__table__.c.node_id],
-                                set_={
-                                    "convergence_score": wcr.convergence_score,
-                                    "converged_claims": wcr.converged_claims,
-                                    "recommended_content": wcr.recommended_content,
-                                },
-                            )
-                        )
-                        await gs.execute(stmt)
-                except Exception as exc:
-                    logger.error(
-                        "Failed to sync convergence for node %s, skipping",
-                        wcr.node_key,
-                        exc_info=True,
-                    )
-                    if first_failure_ts is None:
-                        first_failure_ts = wcr.updated_at
-                    await self._record_failure(ws, "write_convergence_reports", wcr.node_key, exc)
-                    continue
-
-                if wcr.updated_at > max_ts:
-                    max_ts = wcr.updated_at
-                count += 1
-
-            # Refresh convergence_score on affected nodes
-            conv_node_ids = {key_to_uuid(wcr.node_key) for wcr in rows}
-            await self._refresh_node_stats(gs, conv_node_ids)
-
-            safe_ts = min(max_ts, first_failure_ts) if first_failure_ts else max_ts
-            if first_failure_ts is not None:
-                failed = len(rows) - count
-                logger.warning(
-                    "Convergence: %d/%d synced, %d failed — watermark frozen at %s",
-                    count,
-                    len(rows),
-                    failed,
-                    safe_ts.isoformat(),
-                )
-            await gs.commit()
-            await self._set_watermark(ws, "write_convergence_reports", safe_ts)
-            await ws.commit()
-            return count
-
     # ── Counters ───────────────────────────────────────────────────────
 
     async def _sync_counters(self) -> int:
@@ -1989,36 +1880,6 @@ class SyncEngine:
                                         )
                                 except (ValueError, Exception):
                                     pass
-                    await gs.commit()
-                    return True
-
-                elif table == "write_convergence_reports":
-                    wcr = (
-                        await ws.execute(select(WriteConvergenceReport).where(WriteConvergenceReport.node_key == key))
-                    ).scalar_one_or_none()
-                    if wcr is None:
-                        return True
-                    node_id = key_to_uuid(wcr.node_key)
-                    async with gs.begin_nested():
-                        stmt = (
-                            pg_insert(ConvergenceReport.__table__)
-                            .values(
-                                id=uuid.uuid4(),
-                                node_id=node_id,
-                                convergence_score=wcr.convergence_score,
-                                converged_claims=wcr.converged_claims,
-                                recommended_content=wcr.recommended_content,
-                            )
-                            .on_conflict_do_update(
-                                index_elements=[ConvergenceReport.__table__.c.node_id],
-                                set_={
-                                    "convergence_score": wcr.convergence_score,
-                                    "converged_claims": wcr.converged_claims,
-                                    "recommended_content": wcr.recommended_content,
-                                },
-                            )
-                        )
-                        await gs.execute(stmt)
                     await gs.commit()
                     return True
 
