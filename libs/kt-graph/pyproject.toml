@@ -1,7 +1,7 @@
 [project]
 name = "kt-graph"
 version = "0.1.0"
-description = "Knowledge Tree graph engine, convergence, and splitting"
+description = "Knowledge Tree graph engine and convergence"
 requires-python = ">=3.12"
 dependencies = [
     "kt-db",
