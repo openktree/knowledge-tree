@@ -5,7 +5,7 @@ from typing import Any
 from litellm import aembedding
 
 from kt_config.settings import get_settings
-from kt_models.expense import ExpenseContext, resolve_expense
+from kt_models.expense import require_current_expense
 from kt_models.usage_sink import record_llm_usage
 
 # OpenRouter app identification headers
@@ -19,15 +19,12 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 2
 
 
-def _record_embedding_usage(response: Any, model: str, expense: ExpenseContext | None) -> None:
-    """Record embedding token usage.
+def _record_embedding_usage(response: Any, model: str) -> None:
+    """Forward embedding token usage to the sink.
 
-    Writes to both the legacy ContextVar accumulator and the new
-    ``UsageSink`` so rows are captured regardless of which tracking
-    scaffold the calling task uses.
+    Reads the ambient :class:`ExpenseContext` — if unset, raises so
+    silent embeddings don't pile up as untracked rows.
     """
-    from kt_models.usage import record_usage
-
     usage = getattr(response, "usage", None)
     if usage is None:
         return
@@ -48,13 +45,12 @@ def _record_embedding_usage(response: Any, model: str, expense: ExpenseContext |
             pass
 
     completion_tokens = max(0, total_tokens - prompt_tokens)
-    record_usage(model, prompt_tokens, completion_tokens, cost_usd)
     record_llm_usage(
         model_id=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         cost_usd=cost_usd,
-        expense=resolve_expense(expense),
+        expense=require_current_expense(),
     )
 
 
@@ -76,7 +72,7 @@ class EmbeddingService:
         self._chunk_size = chunk_size or settings.embedding_batch_chunk_size
         self._batch_concurrency = batch_concurrency or settings.embedding_batch_concurrency
 
-    async def embed_text(self, text: str, *, expense: ExpenseContext | None = None) -> list[float]:
+    async def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text."""
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
@@ -90,7 +86,7 @@ class EmbeddingService:
                     timeout=self._timeout,
                     extra_headers=_OPENROUTER_HEADERS,
                 )
-                _record_embedding_usage(response, self._model, expense)
+                _record_embedding_usage(response, self._model)
                 return response.data[0]["embedding"]  # type: ignore[index]
             except Exception as exc:
                 last_err = exc
@@ -99,12 +95,7 @@ class EmbeddingService:
                     await asyncio.sleep(1)
         raise last_err  # type: ignore[misc]
 
-    async def _embed_chunk(
-        self,
-        chunk: list[str],
-        chunk_idx: int,
-        expense: ExpenseContext | None,
-    ) -> list[list[float]]:
+    async def _embed_chunk(self, chunk: list[str], chunk_idx: int) -> list[list[float]]:
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
             try:
@@ -117,7 +108,7 @@ class EmbeddingService:
                     timeout=self._timeout,
                     extra_headers=_OPENROUTER_HEADERS,
                 )
-                _record_embedding_usage(response, self._model, expense)
+                _record_embedding_usage(response, self._model)
                 return [item["embedding"] for item in response.data]  # type: ignore[index]
             except Exception as exc:
                 last_err = exc
@@ -133,7 +124,6 @@ class EmbeddingService:
         texts: list[str],
         *,
         chunk_size: int | None = None,
-        expense: ExpenseContext | None = None,
     ) -> list[list[float]]:
         """Generate embeddings for multiple texts.
 
@@ -146,13 +136,13 @@ class EmbeddingService:
         chunks = [texts[i : i + effective_chunk] for i in range(0, len(texts), effective_chunk)]
 
         if len(chunks) == 1:
-            return await self._embed_chunk(chunks[0], 0, expense)
+            return await self._embed_chunk(chunks[0], 0)
 
         sem = asyncio.Semaphore(self._batch_concurrency)
 
         async def _bounded(idx: int, chunk: list[str]) -> tuple[int, list[list[float]]]:
             async with sem:
-                return idx, await self._embed_chunk(chunk, idx, expense)
+                return idx, await self._embed_chunk(chunk, idx)
 
         tasks = [_bounded(i, c) for i, c in enumerate(chunks)]
         done = await asyncio.gather(*tasks)

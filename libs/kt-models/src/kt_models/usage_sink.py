@@ -1,19 +1,16 @@
 """Process-wide async sink that persists LLM usage rows to write-db.
 
-Replaces the per-task ``start_usage_tracking`` / ``flush_usage_to_db``
-scaffold. The gateway calls :func:`record_llm_usage` once per LLM call
-with the resolved :class:`ExpenseContext`; the sink's background drain
-batches inserts into ``write_llm_usage``.
+The gateway's recorder calls :func:`record_llm_usage` once per LLM
+call with the :class:`ExpenseContext` read from the ContextVar; a
+background drain batches the rows into ``write_llm_usage``. Lifecycle
+is owned by the worker / API lifespan (``UsageSink.install`` at
+startup, ``UsageSink.shutdown`` at exit).
 
-Lifecycle:
-
-- ``UsageSink.install(session_factory)`` — called from worker/API
-  lifespan to enable persistence. Starts the drain task.
-- ``UsageSink.shutdown()`` — called on graceful exit. Drains the queue
-  then stops the drain task.
-- ``record_llm_usage(...)`` — non-blocking enqueue. Safe to call
-  regardless of install state; when not installed the call is logged at
-  DEBUG and dropped (useful for unit tests that don't want DB writes).
+When no sink is installed (tests that don't touch the DB, ad-hoc
+scripts) the recorder is a no-op after a single DEBUG log. The
+fail-fast check for a missing context lives upstream in
+:func:`kt_models.expense.require_current_expense`, so a dropped row
+never means a mistagged one.
 """
 
 from __future__ import annotations
@@ -25,7 +22,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from kt_models.expense import ExpenseContext, resolve_expense
+from kt_models.expense import ExpenseContext
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +43,7 @@ class _PendingRow:
 class UsageSink:
     """Process-wide LLM usage writer.
 
-    Singleton-ish: only one instance is expected per process, installed
-    during lifespan startup. Tests that need isolation can use
-    ``UsageSink.override()`` as an async context manager.
+    Singleton per process — installed during lifespan startup.
     """
 
     _instance: "UsageSink | None" = None
@@ -119,18 +114,17 @@ class UsageSink:
         prompt_tokens: int,
         completion_tokens: int,
         cost_usd: float,
-        expense: ExpenseContext | None,
+        expense: ExpenseContext,
     ) -> None:
         """Non-blocking enqueue of a usage row."""
         if prompt_tokens == 0 and completion_tokens == 0:
             return
-        resolved = resolve_expense(expense)
         row = _PendingRow(
             model_id=model_id,
             prompt_tokens=int(prompt_tokens),
             completion_tokens=int(completion_tokens),
             cost_usd=float(cost_usd),
-            expense=resolved,
+            expense=expense,
         )
         try:
             self._queue.put_nowait(row)
@@ -139,7 +133,7 @@ class UsageSink:
                 "UsageSink queue full (size=%d); dropping row for model=%s task_type=%s",
                 _QUEUE_MAXSIZE,
                 row.model_id,
-                resolved.task_type,
+                expense.task_type,
             )
 
     async def _drain_loop(self) -> None:
@@ -204,18 +198,20 @@ def record_llm_usage(
     prompt_tokens: int,
     completion_tokens: int,
     cost_usd: float,
-    expense: ExpenseContext | None = None,
+    expense: ExpenseContext,
 ) -> None:
     """Gateway entry point — enqueue a usage row if the sink is installed.
 
-    When no sink is installed (tests, CLI tools), this is a no-op after a
-    single DEBUG log per call. Callers never have to guard.
+    Missing context is rejected upstream (``require_current_expense``);
+    here we only handle the "no sink installed" case, which happens in
+    tests / CLI tools that never start a worker lifespan.
     """
     sink = UsageSink.current()
     if sink is None:
         logger.debug(
-            "UsageSink not installed; dropping usage for model=%s prompt=%d completion=%d",
+            "UsageSink not installed; dropping usage for model=%s task_type=%s prompt=%d completion=%d",
             model_id,
+            expense.task_type,
             prompt_tokens,
             completion_tokens,
         )

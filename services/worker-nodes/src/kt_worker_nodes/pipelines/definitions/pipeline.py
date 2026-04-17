@@ -67,18 +67,17 @@ class DefinitionPipeline:
         thinking_level = ctx.model_gateway.definition_thinking_level
 
         try:
-            from kt_models.usage import clear_usage_task, set_usage_task
+            from kt_models.expense import expense_subtask
 
-            set_usage_task("definitions")
-            definition = await ctx.model_gateway.generate(
-                model_id=model_id,
-                messages=[{"role": "user", "content": user_msg}],
-                system_prompt=_DEFINITION_SYSTEM_PROMPT,
-                temperature=0.3,
-                max_tokens=8000,
-                reasoning_effort=thinking_level or None,
-            )
-            clear_usage_task()
+            with expense_subtask("definitions"):
+                definition = await ctx.model_gateway.generate(
+                    model_id=model_id,
+                    messages=[{"role": "user", "content": user_msg}],
+                    system_prompt=_DEFINITION_SYSTEM_PROMPT,
+                    temperature=0.3,
+                    max_tokens=8000,
+                    reasoning_effort=thinking_level or None,
+                )
 
             if definition.strip():
                 from kt_models.link_normalizer import normalize_ai_links
@@ -160,18 +159,17 @@ class DefinitionPipeline:
                     )
                     model_id = ctx.model_gateway.definition_model
                     thinking_level = ctx.model_gateway.definition_thinking_level
-                    from kt_models.usage import clear_usage_task, set_usage_task
+                    from kt_models.expense import expense_subtask
 
-                    set_usage_task("definitions")
-                    definition = await ctx.model_gateway.generate(
-                        model_id=model_id,
-                        messages=[{"role": "user", "content": user_msg}],
-                        system_prompt=_DEFINITION_SYSTEM_PROMPT,
-                        temperature=0.3,
-                        max_tokens=8000,
-                        reasoning_effort=thinking_level or None,
-                    )
-                    clear_usage_task()
+                    with expense_subtask("definitions"):
+                        definition = await ctx.model_gateway.generate(
+                            model_id=model_id,
+                            messages=[{"role": "user", "content": user_msg}],
+                            system_prompt=_DEFINITION_SYSTEM_PROMPT,
+                            temperature=0.3,
+                            max_tokens=8000,
+                            reasoning_effort=thinking_level or None,
+                        )
                     if definition.strip():
                         from kt_models.link_normalizer import normalize_ai_links
 

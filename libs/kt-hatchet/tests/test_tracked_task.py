@@ -2,7 +2,8 @@
 
 We don't spin up a real Hatchet worker — a stub workflow is enough to
 prove that the decorator sets ``ExpenseContext`` on the ContextVar for
-the duration of ``run()`` and reads common IDs off the input.
+the duration of ``run()``, reads common IDs off the input, and
+dispatches to ``durable_task`` when asked.
 """
 
 from __future__ import annotations
@@ -10,9 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import pytest
-
-from kt_hatchet.tracked_task import TrackedWorkflowTask, tracked_task
+from kt_hatchet.tracked_task import tracked_task
 from kt_models.expense import ExpenseContext, get_current_expense
 
 
@@ -23,8 +22,14 @@ class _StubWorkflow:
         self.registered: list[dict[str, Any]] = []
 
     def task(self, **hatchet_kwargs: Any) -> Any:
+        return self._register("task", hatchet_kwargs)
+
+    def durable_task(self, **hatchet_kwargs: Any) -> Any:
+        return self._register("durable_task", hatchet_kwargs)
+
+    def _register(self, kind: str, hatchet_kwargs: dict[str, Any]) -> Any:
         def decorator(fn: Any) -> Any:
-            self.registered.append({"fn": fn, "kwargs": hatchet_kwargs})
+            self.registered.append({"kind": kind, "fn": fn, "kwargs": hatchet_kwargs})
             return fn
 
         return decorator
@@ -53,6 +58,7 @@ async def test_tracked_task_sets_expense_from_input() -> None:
         return "ok"
 
     assert len(wf.registered) == 1
+    assert wf.registered[0]["kind"] == "task"
     assert wf.registered[0]["kwargs"] == {"execution_timeout": "5m"}
 
     result = await handler(_FakeInput(), _FakeCtx())
@@ -65,6 +71,17 @@ async def test_tracked_task_sets_expense_from_input() -> None:
     assert expense.message_id == "msg-1"
     assert expense.user_id == "user-1"
     assert expense.workflow_run_id == "run-1"
+
+
+async def test_tracked_task_durable_routes_to_durable_task() -> None:
+    wf = _StubWorkflow()
+
+    @tracked_task(wf, task_type="long", durable=True, execution_timeout="6h")
+    async def handler(input: _FakeInput, ctx: _FakeCtx) -> None:
+        return None
+
+    assert wf.registered[0]["kind"] == "durable_task"
+    assert wf.registered[0]["kwargs"] == {"execution_timeout": "6h"}
 
 
 async def test_tracked_task_resets_contextvar_after_run() -> None:
@@ -98,32 +115,3 @@ async def test_tracked_task_custom_expense_builder() -> None:
     assert expense is not None
     assert expense.task_type == "override"
     assert expense.synthesis_id == "msg-1"
-
-
-async def test_tracked_workflow_task_subclass() -> None:
-    wf = _StubWorkflow()
-    captured: dict[str, ExpenseContext | None] = {}
-
-    class MyTask(TrackedWorkflowTask[_FakeInput, str]):
-        task_type = "subclass_task"
-
-        async def run(self, input: _FakeInput, ctx: Any, expense: ExpenseContext) -> str:
-            captured["expense"] = get_current_expense()
-            return expense.task_type
-
-    MyTask.register(wf)
-
-    fn = wf.registered[0]["fn"]
-    out = await fn(_FakeInput(), _FakeCtx())
-    assert out == "subclass_task"
-    expense = captured["expense"]
-    assert expense is not None
-    assert expense.task_type == "subclass_task"
-
-
-def test_subclass_must_declare_task_type() -> None:
-    with pytest.raises(TypeError, match="task_type"):
-
-        class Bad(TrackedWorkflowTask[_FakeInput, str]):
-            async def run(self, input: _FakeInput, ctx: Any, expense: ExpenseContext) -> str:
-                return "nope"

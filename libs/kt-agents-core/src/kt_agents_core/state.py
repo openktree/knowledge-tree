@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from kt_graph.read_engine import ReadGraphEngine
     from kt_graph.worker_engine import WorkerGraphEngine
     from kt_models.embeddings import EmbeddingService
-    from kt_models.expense import ExpenseContext
     from kt_models.gateway import ModelGateway
     from kt_providers.fetch import FetchProviderRegistry, FileDataStore
     from kt_providers.registry import ProviderRegistry
@@ -122,7 +121,6 @@ class AgentContext:
         pipeline_tracker: Any | None = None,
         write_session_factory: async_sessionmaker[AsyncSession] | None = None,
         qdrant_client: AsyncQdrantClient | None = None,
-        expense: ExpenseContext | None = None,
     ) -> None:
         self.graph_engine = graph_engine
         self.provider_registry = provider_registry
@@ -137,7 +135,6 @@ class AgentContext:
         self.last_activity_at: float = time.monotonic()
         self._parent = parent
         self.pipeline_tracker: Any | None = pipeline_tracker
-        self.expense: ExpenseContext | None = expense
 
         if file_data_store is None:
             from kt_providers.fetch import FileDataStore as _FDS
@@ -182,7 +179,6 @@ class AgentContext:
             pipeline_tracker=self.pipeline_tracker,
             write_session_factory=self.write_session_factory,
             qdrant_client=self.qdrant_client,
-            expense=self.expense,
         )
 
     async def emit(self, event_type: str, **data: Any) -> None:

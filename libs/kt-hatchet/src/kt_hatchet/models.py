@@ -24,19 +24,6 @@ class GraphAwareMixin(BaseModel):
     graph_id: str | None = None
 
 
-# -- Token usage -------------------------------------------------------
-
-
-class TokenUsageSummary(BaseModel):
-    """Aggregated token usage from LLM calls within a task or workflow."""
-
-    total_prompt_tokens: int = 0
-    total_completion_tokens: int = 0
-    total_cost_usd: float = 0.0
-    by_model: dict[str, dict[str, int | float]] = Field(default_factory=dict)
-    by_task: dict[str, dict[str, int | float]] = Field(default_factory=dict)
-
-
 # -- Search & decomposition --------------------------------------------
 
 

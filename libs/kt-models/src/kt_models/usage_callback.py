@@ -16,21 +16,26 @@ from uuid import UUID
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 
-from kt_models.expense import ExpenseContext
+from kt_models.expense import require_current_expense
 from kt_models.usage_sink import record_llm_usage
 
 logger = logging.getLogger(__name__)
 
 
 class UsageTrackingCallback(BaseCallbackHandler):
-    """Emit usage records from LangChain chat-model invocations."""
+    """Emit usage records from LangChain chat-model invocations.
+
+    ``on_llm_end`` runs inside the same async context as the
+    originating ``ainvoke`` / ``astream`` call, so it can read the
+    ambient :class:`ExpenseContext` via ``require_current_expense()``.
+    No constructor wiring — attaching this callback is enough.
+    """
 
     raise_error: bool = False
     run_inline: bool = True
 
-    def __init__(self, *, model_id: str, expense: ExpenseContext | None = None) -> None:
+    def __init__(self, *, model_id: str) -> None:
         self._model_id = model_id
-        self._expense = expense
 
     def on_llm_end(
         self,
@@ -48,7 +53,7 @@ class UsageTrackingCallback(BaseCallbackHandler):
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             cost_usd=cost_usd,
-            expense=self._expense,
+            expense=require_current_expense(),
         )
 
 

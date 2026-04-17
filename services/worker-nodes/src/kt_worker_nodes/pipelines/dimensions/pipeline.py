@@ -159,13 +159,12 @@ class DimensionPipeline:
 
             saturation_threshold = int(settings.dimension_fact_limit * settings.dimension_saturation_ratio)
 
-            from kt_models.usage import clear_usage_task, set_usage_task
+            from kt_models.expense import expense_subtask
 
             for batch_index, batch_facts, existing_dim in batches:
                 # Generate dimension for this batch
-                set_usage_task("dimensions")
-                dim_results = await generate_dimensions(node, batch_facts, model_ids, ctx.model_gateway, **kwargs)
-                clear_usage_task()
+                with expense_subtask("dimensions"):
+                    dim_results = await generate_dimensions(node, batch_facts, model_ids, ctx.model_gateway, **kwargs)
                 result.dim_results.extend(dim_results)
 
                 # If regenerating unsaturated dim, delete old one first
@@ -253,18 +252,17 @@ class DimensionPipeline:
 
                     # For batch pipeline, new nodes have no existing dims
                     # Just generate one batch with up to fact_limit facts
-                    from kt_models.usage import clear_usage_task, set_usage_task
+                    from kt_models.expense import expense_subtask
 
                     batch_facts = t.pool_facts[: settings.dimension_fact_limit]
-                    set_usage_task("dimensions")
-                    t.dim_results = await generate_dimensions(
-                        t.node,
-                        batch_facts,
-                        model_ids,
-                        ctx.model_gateway,
-                        **kwargs,
-                    )
-                    clear_usage_task()
+                    with expense_subtask("dimensions"):
+                        t.dim_results = await generate_dimensions(
+                            t.node,
+                            batch_facts,
+                            model_ids,
+                            ctx.model_gateway,
+                            **kwargs,
+                        )
                     # Tag batch metadata for storage phase
                     t._batch_facts_list = batch_facts  # type: ignore[attr-defined]
                     await ctx.emit("activity_log", action=f"Generated dimensions for '{t.name}'", tool="build_pipeline")

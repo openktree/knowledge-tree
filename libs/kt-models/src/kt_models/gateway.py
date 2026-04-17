@@ -10,7 +10,7 @@ from litellm import acompletion
 from pydantic import SecretStr
 
 from kt_config.settings import get_settings
-from kt_models.expense import ExpenseContext, resolve_expense
+from kt_models.expense import require_current_expense
 from kt_models.usage_callback import UsageTrackingCallback
 from kt_models.usage_sink import record_llm_usage
 
@@ -154,17 +154,14 @@ def _is_retryable(exc: Exception) -> bool:
     return isinstance(exc, (RateLimitError, ServiceUnavailableError, InternalServerError, Timeout))
 
 
-def _record_llm_usage(response: Any, model: str, expense: ExpenseContext | None) -> None:
-    """Record token usage from a LiteLLM response.
+def _record_llm_usage(response: Any, model: str) -> None:
+    """Forward token usage from a LiteLLM response to the sink.
 
-    Writes to both the legacy ContextVar accumulator (back-compat for any
-    task still using ``start_usage_tracking`` / ``flush_usage_to_db``)
-    and the new ``UsageSink`` keyed by ``ExpenseContext``. Tasks migrated
-    to ``TrackedWorkflowTask`` rely on the sink; legacy tasks still see
-    accumulator-based rows until they are migrated.
+    Reads the ambient :class:`ExpenseContext` via
+    :func:`require_current_expense` — if the caller forgot to wrap
+    itself in ``@tracked_task`` or :func:`expense_scope`, this raises
+    rather than writing a silently mistagged row.
     """
-    from kt_models.usage import record_usage
-
     usage = getattr(response, "usage", None)
     if usage is None:
         return
@@ -185,15 +182,12 @@ def _record_llm_usage(response: Any, model: str, expense: ExpenseContext | None)
         except Exception:
             pass
 
-    # Legacy path — keeps working until all callers migrate.
-    record_usage(model, prompt_tokens, completion_tokens, cost_usd)
-    # New path — resolves expense from arg or ambient ContextVar, writes to sink.
     record_llm_usage(
         model_id=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         cost_usd=cost_usd,
-        expense=resolve_expense(expense),
+        expense=require_current_expense(),
     )
 
 
@@ -252,7 +246,7 @@ class ModelGateway:
         self.definition_thinking_level: str = settings.definition_thinking_level or _default_tl
         self.crystallization_thinking_level: str = settings.crystallization_thinking_level or _default_tl
 
-    async def _call_with_retry(self, *, expense: ExpenseContext | None = None, **kwargs: Any) -> Any:
+    async def _call_with_retry(self, **kwargs: Any) -> Any:
         """Call acompletion with exponential backoff on retryable errors.
 
         Each attempt is wrapped in ``asyncio.wait_for`` so a hung
@@ -280,8 +274,8 @@ class ModelGateway:
                     acompletion(**kwargs),
                     timeout=timeout,
                 )
-                # Record usage if tracking is active
-                _record_llm_usage(response, kwargs.get("model", "unknown"), expense)
+                # Record usage via the sink — ambient ExpenseContext required.
+                _record_llm_usage(response, kwargs.get("model", "unknown"))
                 return response
             except asyncio.TimeoutError:
                 model = kwargs.get("model", "?")
@@ -314,24 +308,15 @@ class ModelGateway:
                 await asyncio.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
-    def get_chat_model(
-        self,
-        model_id: str | None = None,
-        *,
-        expense: ExpenseContext | None = None,
-        **kwargs: Any,
-    ) -> ChatOpenAI:
+    def get_chat_model(self, model_id: str | None = None, **kwargs: Any) -> ChatOpenAI:
         """Return a LangChain ChatModel for use with bind_tools.
 
         Uses ChatOpenAI pointed at the OpenRouter API, which provides
         native tool-calling support across all hosted models. The
         returned instance has a :class:`UsageTrackingCallback` attached
-        so every ``ainvoke`` / ``astream`` records usage via the sink.
-
-        ``expense`` binds the returned model to a specific
-        :class:`ExpenseContext`. If omitted, the callback resolves it
-        from the ambient ContextVar at call time (or falls back to
-        ``ExpenseContext.unknown()``).
+        so every ``ainvoke`` / ``astream`` records usage via the sink;
+        the callback reads the ambient :class:`ExpenseContext` at call
+        time, so the caller must already be inside a tracked scope.
 
         Pass reasoning_effort="low"|"medium"|"high" to enable model thinking.
         """
@@ -348,7 +333,6 @@ class ModelGateway:
             **extra_kwargs,
             "extra_body": {"usage": {"include": True}},
         }
-        callback = UsageTrackingCallback(model_id=mid, expense=expense)
         return ChatOpenAI(
             model=model_name,
             api_key=SecretStr(self._api_key) if self._api_key else None,
@@ -357,7 +341,7 @@ class ModelGateway:
             max_tokens=int(kwargs.get("max_tokens", 1000)),
             model_kwargs=model_kwargs,
             default_headers=_OPENROUTER_HEADERS,
-            callbacks=[callback],
+            callbacks=[UsageTrackingCallback(model_id=mid)],
         )
 
     @traceable(name="ModelGateway.generate_with_tools")
@@ -369,8 +353,6 @@ class ModelGateway:
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        *,
-        expense: ExpenseContext | None = None,
     ) -> list[dict[str, Any]]:
         """Generate a response with tool calling and return parsed tool calls.
 
@@ -392,7 +374,6 @@ class ModelGateway:
         msgs.extend(messages)
 
         response = await self._call_with_retry(
-            expense=expense,
             model=model_id,
             messages=msgs,
             tools=tools,
@@ -427,8 +408,6 @@ class ModelGateway:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         reasoning_effort: str | None = None,
-        *,
-        expense: ExpenseContext | None = None,
     ) -> str:
         """Generate a response from a single model.
 
@@ -454,7 +433,6 @@ class ModelGateway:
             extra["allowed_openai_params"] = ["reasoning_effort"]
 
         response = await self._call_with_retry(
-            expense=expense,
             model=model_id,
             messages=msgs,
             api_key=self._api_key,
@@ -473,8 +451,6 @@ class ModelGateway:
         temperature: float = 0.0,
         max_tokens: int = 16000,
         reasoning_effort: str | None = None,
-        *,
-        expense: ExpenseContext | None = None,
     ) -> dict:  # type: ignore[type-arg]
         """Generate a JSON response from a model.
 
@@ -505,7 +481,6 @@ class ModelGateway:
 
         for attempt in range(1 + _JSON_PARSE_MAX_RETRIES):
             response = await self._call_with_retry(
-                expense=expense,
                 model=model_id,
                 messages=msgs,
                 api_key=self._api_key,
@@ -663,8 +638,6 @@ class ModelGateway:
         temperature: float = 0.0,
         max_tokens: int = 2000,
         reasoning_effort: str | None = None,
-        *,
-        expense: ExpenseContext | None = None,
     ) -> dict:  # type: ignore[type-arg]
         """Generate a response validated against a pydantic model's JSON schema.
 
@@ -703,7 +676,6 @@ class ModelGateway:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     reasoning_effort=reasoning_effort,
-                    expense=expense,
                 )
         except Exception:
             pass
@@ -719,7 +691,6 @@ class ModelGateway:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 reasoning_effort=reasoning_effort,
-                expense=expense,
             )
 
         extra: dict[str, Any] = {}
@@ -738,7 +709,6 @@ class ModelGateway:
 
         try:
             response = await self._call_with_retry(
-                expense=expense,
                 model=model_id,
                 messages=msgs,
                 api_key=self._api_key,
@@ -775,7 +745,6 @@ class ModelGateway:
             temperature=temperature,
             max_tokens=max_tokens,
             reasoning_effort=reasoning_effort,
-            expense=expense,
         )
 
     async def generate_parallel(
@@ -786,8 +755,6 @@ class ModelGateway:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         reasoning_effort: str | None = None,
-        *,
-        expense: ExpenseContext | None = None,
     ) -> dict[str, str]:
         """Generate responses from multiple models in parallel.
 
@@ -813,7 +780,6 @@ class ModelGateway:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     reasoning_effort=reasoning_effort,
-                    expense=expense,
                 )
                 return (mid, result)
             except Exception as e:

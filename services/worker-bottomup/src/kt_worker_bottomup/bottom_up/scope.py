@@ -202,18 +202,17 @@ async def plan_perspectives(
     )
 
     try:
-        from kt_models.usage import clear_usage_task, set_usage_task
+        from kt_models.expense import expense_subtask
 
-        set_usage_task("perspective_planning")
-        tool_calls = await ctx.model_gateway.generate_with_tools(
-            model_id=ctx.model_gateway.scope_model,
-            messages=[{"role": "user", "content": user_msg}],
-            tools=[_PROPOSE_PERSPECTIVE_TOOL],
-            system_prompt=PERSPECTIVE_SYSTEM,
-            temperature=0.3,
-            max_tokens=2000,
-        )
-        clear_usage_task()
+        with expense_subtask("perspective_planning"):
+            tool_calls = await ctx.model_gateway.generate_with_tools(
+                model_id=ctx.model_gateway.scope_model,
+                messages=[{"role": "user", "content": user_msg}],
+                tools=[_PROPOSE_PERSPECTIVE_TOOL],
+                system_prompt=PERSPECTIVE_SYSTEM,
+                temperature=0.3,
+                max_tokens=2000,
+            )
 
         plans: list[dict[str, Any]] = []
         for tc in tool_calls:
@@ -380,17 +379,16 @@ async def prioritize_extracted_nodes(
     )
 
     try:
-        from kt_models.usage import clear_usage_task, set_usage_task
+        from kt_models.expense import expense_subtask
 
-        set_usage_task("prioritization")
-        result = await ctx.model_gateway.generate_json(
-            model_id=ctx.model_gateway.prioritization_model,
-            messages=[{"role": "user", "content": user_msg}],
-            system_prompt=PRIORITIZE_SYSTEM,
-            temperature=0.2,
-            max_tokens=8000,
-        )
-        clear_usage_task()
+        with expense_subtask("prioritization"):
+            result = await ctx.model_gateway.generate_json(
+                model_id=ctx.model_gateway.prioritization_model,
+                messages=[{"role": "user", "content": user_msg}],
+                system_prompt=PRIORITIZE_SYSTEM,
+                temperature=0.2,
+                max_tokens=8000,
+            )
 
         if not result or not isinstance(result.get("nodes"), list):
             # Fallback: return all nodes as selected with default priority
