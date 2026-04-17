@@ -29,6 +29,7 @@ from kt_hatchet.models import (
     SearchOutput,
     WebSearchInput,
 )
+from kt_hatchet.tracked_task import tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,9 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 # ---------------------------------------------------------------------------
 
 
-@hatchet.task(
+@tracked_task(
+    hatchet,
+    task_type="decomposition",
     name="decompose_chunk",
     input_validator=DecomposeChunkInput,
     execution_timeout=timedelta(minutes=10),
@@ -48,11 +51,7 @@ _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_mi
 )
 async def decompose_chunk_task(input: DecomposeChunkInput, ctx: Context) -> dict:
     """Decompose a single text chunk into provenance-tracked facts."""
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
-
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     from kt_db.repositories.write_sources import WriteSourceRepository
     from kt_facts.pipeline import DecompositionPipeline
@@ -102,8 +101,6 @@ async def decompose_chunk_task(input: DecomposeChunkInput, ctx: Context) -> dict
         fact_count,
     )
 
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "decomposition")
-
     return DecomposeChunkOutput(
         fact_count=fact_count,
         fact_ids=fact_ids,
@@ -120,7 +117,12 @@ decompose_page_wf = hatchet.workflow(
 )
 
 
-@decompose_page_wf.task(execution_timeout=timedelta(minutes=10), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    decompose_page_wf,
+    task_type="decompose_page",
+    execution_timeout=timedelta(minutes=10),
+    schedule_timeout=_schedule_timeout,
+)
 async def decompose_page(input: DecomposePageInput, ctx: Context) -> dict:
     """Load a page, segment into chunks, fan out decompose_chunk tasks."""
     state = cast(WorkerState, ctx.lifespan)
@@ -202,7 +204,12 @@ async def decompose_page(input: DecomposePageInput, ctx: Context) -> dict:
 search_wf = hatchet.workflow(name="search", input_validator=WebSearchInput)
 
 
-@search_wf.task(execution_timeout=timedelta(minutes=10), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    search_wf,
+    task_type="web_search",
+    execution_timeout=timedelta(minutes=10),
+    schedule_timeout=_schedule_timeout,
+)
 async def web_search(input: WebSearchInput, ctx: Context) -> dict:
     """Execute web search, store results, fan out page decomposition."""
     state = cast(WorkerState, ctx.lifespan)

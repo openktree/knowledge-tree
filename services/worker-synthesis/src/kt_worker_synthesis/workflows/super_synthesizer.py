@@ -23,6 +23,7 @@ from kt_hatchet.models import (
     SuperSynthesizerOutput,
     SynthesizerInput,
 )
+from kt_hatchet.tracked_task import tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,12 @@ super_synthesizer_wf = hatchet.workflow(
 )
 
 
-@super_synthesizer_wf.task(name="reconnaissance", execution_timeout=timedelta(minutes=10))
+@tracked_task(
+    super_synthesizer_wf,
+    task_type="super_synthesis_recon",
+    name="reconnaissance",
+    execution_timeout=timedelta(minutes=10),
+)
 async def reconnaissance(input: SuperSynthesizerInput, ctx: Context) -> dict[str, Any]:
     """Plan scopes by searching the graph and designing sub-synthesis configs.
 
@@ -218,7 +224,9 @@ async def run_sub_syntheses(input: SuperSynthesizerInput, ctx: Context) -> dict[
     return {"synthesis_node_ids": synthesis_node_ids}
 
 
-@super_synthesizer_wf.task(
+@tracked_task(
+    super_synthesizer_wf,
+    task_type="super_synthesis_combine",
     name="combine",
     parents=[run_sub_syntheses],
     execution_timeout=timedelta(minutes=30),

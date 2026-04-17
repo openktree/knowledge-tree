@@ -29,6 +29,7 @@ from kt_hatchet.models import (
     IngestPartitionOutput,
     ProposedNode,
 )
+from kt_hatchet.tracked_task import tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +178,13 @@ ingest_confirm_wf = hatchet.workflow(
 )
 
 
-@ingest_confirm_wf.durable_task(execution_timeout=timedelta(hours=12), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    ingest_confirm_wf,
+    task_type="ingest_confirm",
+    durable=True,
+    execution_timeout=timedelta(hours=12),
+    schedule_timeout=_schedule_timeout,
+)
 async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
     """Run the full ingest pipeline: process sources, decompose, build nodes.
 
@@ -185,11 +192,7 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
     Phase 2: Decompose selected chunks into facts
     Phase 3: Run the ingest agent for node building
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
-
     worker_state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     from kt_db.repositories.conversations import ConversationRepository
     from kt_worker_ingest.agents.ingest_worker import IngestWorker
@@ -519,14 +522,6 @@ async def handle_ingest(input: IngestConfirmInput, ctx: DurableContext) -> dict:
             ingest_edges_created = len(result.created_edges) if result.created_edges else 0
             ingest_nav_used = result.nav_used
 
-        # ── Flush usage to DB (self-reporting) ─────────────────────
-        await flush_usage_to_db(
-            worker_state.write_session_factory,
-            input.conversation_id,
-            input.message_id,
-            "ingest",
-        )
-
         # ── Persist ingest research report ─────────────────────────
         try:
             from kt_db.repositories.research_reports import ResearchReportRepository
@@ -579,7 +574,13 @@ ingest_partition_wf = hatchet.workflow(
 )
 
 
-@ingest_partition_wf.durable_task(execution_timeout=timedelta(hours=4), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    ingest_partition_wf,
+    task_type="ingest_partition",
+    durable=True,
+    execution_timeout=timedelta(hours=4),
+    schedule_timeout=_schedule_timeout,
+)
 async def run_ingest_partition(input: IngestPartitionInput, ctx: DurableContext) -> dict:
     """Run ingest agent on a partition of the content index.
 
@@ -672,7 +673,13 @@ ingest_decompose_wf = hatchet.workflow(
 )
 
 
-@ingest_decompose_wf.durable_task(execution_timeout=timedelta(hours=6), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    ingest_decompose_wf,
+    task_type="ingest_decompose",
+    durable=True,
+    execution_timeout=timedelta(hours=6),
+    schedule_timeout=_schedule_timeout,
+)
 async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> dict:
     """Phase 1: Process sources, decompose facts, extract nodes, filter, prioritize.
 
@@ -989,20 +996,6 @@ async def handle_decompose(input: IngestDecomposeInput, ctx: DurableContext) -> 
 
             ctx.log(f"Auto-build: created {len(created_node_ids)} nodes, {len(created_edge_ids)} edges")
 
-        # ── Flush usage to DB ─────────────────────────────────────
-        if created_node_ids:
-            try:
-                from kt_hatchet.usage_helpers import flush_usage_to_db
-
-                await flush_usage_to_db(
-                    worker_state.write_session_factory,
-                    input.conversation_id,
-                    input.message_id,
-                    "ingest_build",
-                )
-            except Exception:
-                logger.warning("Failed to flush usage", exc_info=True)
-
         # ── Persist research report ───────────────────────────────
         if created_node_ids:
             try:
@@ -1081,19 +1074,22 @@ ingest_build_wf = hatchet.workflow(
 )
 
 
-@ingest_build_wf.durable_task(execution_timeout=timedelta(hours=6), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    ingest_build_wf,
+    task_type="ingest_build",
+    durable=True,
+    execution_timeout=timedelta(hours=6),
+    schedule_timeout=_schedule_timeout,
+)
 async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
     """Phase 2: Build user-confirmed nodes from document ingest.
 
     Follows the same pattern as bottom_up_build_wf.
     """
     from kt_hatchet.models import BuildNodeInput
-    from kt_hatchet.usage_helpers import flush_usage_to_db
     from kt_hatchet.utils import resolve_perspective_source_ids
-    from kt_models.usage import start_usage_tracking
 
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     msg_uuid = uuid.UUID(input.message_id)
     conv_uuid = uuid.UUID(input.conversation_id)
@@ -1243,14 +1239,6 @@ async def handle_build(input: IngestBuildInput, ctx: DurableContext) -> dict:
                     logger.exception("Ingest build: composite perspective build failed")
 
             ctx.log(f"Built {perspective_node_count} perspective nodes")
-
-        # ── Flush usage to DB (self-reporting) ─────────────────────
-        await flush_usage_to_db(
-            state.write_session_factory,
-            input.conversation_id,
-            input.message_id,
-            "ingest_build",
-        )
 
         # ── Persist research report ─────────────────────────────────
         try:

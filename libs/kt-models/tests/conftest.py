@@ -12,6 +12,21 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from kt_config.settings import get_settings
 from kt_db.models import Base
+from kt_models.expense import ExpenseContext, reset_current_expense, set_current_expense
+
+
+@pytest.fixture(autouse=True)
+def _ambient_test_expense():
+    """Every test runs inside a baseline ExpenseContext so gateway calls don't raise.
+
+    Tests that want to assert fail-fast behaviour can override with their
+    own ``expense_scope`` / ``set_current_expense`` calls.
+    """
+    token = set_current_expense(ExpenseContext(task_type="test"))
+    try:
+        yield
+    finally:
+        reset_current_expense(token)
 
 
 def _worker_schema() -> str:

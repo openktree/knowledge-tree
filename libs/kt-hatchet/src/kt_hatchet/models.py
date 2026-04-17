@@ -24,19 +24,6 @@ class GraphAwareMixin(BaseModel):
     graph_id: str | None = None
 
 
-# -- Token usage -------------------------------------------------------
-
-
-class TokenUsageSummary(BaseModel):
-    """Aggregated token usage from LLM calls within a task or workflow."""
-
-    total_prompt_tokens: int = 0
-    total_completion_tokens: int = 0
-    total_cost_usd: float = 0.0
-    by_model: dict[str, dict[str, int | float]] = Field(default_factory=dict)
-    by_task: dict[str, dict[str, int | float]] = Field(default_factory=dict)
-
-
 # -- Search & decomposition --------------------------------------------
 
 
@@ -657,6 +644,11 @@ class SynthesizerInput(GraphAwareMixin):
     visibility: str = "public"
     creator_id: str | None = None
     model_id: str | None = None
+    # Tracking IDs — synthesis is not conversation-scoped, but the usage
+    # dashboard groups rows by these fields. When empty, rows still land
+    # under task_type="synthesis".
+    conversation_id: str = ""
+    message_id: str = ""
 
 
 class SynthesizerOutput(BaseModel):
@@ -679,6 +671,8 @@ class SuperSynthesizerInput(GraphAwareMixin):
     creator_id: str | None = None
     distance_threshold: float = 0.7
     model_id: str | None = None
+    conversation_id: str = ""
+    message_id: str = ""
 
 
 class SuperSynthesizerOutput(BaseModel):

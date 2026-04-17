@@ -5,6 +5,8 @@ from typing import Any
 from litellm import aembedding
 
 from kt_config.settings import get_settings
+from kt_models.expense import require_current_expense
+from kt_models.usage_sink import record_llm_usage
 
 # OpenRouter app identification headers
 _OPENROUTER_HEADERS = {
@@ -18,9 +20,11 @@ _MAX_RETRIES = 2
 
 
 def _record_embedding_usage(response: Any, model: str) -> None:
-    """Record embedding token usage to the ContextVar accumulator."""
-    from kt_models.usage import record_usage
+    """Forward embedding token usage to the sink.
 
+    Reads the ambient :class:`ExpenseContext` — if unset, raises so
+    silent embeddings don't pile up as untracked rows.
+    """
     usage = getattr(response, "usage", None)
     if usage is None:
         return
@@ -40,7 +44,14 @@ def _record_embedding_usage(response: Any, model: str) -> None:
         except Exception:
             pass
 
-    record_usage(model, prompt_tokens, total_tokens - prompt_tokens, cost_usd)
+    completion_tokens = max(0, total_tokens - prompt_tokens)
+    record_llm_usage(
+        model_id=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost_usd,
+        expense=require_current_expense(),
+    )
 
 
 class EmbeddingService:

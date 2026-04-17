@@ -10,6 +10,9 @@ from litellm import acompletion
 from pydantic import SecretStr
 
 from kt_config.settings import get_settings
+from kt_models.expense import require_current_expense
+from kt_models.usage_callback import UsageTrackingCallback
+from kt_models.usage_sink import record_llm_usage
 
 logger = logging.getLogger(__name__)
 
@@ -152,9 +155,13 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def _record_llm_usage(response: Any, model: str) -> None:
-    """Record token usage from a LiteLLM response to the ContextVar accumulator."""
-    from kt_models.usage import record_usage
+    """Forward token usage from a LiteLLM response to the sink.
 
+    Reads the ambient :class:`ExpenseContext` via
+    :func:`require_current_expense` — if the caller forgot to wrap
+    itself in ``@tracked_task`` or :func:`expense_scope`, this raises
+    rather than writing a silently mistagged row.
+    """
     usage = getattr(response, "usage", None)
     if usage is None:
         return
@@ -175,7 +182,13 @@ def _record_llm_usage(response: Any, model: str) -> None:
         except Exception:
             pass
 
-    record_usage(model, prompt_tokens, completion_tokens, cost_usd)
+    record_llm_usage(
+        model_id=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost_usd,
+        expense=require_current_expense(),
+    )
 
 
 def _format_usage(response: Any, max_tokens: int) -> str:
@@ -261,7 +274,7 @@ class ModelGateway:
                     acompletion(**kwargs),
                     timeout=timeout,
                 )
-                # Record usage if tracking is active
+                # Record usage via the sink — ambient ExpenseContext required.
                 _record_llm_usage(response, kwargs.get("model", "unknown"))
                 return response
             except asyncio.TimeoutError:
@@ -299,7 +312,11 @@ class ModelGateway:
         """Return a LangChain ChatModel for use with bind_tools.
 
         Uses ChatOpenAI pointed at the OpenRouter API, which provides
-        native tool-calling support across all hosted models.
+        native tool-calling support across all hosted models. The
+        returned instance has a :class:`UsageTrackingCallback` attached
+        so every ``ainvoke`` / ``astream`` records usage via the sink;
+        the callback reads the ambient :class:`ExpenseContext` at call
+        time, so the caller must already be inside a tracked scope.
 
         Pass reasoning_effort="low"|"medium"|"high" to enable model thinking.
         """
@@ -310,14 +327,21 @@ class ModelGateway:
         reasoning_effort = kwargs.pop("reasoning_effort", None)
         if reasoning_effort:
             extra_kwargs["reasoning_effort"] = reasoning_effort
+        # Ask OpenRouter to include cost in the response usage field so the
+        # callback can record it without a fallback round-trip.
+        model_kwargs: dict[str, Any] = {
+            **extra_kwargs,
+            "extra_body": {"usage": {"include": True}},
+        }
         return ChatOpenAI(
             model=model_name,
             api_key=SecretStr(self._api_key) if self._api_key else None,
             base_url="https://openrouter.ai/api/v1",
             temperature=float(kwargs.get("temperature", 0.3)),
             max_tokens=int(kwargs.get("max_tokens", 1000)),
-            model_kwargs=extra_kwargs,
+            model_kwargs=model_kwargs,
             default_headers=_OPENROUTER_HEADERS,
+            callbacks=[UsageTrackingCallback(model_id=mid)],
         )
 
     @traceable(name="ModelGateway.generate_with_tools")

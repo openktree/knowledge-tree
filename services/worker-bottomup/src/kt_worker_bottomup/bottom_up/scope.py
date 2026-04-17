@@ -201,42 +201,43 @@ async def plan_perspectives(
         max_perspectives=max_perspectives,
     )
 
-    try:
-        from kt_models.usage import clear_usage_task, set_usage_task
+    # expense_subtask outside the try: plumbing errors (missing ambient
+    # ExpenseContext) must crash loudly. Only LLM/tool-call failures
+    # below are tolerable (return []).
+    from kt_models.expense import expense_subtask
 
-        set_usage_task("perspective_planning")
-        tool_calls = await ctx.model_gateway.generate_with_tools(
-            model_id=ctx.model_gateway.scope_model,
-            messages=[{"role": "user", "content": user_msg}],
-            tools=[_PROPOSE_PERSPECTIVE_TOOL],
-            system_prompt=PERSPECTIVE_SYSTEM,
-            temperature=0.3,
-            max_tokens=2000,
-        )
-        clear_usage_task()
+    with expense_subtask("perspective_planning"):
+        try:
+            tool_calls = await ctx.model_gateway.generate_with_tools(
+                model_id=ctx.model_gateway.scope_model,
+                messages=[{"role": "user", "content": user_msg}],
+                tools=[_PROPOSE_PERSPECTIVE_TOOL],
+                system_prompt=PERSPECTIVE_SYSTEM,
+                temperature=0.3,
+                max_tokens=2000,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to plan perspectives for scope %r",
+                scope_description,
+                exc_info=True,
+            )
+            return []
 
-        plans: list[dict[str, Any]] = []
-        for tc in tool_calls:
-            if tc["name"] != "propose_perspective":
-                continue
-            args = tc["arguments"]
-            if args.get("claim") and args.get("antithesis") and args.get("source_concept"):
-                plans.append(
-                    {
-                        "claim": args["claim"],
-                        "antithesis": args["antithesis"],
-                        "source_concept_id": args["source_concept"],
-                    }
-                )
-        return plans[:max_perspectives]
-
-    except Exception:
-        logger.warning(
-            "Failed to plan perspectives for scope %r",
-            scope_description,
-            exc_info=True,
-        )
-        return []
+    plans: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        if tc["name"] != "propose_perspective":
+            continue
+        args = tc["arguments"]
+        if args.get("claim") and args.get("antithesis") and args.get("source_concept"):
+            plans.append(
+                {
+                    "claim": args["claim"],
+                    "antithesis": args["antithesis"],
+                    "source_concept_id": args["source_concept"],
+                }
+            )
+    return plans[:max_perspectives]
 
 
 async def plan_and_store_perspective_seeds(
@@ -379,74 +380,74 @@ async def prioritize_extracted_nodes(
         node_list=node_list,
     )
 
-    try:
-        from kt_models.usage import clear_usage_task, set_usage_task
+    from kt_models.expense import expense_subtask
 
-        set_usage_task("prioritization")
-        result = await ctx.model_gateway.generate_json(
-            model_id=ctx.model_gateway.prioritization_model,
-            messages=[{"role": "user", "content": user_msg}],
-            system_prompt=PRIORITIZE_SYSTEM,
-            temperature=0.2,
-            max_tokens=8000,
-        )
-        clear_usage_task()
-
-        if not result or not isinstance(result.get("nodes"), list):
-            # Fallback: return all nodes as selected with default priority
+    # expense_subtask outside the try: plumbing errors crash loudly; only
+    # the LLM/parse path falls back to defaults.
+    with expense_subtask("prioritization"):
+        try:
+            result = await ctx.model_gateway.generate_json(
+                model_id=ctx.model_gateway.prioritization_model,
+                messages=[{"role": "user", "content": user_msg}],
+                system_prompt=PRIORITIZE_SYSTEM,
+                temperature=0.2,
+                max_tokens=8000,
+            )
+        except Exception:
+            logger.warning("Node prioritization LLM call failed, using defaults", exc_info=True)
             for n in filtered_nodes:
                 n.setdefault("priority", 5)
                 n.setdefault("selected", True)
                 n.setdefault("perspectives", [])
             return filtered_nodes
 
-        # Build lookup by normalized name.
-        # The LLM may rename nodes (e.g. to add subjects to ambiguous events),
-        # so we also track the original_name field for reverse mapping.
-        prioritized: dict[str, dict[str, Any]] = {}
-        for item in result["nodes"]:
-            if not isinstance(item, dict) or not item.get("name"):
-                continue
-            key = str(item["name"]).strip().lower()
-            prioritized[key] = item
-            # Also index by original_name if the LLM provided one
-            orig = item.get("original_name") or ""
-            if orig:
-                prioritized[str(orig).strip().lower()] = item
-
-        enriched: list[dict[str, Any]] = []
-        for n in filtered_nodes:
-            key = n.get("name", "").strip().lower()
-            match = prioritized.get(key)
-            if match:
-                # Apply renamed node name if the LLM improved it
-                new_name = match.get("name", "").strip()
-                if new_name and new_name.lower() != key:
-                    n["name"] = new_name
-                n["priority"] = max(0, min(10, int(match.get("priority", 5))))
-                n["selected"] = bool(match.get("selected", True))
-                n["node_type"] = match.get("node_type", n.get("node_type", "concept"))
-                perspectives = match.get("perspectives") or []
-                n["perspectives"] = [
-                    p for p in perspectives if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
-                ]
-            else:
-                n.setdefault("priority", 5)
-                n.setdefault("selected", True)
-                n.setdefault("perspectives", [])
-            enriched.append(n)
-
-        # Sort by priority descending
-        enriched.sort(key=lambda x: x.get("priority", 0), reverse=True)
-        return enriched
-
-    except Exception:
-        logger.warning("Node prioritization LLM call failed, using defaults", exc_info=True)
+    if not result or not isinstance(result.get("nodes"), list):
+        # Fallback: return all nodes as selected with default priority
         for n in filtered_nodes:
             n.setdefault("priority", 5)
             n.setdefault("selected", True)
             n.setdefault("perspectives", [])
         return filtered_nodes
+
+    # Build lookup by normalized name.
+    # The LLM may rename nodes (e.g. to add subjects to ambiguous events),
+    # so we also track the original_name field for reverse mapping.
+    prioritized: dict[str, dict[str, Any]] = {}
+    for item in result["nodes"]:
+        if not isinstance(item, dict) or not item.get("name"):
+            continue
+        key = str(item["name"]).strip().lower()
+        prioritized[key] = item
+        # Also index by original_name if the LLM provided one
+        orig = item.get("original_name") or ""
+        if orig:
+            prioritized[str(orig).strip().lower()] = item
+
+    enriched: list[dict[str, Any]] = []
+    for n in filtered_nodes:
+        key = n.get("name", "").strip().lower()
+        match = prioritized.get(key)
+        if match:
+            # Apply renamed node name if the LLM improved it
+            new_name = match.get("name", "").strip()
+            if new_name and new_name.lower() != key:
+                n["name"] = new_name
+            n["priority"] = max(0, min(10, int(match.get("priority", 5))))
+            n["selected"] = bool(match.get("selected", True))
+            n["node_type"] = match.get("node_type", n.get("node_type", "concept"))
+            perspectives = match.get("perspectives") or []
+            n["perspectives"] = [
+                p for p in perspectives if isinstance(p, dict) and p.get("claim") and p.get("antithesis")
+            ]
+        else:
+            n.setdefault("priority", 5)
+            n.setdefault("selected", True)
+            n.setdefault("perspectives", [])
+        enriched.append(n)
+
+    # Sort by priority descending
+    enriched.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    return enriched
 
 
 _PRIORITIZE_BATCH_SIZE = 75

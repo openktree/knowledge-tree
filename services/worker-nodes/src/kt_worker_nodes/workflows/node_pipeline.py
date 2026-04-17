@@ -49,6 +49,7 @@ from kt_hatchet.models import (
     NodePipelineInput,
     UpdateEdgesInput,
 )
+from kt_hatchet.tracked_task import tracked_task
 from kt_worker_nodes.hatchet_pipeline import HatchetPipeline
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,12 @@ node_pipeline_wf = hatchet.workflow(
 )
 
 
-@node_pipeline_wf.task(execution_timeout=timedelta(minutes=15), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    node_pipeline_wf,
+    task_type="node_creation",
+    execution_timeout=timedelta(minutes=15),
+    schedule_timeout=_schedule_timeout,
+)
 async def prepare_node(input: NodePipelineInput, ctx: Context) -> dict:
     """Prepare a node for the pipeline -- create from seed or load for rebuild.
 
@@ -88,21 +94,11 @@ async def prepare_node(input: NodePipelineInput, ctx: Context) -> dict:
 
     Returns ``{node_id, concept, node_type, status}`` in all modes.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
-
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
-
     is_rebuild = input.mode.startswith("rebuild")
-
     if is_rebuild:
-        result = await _prepare_rebuild(input, state, ctx)
-    else:
-        result = await _prepare_create(input, state, ctx)
-
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "node_creation")
-    return result
+        return await _prepare_rebuild(input, state, ctx)
+    return await _prepare_create(input, state, ctx)
 
 
 async def _prepare_create(
@@ -214,7 +210,10 @@ async def _prepare_rebuild(
     }
 
 
-@node_pipeline_wf.durable_task(
+@tracked_task(
+    node_pipeline_wf,
+    task_type="dimensions",
+    durable=True,
     parents=[prepare_node],
     execution_timeout=timedelta(minutes=30),
     schedule_timeout=_schedule_timeout,
@@ -227,11 +226,7 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
 
     Returns ``DimensionsOutput`` with node_id and aggregated edge_ids.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
-
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     prepare_result: dict = ctx.task_output(prepare_node)
     node_id_str: str | None = prepare_result.get("node_id")
@@ -336,8 +331,6 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
 
     ctx.log(f"generate_dimensions: done -- {dims_created} dimensions, {len(all_edge_ids)} edges")
 
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "dimensions")
-
     return DimensionsOutput(
         node_id=node_id_str,
         dimensions_created=dims_created,
@@ -346,7 +339,9 @@ async def generate_dimensions(input: NodePipelineInput, ctx: DurableContext) -> 
     ).model_dump()
 
 
-@node_pipeline_wf.task(
+@tracked_task(
+    node_pipeline_wf,
+    task_type="definition",
     parents=[prepare_node],
     execution_timeout=timedelta(minutes=15),
     schedule_timeout=_schedule_timeout,
@@ -356,11 +351,7 @@ async def generate_definition(input: NodePipelineInput, ctx: Context) -> dict:
 
     Respects ``input.scope`` -- skips if scope is "edges" only.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
-
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     prepare_result: dict = ctx.task_output(prepare_node)
     node_id_str: str | None = prepare_result.get("node_id")
@@ -377,8 +368,6 @@ async def generate_definition(input: NodePipelineInput, ctx: Context) -> dict:
     ctx.log(f"generate_definition: node_id={node_id_str}")
 
     result = await HatchetPipeline(state, user_id=input.user_id, graph_id=input.graph_id).definition(node_id_str)
-
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "definition")
 
     ctx.log(f"generate_definition: has_definition={result.get('has_definition')}")
     return result
@@ -452,7 +441,9 @@ async def finalize_node(input: NodePipelineInput, ctx: Context) -> dict:
 # ══════════════════════════════════════════════════════════════
 
 
-@hatchet.task(
+@tracked_task(
+    hatchet,
+    task_type="edge_classification",
     name="edge_resolution",
     input_validator=UpdateEdgesInput,
     execution_timeout=timedelta(minutes=30),
@@ -467,11 +458,7 @@ async def edge_task(input: UpdateEdgesInput, ctx: Context) -> dict:
 
     Returns ``EdgeOutput`` with the created edge IDs.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
-
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     ctx.log(f"edge_task: concept={input.concept}, node_id={input.node_id}")
 
@@ -485,13 +472,6 @@ async def edge_task(input: UpdateEdgesInput, ctx: Context) -> dict:
         f"edge_task: done -- concept={input.concept}, "
         f"edges_created={result.get('edges_created', 0)}, "
         f"edge_ids={result.get('edge_ids', [])}"
-    )
-
-    await flush_usage_to_db(
-        state.write_session_factory,
-        input.conversation_id,
-        input.message_id,
-        "edge_classification",
     )
 
     return EdgeOutput(

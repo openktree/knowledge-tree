@@ -12,6 +12,23 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from kt_config.settings import get_settings
 from kt_db.models import Base
+from kt_models.expense import ExpenseContext, reset_current_expense, set_current_expense
+
+
+@pytest.fixture(autouse=True)
+def _ambient_test_expense():
+    """Unit tests call pipeline helpers directly (no @tracked_task wrapper).
+
+    Gateway recorder requires an ambient ExpenseContext — install one
+    baseline per test so tests don't need to think about it. Tests that
+    want to observe fail-fast can override with their own
+    ``set_current_expense(None)``.
+    """
+    token = set_current_expense(ExpenseContext(task_type="test"))
+    try:
+        yield
+    finally:
+        reset_current_expense(token)
 
 
 def _worker_schema() -> str:

@@ -40,6 +40,7 @@ from kt_hatchet.models import (
     BottomUpScopeOutput,
     BuildNodeInput,
 )
+from kt_hatchet.tracked_task import tracked_task
 from kt_worker_bottomup.shared import _build_agent_context, _open_sessions
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,13 @@ bottom_up_scope_wf = hatchet.workflow(
 )
 
 
-@bottom_up_scope_wf.durable_task(execution_timeout=timedelta(hours=2), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    bottom_up_scope_wf,
+    task_type="scope_exploration",
+    durable=True,
+    execution_timeout=timedelta(hours=2),
+    schedule_timeout=_schedule_timeout,
+)
 async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dict:
     """Run a bottom-up scoped exploration: gather → filter → build → perspectives.
 
@@ -68,15 +75,12 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
 
     Returns a BottomUpScopeOutput dict with created node/edge IDs and budget usage.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
     from kt_worker_bottomup.bottom_up.scope import (
         plan_and_store_perspective_seeds,
         run_bottom_up_scope_pipeline,
     )
 
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     async def emit(event_type: str, payload: dict) -> None:
         try:
@@ -137,12 +141,6 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
     if not plan.node_plans:
         ctx.log(f"Bottom-up scope {input.scope_id}: no nodes after filtering")
         await emit("pipeline_scope_end", {"scope_id": input.scope_id, "node_count": 0})
-        await flush_usage_to_db(
-            state.write_session_factory,
-            input.conversation_id,
-            input.message_id,
-            "scope_exploration",
-        )
         return BottomUpScopeOutput(
             briefing=f"Scope '{input.scope_description}': no nodes after filtering.",
         ).model_dump()
@@ -346,12 +344,6 @@ async def bottom_up_scope(input: BottomUpScopeInput, ctx: DurableContext) -> dic
         f"{perspective_seed_count} perspective seeds"
     )
 
-    await flush_usage_to_db(
-        state.write_session_factory,
-        input.conversation_id,
-        input.message_id,
-        "scope_exploration",
-    )
     return BottomUpScopeOutput(
         created_node_ids=created_node_ids,
         created_edge_ids=created_edge_ids,
@@ -382,18 +374,20 @@ bottom_up_wf = hatchet.workflow(
 )
 
 
-@bottom_up_wf.durable_task(execution_timeout=timedelta(hours=12), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    bottom_up_wf,
+    task_type="orchestrator",
+    durable=True,
+    execution_timeout=timedelta(hours=12),
+    schedule_timeout=_schedule_timeout,
+)
 async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> dict:
     """Run bottom-up exploration: wave-based when explore > 5, single scope otherwise.
 
     Uses the same wave planning infrastructure as the standard exploration_wf,
     but dispatches bottom_up_scope_wf instead of sub_explore_wf.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
-
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     async def emit(event_type: str, payload: dict) -> None:
         try:
@@ -490,8 +484,6 @@ async def bottom_up_orchestrate(input: BottomUpInput, ctx: DurableContext) -> di
     # ── Persist research report ───────────────────────────────────────
 
     scope_summaries = [b.summary for b in accumulator.briefings if b.summary]
-
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "orchestrator")
 
     try:
         from kt_db.repositories.research_reports import ResearchReportRepository
@@ -778,7 +770,10 @@ bottom_up_prepare_scope_wf = hatchet.workflow(
 )
 
 
-@bottom_up_prepare_scope_wf.durable_task(
+@tracked_task(
+    bottom_up_prepare_scope_wf,
+    task_type="scope_prepare",
+    durable=True,
     execution_timeout=timedelta(hours=2),
     schedule_timeout=_schedule_timeout,
 )
@@ -793,12 +788,9 @@ async def bottom_up_prepare_scope(
     is neutral and unbiased by the user's original query. Each scope
     runs its own scout to discover relevant terms.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
     from kt_worker_bottomup.bottom_up.scope import run_bottom_up_scope_pipeline
 
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     async def emit(event_type: str, payload: dict) -> None:
         try:
@@ -865,8 +857,6 @@ async def bottom_up_prepare_scope(
         f"{plan.gathered_fact_count} facts, {len(plan.node_plans)} extracted nodes"
     )
 
-    await flush_usage_to_db(state.write_session_factory, input.conversation_id, input.message_id, "scope_prepare")
-
     return BottomUpPrepareScopeOutput(
         node_plans=plan.node_plans,
         explore_used=plan.explore_used,
@@ -892,7 +882,13 @@ bottom_up_prepare_wf = hatchet.workflow(
 )
 
 
-@bottom_up_prepare_wf.durable_task(execution_timeout=timedelta(hours=4), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    bottom_up_prepare_wf,
+    task_type="bottom_up_prepare",
+    durable=True,
+    execution_timeout=timedelta(hours=4),
+    schedule_timeout=_schedule_timeout,
+)
 async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) -> dict:
     """Phase 1: Scout → plan scopes → fan-out scope gathering → prioritize.
 
@@ -904,12 +900,9 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
     Creates 0 new nodes. Returns proposed nodes with priorities for user selection.
     The output is stored on the ConversationMessage.metadata_json field.
     """
-    from kt_hatchet.usage_helpers import flush_usage_to_db
-    from kt_models.usage import start_usage_tracking
     from kt_worker_bottomup.bottom_up.scout import scout_impl
 
     state = cast(WorkerState, ctx.lifespan)
-    start_usage_tracking()
 
     async def emit(event_type: str, payload: dict) -> None:
         try:
@@ -1118,13 +1111,6 @@ async def bottom_up_prepare(input: BottomUpPrepareInput, ctx: DurableContext) ->
     except Exception:
         logger.debug("Seed summary lookup failed during prepare", exc_info=True)
 
-    await flush_usage_to_db(
-        state.write_session_factory,
-        input.conversation_id,
-        input.message_id,
-        "orchestrator_prepare",
-    )
-
     output = ResearchSummaryOutput(
         fact_count=total_fact_count,
         source_count=len(all_source_urls),
@@ -1225,7 +1211,12 @@ agent_select_wf = hatchet.workflow(
 )
 
 
-@agent_select_wf.task(execution_timeout=timedelta(minutes=10), schedule_timeout=_schedule_timeout)
+@tracked_task(
+    agent_select_wf,
+    task_type="agent_select",
+    execution_timeout=timedelta(minutes=10),
+    schedule_timeout=_schedule_timeout,
+)
 async def agent_select(input: AgentSelectInput, ctx: DurableContext) -> dict:
     """Run agent-assisted node selection over proposed nodes.
 

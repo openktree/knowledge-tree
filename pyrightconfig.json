@@ -10,7 +10,8 @@
     ".venv",
     "**/node_modules",
     "wiki-frontend",
-    "scripts"
+    "scripts",
+    "experiments"
   ],
   "reportOptionalMemberAccess": "warning",
   "reportArgumentType": "warning",

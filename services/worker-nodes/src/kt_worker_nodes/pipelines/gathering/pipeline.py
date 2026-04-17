@@ -463,15 +463,14 @@ class GatherFactsPipeline:
             scope = getattr(state, "scope_description", None) or getattr(state, "query", "")
 
             if enable_summary:
-                from kt_models.usage import clear_usage_task, set_usage_task
+                from kt_models.expense import expense_subtask
 
-                set_usage_task("gather_summary")
-                summary = await _summarize_gathered_facts(
-                    all_gathered_facts,
-                    ctx.model_gateway,
-                    scope=scope,
-                )
-                clear_usage_task()
+                with expense_subtask("gather_summary"):
+                    summary = await _summarize_gathered_facts(
+                        all_gathered_facts,
+                        ctx.model_gateway,
+                        scope=scope,
+                    )
                 if summary:
                     result.update(summary)
 

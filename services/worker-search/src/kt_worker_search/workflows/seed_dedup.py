@@ -17,6 +17,7 @@ from kt_config.settings import get_settings
 from kt_hatchet.client import get_hatchet
 from kt_hatchet.lifespan import WorkerState
 from kt_hatchet.models import SeedDedupBatchInput, SeedDedupBatchOutput
+from kt_hatchet.tracked_task import tracked_task
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,9 @@ hatchet = get_hatchet()
 _schedule_timeout = timedelta(minutes=get_settings().hatchet_schedule_timeout_minutes)
 
 
-@hatchet.task(
+@tracked_task(
+    hatchet,
+    task_type="seed_dedup",
     name="seed_dedup_batch",
     input_validator=SeedDedupBatchInput,
     execution_timeout=timedelta(minutes=15),
