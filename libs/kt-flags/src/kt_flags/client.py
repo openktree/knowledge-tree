@@ -4,10 +4,11 @@ Mirrors the ``get_settings()`` shape: a module-level accessor that returns
 a cached client resolving against the currently-active OpenFeature provider.
 
 The first call to :func:`get_flag_client` installs a cached
-``SettingsProvider`` as the default provider. Subsequent calls to
-:func:`set_provider` swap the active provider and track the current one so
-:mod:`kt_flags.testing.override_flags` can snapshot-and-restore reliably
-without clobbering a caller-set provider.
+``SettingsProvider`` as the default provider. Subsequent swaps go through
+:func:`set_provider` or ``openfeature.api.set_provider`` directly — either
+way, :func:`get_current_provider` reads the active provider from the
+OpenFeature registry, so :mod:`kt_flags.testing.override_flags` always
+snapshots the *actual* current provider.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from openfeature import api as _ofa
 from openfeature.client import OpenFeatureClient
 from openfeature.evaluation_context import EvaluationContext
 from openfeature.provider import FeatureProvider
+from openfeature.provider._registry import provider_registry as _registry
 
 from kt_flags.providers.settings_provider import SettingsProvider
 
@@ -25,10 +27,6 @@ logger = logging.getLogger(__name__)
 
 _FLAG_DOMAIN = "knowledge-tree"
 
-# Module-level tracker for the currently-active default provider. Kept in
-# parallel with OpenFeature's global registry so we don't have to reach
-# into its private ``provider_registry`` to read the current value.
-_current_provider: FeatureProvider | None = None
 _default_settings_provider: SettingsProvider | None = None
 
 
@@ -41,24 +39,38 @@ def _get_default_settings_provider() -> SettingsProvider:
 
 
 def set_provider(provider: FeatureProvider) -> None:
-    """Swap the active OpenFeature provider and update our tracker.
+    """Swap the active OpenFeature provider.
 
-    All provider swaps should go through this helper so
-    :func:`get_current_provider` stays correct.
+    Thin alias for ``openfeature.api.set_provider`` re-exported here so
+    callers can stay on the ``kt_flags`` surface. Reading the current
+    provider still works if a caller bypasses this helper — see
+    :func:`get_current_provider`.
     """
-    global _current_provider
     _ofa.set_provider(provider)
-    _current_provider = provider
 
 
 def get_current_provider() -> FeatureProvider | None:
-    """Return the provider most recently installed via :func:`set_provider`."""
-    return _current_provider
+    """Return the provider currently installed as the OpenFeature default.
+
+    Reads through the OpenFeature registry rather than a parallel tracker,
+    so it stays correct even when callers reach for
+    ``openfeature.api.set_provider`` directly (legal — it's the public API).
+    """
+    try:
+        return _registry.get_default_provider()
+    except Exception:  # noqa: BLE001 — never break callers on registry state
+        return None
 
 
 def _ensure_default_provider() -> None:
-    """Install ``SettingsProvider`` as the default on first access."""
-    if _current_provider is None:
+    """Install ``SettingsProvider`` as the default on first access.
+
+    OpenFeature seeds a ``NoOpProvider`` by default; we replace it with
+    our Settings-backed provider the first time anyone needs a flag.
+    """
+    current = get_current_provider()
+    metadata = current.get_metadata() if current is not None else None
+    if metadata is None or metadata.name == "No-op Provider":
         set_provider(_get_default_settings_provider())
 
 
@@ -136,8 +148,14 @@ def get_flag_client() -> FlagClient:
 
 
 def reset_flag_client() -> None:
-    """Drop the cached client and current-provider tracker. Tests only."""
-    global _client, _current_provider, _default_settings_provider
+    """Drop the cached client + OpenFeature global state. Tests only.
+
+    Calls ``openfeature.api.clear_providers()`` so the next
+    :func:`get_flag_client` call starts against a fresh registry — no
+    leftover provider instances or event-handler subscriptions from a
+    prior test.
+    """
+    global _client, _default_settings_provider
     _client = None
-    _current_provider = None
     _default_settings_provider = None
+    _ofa.clear_providers()

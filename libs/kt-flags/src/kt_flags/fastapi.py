@@ -52,6 +52,10 @@ _GRAPH_PATH_RE = re.compile(r"^/(?:api/v\d+/)?graphs/(?P<graph_id>[^/]+)")
 def _extract_graph_id(scope: "Scope") -> str | None:
     # Path params aren't populated at middleware time (Starlette resolves
     # them during routing, which fires after us), so read the raw path.
+    # NOTE: the captured segment is URL-unescaped by Starlette when the
+    # route resolves path params, but we're reading the raw ``scope["path"]``
+    # before that happens. If graph IDs ever grow URL-unsafe characters,
+    # call ``urllib.parse.unquote`` here before returning.
     path = scope.get("path", "")
     if isinstance(path, str):
         match = _GRAPH_PATH_RE.match(path)

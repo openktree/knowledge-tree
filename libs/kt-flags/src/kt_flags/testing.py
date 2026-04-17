@@ -47,7 +47,7 @@ def override_flags(values: dict[str, Any]) -> Iterator[None]:
     """
     get_flag_client()
     previous = get_current_provider()
-    if previous is None:
+    if previous is None or previous.get_metadata().name == "No-op Provider":
         previous = _get_default_settings_provider()
         set_provider(previous)
     set_provider(make_memory_provider(values))

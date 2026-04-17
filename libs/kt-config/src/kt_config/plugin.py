@@ -215,12 +215,13 @@ class BackendEnginePlugin(ABC):
         return PluginType.backend_engine
 
     @classmethod
-    def is_enabled(cls) -> bool:
+    def is_enabled(cls) -> bool:  # noqa: D401
         """Operator gate consulted by :func:`load_default_plugins`.
 
-        Default: ``True``. Plugins override this to wire in a feature-flag
-        kill-switch (typically ``flags.get_boolean("plugin.<name>.enabled")``)
-        so ops can disable the plugin in production without a code change.
+        Default: ``True``. Plugins override this ``@classmethod`` to wire
+        in a feature-flag kill-switch — typically
+        ``flags.get_boolean("plugin.<name>.enabled")`` — so ops can
+        disable the plugin in production without a code change.
         """
         return True
 

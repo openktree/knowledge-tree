@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from kt_config.settings import Settings
 from kt_flags import get_flag_client
+from kt_flags.registry import FLAG_REGISTRY
 from kt_providers.fetch.base import ContentFetcherProvider
 from kt_providers.fetch.host_pref import (
     HostPreferenceStore,
@@ -162,8 +163,6 @@ def maybe_build_fetch_registry(
     changes to the canonical default don't have to ripple through call
     sites.
     """
-    from kt_flags.registry import FLAG_REGISTRY
-
     default = bool(FLAG_REGISTRY["feature.full_text_fetch"].default)
     if not get_flag_client().get_boolean("feature.full_text_fetch", default=default):
         return None
