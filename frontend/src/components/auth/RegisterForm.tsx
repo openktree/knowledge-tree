@@ -6,6 +6,9 @@ import { useAuth } from "@/contexts/auth";
 import { api } from "@/lib/api";
 import { WaitlistForm } from "@/components/auth/WaitlistForm";
 
+type Stage = "form" | "awaiting_verification";
+type ResendState = "idle" | "sending" | "sent" | "error";
+
 export function RegisterForm() {
   const { login } = useAuth();
   const router = useRouter();
@@ -16,6 +19,10 @@ export function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [registrationClosed, setRegistrationClosed] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
+  const [verificationRequired, setVerificationRequired] = useState(false);
+  const [stage, setStage] = useState<Stage>("form");
+  const [resendState, setResendState] = useState<ResendState>("idle");
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   useEffect(() => {
     api.auth
@@ -29,6 +36,13 @@ export function RegisterForm() {
         // If we can't check, allow the form to show — server will enforce
       })
       .finally(() => setCheckingStatus(false));
+
+    api.auth
+      .authFeatures()
+      .then((f) => setVerificationRequired(f.email_verification_required))
+      .catch(() => {
+        // default false — server is the source of truth anyway
+      });
   }, []);
 
   if (checkingStatus) {
@@ -49,6 +63,10 @@ export function RegisterForm() {
         password,
         display_name: displayName || undefined,
       });
+      if (verificationRequired) {
+        setStage("awaiting_verification");
+        return;
+      }
       await login(email, password);
       router.push("/");
     } catch (err) {
@@ -56,6 +74,51 @@ export function RegisterForm() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleResend() {
+    setResendState("sending");
+    setResendMessage(null);
+    try {
+      await api.auth.requestVerifyToken(email);
+      setResendState("sent");
+      setResendMessage("Verification email sent — check your inbox.");
+    } catch (err) {
+      setResendState("error");
+      setResendMessage(err instanceof Error ? err.message : "Failed to send verification email.");
+    }
+  }
+
+  if (stage === "awaiting_verification") {
+    return (
+      <div className="flex flex-col gap-4">
+        <h2 className="text-lg font-semibold">Check your email</h2>
+        <p className="text-sm text-muted-foreground">
+          We&apos;ve sent a verification link to <span className="font-medium">{email}</span>. The link
+          expires in 24 hours. Click it to finish creating your account, then sign in.
+        </p>
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={resendState === "sending" || resendState === "sent"}
+          className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+        >
+          {resendState === "sending"
+            ? "Sending…"
+            : resendState === "sent"
+              ? "Sent"
+              : "Resend verification email"}
+        </button>
+        {resendMessage && (
+          <p className="text-xs text-muted-foreground">{resendMessage}</p>
+        )}
+        <p className="text-center text-sm text-muted-foreground">
+          <a href="/login" className="underline hover:text-foreground">
+            Back to sign in
+          </a>
+        </p>
+      </div>
+    );
   }
 
   return (

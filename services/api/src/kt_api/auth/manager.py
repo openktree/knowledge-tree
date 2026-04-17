@@ -38,6 +38,8 @@ def _get_email_provider_cached() -> EmailProvider | None:
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
+    verification_token_lifetime_seconds = 86400
+
     def __init__(
         self,
         user_db: SQLAlchemyUserDatabase[User, uuid.UUID],

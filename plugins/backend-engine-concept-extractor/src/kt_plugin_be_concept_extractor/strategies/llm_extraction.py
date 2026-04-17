@@ -182,11 +182,7 @@ def _parse_per_fact_result(
                     "name": name,
                     "node_type": node_type,
                     "fact_indices": [fact_idx],
-                    "aliases": [
-                        a.strip()
-                        for a in entry.get("aliases", [])
-                        if isinstance(a, str) and a.strip()
-                    ],
+                    "aliases": [a.strip() for a in entry.get("aliases", []) if isinstance(a, str) and a.strip()],
                 }
                 if node_type == "entity":
                     subtype = entry.get("entity_subtype", "other")

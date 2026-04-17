@@ -22,11 +22,23 @@ from kt_db.repositories.system_settings import SystemSettingsRepository
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
+# Captured at module import — fastapi-users builds the auth router statically,
+# so the flag can't vary per-request. Settings are immutable in prod (loaded
+# from env + YAML at startup), so this is fine. /auth/features reads
+# get_settings() dynamically; tests that need to toggle this must reload the
+# module or build a standalone fastapi-users router.
+_startup_settings = get_settings()
+_require_verified_login: bool = (
+    _startup_settings.email_enabled
+    and _startup_settings.email_verification
+    and _startup_settings.email_verification_required
+)
+
 # ---- Standard FastAPI Users routes ----
 router.include_router(fastapi_users.get_register_router(UserRead, UserCreate))
 router.include_router(fastapi_users.get_reset_password_router())
 router.include_router(fastapi_users.get_verify_router(UserRead))
-router.include_router(fastapi_users.get_auth_router(auth_backend))
+router.include_router(fastapi_users.get_auth_router(auth_backend, requires_verification=_require_verified_login))
 router.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/me-mgmt")
 
 # ---- Google OAuth routes ----
@@ -206,15 +218,18 @@ async def api_key_status(
 class AuthFeaturesResponse(BaseModel):
     google_oauth_enabled: bool
     email_verification_enabled: bool
+    email_verification_required: bool
 
 
 @router.get("/features", response_model=AuthFeaturesResponse)
 async def auth_features() -> AuthFeaturesResponse:
     """Public endpoint: check which auth features are available."""
     settings = get_settings()
+    verification_enabled = settings.email_enabled and settings.email_verification
     return AuthFeaturesResponse(
         google_oauth_enabled=bool(settings.google_oauth_client_id),
-        email_verification_enabled=settings.email_enabled and settings.email_verification,
+        email_verification_enabled=verification_enabled,
+        email_verification_required=verification_enabled and settings.email_verification_required,
     )
 
 

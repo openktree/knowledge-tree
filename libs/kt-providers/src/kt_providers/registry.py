@@ -17,8 +17,8 @@ class ExtraProviderFactory:
     lifespan runs.
     """
 
-    name: str                                      # unique id used for selection + logging
-    provider_id: str                               # matched against settings.default_search_provider
+    name: str  # unique id used for selection + logging
+    provider_id: str  # matched against settings.default_search_provider
     factory: Callable[[], KnowledgeProvider]
     is_available: Callable[[], bool] = lambda: True
 

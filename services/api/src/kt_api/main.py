@@ -62,6 +62,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     Path(settings.ingest_upload_dir).mkdir(parents=True, exist_ok=True)
 
+    _validate_email_verification_config(settings)
+
     # Run all DB migrations in-process (core + plugins + per-graph).
     # Guaranteed to complete before FastAPI serves any request.
     # Plugins providing entity extractors etc. must register before this.
@@ -104,6 +106,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from kt_api.dependencies import reset_session_factory
 
     reset_session_factory()
+
+
+def _validate_email_verification_config(settings) -> None:  # type: ignore[no-untyped-def]
+    """Fail fast if verification is required but email sending is disabled.
+
+    Locking users out with no way to receive verification emails is a silent
+    data-quality disaster — refuse to start rather than let it happen.
+    """
+    from kt_config.errors import ConfigurationError
+
+    if settings.email_verification_required and not (settings.email_enabled and settings.email_verification):
+        raise ConfigurationError(
+            "email_verification_required=true requires email_enabled=true AND "
+            "email_verification=true — otherwise users cannot receive verification "
+            "emails and will be locked out of login."
+        )
 
 
 async def _assert_default_db_key_unreserved() -> None:

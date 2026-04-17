@@ -99,9 +99,7 @@ async def test_provision_routes_to_external_db_when_connection_set(stub_provisio
     fake_migrate_calls: list[dict] = []
 
     async def fake_ensure_graph_schema_migrated(slug, *, graph_db_url, write_db_url):
-        fake_migrate_calls.append(
-            {"slug": slug, "graph_db_url": graph_db_url, "write_db_url": write_db_url}
-        )
+        fake_migrate_calls.append({"slug": slug, "graph_db_url": graph_db_url, "write_db_url": write_db_url})
 
     fake_collection_repo = MagicMock()
     fake_collection_repo.ensure_collection = AsyncMock()
@@ -158,9 +156,7 @@ async def test_provision_routes_to_system_db_when_connection_null(stub_provision
     fake_migrate_calls: list[dict] = []
 
     async def fake_ensure_graph_schema_migrated(slug, *, graph_db_url, write_db_url):
-        fake_migrate_calls.append(
-            {"slug": slug, "graph_db_url": graph_db_url, "write_db_url": write_db_url}
-        )
+        fake_migrate_calls.append({"slug": slug, "graph_db_url": graph_db_url, "write_db_url": write_db_url})
 
     fake_collection_repo = MagicMock()
     fake_collection_repo.ensure_collection = AsyncMock()

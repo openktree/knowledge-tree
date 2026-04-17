@@ -36,20 +36,74 @@ _STRIP_POS = frozenset({"DET", "PRON", "ADP", "CCONJ", "SCONJ", "PART", "AUX", "
 
 _FILLER_WORDS = frozenset(
     {
-        "i", "me", "my", "we", "us", "our", "you", "your",
-        "he", "him", "his", "she", "her", "they", "them", "their", "it", "its",
-        "how", "what", "why", "when", "where", "which", "who", "whom",
-        "the", "a", "an", "this", "that", "these", "those",
-        "some", "most", "many", "several", "various", "other", "one",
-        "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did",
+        "i",
+        "me",
+        "my",
+        "we",
+        "us",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "they",
+        "them",
+        "their",
+        "it",
+        "its",
+        "how",
+        "what",
+        "why",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whom",
+        "the",
+        "a",
+        "an",
+        "this",
+        "that",
+        "these",
+        "those",
+        "some",
+        "most",
+        "many",
+        "several",
+        "various",
+        "other",
+        "one",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
     }
 )
 
 # NER labels that never produce useful knowledge-graph entities
-_SKIP_NER_LABELS = frozenset({
-    "DATE", "TIME", "CARDINAL", "ORDINAL", "QUANTITY", "MONEY", "PERCENT",
-})
+_SKIP_NER_LABELS = frozenset(
+    {
+        "DATE",
+        "TIME",
+        "CARDINAL",
+        "ORDINAL",
+        "QUANTITY",
+        "MONEY",
+        "PERCENT",
+    }
+)
 
 import re
 
@@ -93,10 +147,10 @@ class _RichCandidate:
     """Internal candidate produced by the spaCy pass."""
 
     name: str
-    ner_label: str | None    # spaCy NER label, or None for noun chunks
-    source: str              # "ner" | "chunk"
+    ner_label: str | None  # spaCy NER label, or None for noun chunks
+    source: str  # "ner" | "chunk"
     fact_indices: list[int]  # 1-indexed into the fact list
-    fact_ids: list[str]      # UUID strings for the same facts
+    fact_ids: list[str]  # UUID strings for the same facts
 
 
 @dataclass
@@ -108,7 +162,7 @@ class ShellCandidate:
 
     name: str
     ner_label: str | None
-    source: str              # "ner" | "chunk"
+    source: str  # "ner" | "chunk"
     fact_ids: list[str]
     scope: str = field(default="")
 
