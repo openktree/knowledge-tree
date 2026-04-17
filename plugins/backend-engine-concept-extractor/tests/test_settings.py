@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import yaml
 
 from kt_plugin_be_concept_extractor.settings import (

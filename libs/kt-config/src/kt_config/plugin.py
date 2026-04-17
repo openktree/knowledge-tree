@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 class PluginType(str, Enum):
     backend_engine = "backend-engine"  # modifies data/information flow
-    backend = "backend"                # API-only (future)
-    frontend = "frontend"              # UI types (future)
+    backend = "backend"  # API-only (future)
+    frontend = "frontend"  # UI types (future)
 
 
 # ── Entry point containers ────────────────────────────────────────────────
@@ -63,7 +63,7 @@ class PluginDatabase:
     """
 
     plugin_id: str
-    schema_name: str           # e.g. "plugin_hybrid_extractor" or "public"
+    schema_name: str  # e.g. "plugin_hybrid_extractor" or "public"
     alembic_config_path: Path  # path to plugin's alembic.ini
     target: DbTarget = "write"
     schema_env_var: str | None = None
@@ -189,7 +189,7 @@ class EntityExtractorContribution:
     this type. Add a hook via ``BackendEnginePlugin.get_post_extraction_hooks``.
     """
 
-    extractor_name: str   # e.g. "hybrid"
+    extractor_name: str  # e.g. "hybrid"
     factory: Callable[["ModelGateway"], "EntityExtractor"]
 
 

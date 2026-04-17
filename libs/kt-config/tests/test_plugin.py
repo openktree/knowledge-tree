@@ -160,9 +160,7 @@ async def test_run_database_migrations_iterates_urls_and_dedupes() -> None:
 
     registry = PluginRegistry()
     registry.register_backend_engine(_CountingPlugin())
-    await registry.run_database_migrations(
-        ["postgres://a", "postgres://b", "postgres://a"]
-    )
+    await registry.run_database_migrations(["postgres://a", "postgres://b", "postgres://a"])
     assert _CountingPlugin.calls == ["postgres://a", "postgres://b"]
 
 

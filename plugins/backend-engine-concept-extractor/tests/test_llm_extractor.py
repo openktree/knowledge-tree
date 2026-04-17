@@ -57,9 +57,7 @@ async def test_extract_entities_valid_response() -> None:
 @pytest.mark.asyncio
 async def test_extract_entities_normalizes_invalid_type() -> None:
     facts = [MagicMock(fact_type="claim", content="test fact")]
-    gateway = _gateway(
-        {"facts": {"1": [{"name": "test node", "node_type": "invalid_type", "aliases": []}]}}
-    )
+    gateway = _gateway({"facts": {"1": [{"name": "test node", "node_type": "invalid_type", "aliases": []}]}})
     result = await extract_entities_from_facts(facts, gateway)
     assert result is not None
     assert result[0]["node_type"] == "concept"
@@ -235,5 +233,3 @@ async def test_extraction_returns_none_when_all_filtered() -> None:
     )
     result = await extract_entities_from_facts(facts, gateway)
     assert result is None
-
-
