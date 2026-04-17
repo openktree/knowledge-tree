@@ -260,3 +260,45 @@ edges:
 #   max_file_size_mb: 50
 #   short_content_threshold: 32000
 #   import_cleanup_batch_size: 20
+
+
+# =============================================================================
+# Graph-type per-graph configuration (Phase 2)
+# =============================================================================
+# Each graph type plugin declares a composition (provider-id per phase)
+# and a default per-phase config. The sections below layer *over* those
+# defaults: "_shared" applies to every graph, named entries apply only
+# to that graph slug. Highest-priority layer wins per key.
+#
+# Resolver order (highest wins):
+#   1. Graph.config[<phase>][<key>]  (reserved for future UI edits)
+#   2. graphs.<slug>.<phase>.<key>
+#   3. graphs._shared.<phase>.<key>
+#   4. GraphTypePlugin.default_phase_settings()
+#   5. Flat ``Settings`` field (deprecated fallback; logs a warning)
+#
+# The flag ``graph_types_enabled`` gates whether workers read this layer;
+# leave it False until Phases 3-6 extract the matching providers.
+#
+# graphs:
+#   _shared:
+#     search:
+#       providers: ["serper", "brave_search", "openalex"]
+#       enable_full_text_fetch: true
+#     fetch:
+#       provider_chain: ["doi", "curl_cffi", "httpx", "flaresolverr"]
+#     fact_decomposition:
+#       model: "openrouter/google/gemini-3.1-flash-lite-preview"
+#       thinking_level: "low"
+#     concept_extractor:
+#       provider: "hybrid"
+#       shell_model: "openrouter/google/gemma-4-26b-a4b-it:nitro"
+#     dimensions:
+#       model: "openrouter/xiaomi/mimo-v2-flash:nitro"
+#   default:
+#     # the 'default' graph's narrowing overrides — empty by default
+#   # science:
+#   #   concept_extractor:
+#   #     provider: "llm"
+#   #   search:
+#   #     providers: ["openalex"]
