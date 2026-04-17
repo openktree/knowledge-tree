@@ -60,7 +60,6 @@ The system is designed so that over time, frequently queried topics accumulate i
 - **kt-providers** — Knowledge providers (Serper, Brave), abstract `KnowledgeProvider` ABC
 - **kt-graph** — GraphEngine — node/edge CRUD, search, convergence
 - **kt-facts** — Fact decomposition, extraction, dedup
-- **kt-ontology** — *(deprecated — do not use)*
 - **kt-hatchet** — Hatchet client singleton, worker state, workflow I/O models. Depends on `kt-graph` so `WorkerState.make_worker_engine()` can wire a `PublicGraphBridge` into every per-workflow engine. The dep direction is one-way: `kt-graph` MUST NOT import `kt-hatchet`.
 - **kt-agents-core** — Base agent classes, shared state models
 - **kt-qdrant** — Qdrant vector search repositories
@@ -168,9 +167,6 @@ Agents (LangGraph-based) are used **within** Hatchet tasks for LLM reasoning:
 2. **SuperSynthesizer Agent** (`kt_worker_synthesis.agents.super_synthesizer_agent`) — Reads sub-synthesis documents and produces a meta-synthesis.
 3. **Ingest Agent** (`kt_worker_ingest.agents.ingest_agent`) — File/link ingestion into the knowledge graph.
 4. **Bottom-up Scope** (`kt_worker_bottomup.bottom_up.scope`) — Fact gathering and node extraction from search results.
-
-### Ontology System *(deprecated — scheduled for removal)*
-> **Do not add new code that depends on kt-ontology.** This module will be removed soon.
 
 ### Authentication
 - **fastapi-users** with JWT + refresh tokens
@@ -477,7 +473,6 @@ Most changes belong in an existing package. Use this table:
 | New search provider | `libs/kt-providers/src/kt_providers/` (implement `KnowledgeProvider` ABC) |
 | New graph algorithm | `libs/kt-graph/src/kt_graph/` |
 | New fact extraction strategy | `libs/kt-facts/src/kt_facts/` |
-| New ontology source | `libs/kt-ontology/src/kt_ontology/` *(deprecated — do not add)* |
 | New Hatchet input/output model | `libs/kt-hatchet/src/kt_hatchet/models.py` |
 | New API endpoint | `services/api/src/kt_api/` (new file + register in `router.py`) |
 | New synthesis agent/tool/prompt | `services/worker-synthesis/src/kt_worker_synthesis/` |

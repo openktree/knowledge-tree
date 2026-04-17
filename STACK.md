@@ -376,7 +376,6 @@ knowledge-tree/
 │   ├── kt-providers/                # Serper, Brave, fetcher, registry (kt_providers)
 │   ├── kt-graph/                    # GraphEngine, convergence, splitting (kt_graph)
 │   ├── kt-facts/                    # Decomposition pipeline, extraction (kt_facts)
-│   ├── kt-ontology/                 # *(deprecated — scheduled for removal)* (kt_ontology)
 │   ├── kt-hatchet/                  # Hatchet client, lifespan, models (kt_hatchet)
 │   └── kt-agents-core/              # BaseAgent, state, results (kt_agents_core)
 │
@@ -414,7 +413,6 @@ kt-models       → kt-config
 kt-providers    → kt-config
 kt-graph        → kt-db, kt-models, kt-config
 kt-facts        → kt-config
-kt-ontology     → kt-db, kt-config
 kt-hatchet      → kt-config
 kt-agents-core  → kt-config
 ```
@@ -449,7 +447,6 @@ Each package has its own `tests/` directory with optional `tests/integration/` s
 - `libs/kt-providers/tests/` — Providers, fetcher (32 tests)
 - `libs/kt-graph/tests/` — Convergence, splitting (28 tests)
 - `libs/kt-facts/tests/` — Decomposition pipeline (119 tests)
-- `libs/kt-ontology/tests/` — Ontology, wikidata (65 tests)
 - `libs/kt-db/tests/integration/` — Repository tests (5 tests)
 - `services/api/tests/` — API schemas, endpoints (21 tests)
 - `services/worker-orchestrator/tests/` — Agent tools, explore scope (92 tests)
