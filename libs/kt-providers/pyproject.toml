@@ -7,6 +7,7 @@ dependencies = [
     "kt-config",
     "kt-core-engine-api",
     "kt-agents-core",
+    "kt-flags",
     "httpx>=0.28.1",
     "trafilatura>=2.0.0",
     "pydantic>=2.12.5",
@@ -22,6 +23,7 @@ build-backend = "hatchling.build"
 kt-config = { workspace = true }
 kt-core-engine-api = { workspace = true }
 kt-agents-core = { workspace = true }
+kt-flags = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

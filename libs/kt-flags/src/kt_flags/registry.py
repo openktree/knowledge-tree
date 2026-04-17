@@ -41,9 +41,10 @@ class FlagSpec:
     """Declarative record for a single flag.
 
     ``settings_field`` is the attribute on ``kt_config.Settings`` that backs
-    the flag in Phase 0. ``dynamic=True`` means we expect a ``DbProvider``
-    to shadow this flag at runtime (per-user / per-tenant rules, admin-UI
-    overrides); the default ``False`` keeps it static.
+    the flag in Phase 0. A future ``DbProvider`` layered via
+    ``OpenFeature.set_provider`` will shadow Settings at runtime without
+    requiring any spec change — targeting rules live in the provider, not
+    in the registry.
     """
 
     key: str
@@ -51,7 +52,6 @@ class FlagSpec:
     default: Any
     description: str
     settings_field: str | None = None
-    dynamic: bool = False
 
     def __post_init__(self) -> None:
         if not _KEY_REGEX.match(self.key):

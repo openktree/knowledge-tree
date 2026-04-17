@@ -8,7 +8,7 @@ for the DI helper that wires it from settings.
 """
 
 from kt_providers.fetch.base import ContentFetcherProvider
-from kt_providers.fetch.builder import build_fetch_registry
+from kt_providers.fetch.builder import build_fetch_registry, maybe_build_fetch_registry
 from kt_providers.fetch.doi_enricher import DoiEnricher
 from kt_providers.fetch.file_data_store import FileDataStore
 from kt_providers.fetch.host_pref import (
@@ -44,5 +44,6 @@ __all__ = [
     "UnsafeUrlError",
     "build_fetch_registry",
     "host_of",
+    "maybe_build_fetch_registry",
     "validate_fetch_url",
 ]

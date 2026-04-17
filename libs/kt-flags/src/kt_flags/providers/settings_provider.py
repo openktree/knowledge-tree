@@ -9,8 +9,8 @@ spec's ``default``; operators override those via the ``config.yaml``'s
 
 from __future__ import annotations
 
-import typing
 from collections.abc import Mapping, Sequence
+from typing import Any
 
 from openfeature.evaluation_context import EvaluationContext
 from openfeature.exception import ErrorCode
@@ -49,9 +49,9 @@ class SettingsProvider(AbstractProvider):
     def _resolve(
         self,
         flag_key: str,
-        default_value: typing.Any,
+        default_value: Any,
         expected: FlagType,
-    ) -> FlagResolutionDetails[typing.Any]:
+    ) -> FlagResolutionDetails[Any]:
         spec = self._spec_or_none(flag_key)
         if spec is None:
             return FlagResolutionDetails(
@@ -81,7 +81,7 @@ class SettingsProvider(AbstractProvider):
         self,
         flag_key: str,
         default_value: bool,
-        evaluation_context: typing.Optional[EvaluationContext] = None,
+        evaluation_context: EvaluationContext | None = None,
     ) -> FlagResolutionDetails[bool]:
         return self._resolve(flag_key, default_value, FlagType.BOOLEAN)
 
@@ -89,7 +89,7 @@ class SettingsProvider(AbstractProvider):
         self,
         flag_key: str,
         default_value: str,
-        evaluation_context: typing.Optional[EvaluationContext] = None,
+        evaluation_context: EvaluationContext | None = None,
     ) -> FlagResolutionDetails[str]:
         return self._resolve(flag_key, default_value, FlagType.STRING)
 
@@ -97,7 +97,7 @@ class SettingsProvider(AbstractProvider):
         self,
         flag_key: str,
         default_value: int,
-        evaluation_context: typing.Optional[EvaluationContext] = None,
+        evaluation_context: EvaluationContext | None = None,
     ) -> FlagResolutionDetails[int]:
         return self._resolve(flag_key, default_value, FlagType.INTEGER)
 
@@ -105,16 +105,16 @@ class SettingsProvider(AbstractProvider):
         self,
         flag_key: str,
         default_value: float,
-        evaluation_context: typing.Optional[EvaluationContext] = None,
+        evaluation_context: EvaluationContext | None = None,
     ) -> FlagResolutionDetails[float]:
         return self._resolve(flag_key, default_value, FlagType.FLOAT)
 
     def resolve_object_details(
         self,
         flag_key: str,
-        default_value: typing.Union[Sequence["typing.Any"], Mapping[str, "typing.Any"]],
-        evaluation_context: typing.Optional[EvaluationContext] = None,
-    ) -> FlagResolutionDetails[typing.Union[Sequence["typing.Any"], Mapping[str, "typing.Any"]]]:
+        default_value: Sequence[Any] | Mapping[str, Any],
+        evaluation_context: EvaluationContext | None = None,
+    ) -> FlagResolutionDetails[Sequence[Any] | Mapping[str, Any]]:
         return FlagResolutionDetails(
             value=default_value,
             reason=Reason.DEFAULT,

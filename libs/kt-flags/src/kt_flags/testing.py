@@ -1,10 +1,10 @@
 """Pytest helpers for kt-flags.
 
-``override_flags`` swaps the global OpenFeature provider for an
-``InMemoryProvider`` built from a ``{flag_key: value}`` mapping, then
-restores the previous provider on exit. Mirrors the ``plugin_registry_clean``
-shape used in ``kt_config.testing`` so both helpers compose in a shared
-``conftest.py``.
+``override_flags`` snapshots the currently-active OpenFeature provider,
+installs an ``InMemoryProvider`` built from a ``{flag_key: value}`` mapping,
+and restores the snapshot on exit. Nested ``override_flags`` blocks compose,
+and a test that pre-swapped the provider keeps its pre-swap in place when
+the override ends.
 """
 
 from __future__ import annotations
@@ -13,12 +13,22 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-import pytest
-from openfeature import api as _ofa
+from openfeature.provider.in_memory_provider import InMemoryFlag, InMemoryProvider
 
-from kt_flags.client import get_flag_client
-from kt_flags.providers.memory_provider import make_memory_provider
-from kt_flags.providers.settings_provider import SettingsProvider
+from kt_flags.client import (
+    _get_default_settings_provider,
+    get_current_provider,
+    get_flag_client,
+    set_provider,
+)
+
+
+def make_memory_provider(values: dict[str, Any]) -> InMemoryProvider:
+    """Build an ``InMemoryProvider`` from a flat ``{flag_key: value}`` mapping."""
+    flags: dict[str, InMemoryFlag[Any]] = {
+        key: InMemoryFlag(default_variant="default", variants={"default": value}) for key, value in values.items()
+    }
+    return InMemoryProvider(flags)
 
 
 @contextmanager
@@ -30,38 +40,18 @@ def override_flags(values: dict[str, Any]) -> Iterator[None]:
         with override_flags({"feature.full_text_fetch": False}):
             ...
 
-    On exit the provider is restored to a fresh ``SettingsProvider`` so
-    subsequent tests see production behavior. The cached ``FlagClient``
-    wrapper is preserved — ``OpenFeatureClient`` resolves the active
-    provider on each call, so swapping providers is enough.
+    The previously-active provider is restored on exit. If no provider
+    has been installed yet (first call in the test suite), the cached
+    ``SettingsProvider`` is installed before the swap so exit can restore
+    it cleanly.
     """
-    # Ensure the default-provider latch is flipped before we override, so
-    # an in-between ``get_flag_client()`` doesn't reinstate SettingsProvider
-    # on top of our in-memory provider.
     get_flag_client()
-    _ofa.set_provider(make_memory_provider(values))
+    previous = get_current_provider()
+    if previous is None:
+        previous = _get_default_settings_provider()
+        set_provider(previous)
+    set_provider(make_memory_provider(values))
     try:
         yield
     finally:
-        _ofa.set_provider(SettingsProvider())
-
-
-@pytest.fixture
-def flag_overrides() -> Iterator[Any]:
-    """Factory fixture — call with a dict to override flags for the test."""
-
-    active: list[None] = []
-
-    def _apply(values: dict[str, Any]) -> None:
-        ctx = override_flags(values)
-        ctx.__enter__()
-        active.append(None)
-        # Register finaliser via request? Simpler: cleanup in teardown below.
-        # We stash ``ctx`` in a closure so teardown can exit it.
-        _apply.__dict__.setdefault("_ctxs", []).append(ctx)
-
-    try:
-        yield _apply
-    finally:
-        for ctx in _apply.__dict__.get("_ctxs", []):
-            ctx.__exit__(None, None, None)
+        set_provider(previous)

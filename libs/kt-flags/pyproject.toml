@@ -21,3 +21,9 @@ testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kt_flags"]
+
+[dependency-groups]
+dev = [
+    "starlette>=0.52.1",
+    "httpx>=0.28.1",
+]

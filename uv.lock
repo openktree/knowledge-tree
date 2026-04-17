@@ -1997,10 +1997,22 @@ dependencies = [
     { name = "openfeature-sdk" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "starlette" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "openfeature-sdk", specifier = ">=0.8.4" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "starlette", specifier = ">=0.52.1" },
 ]
 
 [[package]]
@@ -2206,6 +2218,7 @@ dependencies = [
     { name = "kt-agents-core" },
     { name = "kt-config" },
     { name = "kt-core-engine-api" },
+    { name = "kt-flags" },
     { name = "pydantic" },
     { name = "structlog" },
     { name = "trafilatura" },
@@ -2223,6 +2236,7 @@ requires-dist = [
     { name = "kt-agents-core", editable = "libs/kt-agents-core" },
     { name = "kt-config", editable = "libs/kt-config" },
     { name = "kt-core-engine-api", editable = "libs/kt-core-engine-api" },
+    { name = "kt-flags", editable = "libs/kt-flags" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "trafilatura", specifier = ">=2.0.0" },

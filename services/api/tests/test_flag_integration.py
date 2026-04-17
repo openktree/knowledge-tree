@@ -2,7 +2,10 @@
 
 Flips ``feature.full_text_fetch`` via ``override_flags`` and asserts the
 ``get_agent_context`` dependency in ``kt_api.dependencies`` honors it by
-omitting the fetch registry when the flag is off.
+omitting the fetch registry when the flag is off. We patch the actual
+``build_fetch_registry`` constructor inside ``kt_providers.fetch.builder``
+so the real ``maybe_build_fetch_registry`` helper runs end-to-end and its
+flag check is exercised.
 
 No DB / HTTP server required — we only exercise the dependency function's
 branch on the flag value.
@@ -32,7 +35,7 @@ async def test_fetch_registry_gated_by_flag() -> None:
         patch.object(dependencies, "ModelGateway"),
         patch.object(dependencies, "ProviderRegistry") as mock_reg,
         patch.object(dependencies, "iter_extra_provider_factories", return_value=iter([])),
-        patch.object(dependencies, "build_fetch_registry") as mock_build_fetch,
+        patch("kt_providers.fetch.builder.build_fetch_registry") as mock_build_fetch,
     ):
         session = object()
         mock_sf.return_value = lambda: session
