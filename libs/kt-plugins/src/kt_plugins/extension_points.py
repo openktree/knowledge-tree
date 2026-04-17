@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 class PluginType(str, Enum):
     backend_engine = "backend-engine"  # modifies data/information flow
-    backend = "backend"                # API-only
-    frontend = "frontend"              # UI types
+    backend = "backend"  # API-only
+    frontend = "frontend"  # UI types
 
 
 # ── DB migration contribution ─────────────────────────────────────────────
