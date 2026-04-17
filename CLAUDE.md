@@ -64,6 +64,7 @@ The system is designed so that over time, frequently queried topics accumulate i
 - **kt-hatchet** — Hatchet client singleton, worker state, workflow I/O models. Depends on `kt-graph` so `WorkerState.make_worker_engine()` can wire a `PublicGraphBridge` into every per-workflow engine. The dep direction is one-way: `kt-graph` MUST NOT import `kt-hatchet`.
 - **kt-agents-core** — Base agent classes, shared state models
 - **kt-qdrant** — Qdrant vector search repositories
+- **kt-plugins** — Plugin framework: manifest, lifecycle (register/bootstrap/shutdown), `importlib.metadata` entry-point discovery, typed extension points (routes, workflows, providers, extractors, post-extraction hooks, DB schemas), async `HookRegistry` (trigger + filter + fire-and-forget), HMAC license validation. Legacy `BackendEnginePlugin` ABC still re-exported via `kt_config.plugin`. See `PLUGINS.md` at repo root.
 
 **Services (`services/`)** — Deployable processes. Workers own their agents, prompts, and workflow logic. Create new workers only for distinct workflow domains.
 - **api** — FastAPI REST + SSE, auth, dependency injection. NO agent code.

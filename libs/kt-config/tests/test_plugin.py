@@ -82,21 +82,21 @@ def test_register_backend_engine() -> None:
     registry = PluginRegistry()
     plugin = _NoOpPlugin()
     registry.register_backend_engine(plugin)
-    assert len(registry._backend_engine) == 1
+    assert len(registry.manifests) == 1
 
 
 def test_register_idempotent() -> None:
     registry = PluginRegistry()
     registry.register_backend_engine(_NoOpPlugin())
     registry.register_backend_engine(_NoOpPlugin())  # same plugin_id
-    assert len(registry._backend_engine) == 1
+    assert len(registry.manifests) == 1
 
 
 def test_register_multiple_distinct() -> None:
     registry = PluginRegistry()
     registry.register_backend_engine(_NoOpPlugin())
     registry.register_backend_engine(_DBPlugin())
-    assert len(registry._backend_engine) == 2
+    assert len(registry.manifests) == 2
 
 
 def test_get_entity_extractor_found() -> None:
@@ -169,7 +169,7 @@ def test_clear_removes_all_plugins() -> None:
     registry.register_backend_engine(_NoOpPlugin())
     registry.register_backend_engine(_DBPlugin())
     registry.clear()
-    assert registry._backend_engine == []
+    assert registry.manifests == []
 
 
 def test_post_extraction_hook_lookup() -> None:

@@ -33,6 +33,28 @@ class PermissionChecker:
 
     def check(self, ctx: PermissionContext, permission: Permission) -> bool:
         """Returns True if the context has the required permission."""
+        granted = self._evaluate(ctx, permission)
+        # Fire-and-forget audit hook for plugins (SIEM, access log, anomaly
+        # detection). Must not block the critical path — handlers run on
+        # the event loop in a detached task. Import lazily so kt-rbac stays
+        # plugin-agnostic for code paths that don't exercise plugins.
+        try:
+            from kt_plugins import plugin_manager as _pm
+
+            _pm.hook_registry.fire_and_forget(
+                "auth.permission_check",
+                user_id=str(ctx.user_id) if ctx.user_id is not None else None,
+                permission=permission.value,
+                granted=granted,
+                graph_role=ctx.graph_role.value if ctx.graph_role is not None else None,
+                is_default_graph=ctx.is_default_graph,
+            )
+        except Exception:
+            # A broken plugin registry must not break auth checks.
+            pass
+        return granted
+
+    def _evaluate(self, ctx: PermissionContext, permission: Permission) -> bool:
         if ctx.is_superuser:
             return True
 

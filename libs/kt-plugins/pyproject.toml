@@ -1,0 +1,22 @@
+[project]
+name = "kt-plugins"
+version = "0.1.0"
+description = "Knowledge Tree plugin framework: manifest, lifecycle, hooks, extension points, license validation"
+requires-python = ">=3.12"
+# No dependencies on other kt-* libs — kt-plugins is foundation-level
+# and kt-config depends on it (not the other way around). External deps
+# (alembic, sqlalchemy, fastapi) are only imported under TYPE_CHECKING
+# or inside function bodies, so plugins using those features pull them
+# in via their own dependency lists.
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_plugins"]

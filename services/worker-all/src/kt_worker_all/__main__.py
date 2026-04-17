@@ -43,10 +43,21 @@ def main() -> None:
 
     asyncio.get_event_loop().set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
 
-    from kt_config.plugin import load_default_plugins
+    # Discover + register plugins before building the workflow list so any
+    # plugin-contributed Hatchet workflows are enrolled with the worker.
+    # Bootstrap (hook subscriptions, session factories) runs inside
+    # worker_lifespan().
+    from kt_config.settings import Settings
+    from kt_db.core_plugin import register_core_plugins
+    from kt_plugins import load_default_plugins, plugin_manager
     from kt_providers.registry import bridge_plugin_search_providers
 
-    load_default_plugins()
+    register_core_plugins(plugin_manager)
+    _settings = Settings()
+    load_default_plugins(
+        enabled_plugins=_settings.enabled_plugins or None,
+        license_keys=_settings.plugin_license_keys or None,
+    )
     bridge_plugin_search_providers()
 
     from kt_hatchet.client import get_hatchet
@@ -95,11 +106,7 @@ def main() -> None:
     from kt_worker_synthesis.workflows.synthesizer import synthesizer_wf
 
     hatchet = get_hatchet()
-    worker = hatchet.worker(
-        "knowledge-tree-all",
-        slots=500,
-        durable_slots=250,
-        workflows=[
+    _core_workflows = [
             agent_select_wf,
             bottom_up_wf,
             bottom_up_scope_wf,
@@ -129,10 +136,19 @@ def main() -> None:
             dedup_pending_facts_wf,
             synthesizer_wf,
             super_synthesizer_wf,
-        ],
+        ]
+    worker = hatchet.worker(
+        "knowledge-tree-all",
+        slots=500,
+        durable_slots=250,
+        workflows=_core_workflows + plugin_manager.get_plugin_workflows(),
         lifespan=worker_lifespan,
     )
-    logging.getLogger(__name__).info("Starting all-in-one worker")
+    logging.getLogger(__name__).info(
+        "Starting all-in-one worker (%d core + %d plugin workflow(s))",
+        len(_core_workflows),
+        len(plugin_manager.get_plugin_workflows()),
+    )
     worker.start()
 
 

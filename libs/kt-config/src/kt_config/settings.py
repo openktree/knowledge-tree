@@ -297,6 +297,15 @@ _register(
     },
 )
 
+# ---- Plugins ---------------------------------------------------------------
+_register(
+    "plugins",
+    {
+        "enabled_plugins": "enabled",
+        "plugin_license_keys": "license_keys",
+    },
+)
+
 # ---- Ingest ----------------------------------------------------------------
 _register(
     "ingest",
@@ -807,6 +816,10 @@ class Settings(BaseSettings):
 
     # Frontend
     frontend_url: str = "http://localhost:3000"
+
+    # Plugins — cf. ``kt_plugins.manager.PluginManager`` / PLUGINS.md
+    enabled_plugins: list[str] = []  # empty = all discovered plugins loaded
+    plugin_license_keys: dict[str, str] = {}  # {"billing": "payload.signature", ...}
 
     # Pool sizes for non-default (multigraph) graphs that live on the system
     # DBs — i.e. schema-mode graphs with no ``database_connection_id``.

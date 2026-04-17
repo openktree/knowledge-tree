@@ -244,6 +244,31 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
 
     UsageSink.install(write_session_factory)
 
+    # Bootstrap plugins — hand each a PluginContext with session factories
+    # and the shared HookRegistry so they can subscribe to hooks. Plugins
+    # were discovered + registered in the worker's __main__.
+    from kt_plugins import PluginContext, plugin_manager
+
+    def _ctx_factory(manifest):  # noqa: ANN202
+        plugin_settings = None
+        if manifest.settings_class is not None:
+            try:
+                plugin_settings = manifest.settings_class()
+            except Exception:
+                logger.warning("plugin %r: settings failed to load", manifest.id, exc_info=True)
+        return PluginContext(
+            plugin_id=manifest.id,
+            settings=plugin_settings or settings,
+            hook_registry=plugin_manager.hook_registry,
+            session_factory=session_factory,
+            write_session_factory=write_session_factory,
+            model_gateway=model_gateway,
+            embedding_service=embedding_service,
+            provider_registry=provider_registry,
+        )
+
+    await plugin_manager.bootstrap(ctx_factory=_ctx_factory)
+
     yield WorkerState(
         session_factory=session_factory,
         write_session_factory=write_session_factory,
@@ -256,6 +281,9 @@ async def worker_lifespan() -> AsyncGenerator[WorkerState, None]:
         graph_resolver=graph_resolver,
         default_graph_id=default_graph_id,
     )
+
+    # Plugin shutdown before DB engines go away.
+    await plugin_manager.shutdown()
 
     # Drain and stop the usage sink before DB engines go away so that
     # in-flight usage rows land in write-db rather than being dropped.

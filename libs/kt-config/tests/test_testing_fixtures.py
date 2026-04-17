@@ -17,12 +17,12 @@ class _Other(BackendEnginePlugin):
 def test_plugin_registry_clean_resets(plugin_registry_clean):  # noqa: F811
     assert plugin_registry_clean is plugin_registry
     plugin_registry.register_backend_engine(_Dummy())
-    assert len(plugin_registry._backend_engine) == 1
+    assert len(plugin_registry.manifests) == 1
 
 
 def test_registered_plugins_factory(registered_plugins):  # noqa: F811
     reg = registered_plugins(_Dummy(), _Other())
-    ids = [p.plugin_id for p in reg._backend_engine]
+    ids = [m.id for m in reg.manifests]
     assert ids == ["backend-engine-dummy", "backend-engine-other"]
 
 
@@ -30,4 +30,4 @@ def test_registry_cleared_between_tests():
     # Previous test registered plugins; this test uses no fixture and
     # relies on the prior test's cleanup. If the fixture's finalizer runs
     # correctly, the registry is empty again here.
-    assert plugin_registry._backend_engine == []
+    assert plugin_registry.manifests == []

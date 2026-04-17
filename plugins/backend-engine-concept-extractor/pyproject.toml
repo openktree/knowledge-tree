@@ -17,6 +17,9 @@ dependencies = [
     "pyyaml>=6.0.3",
 ]
 
+[project.entry-points."kt.plugins"]
+concept-extractor = "kt_plugin_be_concept_extractor.plugin:ConceptExtractorBackendEnginePlugin"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
