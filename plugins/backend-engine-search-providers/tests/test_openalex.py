@@ -22,8 +22,7 @@ def _sample_work(
         "publication_year": 2017,
         "cited_by_count": 42,
         "type": "article",
-        "abstract_inverted_index": inverted
-        or {"Attention": [0], "mechanism": [1], "works": [2]},
+        "abstract_inverted_index": inverted or {"Attention": [0], "mechanism": [1], "works": [2]},
         "authorships": [
             {"author": {"display_name": "Ashish Vaswani"}},
             {"author": {"display_name": "Noam Shazeer"}},
@@ -117,9 +116,7 @@ async def test_search_retries_on_429(respx_mock) -> None:
 
     provider = OpenAlexSearchProvider()
 
-    with patch(
-        "kt_plugin_be_search_providers.providers.openalex.asyncio.sleep", new_callable=AsyncMock
-    ) as mock_sleep:
+    with patch("kt_plugin_be_search_providers.providers.openalex.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         results = await provider.search("q")
 
     assert len(results) == 1
@@ -128,24 +125,18 @@ async def test_search_retries_on_429(respx_mock) -> None:
 
 @pytest.mark.asyncio
 async def test_search_raises_after_max_retries(respx_mock) -> None:
-    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(
-        return_value=httpx.Response(503, text="unavailable")
-    )
+    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(return_value=httpx.Response(503, text="unavailable"))
 
     provider = OpenAlexSearchProvider()
 
-    with patch(
-        "kt_plugin_be_search_providers.providers.openalex.asyncio.sleep", new_callable=AsyncMock
-    ):
+    with patch("kt_plugin_be_search_providers.providers.openalex.asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(httpx.HTTPStatusError):
             await provider.search("q")
 
 
 @pytest.mark.asyncio
 async def test_search_no_retry_on_4xx(respx_mock) -> None:
-    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(
-        return_value=httpx.Response(400, text="bad request")
-    )
+    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(return_value=httpx.Response(400, text="bad request"))
 
     provider = OpenAlexSearchProvider()
     with pytest.raises(httpx.HTTPStatusError):
@@ -154,15 +145,11 @@ async def test_search_no_retry_on_4xx(respx_mock) -> None:
 
 @pytest.mark.asyncio
 async def test_is_available_true_on_2xx(respx_mock) -> None:
-    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(return_value=httpx.Response(200, json={"results": []}))
     assert await OpenAlexSearchProvider().is_available() is True
 
 
 @pytest.mark.asyncio
 async def test_is_available_false_on_5xx(respx_mock) -> None:
-    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(
-        return_value=httpx.Response(500, text="boom")
-    )
+    respx_mock.get(OpenAlexSearchProvider.SEARCH_URL).mock(return_value=httpx.Response(500, text="boom"))
     assert await OpenAlexSearchProvider().is_available() is False

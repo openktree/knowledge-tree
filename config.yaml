@@ -243,7 +243,11 @@ edges:
 # email:
 #   enabled: false
 #   provider: "resend"
-#   verification: false
+#   verification: false            # send verification email on registration
+#   verification_required: false   # block login until email is verified
+#                                  # (requires enabled=true AND verification=true)
+#                                  # WARNING: enabling on a populated DB will lock
+#                                  # out all existing unverified users.
 #   from_address: "noreply@openktree.com"
 #   resend_api_key: ""
 

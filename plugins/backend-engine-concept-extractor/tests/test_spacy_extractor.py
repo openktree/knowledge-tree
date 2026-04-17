@@ -55,5 +55,3 @@ async def test_extract_empty_facts_returns_none() -> None:
     extractor = _Stub()
     result = await extractor.extract([])
     assert result is None
-
-

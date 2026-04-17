@@ -122,7 +122,9 @@ class EmbeddingService:
             except Exception as exc:
                 last_err = exc
                 if attempt < _MAX_RETRIES:
-                    logger.warning("embed_batch chunk %d failed (attempt %d), retrying: %s", chunk_idx, attempt + 1, exc)
+                    logger.warning(
+                        "embed_batch chunk %d failed (attempt %d), retrying: %s", chunk_idx, attempt + 1, exc
+                    )
                     await asyncio.sleep(1)
         raise last_err  # type: ignore[misc]
 
