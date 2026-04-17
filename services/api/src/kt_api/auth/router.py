@@ -22,6 +22,11 @@ from kt_db.repositories.system_settings import SystemSettingsRepository
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
+# Captured at module import — fastapi-users builds the auth router statically,
+# so the flag can't vary per-request. Settings are immutable in prod (loaded
+# from env + YAML at startup), so this is fine. /auth/features reads
+# get_settings() dynamically; tests that need to toggle this must reload the
+# module or build a standalone fastapi-users router.
 _startup_settings = get_settings()
 _require_verified_login: bool = (
     _startup_settings.email_enabled

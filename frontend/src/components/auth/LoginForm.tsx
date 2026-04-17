@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth";
 import { api } from "@/lib/api";
+import { parseAuthErrorCode } from "@/lib/auth-errors";
 
 type ResendState = "idle" | "sending" | "sent" | "error";
 
@@ -34,8 +35,7 @@ export function LoginForm() {
       await login(email, password);
       router.push("/");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("LOGIN_USER_NOT_VERIFIED")) {
+      if (parseAuthErrorCode(err) === "LOGIN_USER_NOT_VERIFIED") {
         setNeedsVerification(true);
         setError("Please verify your email before signing in.");
       } else {
@@ -85,7 +85,13 @@ export function LoginForm() {
           type="email"
           required
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            if (resendState === "sent" || resendState === "error") {
+              setResendState("idle");
+              setResendMessage(null);
+            }
+          }}
           className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>

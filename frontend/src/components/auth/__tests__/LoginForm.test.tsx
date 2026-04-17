@@ -118,4 +118,34 @@ describe("LoginForm — verification flow", () => {
       expect(pushMock).toHaveBeenCalledWith("/");
     });
   });
+
+  it("re-enables resend button after user edits email", async () => {
+    loginMock.mockRejectedValue(
+      new Error("API error 400 Bad Request: {\"detail\":\"LOGIN_USER_NOT_VERIFIED\"}"),
+    );
+    requestVerifyTokenMock.mockResolvedValue(undefined);
+
+    render(<LoginForm />);
+    const user = await fillAndSubmit("alice@example.com", "hunter2!!");
+
+    const resendBtn = await screen.findByRole("button", {
+      name: /resend verification email/i,
+    });
+    await user.click(resendBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/verification email sent/i)).toBeInTheDocument();
+    });
+    const sentBtn = screen.getByRole("button", { name: /sent/i });
+    expect(sentBtn).toBeDisabled();
+
+    const emailInput = screen.getByLabelText(/email/i);
+    await user.type(emailInput, "x");
+
+    const reEnabledBtn = await screen.findByRole("button", {
+      name: /resend verification email/i,
+    });
+    expect(reEnabledBtn).toBeEnabled();
+    expect(screen.queryByText(/verification email sent/i)).not.toBeInTheDocument();
+  });
 });
