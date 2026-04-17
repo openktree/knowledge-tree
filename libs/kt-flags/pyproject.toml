@@ -1,0 +1,29 @@
+[project]
+name = "kt-flags"
+version = "0.1.0"
+description = "Knowledge Tree feature-flag layer (OpenFeature)"
+requires-python = ">=3.12"
+dependencies = [
+    "kt-config",
+    "openfeature-sdk>=0.8.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+kt-config = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kt_flags"]
+
+[dependency-groups]
+dev = [
+    "starlette>=0.52.1",
+    "httpx>=0.28.1",
+]

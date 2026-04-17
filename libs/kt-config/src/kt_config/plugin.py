@@ -214,6 +214,17 @@ class BackendEnginePlugin(ABC):
     def plugin_type(self) -> PluginType:
         return PluginType.backend_engine
 
+    @classmethod
+    def is_enabled(cls) -> bool:  # noqa: D401
+        """Operator gate consulted by :func:`load_default_plugins`.
+
+        Default: ``True``. Plugins override this ``@classmethod`` to wire
+        in a feature-flag kill-switch — typically
+        ``flags.get_boolean("plugin.<name>.enabled")`` — so ops can
+        disable the plugin in production without a code change.
+        """
+        return True
+
     def get_database(self) -> PluginDatabase | None:
         """Return a PluginDatabase if this plugin owns a write-db schema."""
         return None
@@ -428,5 +439,8 @@ def load_default_plugins(
         except ImportError:
             logger.debug("Plugin %s not installed — skipping", module_path)
             continue
-        plugin = getattr(module, class_name)()
-        plugin_registry.register_backend_engine(plugin)
+        plugin_cls = getattr(module, class_name)
+        if not plugin_cls.is_enabled():
+            logger.info("Plugin %s disabled by flag — skipping", module_path)
+            continue
+        plugin_registry.register_backend_engine(plugin_cls())

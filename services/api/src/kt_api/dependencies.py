@@ -18,7 +18,7 @@ from kt_db.session import get_session_factory, get_write_session_factory
 from kt_graph.read_engine import ReadGraphEngine
 from kt_models.embeddings import EmbeddingService
 from kt_models.gateway import ModelGateway
-from kt_providers.fetch import build_fetch_registry
+from kt_providers.fetch import maybe_build_fetch_registry
 from kt_providers.registry import ProviderRegistry, iter_extra_provider_factories
 
 logger = logging.getLogger(__name__)
@@ -117,9 +117,7 @@ async def get_agent_context(
         except Exception:
             logger.exception("Failed to register extra search provider: %s", extra.name)
 
-    fetch_registry = None
-    if settings.enable_full_text_fetch:
-        fetch_registry = build_fetch_registry(settings)
+    fetch_registry = maybe_build_fetch_registry(settings)
 
     return AgentContext(
         graph_engine=graph_engine,

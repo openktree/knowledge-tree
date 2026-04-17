@@ -22,6 +22,7 @@ from kt_config.plugin import (
     PluginDatabase,
     PostExtractionHook,
 )
+from kt_flags import get_flag_client
 
 
 def _locate_alembic_ini() -> Path:
@@ -56,6 +57,17 @@ class ConceptExtractorBackendEnginePlugin(BackendEnginePlugin):
     """
 
     plugin_id = "backend-engine-concept-extractor"
+
+    @classmethod
+    def is_enabled(cls) -> bool:
+        """Operator kill-switch. Flag default is ``True``.
+
+        ``kt_config.plugin.load_default_plugins`` checks this before
+        registering the plugin, so a ``False`` value in ``config.yaml`` or
+        the future DB-backed provider stops the plugin from being loaded
+        at worker boot without code changes.
+        """
+        return get_flag_client().get_boolean("plugin.concept_extractor.enabled", default=True)
 
     def get_database(self) -> PluginDatabase:
         return PluginDatabase(

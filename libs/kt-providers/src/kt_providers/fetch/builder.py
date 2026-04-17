@@ -12,6 +12,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from kt_config.settings import Settings
+from kt_flags import get_flag_client
+from kt_flags.registry import FLAG_REGISTRY
 from kt_providers.fetch.base import ContentFetcherProvider
 from kt_providers.fetch.host_pref import (
     HostPreferenceStore,
@@ -145,3 +147,23 @@ def build_fetch_registry(
         url_validator=validate_fetch_url,
         post_fetch_hooks=post_fetch_hooks,
     )
+
+
+def maybe_build_fetch_registry(
+    settings: Settings,
+    redis: object | None = None,
+    *,
+    in_memory_prefs: bool = False,
+) -> FetchProviderRegistry | None:
+    """Return a registry when ``feature.full_text_fetch`` is on, ``None`` otherwise.
+
+    Centralises the flag-gate so the API dependency and every worker
+    lifespan read the flag the same way, with the same default, and never
+    drift. The default is sourced from the ``kt_flags`` registry so future
+    changes to the canonical default don't have to ripple through call
+    sites.
+    """
+    default = bool(FLAG_REGISTRY["feature.full_text_fetch"].default)
+    if not get_flag_client().get_boolean("feature.full_text_fetch", default=default):
+        return None
+    return build_fetch_registry(settings, redis, in_memory_prefs=in_memory_prefs)

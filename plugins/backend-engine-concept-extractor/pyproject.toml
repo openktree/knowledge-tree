@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     "kt-config",
     "kt-core-engine-api",
+    "kt-flags",
     "kt-models",
     "pydantic>=2",
     "sqlalchemy>=2",
@@ -23,6 +24,7 @@ build-backend = "hatchling.build"
 [tool.uv.sources]
 kt-config = { workspace = true }
 kt-core-engine-api = { workspace = true }
+kt-flags = { workspace = true }
 kt-models = { workspace = true }
 
 [tool.pytest.ini_options]

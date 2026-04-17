@@ -23,6 +23,7 @@ dependencies = [
     "cryptography>=46.0.5",
     "kt-auth",
     "kt-rbac",
+    "kt-flags",
 ]
 
 [build-system]
@@ -41,6 +42,7 @@ kt-agents-core = { workspace = true }
 kt-worker-ingest = { workspace = true }
 kt-auth = { workspace = true }
 kt-rbac = { workspace = true }
+kt-flags = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
