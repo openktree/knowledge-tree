@@ -75,10 +75,11 @@ class EdgeClassifier:
             idx: int, batch: list[EdgeCandidate], prompt: str, fact_index_maps: list[dict[int, uuid.UUID]]
         ) -> None:
             async with sem:
-                try:
-                    from kt_models.expense import expense_subtask
+                from kt_models.expense import expense_subtask
 
-                    with expense_subtask("edge_classification"):
+                # expense_subtask outside the try: plumbing errors crash loudly.
+                with expense_subtask("edge_classification"):
+                    try:
                         llm_result = await self._ctx.model_gateway.generate_json(
                             model_id=model_id,
                             messages=[{"role": "user", "content": prompt}],
@@ -86,10 +87,10 @@ class EdgeClassifier:
                             temperature=0.0,
                             reasoning_effort=thinking_level,
                         )
-                except Exception:
-                    logger.exception("resolve_edges: LLM batch call failed (batch %d)", idx)
-                    slots[idx] = [None for _ in batch]
-                    return
+                    except Exception:
+                        logger.exception("resolve_edges: LLM batch call failed (batch %d)", idx)
+                        slots[idx] = [None for _ in batch]
+                        return
 
                 batch_decisions = self.parse_llm_decisions(llm_result, batch)
 

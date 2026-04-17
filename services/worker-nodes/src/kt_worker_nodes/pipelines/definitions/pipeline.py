@@ -66,10 +66,11 @@ class DefinitionPipeline:
         model_id = ctx.model_gateway.definition_model
         thinking_level = ctx.model_gateway.definition_thinking_level
 
-        try:
-            from kt_models.expense import expense_subtask
+        from kt_models.expense import expense_subtask
 
-            with expense_subtask("definitions"):
+        # expense_subtask outside the try: plumbing errors crash loudly.
+        with expense_subtask("definitions"):
+            try:
                 definition = await ctx.model_gateway.generate(
                     model_id=model_id,
                     messages=[{"role": "user", "content": user_msg}],
@@ -78,16 +79,17 @@ class DefinitionPipeline:
                     max_tokens=8000,
                     reasoning_effort=thinking_level or None,
                 )
+            except Exception:
+                logger.exception("Error generating definition for '%s'", node_concept)
+                return None
 
-            if definition.strip():
-                from kt_models.link_normalizer import normalize_ai_links
+        if definition.strip():
+            from kt_models.link_normalizer import normalize_ai_links
 
-                definition = normalize_ai_links(definition.strip())
-                await ctx.graph_engine.set_node_definition(node_id, definition)
-                logger.info("Generated definition for '%s' (%d chars)", node_concept, len(definition))
-                return definition
-        except Exception:
-            logger.exception("Error generating definition for '%s'", node_concept)
+            definition = normalize_ai_links(definition.strip())
+            await ctx.graph_engine.set_node_definition(node_id, definition)
+            logger.info("Generated definition for '%s' (%d chars)", node_concept, len(definition))
+            return definition
 
         return None
 
@@ -136,32 +138,34 @@ class DefinitionPipeline:
         definitions: dict[str, str] = {}
 
         async def _gen_def_llm(t: CreateNodeTask) -> None:
-            async with sem:
-                try:
-                    dims = task_dims[t.name]
-                    dim_lines: list[str] = []
-                    for i, dim in enumerate(dims, 1):
-                        if isinstance(dim, dict):
-                            model_id = str(dim.get("model_id", "unknown"))
-                            content = str(dim.get("content", ""))
-                            status = "[DRAFT]"
-                        else:
-                            status = "[DEFINITIVE]" if dim.is_definitive else f"[DRAFT, {dim.fact_count} facts]"
-                            model_id = str(dim.model_id)
-                            content = str(dim.content)
-                        dim_lines.append(f"Dimension {i} ({model_id}) {status}:\n{content}")
-                    dimensions_text = "\n\n---\n\n".join(dim_lines)
-                    user_msg = (
-                        f"Concept: {t.node.concept}\n\n"
-                        f"Number of dimensions: {len(dims)}\n\n"
-                        f"{dimensions_text}\n\n"
-                        f"Synthesize a unified definition."
-                    )
-                    model_id = ctx.model_gateway.definition_model
-                    thinking_level = ctx.model_gateway.definition_thinking_level
-                    from kt_models.expense import expense_subtask
+            from kt_models.expense import expense_subtask
 
-                    with expense_subtask("definitions"):
+            async with sem:
+                dims = task_dims[t.name]
+                dim_lines: list[str] = []
+                for i, dim in enumerate(dims, 1):
+                    if isinstance(dim, dict):
+                        model_id = str(dim.get("model_id", "unknown"))
+                        content = str(dim.get("content", ""))
+                        status = "[DRAFT]"
+                    else:
+                        status = "[DEFINITIVE]" if dim.is_definitive else f"[DRAFT, {dim.fact_count} facts]"
+                        model_id = str(dim.model_id)
+                        content = str(dim.content)
+                    dim_lines.append(f"Dimension {i} ({model_id}) {status}:\n{content}")
+                dimensions_text = "\n\n---\n\n".join(dim_lines)
+                user_msg = (
+                    f"Concept: {t.node.concept}\n\n"
+                    f"Number of dimensions: {len(dims)}\n\n"
+                    f"{dimensions_text}\n\n"
+                    f"Synthesize a unified definition."
+                )
+                model_id = ctx.model_gateway.definition_model
+                thinking_level = ctx.model_gateway.definition_thinking_level
+
+                # expense_subtask outside the try: plumbing errors crash loudly.
+                with expense_subtask("definitions"):
+                    try:
                         definition = await ctx.model_gateway.generate(
                             model_id=model_id,
                             messages=[{"role": "user", "content": user_msg}],
@@ -170,12 +174,14 @@ class DefinitionPipeline:
                             max_tokens=8000,
                             reasoning_effort=thinking_level or None,
                         )
-                    if definition.strip():
-                        from kt_models.link_normalizer import normalize_ai_links
+                    except Exception:
+                        logger.exception("Error generating definition for '%s'", t.name)
+                        return
 
-                        definitions[t.name] = normalize_ai_links(definition.strip())
-                except Exception:
-                    logger.exception("Error generating definition for '%s'", t.name)
+                if definition.strip():
+                    from kt_models.link_normalizer import normalize_ai_links
+
+                    definitions[t.name] = normalize_ai_links(definition.strip())
 
         results = await asyncio.gather(*[_gen_def_llm(t) for t in llm_tasks], return_exceptions=True)
         for i, r in enumerate(results):

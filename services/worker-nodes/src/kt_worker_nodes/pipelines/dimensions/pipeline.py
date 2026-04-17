@@ -241,21 +241,21 @@ class DimensionPipeline:
 
         # Parallel LLM dimension generation (batched per task)
         async def _gen_dims(t: CreateNodeTask) -> None:
+            from kt_models.expense import expense_subtask
+
             async with sem:
-                try:
-                    model_ids = [ctx.model_gateway.dimension_model]
-                    kwargs: dict[str, Any] = {}
-                    if t.dim_mode != "neutral":
-                        kwargs["mode"] = t.dim_mode
-                    if t.seed_context:
-                        kwargs["attractor"] = t.seed_context
+                model_ids = [ctx.model_gateway.dimension_model]
+                kwargs: dict[str, Any] = {}
+                if t.dim_mode != "neutral":
+                    kwargs["mode"] = t.dim_mode
+                if t.seed_context:
+                    kwargs["attractor"] = t.seed_context
 
-                    # For batch pipeline, new nodes have no existing dims
-                    # Just generate one batch with up to fact_limit facts
-                    from kt_models.expense import expense_subtask
-
-                    batch_facts = t.pool_facts[: settings.dimension_fact_limit]
-                    with expense_subtask("dimensions"):
+                # For batch pipeline, new nodes have no existing dims.
+                # expense_subtask outside the try: plumbing errors crash loudly.
+                batch_facts = t.pool_facts[: settings.dimension_fact_limit]
+                with expense_subtask("dimensions"):
+                    try:
                         t.dim_results = await generate_dimensions(
                             t.node,
                             batch_facts,
@@ -263,12 +263,13 @@ class DimensionPipeline:
                             ctx.model_gateway,
                             **kwargs,
                         )
-                    # Tag batch metadata for storage phase
-                    t._batch_facts_list = batch_facts  # type: ignore[attr-defined]
-                    await ctx.emit("activity_log", action=f"Generated dimensions for '{t.name}'", tool="build_pipeline")
-                except Exception:
-                    logger.exception("Error generating dimensions for '%s'", t.name)
-                    t.dim_results = []
+                    except Exception:
+                        logger.exception("Error generating dimensions for '%s'", t.name)
+                        t.dim_results = []
+                        return
+                # Tag batch metadata for storage phase
+                t._batch_facts_list = batch_facts  # type: ignore[attr-defined]
+                await ctx.emit("activity_log", action=f"Generated dimensions for '{t.name}'", tool="build_pipeline")
 
         results = await asyncio.gather(*[_gen_dims(t) for t in dim_tasks], return_exceptions=True)
         for i, r in enumerate(results):

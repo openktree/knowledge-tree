@@ -56,6 +56,14 @@ async def test_install_is_idempotent() -> None:
     assert sink1 is sink2
 
 
+async def test_install_rejects_conflicting_factory() -> None:
+    factory_a, _ = _make_session_factory()
+    factory_b, _ = _make_session_factory()
+    UsageSink.install(factory_a)
+    with pytest.raises(RuntimeError, match="different session_factory"):
+        UsageSink.install(factory_b)
+
+
 async def test_record_skips_zero_token_rows() -> None:
     factory, _ = _make_session_factory()
     UsageSink.install(factory, flush_interval_s=0.05)

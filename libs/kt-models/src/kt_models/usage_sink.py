@@ -73,6 +73,13 @@ class UsageSink:
         **kwargs: float | int,
     ) -> "UsageSink":
         if cls._instance is not None:
+            if cls._instance._session_factory is not session_factory:
+                raise RuntimeError(
+                    "UsageSink already installed with a different session_factory. "
+                    "Call UsageSink.shutdown() first before re-installing — "
+                    "reusing the stale instance would write usage rows to the "
+                    "previous DB, not the new one."
+                )
             logger.debug("UsageSink already installed; reusing existing instance")
             return cls._instance
         inst = cls(session_factory, **kwargs)  # type: ignore[arg-type]
