@@ -8,7 +8,6 @@ import type {
   FactResponse,
   EdgeResponse,
   NodeVersionResponse,
-  ConvergenceResponse,
 } from "@/types";
 
 export interface PerspectivePair {
@@ -22,7 +21,6 @@ export interface UseNodeDetailResult {
   facts: FactResponse[];
   edges: EdgeResponse[];
   history: NodeVersionResponse[];
-  convergence: ConvergenceResponse | null;
   perspectives: PerspectivePair[];
   isLoading: boolean;
   error: string | null;
@@ -66,9 +64,6 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
   const [facts, setFacts] = useState<FactResponse[]>([]);
   const [edges, setEdges] = useState<EdgeResponse[]>([]);
   const [history, setHistory] = useState<NodeVersionResponse[]>([]);
-  const [convergence, setConvergence] = useState<ConvergenceResponse | null>(
-    null
-  );
   const [perspectives, setPerspectives] = useState<PerspectivePair[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [rebuildingNodeId, setRebuildingNodeId] = useState<string | null>(null);
@@ -82,7 +77,6 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
       setFacts([]);
       setEdges([]);
       setHistory([]);
-      setConvergence(null);
       setPerspectives([]);
       setIsLoading(false);
       setError(null);
@@ -102,7 +96,6 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
           factsData,
           edgesData,
           historyData,
-          convergenceData,
           perspectivesData,
         ] = await Promise.all([
           api.nodes.get(id),
@@ -110,7 +103,6 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
           api.nodes.getFacts(id),
           api.nodes.getEdges(id),
           api.nodes.getHistory(id),
-          api.nodes.getConvergence(id).catch(() => null),
           api.nodes.getPerspectives(id).catch(() => [] as NodeResponse[]),
         ]);
 
@@ -121,7 +113,6 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
         setFacts(factsData);
         setEdges(edgesData);
         setHistory(historyData);
-        setConvergence(convergenceData);
         setPerspectives(groupIntoPairs(perspectivesData));
       } catch (err) {
         if (cancelled) return;
@@ -170,12 +161,11 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
       const poll = async () => {
         polls++;
         try {
-          const [freshNode, edgesData, dimsData, convergenceData] =
+          const [freshNode, edgesData, dimsData] =
             await Promise.all([
               api.nodes.get(targetId),
               api.nodes.getEdges(targetId),
               api.nodes.getDimensions(targetId),
-              api.nodes.getConvergence(targetId).catch(() => null),
             ]);
           const changed =
             !baselineUpdatedAt ||
@@ -184,7 +174,6 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
             setNode(freshNode);
             setEdges(edgesData);
             setDimensions(dimsData);
-            setConvergence(convergenceData);
             setRebuildingNodeId(null);
             return;
           }
@@ -212,7 +201,6 @@ export function useNodeDetail(nodeId: string | null): UseNodeDetailResult {
     facts,
     edges,
     history,
-    convergence,
     perspectives,
     isLoading,
     error,

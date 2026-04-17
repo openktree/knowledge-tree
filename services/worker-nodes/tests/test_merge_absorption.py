@@ -173,8 +173,6 @@ class TestAbsorbMergedNodes:
             dim_repo.get_by_node_key = AsyncMock(return_value=[dim])
             dim_repo.upsert = AsyncMock()
             dim_repo.delete_by_key = AsyncMock()
-            dim_repo.delete_convergence_report = AsyncMock()
-            dim_repo.delete_divergent_claims = AsyncMock()
 
             edge_repo = MockEdgeRepo.return_value
             edge_repo.get_edges_for_node = AsyncMock(return_value=[edge])
@@ -348,8 +346,6 @@ class TestAbsorbMergedNodes:
 
             dim_repo = MockDimRepo.return_value
             dim_repo.get_by_node_key = AsyncMock(return_value=[])
-            dim_repo.delete_convergence_report = AsyncMock()
-            dim_repo.delete_divergent_claims = AsyncMock()
 
             edge_repo = MockEdgeRepo.return_value
             edge_repo.get_edges_for_node = AsyncMock(return_value=[self_edge])
@@ -411,8 +407,6 @@ class TestAbsorbMergedNodes:
 
             dim_repo = MockDimRepo.return_value
             dim_repo.get_by_node_key = AsyncMock(return_value=[])
-            dim_repo.delete_convergence_report = AsyncMock()
-            dim_repo.delete_divergent_claims = AsyncMock()
 
             edge_repo = MockEdgeRepo.return_value
             edge_repo.get_edges_for_node = AsyncMock(return_value=[])
@@ -487,8 +481,6 @@ class TestAbsorbMergedNodes:
             dim_repo.get_by_node_key = AsyncMock(return_value=[dim_a, dim_b])
             dim_repo.upsert = AsyncMock()
             dim_repo.delete_by_key = AsyncMock()
-            dim_repo.delete_convergence_report = AsyncMock()
-            dim_repo.delete_divergent_claims = AsyncMock()
 
             edge_repo = MockEdgeRepo.return_value
             edge_repo.get_edges_for_node = AsyncMock(return_value=[])
@@ -555,8 +547,6 @@ class TestAbsorbMergedNodes:
 
             dim_repo = MockDimRepo.return_value
             dim_repo.get_by_node_key = AsyncMock(return_value=[])
-            dim_repo.delete_convergence_report = AsyncMock()
-            dim_repo.delete_divergent_claims = AsyncMock()
 
             edge_repo = MockEdgeRepo.return_value
             edge_repo.get_edges_for_node = AsyncMock(return_value=[edge])
@@ -627,8 +617,6 @@ class TestAbsorbMergedNodes:
             dim_repo = MockDimRepo.return_value
             # First call (for err seed) raises, second (for ok seed) succeeds
             dim_repo.get_by_node_key = AsyncMock(side_effect=[Exception("boom"), []])
-            dim_repo.delete_convergence_report = AsyncMock()
-            dim_repo.delete_divergent_claims = AsyncMock()
 
             edge_repo = MockEdgeRepo.return_value
             edge_repo.get_edges_for_node = AsyncMock(return_value=[])

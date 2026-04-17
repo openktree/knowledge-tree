@@ -40,7 +40,6 @@ def _make_mock_node(
     node.edge_count = 0
     node.child_count = 0
     node.dimension_count = 0
-    node.convergence_score = 0.0
     return node
 
 

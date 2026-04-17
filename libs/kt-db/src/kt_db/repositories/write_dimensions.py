@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kt_db.keys import make_dimension_key
-from kt_db.write_models import WriteConvergenceReport, WriteDimension, WriteDivergentClaim
+from kt_db.write_models import WriteDimension
 
 
 class WriteDimensionRepository:
@@ -63,60 +63,12 @@ class WriteDimensionRepository:
         await self._session.execute(stmt)
         return key
 
-    async def upsert_convergence_report(
-        self,
-        node_key: str,
-        convergence_score: float,
-        *,
-        converged_claims: list[str] | None = None,
-        recommended_content: str | None = None,
-    ) -> str:
-        """Insert or update a convergence report for a node."""
-        stmt = (
-            pg_insert(WriteConvergenceReport)
-            .values(
-                node_key=node_key,
-                convergence_score=convergence_score,
-                converged_claims=converged_claims,
-                recommended_content=recommended_content,
-            )
-            .on_conflict_do_update(
-                index_elements=[WriteConvergenceReport.node_key],
-                set_={
-                    "convergence_score": convergence_score,
-                    "converged_claims": converged_claims,
-                    "recommended_content": recommended_content,
-                    "updated_at": func.clock_timestamp(),
-                },
-            )
-        )
-        await self._session.execute(stmt)
-        return node_key
-
     async def delete_by_key(self, dim_key: str) -> bool:
         """Delete a dimension by key. Returns True if deleted."""
         from sqlalchemy import delete as sa_delete
 
         result = await self._session.execute(sa_delete(WriteDimension).where(WriteDimension.key == dim_key))
         return (result.rowcount or 0) > 0
-
-    async def delete_convergence_report(self, node_key: str) -> bool:
-        """Delete convergence report for a node. Returns True if deleted."""
-        from sqlalchemy import delete as sa_delete
-
-        result = await self._session.execute(
-            sa_delete(WriteConvergenceReport).where(WriteConvergenceReport.node_key == node_key)
-        )
-        return (result.rowcount or 0) > 0
-
-    async def delete_divergent_claims(self, node_key: str) -> int:
-        """Delete all divergent claims for a node. Returns count deleted."""
-        from sqlalchemy import delete as sa_delete
-
-        result = await self._session.execute(
-            sa_delete(WriteDivergentClaim).where(WriteDivergentClaim.node_key == node_key)
-        )
-        return result.rowcount or 0
 
     async def delete_all_for_node(self, node_key: str) -> int:
         """Delete ALL dimensions for a node (for full rebuild). Returns count deleted."""

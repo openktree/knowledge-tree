@@ -98,7 +98,7 @@ async def build_ingest_subgraph(
     """Build a subgraph from individual node/edge ID lookups.
 
     Used by the ingest agent which tracks created edge IDs separately
-    and includes extra fields (convergence_score, justification).
+    and includes extra fields (justification).
     """
     nodes_data: list[dict[str, Any]] = []
     edges_data: list[dict[str, Any]] = []
@@ -118,7 +118,6 @@ async def build_ingest_subgraph(
                         "update_count": node.update_count,
                         "access_count": node.access_count,
                         "richness": 0.0,
-                        "convergence_score": 0.0,
                         "max_content_tokens": node.max_content_tokens,
                     }
                 )

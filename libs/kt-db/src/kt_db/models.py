@@ -58,7 +58,6 @@ class Node(Base):
     edge_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     child_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     dimension_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    convergence_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
 
     def __init__(self, **kwargs: object) -> None:
         self._embedding: list[float] | None = kwargs.pop("embedding", None)  # type: ignore[assignment]
@@ -77,9 +76,6 @@ class Node(Base):
     parent: Mapped["Node | None"] = relationship(remote_side="Node.id", foreign_keys=[parent_id])
     source_concept: Mapped["Node | None"] = relationship(remote_side="Node.id", foreign_keys=[source_concept_id])
     dimensions: Mapped[list["Dimension"]] = relationship(back_populates="node", cascade="all, delete-orphan")
-    convergence_report: Mapped["ConvergenceReport | None"] = relationship(
-        back_populates="node", uselist=False, cascade="all, delete-orphan"
-    )
     node_facts: Mapped[list["NodeFact"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     versions: Mapped[list["NodeVersion"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     outgoing_edges: Mapped[list["Edge"]] = relationship(
@@ -179,41 +175,6 @@ class Dimension(Base):
     dimension_facts: Mapped[list["DimensionFact"]] = relationship(
         back_populates="dimension", cascade="all, delete-orphan"
     )
-
-
-class ConvergenceReport(Base):
-    __tablename__ = "convergence_reports"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    node_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, unique=True
-    )
-    convergence_score: Mapped[float] = mapped_column(Float, default=0.0)
-    converged_claims: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-    recommended_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    computed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-
-    # Relationships
-    node: Mapped["Node"] = relationship(back_populates="convergence_report")
-    divergent_claims: Mapped[list["DivergentClaim"]] = relationship(
-        back_populates="report", cascade="all, delete-orphan"
-    )
-
-
-class DivergentClaim(Base):
-    __tablename__ = "divergent_claims"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    report_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("convergence_reports.id", ondelete="CASCADE"), nullable=False
-    )
-    claim: Mapped[str] = mapped_column(Text, nullable=False)
-    model_positions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    divergence_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    # Relationships
-    report: Mapped["ConvergenceReport"] = relationship(back_populates="divergent_claims")
 
 
 class Fact(Base):

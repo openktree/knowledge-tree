@@ -9,7 +9,6 @@ import type {
   FactResponse,
   FactNodeInfo,
   DimensionResponse,
-  ConvergenceResponse,
   SourceDetailResponse,
   PaginatedSourcesResponse,
   SourceReingestResponse,
@@ -367,12 +366,6 @@ export const api = {
     getHistory(id: string): Promise<NodeVersionResponse[]> {
       return graphRequest<NodeVersionResponse[]>(
         `/nodes/${encodeURIComponent(id)}/history`,
-      );
-    },
-
-    getConvergence(id: string): Promise<ConvergenceResponse> {
-      return graphRequest<ConvergenceResponse>(
-        `/nodes/${encodeURIComponent(id)}/convergence`,
       );
     },
 

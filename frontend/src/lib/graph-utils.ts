@@ -6,16 +6,6 @@ import type cytoscape from "cytoscape";
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a hex color representing the convergence score.
- * Green (>= 0.7) -> Yellow (0.4-0.7) -> Red (< 0.4).
- */
-export function getConvergenceColor(score: number): string {
-  if (score >= 0.7) return "#22c55e"; // green-500
-  if (score >= 0.4) return "#eab308"; // yellow-500
-  return "#ef4444"; // red-500
-}
-
-/**
  * Returns a hex color for a given node type.
  * concept → blue, perspective → purple, entity → emerald, event → orange.
  */

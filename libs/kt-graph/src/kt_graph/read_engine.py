@@ -526,15 +526,13 @@ class ReadGraphEngine:
                     break
                 all_ids |= new_ids
 
-            node_stmt = select(Node).where(Node.id.in_(list(all_ids))).options(selectinload(Node.convergence_report))
+            node_stmt = select(Node).where(Node.id.in_(list(all_ids)))
             node_result = await session.execute(node_stmt)
             nodes = list(node_result.scalars().all())
 
             parent_ids = {n.parent_id for n in nodes if n.parent_id is not None and n.parent_id not in all_ids}
             if parent_ids:
-                parent_stmt = (
-                    select(Node).where(Node.id.in_(list(parent_ids))).options(selectinload(Node.convergence_report))
-                )
+                parent_stmt = select(Node).where(Node.id.in_(list(parent_ids)))
                 parent_result = await session.execute(parent_stmt)
                 parent_nodes = list(parent_result.scalars().all())
                 nodes.extend(parent_nodes)

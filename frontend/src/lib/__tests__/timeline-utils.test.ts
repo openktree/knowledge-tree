@@ -25,7 +25,6 @@ function makeNode(overrides: Partial<NodeResponse> = {}): NodeResponse {
     seed_fact_count: 0,
     pending_facts: 0,
     richness: 0.75,
-    convergence_score: 0.75,
     definition: null,
     definition_generated_at: null,
     enrichment_status: null,
