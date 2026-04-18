@@ -68,7 +68,7 @@
 | **asyncpg** | PostgreSQL async driver | Fastest Python PostgreSQL driver. |
 | **pgvector-python** | pgvector integration | SQLAlchemy + asyncpg types for vector columns and similarity search. |
 | **Alembic** | Database migrations | Standard for SQLAlchemy. Autogenerate from model changes. |
-| **Redis / redis-py** | Ontology cache | Async Redis client for caching ontology lookups. |
+| **Redis / redis-py** | General cache | Async Redis client for API response caching and rate limiting. |
 | **httpx** | Async HTTP client | For calling search APIs, OpenRouter, and other external services. |
 | **sse-starlette** | Server-Sent Events | SSE endpoint support for real-time progress streaming. |
 | **structlog** | Structured logging | JSON-formatted logs, context binding. |
@@ -329,7 +329,6 @@ backend/alembic/versions/    # Chronological migration files
 | **Serper** | SerperProvider (default search) | API key | Google search results |
 | **Brave Search API** | BraveSearchProvider | API key | Alternative search provider |
 | **OpenAI** | Embeddings via LiteLLM | API key | text-embedding-3-large |
-| **Wikidata** | Ontology module | No auth | SPARQL queries for taxonomy |
 | **Google OAuth** | Auth module | Client ID/Secret | Social login |
 
 ### 5.2 Model Configuration

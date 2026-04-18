@@ -205,8 +205,20 @@ class BackendEnginePlugin(ABC):
     entry points. Base implementations return ``None`` (opt-out by default).
     """
 
-    plugin_id: ClassVar[str]
+    plugin_id: ClassVar[str] = ""
     """Unique plugin ID, e.g. ``backend-engine-hybrid-concept-extractor``. Subclasses must set."""
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        import inspect as _inspect
+
+        if _inspect.isabstract(cls):
+            return
+        if not getattr(cls, "plugin_id", ""):
+            raise TypeError(
+                f"{cls.__name__} must set a non-empty class attribute "
+                "`plugin_id` (backend-engine-<feature> convention)."
+            )
 
     @property
     def plugin_type(self) -> PluginType:
