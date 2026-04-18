@@ -22,7 +22,6 @@ members = [
     "kt-hatchet",
     "kt-mcp",
     "kt-models",
-    "kt-ontology",
     "kt-plugin-be-concept-extractor",
     "kt-plugin-be-search-providers",
     "kt-providers",
@@ -2123,29 +2122,6 @@ requires-dist = [
     { name = "langsmith", specifier = ">=0.7.14" },
     { name = "litellm", specifier = ">=1.81.11" },
     { name = "tiktoken", specifier = ">=0.12.0" },
-]
-
-[[package]]
-name = "kt-ontology"
-version = "0.1.0"
-source = { editable = "libs/kt-ontology" }
-dependencies = [
-    { name = "httpx" },
-    { name = "kt-config" },
-    { name = "kt-db" },
-    { name = "kt-graph" },
-    { name = "kt-models" },
-    { name = "redis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "kt-config", editable = "libs/kt-config" },
-    { name = "kt-db", editable = "libs/kt-db" },
-    { name = "kt-graph", editable = "libs/kt-graph" },
-    { name = "kt-models", editable = "libs/kt-models" },
-    { name = "redis", specifier = ">=5.0.0" },
 ]
 
 [[package]]

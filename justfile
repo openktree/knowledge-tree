@@ -113,7 +113,6 @@ test-libs:
     cd libs/kt-providers && uv run pytest -x
     cd libs/kt-graph && uv run pytest -x
     cd libs/kt-facts && uv run pytest -x
-    cd libs/kt-ontology && uv run pytest -x
 
 # Run API tests
 test-api:

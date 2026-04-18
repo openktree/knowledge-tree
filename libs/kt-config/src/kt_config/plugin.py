@@ -20,7 +20,7 @@ from collections.abc import Awaitable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Literal
 
 if TYPE_CHECKING:
     from kt_core_engine_api.extractor import EntityExtractor
@@ -205,10 +205,20 @@ class BackendEnginePlugin(ABC):
     entry points. Base implementations return ``None`` (opt-out by default).
     """
 
-    @property
-    @abstractmethod
-    def plugin_id(self) -> str:
-        """Unique plugin ID, e.g. ``backend-engine-hybrid-concept-extractor``."""
+    plugin_id: ClassVar[str] = ""
+    """Unique plugin ID, e.g. ``backend-engine-hybrid-concept-extractor``. Subclasses must set."""
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        import inspect as _inspect
+
+        if _inspect.isabstract(cls):
+            return
+        if not getattr(cls, "plugin_id", ""):
+            raise TypeError(
+                f"{cls.__name__} must set a non-empty class attribute "
+                "`plugin_id` (backend-engine-<feature> convention)."
+            )
 
     @property
     def plugin_type(self) -> PluginType:

@@ -64,15 +64,6 @@ jobs:
               - 'libs/kt-agents-core/**'
               - 'pyproject.toml'
               - 'uv.lock'
-            kt-ontology:
-              - 'libs/kt-ontology/**'
-              - 'libs/kt-db/**'
-              - 'libs/kt-graph/**'
-              - 'libs/kt-models/**'
-              - 'libs/kt-config/**'
-              - 'libs/kt-qdrant/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
             api:
               - 'services/api/**'
               - 'libs/**'
@@ -123,7 +114,6 @@ jobs:
           [ "${{ steps.filter.outputs.kt-providers }}" = "true" ] && add "kt-providers" "libs/kt-providers"
           [ "${{ steps.filter.outputs.kt-graph }}" = "true" ]     && add "kt-graph"     "libs/kt-graph"
           [ "${{ steps.filter.outputs.kt-facts }}" = "true" ]     && add "kt-facts"     "libs/kt-facts"
-          [ "${{ steps.filter.outputs.kt-ontology }}" = "true" ]  && add "kt-ontology"  "libs/kt-ontology"
           [ "${{ steps.filter.outputs.api }}" = "true" ]                  && add "api"                  "services/api"
           [ "${{ steps.filter.outputs.mcp }}" = "true" ]                  && add "mcp"                  "services/mcp"
           [ "${{ steps.filter.outputs.worker-bottomup }}" = "true" ]  && add "worker-bottomup"  "services/worker-bottomup"
